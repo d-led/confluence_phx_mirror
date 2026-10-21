@@ -328,6 +328,23 @@ A Confluence-compatible subset lives under `/wiki/rest/api` (`space`, `content`,
 * `sync_runs.stats` – pages, attachments, comments, links, notifications,
   deletions and per-page errors.
 
+## Migrations
+
+Migrations are split by *when* they may run:
+
+| Directory | Applied | Use for |
+| --- | --- | --- |
+| `priv/repo/migrations` | on every boot — the container calls `Release.migrate/0` before `start` | additive schema changes that old and new code both tolerate |
+| `priv/repo/manual_migrations` | only when an operator asks | slow indexes, destructive changes, data backfills |
+
+```bash
+mix ecto.gen.migration --migrations-path=priv/repo/manual_migrations backfill_status
+/app/bin/confluence_phx_mirror eval "ConfluencePhxMirror.Release.migrate_manual"
+```
+
+Development and test apply both directories (`mix ecto.migrate_all`), which is
+what `mix setup` and the `test` alias use.
+
 ## Quality
 
 ```bash
