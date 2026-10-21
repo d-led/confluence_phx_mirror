@@ -79,6 +79,7 @@ defmodule ConfluencePhxMirror.MixProject do
       {:bandit, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
+      {:ex_crap, "~> 0.1.1", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false}
     ]
   end
@@ -118,7 +119,11 @@ defmodule ConfluencePhxMirror.MixProject do
         "format",
         "credo --strict",
         "sobelow --config",
-        "test"
+        # Coverage data is exported so `mix crap` can score complexity against it.
+        "test --cover --export-coverage default",
+        # Ratchet: 135 is today's worst (HttpSource.parse_page/2). Lower it as the
+        # queue in README.md drains; never raise it.
+        "crap --max-score 135"
       ]
     ]
   end

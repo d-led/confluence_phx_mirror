@@ -398,6 +398,32 @@ reader pipeline answers `Config.CSP` with a real Content-Security-Policy:
 scripts only from the mirror itself, inline styles allowed for Confluence's own
 markup.
 
+`mix crap` (ex_crap) scores every function by cyclomatic complexity and its test
+coverage, so untested complexity becomes a ranked queue instead of a vague
+feeling. It needs exported coverage data:
+
+```bash
+mix test --cover --export-coverage default
+mix crap --verbose      # full table; `mix crap` prints only the offenders
+```
+
+`precommit` runs both with a **ratchet** of `--max-score 135`. That number is
+today's worst score, not a target: every PR that closes a queue entry lowers it,
+nothing is ever allowed to raise it, and the goal is the conventional `30`
+(complexity 5 with no tests). The current queue, highest first:
+
+| Score | Function | Why it is worth tests |
+| --- | --- | --- |
+| 132 | `Confluence.HttpSource.parse_page/2` | the REST → DTO mapping every real mirror depends on |
+| 96 | `Web.Admin.UsersLive.handle_event/3` | admin token/role changes |
+| 90 | `Mix.Tasks.Confluence.Webhook.run/1` | operator-facing webhook CLI |
+| 73 | `Web.SearchLive.chip_label/2` | filter chips shown on every search |
+| 72 | `HttpSource.request_json/2`, `request/4` | rate limiting, retries, response caps |
+| 58 | `Mirror.Search.comparison/4` | builds the parameterised CQL SQL |
+| 56 | `HttpSource.check_size/1`, `public_url/1` | response caps and link rewriting |
+| 45 | `Sync.do_run/3` | per-page error isolation |
+| 42 | `SafeURL.parse/1`, `Search.sql_operator/1`, `UserSocket.connect/3`, `SubscriptionController.create/2` | security boundary and request plumbing |
+
 Tests are grouped by the question they answer:
 
 | Level | Files | Question |
