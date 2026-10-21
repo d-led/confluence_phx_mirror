@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirror.Mirror do
   import Ecto.Query
 
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Label, Link, Page, PageProperty, Space}
+  alias ConfluencePhxMirror.Mirror.{PageRestriction, SpacePermission}
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.SyncRun
 
@@ -51,6 +52,66 @@ defmodule ConfluencePhxMirror.Mirror do
       select: {s, count(p.id)}
     )
     |> Repo.all()
+  end
+
+  # ---------------------------------------------------------------------------
+  # Permissions
+  # ---------------------------------------------------------------------------
+
+  @doc "Subjects that may read a space; empty means the space is open."
+  def space_permissions(space_id) do
+    from(c in SpacePermission,
+      where: c.space_id == ^space_id and c.operation == "read",
+      select: %{subject_type: c.subject_type, subject_key: c.subject_key}
+    )
+    |> Repo.all()
+  end
+
+  @doc "Replaces what we know about who may read a space."
+  def replace_space_permissions(%Space{} = space, permissions) do
+    Repo.transaction(fn ->
+      Repo.delete_all(from c in SpacePermission, where: c.space_id == ^space.id)
+      insert_subjects(SpacePermission, :space_id, space.id, permissions)
+    end)
+  end
+
+  @doc "Subjects that may read a page; empty means it is unrestricted."
+  def page_restrictions(confluence_id) do
+    from(r in PageRestriction,
+      join: p in Page,
+      on: p.id == r.page_id,
+      where: p.confluence_id == ^confluence_id and r.operation == "read",
+      select: %{subject_type: r.subject_type, subject_key: r.subject_key}
+    )
+    |> Repo.all()
+  end
+
+  @doc "Replaces what we know about who may read a page."
+  def replace_page_restrictions(%Page{} = page, restrictions) do
+    Repo.transaction(fn ->
+      Repo.delete_all(from r in PageRestriction, where: r.page_id == ^page.id)
+      insert_subjects(PageRestriction, :page_id, page.id, restrictions)
+    end)
+  end
+
+  defp insert_subjects(schema, foreign_key, id, subjects) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    rows =
+      subjects
+      |> Enum.map(fn subject ->
+        %{
+          foreign_key => id,
+          operation: "read",
+          subject_type: to_string(subject.subject_type),
+          subject_key: subject.subject_key,
+          inserted_at: now,
+          updated_at: now
+        }
+      end)
+      |> Enum.uniq_by(&{&1.operation, &1.subject_type, &1.subject_key})
+
+    if rows == [], do: 0, else: Repo.insert_all(schema, rows)
   end
 
   # ---------------------------------------------------------------------------

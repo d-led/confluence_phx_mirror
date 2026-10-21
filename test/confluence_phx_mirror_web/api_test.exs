@@ -16,7 +16,7 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
 
       eng = Enum.find(body["results"], &(&1["key"] == "ENG"))
       assert eng["name"] == "Engineering Handbook"
-      assert eng["pageCount"] == 10
+      assert eng["pageCount"] == 37
     end
 
     test "returns a page with both bodies and labels", %{conn: conn} do
@@ -100,7 +100,7 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
 
     test "exposes stats and freshness", %{conn: conn} do
       body = conn |> get(~p"/api/v1/stats") |> json_response(200)
-      assert body["stats"]["pages"] == 13
+      assert body["stats"]["pages"] == 40
       assert body["lastSync"]["status"] == "succeeded"
     end
   end

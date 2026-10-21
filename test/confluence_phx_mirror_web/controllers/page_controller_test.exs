@@ -18,6 +18,22 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert html =~ "Last sync"
   end
 
+  test "a deep page collapses its breadcrumb into an ellipsis dropdown", %{conn: conn} do
+    html = conn |> get(~p"/spaces/ENG/pages/1205/emergency-revocation") |> html_response(200)
+
+    assert html =~ "Emergency Revocation"
+    assert html =~ "Certificate Rotation"
+    assert html =~ "Show 6 hidden levels"
+    assert html =~ "Networking"
+  end
+
+  test "a shallow page keeps every breadcrumb inline", %{conn: conn} do
+    html = conn |> get(~p"/spaces/ENG/pages/1002/architecture-overview") |> html_response(200)
+
+    assert html =~ "Getting Started"
+    refute html =~ "hidden levels"
+  end
+
   test "reader pages only allow scripts from the mirror itself", %{conn: conn} do
     conn = get(conn, ~p"/")
 

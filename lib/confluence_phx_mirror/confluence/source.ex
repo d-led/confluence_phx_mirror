@@ -45,12 +45,27 @@ defmodule ConfluencePhxMirror.Confluence.Source do
 
       %{id: 3001, page_id: 1001, parent_id: nil, author: "Jane Doe",
         body_export: "<p>...</p>", created_at: DateTime.t(), url: "..."}
+
+  ## Permission DTOs
+
+      # page read restriction
+      %{subject_type: "user" | "group", subject_key: "jane@acme.com" | "confluence-users"}
+
+      # space read permission
+      %{operation: "read", subject_type: "user" | "group" | "authenticated" | "anonymous",
+        subject_key: "jane@acme.com" | "confluence-users" | nil}
   """
 
   @type page :: map()
   @type space :: map()
   @type attachment :: map()
   @type comment :: map()
+  @type restriction :: %{subject_type: String.t(), subject_key: String.t()}
+  @type permission :: %{
+          operation: String.t(),
+          subject_type: String.t(),
+          subject_key: String.t() | nil
+        }
 
   @doc "Human readable source name, recorded on every sync run."
   @callback name() :: String.t()
@@ -83,7 +98,26 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   """
   @callback changed_since(DateTime.t(), keyword()) :: {:ok, [page()]} | {:error, term()}
 
-  @optional_callbacks changed_since: 2
+  @doc """
+  Read restrictions of one page.
+
+  Return `{:ok, []}` when the page is unrestricted, which is the common case.
+  Sources that cannot read restrictions leave the callback out.
+  """
+  @callback restrictions(confluence_id :: integer(), keyword()) ::
+              {:ok, [restriction()]} | {:error, term()}
+
+  @doc """
+  Read permissions of one space.
+
+  Confluence Cloud exposes space permissions as writes only, so a source that
+  cannot read them answers `{:error, :not_supported}`; the mirror then treats
+  the space as open rather than guessing.
+  """
+  @callback space_permissions(space_key :: String.t(), keyword()) ::
+              {:ok, [permission()]} | {:error, term()}
+
+  @optional_callbacks changed_since: 2, restrictions: 2, space_permissions: 2
 
   @doc "The configured source module."
   def source do

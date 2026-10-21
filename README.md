@@ -96,9 +96,8 @@ that fit a live, read-only mirror:
   macros; we don't) — native `<details>` for expand, panels, lozenges, task
   lists, TOC, gallery and Jira macros come from Confluence's own markup.
 
-Deliberately out of scope: uploads and write-back, markdown exports, page
-history, permissions and templates. The mirror is read-only and serves
-Confluence's rendering.
+Deliberately out of scope: uploads and write-back, page history and templates.
+The mirror is read-only and serves Confluence's rendering.
 
 ## Dynamic content: macros the browser would normally run
 
@@ -269,12 +268,61 @@ var/mirror/spaces/ENG/pages/1002/attachments/9001/diagram.svg
   `Content-Disposition`; inline for images/PDF/text, download otherwise.
 * `Blobs.Store` is a behaviour, so an S3 implementation is a drop-in.
 
+## Permissions
+
+Access is mirrored, not invented. Confluence decides who may read a page; the
+mirror replays that decision:
+
+* **Page restrictions** are read per page
+  (`GET /content/{id}/restriction/byOperation/read`) and stored in
+  `page_restrictions`. A restricted page is readable only by the listed users
+  and groups.
+* **Space permissions** are stored in `space_permissions`. Confluence Cloud
+  exposes them as *writes only* (`POST`/`DELETE /space/{key}/permission`), so a
+  source that cannot read them says `{:error, :not_supported}` and the space
+  stays open — the mirror already shows what the sync account can read.
+* **A space without rows is open.** Restrictions narrow; they never widen.
+* Mirror administrators always see everything.
+
+Readers are matched on e-mail or Confluence account id (`users.groups`,
+`users.confluence_account_id`); group names are the mirrored groups. The
+decision lives in `ConfluencePhxMirror.Authorization`, a pure function of the
+scope and the mirror's tables:
+
+```elixir
+Authorization.can_read_space?(scope, space)
+Authorization.can_read_page?(scope, page)
+Authorization.visible_spaces(scope, spaces)
+```
+
+The reader UI uses it for the space directory, the global space menu, page and
+blog views, label/recent listings, attachment downloads and exports; a hidden
+resource is a `404`, never a `403`, so the mirror does not confirm what it
+withholds.
+
+Not wired yet: the v1 JSON API and the `/search` LiveView still answer from the
+unfiltered index. That is the next use of the same policy call.
+
 ## Webhooks
 
 Confluence → `POST /webhooks/confluence` with an HMAC-SHA256 signature over the
 **raw** body (`X-Hub-Signature-256`). Every delivery is stored (valid or not)
 and audited; valid page events enqueue a page sync, removal events mark the page
 deleted immediately. Jobs for the same page are coalesced for a minute.
+
+Senders that cannot sign a body can present a fixed token instead. Tokens are
+configured per receiver and are only accepted on the webhook route — they never
+open the API or the reader UI:
+
+```bash
+# CM_WEBHOOK_TOKENS="confluence=s3cret,backup=other-secret"
+curl -X POST http://localhost:4000/webhooks/confluence \
+  -H 'X-Webhook-Token: s3cret' -H 'Content-Type: application/json' \
+  -d '{"event":"page_updated","page":{"id":"1002"}}'
+```
+
+With no token configured the plug does nothing and the signature is the only
+check; with a token configured either the token or a valid signature is accepted.
 
 ```bash
 export CM_WEBHOOK_SECRET=change-me
@@ -326,9 +374,11 @@ A Confluence-compatible subset lives under `/wiki/rest/api` (`space`, `content`,
 
 * **Client → Confluence**: `CM_REQUESTS_PER_SECOND` and `CM_BURST` (token
   bucket shared by all syncs).
-* **Reader → mirror**: `MIRROR_READER_RATE_LIMIT_PER_MINUTE` (HTML, API and
-  attachments get separate budgets). Responses carry `X-RateLimit-Limit` and
-  `X-RateLimit-Remaining`; rejections are `429` with `Retry-After`.
+* **Reader → mirror**: `CM_READER_RATE_LIMIT_PER_MINUTE` (HTML, API and
+  attachments get separate budgets, overridable with
+  `CM_RATE_LIMIT_HTML_PER_MINUTE`, `CM_RATE_LIMIT_API_PER_MINUTE`,
+  `CM_RATE_LIMIT_ATTACHMENTS_PER_MINUTE`). Responses carry `X-RateLimit-Limit`
+  and `X-RateLimit-Remaining`; rejections are `429` with `Retry-After`.
 
 ## Configuration
 
@@ -339,15 +389,25 @@ A Confluence-compatible subset lives under `/wiki/rest/api` (`space`, `content`,
 | `CM_ATL_EMAIL` / `CM_ATL_TOKEN` | – | API credentials |
 | `CM_SPACES` | all | comma-separated space keys |
 | `CM_REQUESTS_PER_SECOND` / `CM_BURST` | `5` / `5` | client rate limit |
+| `CM_HTTP_RETRIES` | `3` | attempts per Confluence request |
+| `CM_HTTP_PAGE_SIZE` | `50` | content page size when paginating |
+| `CM_HTTP_RETRY_BACKOFF_MS` | `250` | first retry delay (doubles per attempt) |
 | `CM_SYNC_INTERVAL_SECONDS` | `900` | scheduled snapshot (`0` disables) |
+| `CM_SYNC_LOOKBACK_SECONDS` | `3600` | minimum window for an incremental pull |
 | `CM_WEBHOOK_SECRET` | – | enables signed webhooks |
+| `CM_WEBHOOK_REQUIRE_SIGNATURE` | `true` | reject deliveries without a valid signature |
+| `CM_WEBHOOK_TOKENS` | – | `receiver=token,…` route-scoped webhook tokens |
+| `CM_LOGIN_TOKEN_MINUTES` | `15` | magic-link lifetime |
+| `CM_SEARCH_PAGE_SIZE` | `30` | results per reader search page |
+| `CM_SEARCH_DEFAULT_LIMIT` / `CM_SEARCH_MAX_RESULTS` | `25` / `100` | API/CQL default and cap |
 | `MIRROR_BLOB_ROOT` | `var/mirror` | blob store root |
 | `MIRROR_AUTO_ADMIN` | `false` (dev/test `true`) | assume an admin |
 | `MIRROR_SELF_SIGNUP` | `false` | allow magic-link sign-up |
 | `MIRROR_NOTIFICATIONS` | `true` | enable e-mail notifications |
 | `MIRROR_MAIL_FROM` | `mirror@localhost` | sender address |
 | `MIRROR_DIGEST_HOUR_UTC` | `8` | daily digest hour |
-| `MIRROR_READER_RATE_LIMIT_PER_MINUTE` | – | reader budgets |
+| `CM_READER_RATE_LIMIT_PER_MINUTE` | – | enables reader limits (all scopes) |
+| `CM_RATE_LIMIT_{HTML,API,ATTACHMENTS}_PER_MINUTE` | derived | per-scope overrides |
 | `DATABASE_URL` | – | Postgres (required in prod) |
 | `SECRET_KEY_BASE` | – | cookies/sessions (required in prod) |
 
@@ -446,7 +506,9 @@ webhook signatures and Presence.
 ## Known limitations
 
 * Comments are read-only and rendered flat (one reply level styled).
-* Confluence permissions are not mirrored: the mirror is a single read-only view.
+* Confluence Cloud does not expose *space* permissions for reading, so they are
+  mirrored only when a source can supply them; page restrictions are synced.
+* The JSON API and `/search` do not yet apply the permission policy.
 * Live macros that need an Atlassian session (Jira issue detail, user hover
   cards) render as the link/placeholder Confluence puts in `export_view`.
 * S3 blob storage is an interface, not an implementation, in this PoC.

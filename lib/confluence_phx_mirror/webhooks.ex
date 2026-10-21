@@ -35,34 +35,40 @@ defmodule ConfluencePhxMirror.Webhooks do
 
   `payload` is the decoded JSON, `raw_body` the exact request body and
   `headers` the request headers (a list of `{name, value}` tuples).
+
+  Options:
+
+    * `:token_authenticated` – the route-level token plug already verified the
+      sender, so a signature is not required
   """
-  @spec receive(map(), binary(), [{String.t(), String.t()}]) :: outcome()
-  def receive(payload, raw_body, headers) do
+  @spec receive(map(), binary(), [{String.t(), String.t()}], keyword()) :: outcome()
+  def receive(payload, raw_body, headers, opts \\ []) do
     secret = config()[:secret]
     signature = signature_header(headers)
 
-    signature_valid =
+    authenticated? =
       cond do
+        Keyword.get(opts, :token_authenticated, false) -> true
         is_nil(secret) -> false
         is_nil(signature) -> false
         true -> verify(raw_body, signature, secret)
       end
 
-    delivery = store_delivery(payload, signature_valid, secret)
+    delivery = store_delivery(payload, authenticated?, secret)
 
     cond do
+      authenticated? ->
+        handle(delivery)
+
       is_nil(secret) and config()[:require_signature] ->
         finish(delivery, "rejected", "webhook secret is not configured")
         Audit.log(actor(delivery), Delivery.audit_event_rejected(delivery, "not_configured"))
         {:error, :not_configured}
 
-      not signature_valid ->
+      true ->
         finish(delivery, "rejected", "signature mismatch")
         Audit.log(actor(delivery), Delivery.audit_event_rejected(delivery, "invalid_signature"))
         {:error, :invalid_signature}
-
-      true ->
-        handle(delivery)
     end
   end
 

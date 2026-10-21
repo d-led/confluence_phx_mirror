@@ -9,31 +9,113 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirrorWeb.Time
 
-  @doc "Breadcrumb trail from space to the current page."
-  attr :items, :list, required: true, doc: "list of %{title, path}"
+  @doc """
+  Breadcrumb trail from the space to the current page.
+
+  Deep trails collapse in the middle: the root and the current page always stay
+  visible, the immediate parent stays visible, and everything between moves
+  into an ellipsis dropdown on narrow viewports while the full trail is shown
+  inline from `lg` up. It is pure CSS (`<details>` + breakpoints), so the
+  breadcrumb costs no JavaScript and survives without hydration.
+  """
+  attr :items, :list, required: true, doc: "list of %{title, path}, root first"
   attr :current, :string, default: nil
 
   def breadcrumbs(assigns) do
+    {head, middle, parent} = split_trail(assigns.items)
+
+    assigns =
+      assign(assigns,
+        head: head,
+        middle: middle,
+        parent: parent,
+        collapse?: length(middle) > 1
+      )
+
     ~H"""
     <nav
-      class="flex min-w-0 flex-wrap items-center gap-1 text-xs text-base-content/60"
+      class="flex min-w-0 items-center gap-1 text-xs text-base-content/60"
       aria-label="Breadcrumb"
     >
       <.link navigate={~p"/"} class="rounded p-0.5 hover:text-primary" aria-label="Home">
         <.icon name="hero-home" class="size-3.5" />
       </.link>
-      <span :for={item <- @items} class="flex min-w-0 items-center gap-1">
+
+      <span :if={@head} class="flex min-w-0 items-center gap-1">
         <.icon name="hero-chevron-right" class="size-3 shrink-0 opacity-40" />
-        <.link navigate={item.path} class="max-w-[16rem] truncate rounded p-0.5 hover:text-primary">
-          {item.title}
-        </.link>
+        <.crumb item={@head} />
       </span>
+
+      <span
+        :if={@middle != [] and not @collapse?}
+        class="flex min-w-0 items-center gap-1"
+      >
+        <span :for={item <- @middle} class="flex min-w-0 items-center gap-1">
+          <.icon name="hero-chevron-right" class="size-3 shrink-0 opacity-40" />
+          <.crumb item={item} />
+        </span>
+      </span>
+
+      <%= if @collapse? do %>
+        <span class="flex items-center gap-1 lg:hidden">
+          <.icon name="hero-chevron-right" class="size-3 shrink-0 opacity-40" />
+          <details class="dropdown">
+            <summary
+              class="cursor-pointer list-none rounded px-1 py-0.5 leading-none hover:bg-base-200 hover:text-primary"
+              aria-label={"Show #{length(@middle)} hidden levels"}
+            >
+              …
+            </summary>
+            <ul class="menu dropdown-content z-50 mt-2 w-64 rounded-box border border-base-300 bg-base-100 p-2 text-xs shadow-xl">
+              <li :for={item <- @middle}>
+                <.link navigate={item.path} class="truncate">{item.title}</.link>
+              </li>
+            </ul>
+          </details>
+        </span>
+
+        <span class="hidden min-w-0 items-center gap-1 lg:flex">
+          <span :for={item <- @middle} class="flex min-w-0 items-center gap-1">
+            <.icon name="hero-chevron-right" class="size-3 shrink-0 opacity-40" />
+            <.crumb item={item} />
+          </span>
+        </span>
+      <% end %>
+
+      <span :if={@parent} class="flex min-w-0 items-center gap-1">
+        <.icon name="hero-chevron-right" class="size-3 shrink-0 opacity-40" />
+        <.crumb item={@parent} />
+      </span>
+
       <span :if={@current} class="flex min-w-0 items-center gap-1">
         <.icon name="hero-chevron-right" class="size-3 shrink-0 opacity-40" />
-        <span class="max-w-[22rem] truncate font-medium text-base-content/80">{@current}</span>
+        <span class="max-w-[22rem] truncate font-medium text-base-content/80" aria-current="page">
+          {@current}
+        </span>
       </span>
     </nav>
     """
+  end
+
+  attr :item, :map, required: true
+
+  defp crumb(assigns) do
+    ~H"""
+    <.link navigate={@item.path} class="max-w-[16rem] truncate rounded p-0.5 hover:text-primary">
+      {@item.title}
+    </.link>
+    """
+  end
+
+  # Root stays first, the immediate parent stays next to the current page, and
+  # everything between is what can be collapsed.
+  defp split_trail([]), do: {nil, [], nil}
+
+  defp split_trail([head | rest]) do
+    case Enum.split(rest, -1) do
+      {middle, []} -> {head, middle, nil}
+      {middle, [parent]} -> {head, middle, parent}
+    end
   end
 
   @doc "Recursive page tree for the sidebar."

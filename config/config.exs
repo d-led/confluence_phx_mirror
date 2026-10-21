@@ -31,9 +31,13 @@ config :confluence_phx_mirror,
   # Blob storage is runtime data, never source: keep it out of priv/static so
   # the mirrored content cannot accidentally be checked in.
   blob_root: "var/mirror",
-  # Postgres full-text configuration. `simple` works for every language and
-  # keeps search exact instead of applying English stemming.
-  search: [language: "simple"],
+  # Search paging. The text-search configuration itself (`simple`) is baked into
+  # the generated `search_vector` column, so it is not runtime configurable.
+  search: [page_size: 30, default_limit: 25, max_limit: 100],
+  # Passwordless sign-in links.
+  accounts: [login_token_minutes: 15],
+  # How far back an incremental pull starts when the source has no cursor.
+  sync: [lookback_seconds: 3600],
   # Simulated / production users get auto-provisioned in dev and test.
   auto_admin: false,
   self_signup: false,
@@ -52,6 +56,12 @@ config :confluence_phx_mirror,
     digest_hour_utc: 8
   ],
   webhooks: [secret: nil, require_signature: true]
+
+# HTTP client defaults; runtime.exs overrides them from CM_* variables.
+config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.HttpSource,
+  retries: 3,
+  page_size: 50,
+  retry_backoff_ms: 250
 
 # Configure the endpoint
 config :confluence_phx_mirror, ConfluencePhxMirrorWeb.Endpoint,

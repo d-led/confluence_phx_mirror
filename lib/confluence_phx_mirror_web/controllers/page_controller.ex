@@ -8,7 +8,9 @@ defmodule ConfluencePhxMirrorWeb.PageController do
 
   use ConfluencePhxMirrorWeb, :controller
 
+  alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Accounts.User
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Notifications
@@ -20,7 +22,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     render(conn, :home,
       page_title: "Home",
       spaces: Mirror.spaces_with_counts(),
-      recent_pages: Mirror.recent_pages(8),
+      recent_pages: visible(conn, Mirror.recent_pages(8)),
       labels: Mirror.list_labels(),
       stats: Mirror.stats(),
       last_webhook: List.first(Webhooks.recent(1))
@@ -30,9 +32,10 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   def space(conn, %{"key" => key}) do
     case Mirror.find_space(key) do
       {:ok, space} ->
-        case Mirror.get_space_home(space) do
-          nil -> redirect(conn, to: URLs.space_overview_path(space.key))
-          home -> redirect(conn, to: URLs.page_path(space.key, home.confluence_id, home.slug))
+        if Authorization.can_read_space?(scope(conn), space) do
+          redirect_to_space_home(conn, space)
+        else
+          NotFound.call(conn, "Space #{key} is not mirrored.")
         end
 
       {:error, :not_found} ->
@@ -40,9 +43,17 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     end
   end
 
+  defp redirect_to_space_home(conn, space) do
+    case Mirror.get_space_home(space) do
+      nil -> redirect(conn, to: URLs.space_overview_path(space.key))
+      home -> redirect(conn, to: URLs.page_path(space.key, home.confluence_id, home.slug))
+    end
+  end
+
   def show(conn, %{"space_key" => space_key, "id" => id, "slug" => slug}) do
     with {id, ""} <- Integer.parse(id),
-         {:ok, page} <- Mirror.find_page_by_path(space_key, id) do
+         {:ok, page} <- Mirror.find_page_by_path(space_key, id),
+         true <- readable?(conn, page) do
       canonical = URLs.page_path(page.space.key, page.confluence_id, page.slug)
 
       if slug == page.slug do
@@ -57,7 +68,8 @@ defmodule ConfluencePhxMirrorWeb.PageController do
 
   def show(conn, %{"space_key" => space_key, "id" => id}) do
     with {id, ""} <- Integer.parse(id),
-         {:ok, page} <- Mirror.find_page_by_path(space_key, id) do
+         {:ok, page} <- Mirror.find_page_by_path(space_key, id),
+         true <- readable?(conn, page) do
       redirect(conn, to: URLs.page_path(page.space.key, page.confluence_id, page.slug))
     else
       _ -> NotFound.call(conn, "That page is not mirrored.")
@@ -67,7 +79,8 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   def blog_post(conn, %{"key" => space_key, "id" => id, "slug" => slug}) do
     with {id, ""} <- Integer.parse(id),
          {:ok, page} <- Mirror.find_page_by_path(space_key, id),
-         true <- page.type == "blogpost" do
+         true <- page.type == "blogpost",
+         true <- readable?(conn, page) do
       if slug == page.slug do
         render_page(conn, page, :blog)
       else
@@ -79,7 +92,8 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   end
 
   def recent(conn, _params) do
-    render(conn, :recent, page_title: "Recently updated", pages: Mirror.list_all_pages())
+    pages = visible(conn, Mirror.list_all_pages())
+    render(conn, :recent, page_title: "Recently updated", pages: pages)
   end
 
   def labels(conn, _params) do
@@ -87,7 +101,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   end
 
   def label(conn, %{"name" => name}) do
-    pages = Mirror.pages_for_label(name)
+    pages = visible(conn, Mirror.pages_for_label(name))
     render(conn, :label, page_title: "Label: #{name}", label: name, pages: pages)
   end
 
@@ -147,4 +161,10 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   end
 
   defp subscribed?(_user, _target_type, _target_id), do: false
+
+  defp scope(conn), do: Scope.for_user(conn.assigns[:current_user])
+
+  defp readable?(conn, page), do: Authorization.can_read_page?(scope(conn), page)
+
+  defp visible(conn, pages), do: Enum.filter(pages, &readable?(conn, &1))
 end

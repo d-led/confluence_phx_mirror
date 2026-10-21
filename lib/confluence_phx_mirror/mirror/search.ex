@@ -18,9 +18,17 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   alias ConfluencePhxMirror.Mirror.Search.{CQL, Filters, TextQuery}
   alias ConfluencePhxMirror.Repo
 
-  @default_limit 25
-  @max_limit 100
   @language "simple"
+
+  # Paging is deployment-sized (see config/runtime.exs), not a code constant.
+  defp search_config, do: Application.get_env(:confluence_phx_mirror, :search, [])
+
+  defp default_limit, do: Keyword.get(search_config(), :default_limit, 25)
+  defp max_limit, do: Keyword.get(search_config(), :max_limit, 100)
+
+  # When text and field filters are combined, both sides are scanned wider than
+  # the page size so the intersection is not truncated.
+  defp max_result_scan, do: max_limit() * 50
 
   @type result :: %{
           page: Page.t(),
@@ -68,12 +76,12 @@ defmodule ConfluencePhxMirror.Mirror.Search do
         # Text and fields are both present: rank by text, keep only pages that
         # satisfy the field filters. The bound keeps the intersection cheap.
         {:ok, field_cql, _} = Filters.to_cql(field_params)
-        {:ok, field_results} = search(field_cql, limit: @max_limit * 50)
+        {:ok, field_results} = search(field_cql, limit: max_result_scan())
         allowed = MapSet.new(field_results, & &1.page.id)
 
-        {:ok, text_results} = text(q, limit: @max_limit * 50)
+        {:ok, text_results} = text(q, limit: max_result_scan())
 
-        limit = min(Keyword.get(opts, :limit, @default_limit), @max_limit)
+        limit = min(Keyword.get(opts, :limit, default_limit()), max_limit())
         offset = max(Keyword.get(opts, :start, 0), 0)
 
         results =
@@ -104,7 +112,7 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   @spec text(String.t(), keyword()) :: {:ok, [result()]}
   def text(query, opts \\ []) do
     query = String.trim(query || "")
-    limit = min(Keyword.get(opts, :limit, @default_limit), @max_limit)
+    limit = min(Keyword.get(opts, :limit, default_limit()), max_limit())
     offset = max(Keyword.get(opts, :start, 0), 0)
 
     case TextQuery.parse(query) do
@@ -176,7 +184,7 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   # identifier comes from a fixed clause (scalar/4, order_sql/3).
   # sobelow_skip ["SQL.Query"]
   defp execute(%CQL.Query{} = query, opts) do
-    limit = min(query.limit || Keyword.get(opts, :limit, @default_limit), @max_limit)
+    limit = min(query.limit || Keyword.get(opts, :limit, default_limit()), max_limit())
     offset = max(Keyword.get(opts, :start, 0), 0)
     terms = terms(query.filter)
     text_query = Enum.join(terms, " ")

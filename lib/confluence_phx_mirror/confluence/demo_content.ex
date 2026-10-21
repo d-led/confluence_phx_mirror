@@ -13,7 +13,67 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
 
   @base_url "https://demo.atlassian.net"
 
-  @page_index %{
+  # A realistic hierarchy needs breadth and depth: twenty services under one
+  # operations page, and a six-level chain below it, so the tree, the space
+  # catalogue and the breadcrumb trail all have to cope with real shape.
+  @operations_id 1010
+  @first_service_id 1100
+  @first_deep_id 1200
+
+  @service_topics [
+    "API Gateway",
+    "Authentication",
+    "Service Mesh",
+    "Message Queue",
+    "Schema Registry",
+    "Observability",
+    "Incident Response",
+    "Capacity Planning",
+    "Cost Controls",
+    "Data Model",
+    "Release Engineering",
+    "Mobile Clients",
+    "Partner Integrations",
+    "Billing",
+    "Search Ranking",
+    "Notifications",
+    "Batch Processing",
+    "Disaster Recovery",
+    "Secrets Management",
+    "Developer Portal"
+  ]
+
+  @deep_titles [
+    "Platform Operations",
+    "Networking",
+    "Edge",
+    "TLS",
+    "Certificate Rotation",
+    "Emergency Revocation"
+  ]
+
+  @extra_index (
+                 services =
+                   @service_topics
+                   |> Enum.with_index()
+                   |> Map.new(fn {topic, index} ->
+                     {@first_service_id + index,
+                      {"ENG", "Engineering Handbook", "Service: #{topic}"}}
+                   end)
+
+                 deep =
+                   @deep_titles
+                   |> Enum.with_index()
+                   |> Map.new(fn {title, index} ->
+                     {@first_deep_id + index, {"ENG", "Engineering Handbook", title}}
+                   end)
+
+                 services
+                 |> Map.merge(deep)
+                 |> Map.put(@operations_id, {"ENG", "Engineering Handbook", "Operations"})
+               )
+
+  @base_index %{
     1000 => {"ENG", "Engineering Handbook", "Home"},
     1001 => {"ENG", "Engineering Handbook", "Getting Started"},
     1002 => {"ENG", "Engineering Handbook", "Architecture Overview"},
@@ -28,6 +88,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     2001 => {"PROD", "Product Hub", "Release 2.0"},
     2002 => {"PROD", "Product Hub", "Roadmap"}
   }
+
+  @page_index Map.merge(@base_index, @extra_index)
 
   @doc "Space DTOs exactly as the sync expects them."
   def spaces do
@@ -145,7 +207,14 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         updated_at: ~U[2026-10-12 17:25:00Z],
         author: "Sam Rivera"
       )
-    ]
+    ] ++
+      [
+        page(@operations_id, "ENG", 1000, "Operations", operations_body(), ~w(operations runbook),
+          version: 4,
+          message: "Point at the service runbooks",
+          updated_at: ~U[2026-10-19 08:45:00Z]
+        )
+      ] ++ service_pages() ++ deep_pages()
   end
 
   @doc "Attachment metadata plus the demo bytes."
@@ -765,5 +834,105 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     trailer<</Root 1 0 R>>
     %%EOF
     """
+  end
+
+  @doc """
+  Read restrictions per page id, as Confluence reports them.
+
+  One page is restricted to a group, so the mirror has a realistic case where
+  space permissions are not enough to decide access.
+  """
+  def page_restrictions do
+    %{
+      1003 => [%{subject_type: "group", subject_key: "confluence-users"}]
+    }
+  end
+
+  @doc """
+  Who may read each space.
+
+  `PROD` is a private space: signed-in members of the product team only. Every
+  other space is open, which is what an unrestricted Confluence space means.
+  """
+  def space_permissions do
+    %{
+      "PROD" => [
+        %{operation: "read", subject_type: "authenticated", subject_key: nil},
+        %{operation: "read", subject_type: "group", subject_key: "product-team"}
+      ]
+    }
+  end
+
+  # ---------------------------------------------------------------------------
+  # Generated hierarchy: twenty services and a six-level chain under Operations
+  # ---------------------------------------------------------------------------
+
+  defp service_pages do
+    @service_topics
+    |> Enum.with_index()
+    |> Enum.map(fn {topic, index} ->
+      title = "Service: #{topic}"
+
+      page(
+        @first_service_id + index,
+        "ENG",
+        @operations_id,
+        title,
+        service_body(title),
+        ~w(service runbook),
+        version: 2 + index,
+        message: "Document #{topic}",
+        updated_at: DateTime.add(~U[2026-10-01 08:00:00Z], index * 3600, :second),
+        author: "Priya Nair"
+      )
+    end)
+  end
+
+  defp deep_pages do
+    @deep_titles
+    |> Enum.with_index()
+    |> Enum.map(fn {title, index} ->
+      parent = if index == 0, do: @operations_id, else: @first_deep_id + index - 1
+
+      page(
+        @first_deep_id + index,
+        "ENG",
+        parent,
+        title,
+        deep_body(title),
+        ~w(platform runbook),
+        version: 1 + index,
+        message: "Deep hierarchy demo",
+        updated_at: DateTime.add(~U[2026-10-02 08:00:00Z], index * 3600, :second),
+        author: "Sam Rivera"
+      )
+    end)
+  end
+
+  defp operations_body do
+    doc("""
+    <h2>Runbooks</h2>
+    <p>Every platform service has a runbook. Start with #{page_link(1100, "Service: API Gateway")}.</p>
+    <h2>Deep dives</h2>
+    <p>Networking lives in the platform chain: #{page_link(1201, "Networking")}.</p>
+    """)
+  end
+
+  defp service_body(title) do
+    doc("""
+    <h2>Overview</h2>
+    <p><strong>#{html_escape(title)}</strong> is documented under #{page_link(@operations_id, "Operations")}.</p>
+    <h2>On-call</h2>
+    <p>Primary on-call rotates weekly; escalations follow the platform rota.</p>
+    """)
+  end
+
+  defp deep_body(title) do
+    doc("""
+    <h2>Notes</h2>
+    <p>#{html_escape(title)} sits one level below its parent in the operations tree.</p>
+    <h2>Escalation</h2>
+    <p>Escalate to the parent page before opening an incident channel.</p>
+    """)
   end
 end

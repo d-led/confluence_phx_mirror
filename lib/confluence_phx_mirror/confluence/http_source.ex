@@ -24,8 +24,11 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   alias ConfluencePhxMirror.Confluence.SafeURL
 
   @page_expand "body.storage,body.export_view,version,ancestors,metadata.labels,space,history"
-  @page_limit 50
-  @max_attempts 3
+
+  # Client sizing is deployment config (CM_HTTP_*), not a code constant.
+  defp page_limit, do: config()[:page_size] || 50
+  defp max_attempts, do: config()[:retries] || 3
+  defp retry_backoff_ms, do: config()[:retry_backoff_ms] || 250
 
   # ---------------------------------------------------------------------------
   # Source behaviour
@@ -48,7 +51,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       "spaceKey" => space_key,
       "type" => "page,blogpost",
       "status" => "current",
-      "limit" => @page_limit,
+      "limit" => page_limit(),
       "expand" => @page_expand
     }
 
@@ -86,6 +89,17 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   @impl true
+  def restrictions(confluence_id, _opts) do
+    with {:ok, body} <-
+           request_json("/content/#{confluence_id}/restriction/byOperation/read", %{}) do
+      {:ok, parse_restrictions(body)}
+    end
+  end
+
+  @impl true
+  def space_permissions(_space_key, _opts), do: {:error, :not_supported}
+
+  @impl true
   def attachment_data(attachment, _opts) do
     with {:ok, url} <- SafeURL.resolve(attachment.download_url, config()[:base_url]),
          {:ok, response} <- request(:get, url, []) do
@@ -101,7 +115,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   def changed_since(since, _opts) do
     cql = ~s[lastmodified >= "#{format_cql_time(since)}" and type in (page, blogpost)]
 
-    params = %{"cql" => cql, "limit" => @page_limit, "expand" => @page_expand}
+    params = %{"cql" => cql, "limit" => page_limit(), "expand" => @page_expand}
 
     with {:ok, results} <- paginate_json("/content/search", params) do
       allowed = config()[:spaces]
@@ -158,6 +172,29 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       homepage_id: parse_id(get_in(content, ["homepage", "id"])),
       url: public_url(content["_links"]["webui"])
     }
+  end
+
+  @doc false
+  def parse_restrictions(body) do
+    restrictions = body["restrictions"] || %{}
+
+    subjects(
+      get_in(restrictions, ["user", "results"]) || [],
+      "user",
+      &(&1["email"] || &1["accountId"])
+    ) ++
+      subjects(
+        get_in(restrictions, ["group", "results"]) || [],
+        "group",
+        &(&1["name"] || &1["id"])
+      )
+  end
+
+  defp subjects(entries, subject_type, key_of) do
+    for entry <- entries,
+        key = key_of.(entry),
+        is_binary(key),
+        do: %{subject_type: subject_type, subject_key: key}
   end
 
   @doc false
@@ -325,7 +362,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
     case Req.request([method: method, url: url] ++ options) do
       {:ok, %Req.Response{} = response} ->
-        if retryable?(response) and attempt < @max_attempts do
+        if retryable?(response) and attempt < max_attempts() do
           backoff(attempt)
           request(method, url, [], attempt + 1)
         else
@@ -333,7 +370,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
         end
 
       {:error, reason} ->
-        if attempt < @max_attempts do
+        if attempt < max_attempts() do
           backoff(attempt)
           request(method, url, [], attempt + 1)
         else
@@ -363,7 +400,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   defp retryable?(%Req.Response{status: status}), do: status == 429 or status >= 500
 
   defp backoff(attempt) do
-    Process.sleep(250 * Integer.pow(2, attempt - 1))
+    Process.sleep(retry_backoff_ms() * Integer.pow(2, attempt - 1))
   end
 
   defp decode_json(body) do

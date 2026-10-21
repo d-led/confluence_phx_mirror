@@ -10,12 +10,18 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
 
   use ConfluencePhxMirrorWeb, :controller
 
+  alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirrorWeb.NotFound
 
   def index(conn, _params) do
-    render(conn, :index, page_title: "Spaces", catalog: Mirror.space_catalog())
+    catalog =
+      Mirror.space_catalog()
+      |> Enum.filter(&Authorization.can_read_space?(scope(conn), &1.space))
+
+    render(conn, :index, page_title: "Spaces", catalog: catalog)
   end
 
   def show(conn, %{"key" => key}) do
@@ -84,8 +90,17 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
 
   defp with_space(conn, key, fun) do
     case Mirror.find_space(key) do
-      {:ok, space} -> fun.(conn, space)
-      {:error, :not_found} -> NotFound.call(conn, "Space #{key} is not mirrored.")
+      {:ok, space} ->
+        if Authorization.can_read_space?(scope(conn), space) do
+          fun.(conn, space)
+        else
+          NotFound.call(conn, "Space #{key} is not mirrored.")
+        end
+
+      {:error, :not_found} ->
+        NotFound.call(conn, "Space #{key} is not mirrored.")
     end
   end
+
+  defp scope(conn), do: Scope.for_user(conn.assigns[:current_user])
 end

@@ -78,6 +78,60 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
     body = conn |> get(~p"/health") |> json_response(200)
     assert body["status"] == "ok"
     assert body["database"] == "ok"
-    assert body["pages"] == 13
+    assert body["pages"] == 40
+  end
+
+  describe "route tokens" do
+    setup do
+      previous = Application.get_env(:confluence_phx_mirror, :webhook_tokens)
+
+      Application.put_env(:confluence_phx_mirror, :webhook_tokens, %{
+        "confluence" => "route-token"
+      })
+
+      on_exit(fn ->
+        Application.put_env(:confluence_phx_mirror, :webhook_tokens, previous || %{})
+      end)
+
+      :ok
+    end
+
+    test "a configured token replaces the signature", %{conn: conn} do
+      body = JSON.encode!(payload("page_updated", 1002))
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("x-webhook-token", "route-token")
+        |> post(~p"/webhooks/confluence", body)
+
+      assert json_response(conn, 202)["status"] == "accepted"
+      assert_enqueued(worker: PageWorker, args: %{"confluence_id" => 1002})
+    end
+
+    test "a bearer token authenticates the delivery too", %{conn: conn} do
+      body = JSON.encode!(payload("page_updated", 1002))
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("authorization", "Bearer route-token")
+        |> post(~p"/webhooks/confluence", body)
+
+      assert json_response(conn, 202)["status"] == "accepted"
+    end
+
+    test "a wrong token is rejected before anything is processed", %{conn: conn} do
+      body = JSON.encode!(payload("page_updated", 1002))
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("x-webhook-token", "not-the-token")
+        |> post(~p"/webhooks/confluence", body)
+
+      assert json_response(conn, 401)["error"] == "invalid_webhook_token"
+      refute_enqueued(worker: PageWorker)
+    end
   end
 end

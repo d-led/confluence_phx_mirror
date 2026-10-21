@@ -9,6 +9,8 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
 
   use ConfluencePhxMirrorWeb, :controller
 
+  alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Export.Zip
   alias ConfluencePhxMirror.Mirror
@@ -17,14 +19,11 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
   def space(conn, %{"key" => key}) do
     case Mirror.find_space(key) do
       {:ok, space} ->
-        conn
-        |> put_resp_content_type("application/zip")
-        |> put_resp_header(
-          "content-disposition",
-          ~s(attachment; filename="#{Export.archive_name(space)}")
-        )
-        |> send_chunked(200)
-        |> stream_zip(Export.space_archive(space))
+        if Authorization.can_read_space?(scope(conn), space) do
+          send_archive(conn, space)
+        else
+          NotFound.call(conn, "Space #{key} is not mirrored.")
+        end
 
       {:error, :not_found} ->
         NotFound.call(conn, "Space #{key} is not mirrored.")
@@ -33,7 +32,8 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
 
   def page(conn, %{"space_key" => space_key, "id" => id}) do
     with {id, ""} <- Integer.parse(id),
-         {:ok, page} <- Mirror.find_page_by_path(space_key, id) do
+         {:ok, page} <- Mirror.find_page_by_path(space_key, id),
+         true <- Authorization.can_read_page?(scope(conn), page) do
       conn
       |> put_resp_content_type("text/markdown; charset=utf-8")
       |> put_resp_header(
@@ -45,6 +45,19 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
       _ -> NotFound.call(conn, "That page is not mirrored.")
     end
   end
+
+  defp send_archive(conn, space) do
+    conn
+    |> put_resp_content_type("application/zip")
+    |> put_resp_header(
+      "content-disposition",
+      ~s(attachment; filename="#{Export.archive_name(space)}")
+    )
+    |> send_chunked(200)
+    |> stream_zip(Export.space_archive(space))
+  end
+
+  defp scope(conn), do: Scope.for_user(conn.assigns[:current_user])
 
   defp stream_zip(conn, entries) do
     entries

@@ -9,6 +9,8 @@ defmodule ConfluencePhxMirrorWeb.AttachmentController do
 
   use ConfluencePhxMirrorWeb, :controller
 
+  alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Blobs.LocalStore
   alias ConfluencePhxMirror.Mirror
 
@@ -26,6 +28,7 @@ defmodule ConfluencePhxMirrorWeb.AttachmentController do
       ) do
     with {page_id, ""} <- Integer.parse(page_id),
          {attachment_id, ""} <- Integer.parse(attachment_id),
+         :ok <- authorize(conn, space_key, page_id),
          {:ok, attachment} <- fetch_attachment(space_key, page_id, attachment_id, filename),
          {:ok, path} <- blob_path(attachment) do
       conn
@@ -44,6 +47,20 @@ defmodule ConfluencePhxMirrorWeb.AttachmentController do
     {:ok, Mirror.get_attachment!(space_key, page_id, attachment_id, filename)}
   rescue
     Ecto.NoResultsError -> {:error, :not_found}
+  end
+
+  # Attachment bytes are content: the page decides, exactly like the page view.
+  defp authorize(conn, space_key, page_id) do
+    scope = Scope.for_user(conn.assigns[:current_user])
+
+    with {:ok, space} <- Mirror.find_space(space_key),
+         true <- Authorization.can_read_space?(scope, space),
+         {:ok, page} <- Mirror.find_page_by_path(space_key, page_id),
+         true <- Authorization.can_read_page?(scope, page) do
+      :ok
+    else
+      _ -> :error
+    end
   end
 
   defp blob_path(%{blob_key: nil}), do: {:error, :missing_blob}

@@ -1,5 +1,13 @@
 import Config
 
+# Integer tuning knobs fall back to the compiled defaults in config.exs.
+env_integer = fn name, default ->
+  case System.get_env(name) do
+    nil -> default
+    value -> String.to_integer(value)
+  end
+end
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -34,19 +42,29 @@ source =
 
 config :confluence_phx_mirror, :source, source
 
-config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.HttpSource,
-  base_url: System.get_env("CM_CONFLUENCE_SITE"),
-  email: System.get_env("CM_ATL_EMAIL"),
-  api_token: System.get_env("CM_ATL_TOKEN"),
-  requests_per_second: String.to_integer(System.get_env("CM_REQUESTS_PER_SECOND", "5")),
-  burst: String.to_integer(System.get_env("CM_BURST", "5")),
-  spaces:
-    (case System.get_env("CM_SPACES") do
-       nil -> :all
-       "" -> :all
-       keys -> keys |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
-     end),
-  sync_interval_seconds: String.to_integer(System.get_env("CM_SYNC_INTERVAL_SECONDS", "900"))
+http_defaults =
+  Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Confluence.HttpSource, [])
+
+config :confluence_phx_mirror,
+       ConfluencePhxMirror.Confluence.HttpSource,
+       Keyword.merge(http_defaults,
+         base_url: System.get_env("CM_CONFLUENCE_SITE"),
+         email: System.get_env("CM_ATL_EMAIL"),
+         api_token: System.get_env("CM_ATL_TOKEN"),
+         requests_per_second: String.to_integer(System.get_env("CM_REQUESTS_PER_SECOND", "5")),
+         burst: String.to_integer(System.get_env("CM_BURST", "5")),
+         retries: String.to_integer(System.get_env("CM_HTTP_RETRIES", "3")),
+         page_size: String.to_integer(System.get_env("CM_HTTP_PAGE_SIZE", "50")),
+         retry_backoff_ms: String.to_integer(System.get_env("CM_HTTP_RETRY_BACKOFF_MS", "250")),
+         spaces:
+           case System.get_env("CM_SPACES") do
+             nil -> :all
+             "" -> :all
+             keys -> keys |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+           end,
+         sync_interval_seconds:
+           String.to_integer(System.get_env("CM_SYNC_INTERVAL_SECONDS", "900"))
+       )
 
 if blob_root = System.get_env("MIRROR_BLOB_ROOT") do
   config :confluence_phx_mirror, blob_root: blob_root
@@ -77,17 +95,75 @@ config :confluence_phx_mirror,
     digest_hour_utc: String.to_integer(System.get_env("MIRROR_DIGEST_HOUR_UTC", "8"))
   ]
 
-if rate_limit = System.get_env("MIRROR_READER_RATE_LIMIT_PER_MINUTE") do
+if rate_limit =
+     System.get_env("CM_READER_RATE_LIMIT_PER_MINUTE") ||
+       System.get_env("MIRROR_READER_RATE_LIMIT_PER_MINUTE") do
   per_minute = String.to_integer(rate_limit)
+
+  html = env_integer.("CM_RATE_LIMIT_HTML_PER_MINUTE", per_minute)
+  api = env_integer.("CM_RATE_LIMIT_API_PER_MINUTE", max(div(per_minute, 2), 1))
+  attachments = env_integer.("CM_RATE_LIMIT_ATTACHMENTS_PER_MINUTE", per_minute * 2)
 
   config :confluence_phx_mirror,
     reader_rate_limit: [
-      enabled: per_minute > 0,
-      html: [limit: per_minute, period_ms: 60_000],
-      api: [limit: max(div(per_minute, 2), 1), period_ms: 60_000],
-      attachments: [limit: per_minute * 2, period_ms: 60_000]
+      enabled: html > 0 or api > 0 or attachments > 0,
+      html: [limit: html, period_ms: 60_000],
+      api: [limit: api, period_ms: 60_000],
+      attachments: [limit: attachments, period_ms: 60_000]
     ]
 end
+
+# CM_WEBHOOK_TOKENS="confluence=s3cret,backup=other-secret" authenticates
+# webhook deliveries with a fixed token instead of an HMAC signature. The token
+# only works on the webhook route.
+if tokens = System.get_env("CM_WEBHOOK_TOKENS") do
+  config :confluence_phx_mirror,
+    webhook_tokens:
+      Map.new(String.split(tokens, ",", trim: true), fn pair ->
+        [receiver, token] = String.split(pair, "=", parts: 2)
+        {String.trim(receiver), String.trim(token)}
+      end)
+end
+
+search_defaults = Application.get_env(:confluence_phx_mirror, :search, [])
+
+config :confluence_phx_mirror,
+       :search,
+       Keyword.merge(search_defaults,
+         page_size:
+           env_integer.("CM_SEARCH_PAGE_SIZE", Keyword.get(search_defaults, :page_size, 30)),
+         default_limit:
+           env_integer.(
+             "CM_SEARCH_DEFAULT_LIMIT",
+             Keyword.get(search_defaults, :default_limit, 25)
+           ),
+         max_limit:
+           env_integer.("CM_SEARCH_MAX_RESULTS", Keyword.get(search_defaults, :max_limit, 100))
+       )
+
+accounts_defaults = Application.get_env(:confluence_phx_mirror, :accounts, [])
+
+config :confluence_phx_mirror,
+       :accounts,
+       Keyword.merge(accounts_defaults,
+         login_token_minutes:
+           env_integer.(
+             "CM_LOGIN_TOKEN_MINUTES",
+             Keyword.get(accounts_defaults, :login_token_minutes, 15)
+           )
+       )
+
+sync_defaults = Application.get_env(:confluence_phx_mirror, :sync, [])
+
+config :confluence_phx_mirror,
+       :sync,
+       Keyword.merge(sync_defaults,
+         lookback_seconds:
+           env_integer.(
+             "CM_SYNC_LOOKBACK_SECONDS",
+             Keyword.get(sync_defaults, :lookback_seconds, 3600)
+           )
+       )
 
 if smtp_relay = System.get_env("SMTP_RELAY") do
   config :confluence_phx_mirror, ConfluencePhxMirror.Mailer,

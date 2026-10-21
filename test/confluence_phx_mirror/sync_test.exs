@@ -24,10 +24,10 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert {:ok, run} = Sync.run(:snapshot)
       assert run.status == "succeeded"
       assert run.stats["spaces"] == 2
-      assert run.stats["pages"] == 13
+      assert run.stats["pages"] == 40
 
       space = Repo.get_by!(Space, key: "ENG")
-      assert Repo.aggregate(from(p in Page, where: p.space_id == ^space.id), :count) == 10
+      assert Repo.aggregate(from(p in Page, where: p.space_id == ^space.id), :count) == 37
 
       page = Repo.get_by!(Page, confluence_id: 1002)
       assert page.title == "Architecture Overview"
@@ -111,7 +111,7 @@ defmodule ConfluencePhxMirror.SyncTest do
 
       assert {:ok, run} = Sync.run(:snapshot)
       assert run.status == "succeeded"
-      assert run.stats["pages"] == 13
+      assert run.stats["pages"] == 40
 
       assert Repo.aggregate(Page, :count) == pages
       assert Repo.aggregate(Link, :count) == links

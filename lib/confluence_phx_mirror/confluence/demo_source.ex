@@ -48,6 +48,16 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
   end
 
   @impl true
+  def restrictions(confluence_id, _opts) do
+    {:ok, Map.get(DemoContent.page_restrictions(), confluence_id, [])}
+  end
+
+  @impl true
+  def space_permissions(space_key, _opts) do
+    {:ok, Map.get(DemoContent.space_permissions(), space_key, [])}
+  end
+
+  @impl true
   def attachments(confluence_id, _opts) do
     attachments =
       DemoContent.attachments()

@@ -14,7 +14,9 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.Search
 
-  @limit 30
+  # How many results a reader page shows; deployment sized (CM_SEARCH_PAGE_SIZE).
+  defp page_size, do: Application.get_env(:confluence_phx_mirror, :search, [])[:page_size] || 30
+
   @debounce 220
 
   @impl true
@@ -61,7 +63,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     started = System.monotonic_time(:microsecond)
 
     {results, terms, error} =
-      case Search.structured(filters, limit: @limit) do
+      case Search.structured(filters, limit: page_size()) do
         {:ok, results, terms} -> {results, terms, nil}
         {:error, message} -> {[], [], message}
       end

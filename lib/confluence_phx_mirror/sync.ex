@@ -71,6 +71,7 @@ defmodule ConfluencePhxMirror.Sync do
     case source.spaces(opts) do
       {:ok, space_dtos} ->
         spaces = upsert_spaces(space_dtos)
+        {spaces, permission_errors} = sync_space_permissions(source, spaces)
 
         {entries, errors, deleted} = sync_pages_of(spaces, source, opts)
         resolve_trees(spaces)
@@ -78,7 +79,7 @@ defmodule ConfluencePhxMirror.Sync do
 
         {stats, detail_errors} = sync_details(source, entries, index, opts)
         stats = Map.merge(stats, %{"spaces" => length(spaces), "deleted" => deleted})
-        {stats, errors ++ detail_errors}
+        {stats, errors ++ permission_errors ++ detail_errors}
 
       {:error, reason} ->
         raise_source_error(:spaces, nil, reason)
@@ -89,13 +90,14 @@ defmodule ConfluencePhxMirror.Sync do
     space_key = Keyword.fetch!(opts, :space_key)
 
     with {:ok, space} <- ensure_space(source, space_key, opts) do
+      {_spaces, permission_errors} = sync_space_permissions(source, [space])
       {entries, errors, deleted} = sync_pages_of([space], source, opts)
       resolve_trees([space])
       index = Mirror.page_index()
 
       {stats, detail_errors} = sync_details(source, entries, index, opts)
       stats = Map.merge(stats, %{"spaces" => 1, "deleted" => deleted})
-      {stats, errors ++ detail_errors}
+      {stats, errors ++ permission_errors ++ detail_errors}
     end
   end
 
@@ -108,8 +110,9 @@ defmodule ConfluencePhxMirror.Sync do
       resolve_trees([space])
       index = Mirror.page_index()
       {stats, errors} = sync_details(source, [entry], index, opts)
+      {_spaces, permission_errors} = sync_space_permissions(source, [space])
       refresh_dynamic_pages()
-      {Map.put(stats, "spaces", 1), errors}
+      {Map.put(stats, "spaces", 1), errors ++ permission_errors}
     else
       {:error, reason} -> raise_source_error(:page, confluence_id, reason)
     end
@@ -121,11 +124,12 @@ defmodule ConfluencePhxMirror.Sync do
     case source.changed_since(since, opts) do
       {:ok, dtos} ->
         spaces = ensure_spaces_for(source, dtos, opts)
+        {spaces, permission_errors} = sync_space_permissions(source, spaces)
         {entries, errors} = upsert_entries(dtos, spaces)
         resolve_trees(spaces)
         index = Mirror.page_index()
         {stats, detail_errors} = sync_details(source, entries, index, opts)
-        {Map.put(stats, "spaces", length(spaces)), errors ++ detail_errors}
+        {Map.put(stats, "spaces", length(spaces)), errors ++ permission_errors ++ detail_errors}
 
       {:error, :not_supported} ->
         do_run(:snapshot, source, opts)
@@ -172,6 +176,33 @@ defmodule ConfluencePhxMirror.Sync do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  # Who may read a space is mirrored when the source can read it. Confluence
+  # Cloud cannot (space permissions are writes only), and that is not an error:
+  # the space is simply open, exactly as it is for the sync account.
+  defp sync_space_permissions(source, spaces) do
+    Enum.map_reduce(spaces, [], fn space, errors ->
+      case fetch_space_permissions(source, space) do
+        {:ok, permissions} ->
+          {:ok, _} = Mirror.replace_space_permissions(space, permissions)
+          {space, errors}
+
+        :unsupported ->
+          {space, errors}
+
+        {:error, reason} ->
+          {space, [error("space", space.key, {:space_permissions, reason}) | errors]}
+      end
+    end)
+  end
+
+  defp fetch_space_permissions(source, space) do
+    if function_exported?(source, :space_permissions, 2) do
+      source.space_permissions(space.key, [])
+    else
+      :unsupported
     end
   end
 
@@ -314,6 +345,7 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp render_entry(source, %{space: space, dto: dto, page: page, change: change}, index) do
     {attachments, attachment_errors} = mirror_attachments(source, space, page)
+    restriction_errors = mirror_page_restrictions(source, page)
     attachment_map = Map.new(attachments, &attachment_ref(space, page, &1))
 
     context = %{
@@ -340,7 +372,31 @@ defmodule ConfluencePhxMirror.Sync do
          "comments" => comments,
          "links" => length(rendered.links),
          "notifications" => notifications
-       }, attachment_errors ++ notification_errors}
+       }, attachment_errors ++ restriction_errors ++ notification_errors}
+    end
+  end
+
+  # A page's read restrictions decide access before its space does, so they are
+  # synced per page; a source that cannot read them says nothing at all.
+  defp mirror_page_restrictions(source, page) do
+    case fetch_restrictions(source, page) do
+      {:ok, restrictions} ->
+        {:ok, _} = Mirror.replace_page_restrictions(page, restrictions)
+        []
+
+      :unsupported ->
+        []
+
+      {:error, reason} ->
+        [error("page", page.confluence_id, {:restrictions, reason})]
+    end
+  end
+
+  defp fetch_restrictions(source, page) do
+    if function_exported?(source, :restrictions, 2) do
+      source.restrictions(page.confluence_id, [])
+    else
+      :unsupported
     end
   end
 
@@ -664,7 +720,8 @@ defmodule ConfluencePhxMirror.Sync do
       Application.get_env(:confluence_phx_mirror, source, [])
       |> Keyword.get(:sync_interval_seconds, 0)
 
-    DateTime.add(DateTime.utc_now(), -max(interval, 3600), :second)
+    lookback = Application.get_env(:confluence_phx_mirror, :sync, [])[:lookback_seconds] || 3600
+    DateTime.add(DateTime.utc_now(), -max(interval, lookback), :second)
   end
 
   defp site_origin(nil), do: nil

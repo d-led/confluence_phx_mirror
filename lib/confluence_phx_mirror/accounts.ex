@@ -14,7 +14,11 @@ defmodule ConfluencePhxMirror.Accounts do
   alias ConfluencePhxMirror.Mailer
   alias ConfluencePhxMirror.Repo
 
-  @login_token_minutes 15
+  @doc "Minutes a magic link stays valid."
+  def login_token_minutes do
+    Application.get_env(:confluence_phx_mirror, :accounts, [])[:login_token_minutes] || 15
+  end
+
   @api_token_bytes 32
 
   # ---------------------------------------------------------------------------
@@ -143,7 +147,7 @@ defmodule ConfluencePhxMirror.Accounts do
         |> LoginToken.changeset(%{
           user_id: user.id,
           token_hash: hash(plain),
-          expires_at: DateTime.add(now(), @login_token_minutes, :minute)
+          expires_at: DateTime.add(now(), login_token_minutes(), :minute)
         })
         |> Repo.insert()
 

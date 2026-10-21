@@ -55,7 +55,7 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
     assert html =~ "Mirror dashboard"
     assert html =~ "Sync runs"
     assert html =~ "Audit trail"
-    assert html =~ "13"
+    assert html =~ "40"
   end
 
   test "users page lists the assumed admin and creates tokens", %{conn: conn} do
