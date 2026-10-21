@@ -38,6 +38,9 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   def name, do: "confluence-http"
 
   @impl true
+  def kind, do: :live
+
+  @impl true
   def spaces(_opts) do
     with {:ok, results} <-
            paginate_json("/space", %{"limit" => 100, "expand" => "description.plain,homepage"}) do
@@ -360,7 +363,9 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       decode_body: false
     ]
 
-    case Req.request([method: method, url: url] ++ options) do
+    # `:req_options` lets a deployment (or a test) supply transport options such
+    # as a stubbed plug; anything set here wins over the defaults above.
+    case Req.request([method: method, url: url] ++ options ++ (config()[:req_options] || [])) do
       {:ok, %Req.Response{} = response} ->
         if retryable?(response) and attempt < max_attempts() do
           backoff(attempt)

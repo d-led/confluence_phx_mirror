@@ -29,15 +29,32 @@ defmodule ConfluencePhxMirror.Confluence.SafeURL do
     end
   end
 
-  @doc "Absolute URL string for `path`, relative to `base_url`."
-  def resolve(path, base_url) do
-    case validate(path, base_url) do
-      {:ok, uri} ->
-        {:ok, URI.to_string(uri)}
+  @doc """
+  Absolute URL string for `path`, relative to `base_url`.
 
-      {:error, _} = error ->
-        error
+  Accepts an absolute URL (validated as-is) or a path that starts with `/`,
+  which is completed with the base URL's origin first. Confluence's
+  `_links.download` is relative, so downloads rely on this.
+  """
+  def resolve(path, base_url) do
+    with {:ok, base} <- base_uri(base_url),
+         {:ok, absolute} <- absolute(path, base),
+         {:ok, uri} <- validate(absolute, base_url) do
+      {:ok, URI.to_string(uri)}
     end
+  end
+
+  # `//host/path` is scheme-relative and must not be completed with our origin.
+  defp absolute(path, base) when is_binary(path) do
+    if String.starts_with?(path, "/") and not String.starts_with?(path, "//"),
+      do: {:ok, origin(base) <> path},
+      else: {:ok, path}
+  end
+
+  defp absolute(path, _base), do: parse(path)
+
+  defp origin(%URI{scheme: scheme, host: host, port: port}) do
+    %URI{scheme: scheme, host: host, port: port} |> URI.to_string()
   end
 
   defp base_uri(nil), do: {:error, :host_not_allowed}

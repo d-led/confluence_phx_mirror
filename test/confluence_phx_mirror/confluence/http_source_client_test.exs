@@ -1,0 +1,378 @@
+defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
+  @moduledoc """
+  The HTTP side of the Confluence client: URL building, credentials, retries,
+  response caps and the DTOs the sync pipeline consumes.
+
+  Parsing of page restrictions lives next door in `HttpSourceTest`.
+  """
+  # The source reads its configuration from the application environment.
+  use ExUnit.Case, async: false
+
+  alias ConfluencePhxMirror.Confluence.HttpSource
+
+  @base_url "https://acme.atlassian.net"
+
+  setup do
+    previous = Application.get_env(:confluence_phx_mirror, HttpSource)
+    put_config([])
+    on_exit(fn -> Application.put_env(:confluence_phx_mirror, HttpSource, previous) end)
+    :ok
+  end
+
+  defp put_config(opts) do
+    base = [
+      base_url: @base_url,
+      email: "mirror@acme.test",
+      api_token: "secret-token",
+      retries: 2,
+      retry_backoff_ms: 0,
+      req_options: [plug: {Req.Test, __MODULE__}]
+    ]
+
+    Application.put_env(:confluence_phx_mirror, HttpSource, Keyword.merge(base, opts))
+  end
+
+  defp stub(fun), do: Req.Test.stub(__MODULE__, fun)
+
+  defp page_json(overrides \\ %{}) do
+    Map.merge(
+      %{
+        "id" => "1002",
+        "type" => "page",
+        "status" => "current",
+        "title" => "Architecture Overview",
+        "space" => %{"key" => "ENG"},
+        "ancestors" => [%{"id" => "1000"}, %{"id" => "1001"}],
+        "version" => %{
+          "number" => 15,
+          "message" => "tidied",
+          "when" => "2026-10-02T10:00:00.000Z",
+          "by" => %{"displayName" => "Jane Doe", "accountId" => "acc-1"}
+        },
+        "body" => %{
+          "storage" => %{"value" => "<p>storage body</p>"},
+          "export_view" => %{"value" => "<p>export body</p>"}
+        },
+        "metadata" => %{"labels" => %{"results" => [%{"name" => "architecture"}]}},
+        "history" => %{"createdDate" => "2026-10-01T09:00:00.000Z"},
+        "_links" => %{"webui" => "/spaces/ENG/pages/1002/Architecture+Overview"}
+      },
+      overrides
+    )
+  end
+
+  describe "pages/2" do
+    test "maps Confluence content into a mirror DTO" do
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/rest/api/content"
+        assert conn.query_params["spaceKey"] == "ENG"
+        assert conn.query_params["type"] == "page,blogpost"
+        Req.Test.json(conn, %{"results" => [page_json()]})
+      end)
+
+      assert {:ok, [page]} = HttpSource.pages("ENG", [])
+
+      assert page.id == 1002
+      assert page.title == "Architecture Overview"
+      assert page.space_key == "ENG"
+      assert page.ancestors == [1000, 1001]
+      assert page.parent_id == 1001
+      assert page.labels == ["architecture"]
+      assert page.body.storage == "<p>storage body</p>"
+      assert page.body.export_view == "<p>export body</p>"
+      assert page.url == "#{@base_url}/spaces/ENG/pages/1002/Architecture+Overview"
+      assert page.created_at == ~U[2026-10-01 09:00:00.000Z]
+      assert page.updated_at == ~U[2026-10-02 10:00:00.000Z]
+
+      assert page.version == %{
+               number: 15,
+               message: "tidied",
+               when: ~U[2026-10-02 10:00:00.000Z],
+               by: %{display_name: "Jane Doe", account_id: "acc-1"}
+             }
+    end
+
+    test "fills in the defaults Confluence omits" do
+      stub(fn conn -> Req.Test.json(conn, %{"results" => [%{"id" => 7, "_links" => %{}}]}) end)
+
+      assert {:ok, [page]} = HttpSource.pages("ENG", [])
+
+      assert page.title == "Untitled"
+      assert page.type == "page"
+      assert page.status == "current"
+      assert page.ancestors == []
+      assert page.parent_id == nil
+      assert page.version == %{number: 1, message: nil, when: nil, by: %{}}
+      assert page.url == nil
+      assert page.created_at == nil
+    end
+
+    test "follows pagination links on the same host" do
+      stub(fn conn ->
+        case conn.query_params["start"] do
+          nil ->
+            Req.Test.json(conn, %{
+              "results" => [page_json(%{"id" => "1", "title" => "First"})],
+              "_links" => %{"next" => "#{@base_url}/wiki/rest/api/content?start=50"}
+            })
+
+          "50" ->
+            Req.Test.json(conn, %{"results" => [page_json(%{"id" => "2", "title" => "Second"})]})
+        end
+      end)
+
+      assert {:ok, [first, second]} = HttpSource.pages("ENG", [])
+      assert {first.title, second.title} == {"First", "Second"}
+    end
+
+    test "refuses a pagination link that leaves the configured host" do
+      stub(fn conn ->
+        Req.Test.json(conn, %{
+          "results" => [],
+          "_links" => %{"next" => "https://evil.example/wiki/rest/api/content?start=50"}
+        })
+      end)
+
+      assert {:error, :host_not_allowed} = HttpSource.pages("ENG", [])
+    end
+  end
+
+  describe "page/2" do
+    test "reads one page and takes the space from _expandable when it is not expanded" do
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/rest/api/content/1002"
+
+        Req.Test.json(
+          conn,
+          page_json(%{"space" => nil, "_expandable" => %{"space" => "/rest/api/space/ENG"}})
+        )
+      end)
+
+      assert {:ok, page} = HttpSource.page(1002, [])
+      assert page.space_key == "ENG"
+    end
+  end
+
+  describe "comments/2 and attachments/2" do
+    test "maps comments with their parent and export body" do
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/rest/api/content/1002/child/comment"
+
+        Req.Test.json(conn, %{
+          "results" => [
+            %{
+              "id" => "3001",
+              "ancestors" => [%{"id" => "2999"}],
+              "version" => %{
+                "when" => "2026-10-03T08:00:00.000Z",
+                "by" => %{"displayName" => "Sam"}
+              },
+              "body" => %{"export_view" => %{"value" => "<p>nice</p>"}},
+              "_links" => %{"webui" => "/spaces/ENG/pages/1002?focusedCommentId=3001"}
+            }
+          ]
+        })
+      end)
+
+      assert {:ok, [comment]} = HttpSource.comments(1002, [])
+      assert comment.id == 3001
+      assert comment.page_id == 1002
+      assert comment.parent_id == 2999
+      assert comment.author == "Sam"
+      assert comment.body_export == "<p>nice</p>"
+      assert comment.url =~ "focusedCommentId=3001"
+    end
+
+    test "maps attachments with media type, size and download URL" do
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/rest/api/content/1002/child/attachment"
+
+        Req.Test.json(conn, %{
+          "results" => [
+            %{
+              "id" => "9001",
+              "title" => "diagram.svg",
+              "extensions" => %{"mediaType" => "image/svg+xml", "fileSize" => 2048},
+              "version" => %{"number" => 3},
+              "_links" => %{"download" => "/wiki/download/attachments/1002/diagram.svg"}
+            }
+          ]
+        })
+      end)
+
+      assert {:ok, [attachment]} = HttpSource.attachments(1002, [])
+      assert attachment.filename == "diagram.svg"
+      assert attachment.media_type == "image/svg+xml"
+      assert attachment.byte_size == 2048
+      assert attachment.version == 3
+      assert attachment.download_url == "/wiki/download/attachments/1002/diagram.svg"
+    end
+  end
+
+  describe "spaces/2 and restrictions/2" do
+    test "maps a space with its description and homepage" do
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/rest/api/space"
+
+        Req.Test.json(conn, %{
+          "results" => [
+            %{
+              "key" => "ENG",
+              "name" => "Engineering Handbook",
+              "description" => %{"plain" => %{"value" => "How we build."}},
+              "homepage" => %{"id" => "1000"},
+              "_links" => %{"webui" => "/spaces/ENG"}
+            }
+          ]
+        })
+      end)
+
+      assert {:ok, [space]} = HttpSource.spaces([])
+      assert space.key == "ENG"
+      assert space.description == "How we build."
+      assert space.homepage_id == 1000
+      assert space.url == "#{@base_url}/spaces/ENG"
+    end
+
+    test "reads the read restrictions of a page" do
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/rest/api/content/1002/restriction/byOperation/read"
+
+        Req.Test.json(conn, %{
+          "restrictions" => %{
+            "user" => %{"results" => [%{"email" => "jane@acme.test"}]},
+            "group" => %{"results" => [%{"name" => "engineering"}]}
+          }
+        })
+      end)
+
+      assert {:ok, restrictions} = HttpSource.restrictions(1002, [])
+
+      assert restrictions == [
+               %{subject_type: "user", subject_key: "jane@acme.test"},
+               %{subject_type: "group", subject_key: "engineering"}
+             ]
+    end
+  end
+
+  describe "changed_since/2" do
+    test "asks for recent content and keeps only the configured spaces" do
+      put_config(spaces: ["ENG"])
+
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/rest/api/content/search"
+        assert conn.query_params["cql"] =~ ~s[lastmodified >= "2026-10-01 12:34"]
+
+        Req.Test.json(conn, %{
+          "results" => [
+            page_json(%{"id" => "1", "space" => %{"key" => "ENG"}}),
+            page_json(%{"id" => "2", "space" => %{"key" => "PROD"}})
+          ]
+        })
+      end)
+
+      assert {:ok, [page]} = HttpSource.changed_since(~U[2026-10-01 12:34:56Z], [])
+      assert page.space_key == "ENG"
+    end
+  end
+
+  describe "request handling" do
+    test "sends the configured API credentials" do
+      stub(fn conn ->
+        send(self(), {:auth, Plug.Conn.get_req_header(conn, "authorization")})
+        Req.Test.json(conn, %{"results" => []})
+      end)
+
+      assert {:ok, []} = HttpSource.pages("ENG", [])
+
+      expected = "Basic " <> Base.encode64("mirror@acme.test:secret-token")
+      assert_receive {:auth, [^expected]}
+    end
+
+    test "uses a bearer token when only a token is configured" do
+      put_config(email: nil)
+
+      stub(fn conn ->
+        send(self(), {:auth, Plug.Conn.get_req_header(conn, "authorization")})
+        Req.Test.json(conn, %{"results" => []})
+      end)
+
+      assert {:ok, []} = HttpSource.pages("ENG", [])
+      assert_receive {:auth, ["Bearer secret-token"]}
+    end
+
+    test "retries a 429 before giving up" do
+      stub(fn conn ->
+        case Process.get(:attempt, 0) do
+          0 ->
+            Process.put(:attempt, 1)
+            Plug.Conn.resp(conn, 429, "slow down")
+
+          _ ->
+            Req.Test.json(conn, %{"results" => []})
+        end
+      end)
+
+      assert {:ok, []} = HttpSource.pages("ENG", [])
+      assert Process.get(:attempt) == 1
+    end
+
+    test "reports an error when every attempt fails" do
+      stub(fn conn -> Plug.Conn.resp(conn, 503, "maintenance") end)
+
+      assert {:error, {:http, 503, "maintenance"}} = HttpSource.pages("ENG", [])
+    end
+
+    test "treats 401, 403 and 404 as their own outcomes" do
+      stub(fn conn -> Plug.Conn.resp(conn, 403, "no access") end)
+      assert {:error, {:unauthorized, 403}} = HttpSource.pages("ENG", [])
+
+      stub(fn conn -> Plug.Conn.resp(conn, 404, "gone") end)
+      assert {:error, :not_found} = HttpSource.pages("ENG", [])
+    end
+
+    test "reports invalid JSON instead of crashing" do
+      stub(fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(200, "{not json")
+      end)
+
+      assert {:error, :invalid_json} = HttpSource.pages("ENG", [])
+    end
+
+    test "refuses a JSON body above the configured cap" do
+      put_config(max_json_bytes: 32)
+
+      stub(fn conn -> Req.Test.json(conn, %{"results" => [page_json()]}) end)
+
+      assert {:error, {:body_too_large, size, 32}} = HttpSource.pages("ENG", [])
+      assert size > 32
+    end
+
+    test "reports transport failures after the last attempt" do
+      stub(fn conn -> Req.Test.transport_error(conn, :econnrefused) end)
+
+      assert {:error, {:transport, _reason}} = HttpSource.pages("ENG", [])
+    end
+  end
+
+  describe "attachment_data/2" do
+    test "returns the bytes of a mirrored attachment" do
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/download/attachments/1002/diagram.svg"
+        Plug.Conn.resp(conn, 200, "<svg/>")
+      end)
+
+      attachment = %{download_url: "/wiki/download/attachments/1002/diagram.svg"}
+      assert {:ok, "<svg/>"} = HttpSource.attachment_data(attachment, [])
+    end
+
+    test "reports a missing attachment" do
+      stub(fn conn -> Plug.Conn.resp(conn, 404, "gone") end)
+
+      attachment = %{download_url: "/wiki/download/attachments/1002/gone.svg"}
+      assert {:error, {:http, 404}} = HttpSource.attachment_data(attachment, [])
+    end
+  end
+end
