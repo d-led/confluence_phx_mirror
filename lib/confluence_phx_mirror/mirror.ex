@@ -9,7 +9,7 @@ defmodule ConfluencePhxMirror.Mirror do
 
   import Ecto.Query
 
-  alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Label, Link, Page, Space}
+  alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Label, Link, Page, PageProperty, Space}
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.SyncRun
 
@@ -597,6 +597,121 @@ defmodule ConfluencePhxMirror.Mirror do
 
   @doc "Looks an author up by Confluence account id."
   def find_author(account_id), do: Enum.find(authors(), &(&1.account_id == account_id))
+
+  # ---------------------------------------------------------------------------
+  # Dynamic content (macros Confluence resolves in the browser)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Pages carrying all (`:all`, the default) or any (`:any`) of `labels`.
+
+  This is the mirror's own `content-by-label` resolver; the array operators are
+  backed by GIN indexes, so it never walks the page table.
+  """
+  def pages_for_labels(labels, opts \\ []) do
+    labels = labels |> Enum.map(&Label.normalise/1) |> Enum.reject(&(&1 == ""))
+
+    if labels == [] do
+      []
+    else
+      limit = Keyword.get(opts, :limit, 10)
+
+      from(p in Page,
+        where: is_nil(p.deleted_at),
+        order_by: [desc: p.external_updated_at],
+        limit: ^limit,
+        preload: [:space]
+      )
+      |> where_labels(labels, Keyword.get(opts, :match, :all))
+      |> where_space(Keyword.get(opts, :space_id))
+      |> Repo.all()
+    end
+  end
+
+  defp where_labels(query, labels, :any),
+    do: where(query, [p], fragment("? && ?", p.labels, ^labels))
+
+  defp where_labels(query, labels, _all),
+    do: where(query, [p], fragment("? @> ?", p.labels, ^labels))
+
+  @doc "Replaces the page's extracted `pageproperties` rows."
+  def replace_properties(%Page{id: page_id}, properties) do
+    Repo.transaction(fn ->
+      Repo.delete_all(from p in PageProperty, where: p.page_id == ^page_id)
+
+      Enum.each(properties, fn property ->
+        Repo.insert!(%PageProperty{
+          page_id: page_id,
+          key: property.key,
+          value: property.value
+        })
+      end)
+    end)
+
+    {:ok, properties}
+  end
+
+  @doc "Property rows of one page, ordered by key."
+  def properties(%Page{id: page_id}) do
+    from(p in PageProperty, where: p.page_id == ^page_id, order_by: [asc: p.key])
+    |> Repo.all()
+  end
+
+  @doc """
+  Data for a page-properties report: the pages of a space that declare
+  properties, with the requested columns.
+
+  Returns `%{columns: [String.t()], rows: [%{page: Page.t(), values: map()}]}`.
+  Columns default to the keys actually present, alphabetically, capped at six.
+  """
+  def property_report(space_id, columns \\ []) do
+    pages =
+      from(p in Page,
+        join: property in assoc(p, :properties),
+        where: p.space_id == ^space_id and is_nil(p.deleted_at),
+        distinct: true,
+        order_by: [asc: p.title],
+        preload: [:space, :properties]
+      )
+      |> Repo.all()
+
+    columns =
+      case columns do
+        [] ->
+          pages
+          |> Enum.flat_map(fn page -> Enum.map(page.properties, & &1.key) end)
+          |> Enum.uniq()
+          |> Enum.sort()
+          |> Enum.take(6)
+
+        columns ->
+          columns
+      end
+
+    %{
+      columns: columns,
+      rows:
+        Enum.map(pages, fn page ->
+          %{page: page, values: Map.new(page.properties, &{&1.key, &1.value})}
+        end)
+    }
+  end
+
+  @doc """
+  Pages whose rendered body contains a dynamic macro marker.
+
+  Re-rendering these after content changes is how a static mirror keeps
+  label-driven listings and property reports current without a browser.
+  """
+  def pages_with_dynamic_content(limit \\ 200) do
+    from(p in Page,
+      where: is_nil(p.deleted_at) and like(p.body_export, "%mirror-macro%"),
+      order_by: [desc: p.external_updated_at],
+      limit: ^limit,
+      preload: [:space]
+    )
+    |> Repo.all()
+  end
 
   defp where_type(query, nil), do: query
   defp where_type(query, type), do: where(query, [p], p.type == ^type)

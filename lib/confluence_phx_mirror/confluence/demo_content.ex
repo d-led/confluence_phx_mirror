@@ -73,12 +73,18 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         ~w(architecture design),
         version: 15,
         message: "Document the sync pipeline",
-        updated_at: ~U[2026-10-20 08:10:00Z]
+        updated_at: ~U[2026-10-20 08:10:00Z],
+        storage:
+          properties_storage(
+            architecture_body(),
+            [{"Owner", "Platform"}, {"Status", "Active"}]
+          )
       ),
       page(1003, "ENG", 1001, "Macros Gallery", macros_body(), ~w(macros demo),
         version: 4,
         message: "Show every macro we support",
-        updated_at: ~U[2026-10-17 16:45:00Z]
+        updated_at: ~U[2026-10-17 16:45:00Z],
+        storage: properties_storage(macros_body(), [{"Owner", "Docs"}, {"Status", "Review"}])
       ),
       page(1004, "ENG", 1000, "Search and CQL", search_body(), ~w(search howto),
         version: 6,
@@ -326,6 +332,14 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     </div>
     <p>Mentioning #{user_link("priya.nair", "Priya Nair")} renders as a user link.</p>
     <p>Jump to the <a href="#panels">panels</a> anchor or the <span class="confluence-anchor-link" id="anchor-demo-2">anchor demo</span>.</p>
+    <h2 id="dynamic">Dynamic content the mirror resolves itself</h2>
+    <p>
+      Confluence renders these macros in the browser, so <code>export_view</code>
+      only carries a placeholder. The mirror resolves them at sync time from its own
+      database and bakes the result into the page: no JavaScript, still searchable.
+    </p>
+    <div class="mirror-macro" data-macro="content-by-label" data-labels="architecture" data-limit="5"></div>
+    <div class="mirror-macro" data-macro="page-properties-report" data-columns="Owner,Status"></div>
     """)
   end
 
@@ -603,6 +617,22 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
       created_at: Keyword.get(opts, :created_at, ~U[2025-01-12 10:00:00Z]),
       updated_at: updated_at
     }
+  end
+
+  defp properties_storage(storage, rows) do
+    table =
+      Enum.map_join(rows, fn {key, value} ->
+        "<tr><th class=\"confluenceTh\">#{key}</th><td class=\"confluenceTd\">#{value}</td></tr>"
+      end)
+
+    storage <>
+      """
+      <ac:structured-macro ac:name="pageproperties" ac:schema-version="1">
+        <ac:rich-text-body>
+          <table><tbody>#{table}</tbody></table>
+        </ac:rich-text-body>
+      </ac:structured-macro>
+      """
   end
 
   defp account_id(name) do

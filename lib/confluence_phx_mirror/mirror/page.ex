@@ -44,6 +44,7 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     has_many :comments, ConfluencePhxMirror.Mirror.Comment
     has_many :outgoing_links, ConfluencePhxMirror.Mirror.Link, foreign_key: :source_page_id
     has_many :incoming_links, ConfluencePhxMirror.Mirror.Link, foreign_key: :target_page_id
+    has_many :properties, ConfluencePhxMirror.Mirror.PageProperty
 
     many_to_many :label_records, ConfluencePhxMirror.Mirror.Label,
       join_through: "page_labels",

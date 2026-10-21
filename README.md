@@ -97,8 +97,42 @@ that fit a live, read-only mirror:
   lists, TOC, gallery and Jira macros come from Confluence's own markup.
 
 Deliberately out of scope: uploads and write-back, markdown exports, page
-history, permissions, templates and smart content. The mirror is read-only and
-serves Confluence's rendering.
+history, permissions and templates. The mirror is read-only and serves
+Confluence's rendering.
+
+## Dynamic content: macros the browser would normally run
+
+Some Confluence macros (*Content by Label*, *Page Properties Report*, and
+anything else driven by a live query) are resolved in the browser, so
+`export_view` only carries a placeholder and no amount of HTML mirroring will
+fill it in. The mirror resolves them itself, at sync time, from its own
+database:
+
+```html
+<div class="mirror-macro" data-macro="content-by-label"
+     data-labels="runbook,incident" data-match="all" data-limit="10"></div>
+
+<div class="mirror-macro" data-macro="page-properties-report"
+     data-space="ENG" data-columns="owner,status"></div>
+```
+
+* `content-by-label` runs against the mirror's labels (array containment on
+  `pages.labels`, GIN-indexed) and renders a static list of links.
+* `page-properties-report` renders a table from `pageproperties` values that
+  the sync extracted from each page's storage format into `page_properties`.
+* The marker element stays in the body and only its children are replaced, so
+  expanding is idempotent. After a page sync (webhook included) every page
+  carrying a marker is re-expanded from the database, which keeps listings and
+  reports current without a dependency graph, a queue or recursion.
+* The resolved content is ordinary HTML: it is searchable, printable and part
+  of the page's plain text. Unsupported macros render a short notice instead of
+  disappearing silently.
+
+The alternatives from the Confluence world do not apply here: Confluence fires
+`page_updated` only for the page that was edited (not for pages that display its
+labels), resolve-macros-in-the-browser needs a client, and write-back/re-caching
+pipelines need write access we deliberately do not have. Resolving from the
+mirrored data at sync time is the read-only equivalent.
 
 ## Branding and skins
 

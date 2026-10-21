@@ -183,6 +183,19 @@ defmodule ConfluencePhxMirror.SyncTest do
     end
   end
 
+  describe "dynamic content" do
+    test "bakes label listings and property reports into the page and its search text" do
+      demo_snapshot!()
+      page = Repo.get_by!(Page, confluence_id: 1003)
+
+      assert page.body_export =~ "Content by label: architecture"
+      assert page.body_export =~ ~s(href="/spaces/ENG/pages/1002/architecture-overview")
+      assert page.body_export =~ "Page properties report"
+      assert page.body_export =~ "Platform"
+      assert page.body_text =~ "Page properties report"
+    end
+  end
+
   describe "deletions" do
     test "pages missing from a space snapshot are marked deleted but kept for audit" do
       demo_snapshot!()

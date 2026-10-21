@@ -414,6 +414,48 @@
 .confluence-content .hljs-emphasis { font-style: italic; }
 .confluence-content .hljs-strong { font-weight: 700; }
 
+/* Dynamic macros (resolved at sync time) -------------------------------- */
+
+.confluence-content .mirror-macro {
+  margin: 1rem 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-base-300);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 0.5rem;
+  background: color-mix(in oklab, var(--color-base-200) 70%, transparent);
+}
+
+.confluence-content .mirror-dynamic-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+
+.confluence-content .mirror-dynamic-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+}
+
+.confluence-content .mirror-dynamic-list li { margin: 0.15rem 0; }
+
+.confluence-content .mirror-dynamic-meta {
+  font-size: 0.85em;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+.confluence-content .mirror-dynamic-empty,
+.confluence-content .mirror-dynamic-notice {
+  margin: 0;
+  font-size: 0.9rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.confluence-content .mirror-dynamic-report { margin: 0.25rem 0 0; }
+
 /* Expand macro --------------------------------------------------------- */
 
 .confluence-content .expand-container {

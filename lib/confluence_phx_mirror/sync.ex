@@ -23,7 +23,7 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page}
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Repo
-  alias ConfluencePhxMirror.Sync.{Renderer, SyncRun}
+  alias ConfluencePhxMirror.Sync.{DynamicContent, PageProperties, Renderer, SyncRun}
 
   @type mode :: :snapshot | :incremental | :space | :page
   @type report :: {:ok, SyncRun.t()}
@@ -108,6 +108,7 @@ defmodule ConfluencePhxMirror.Sync do
       resolve_trees([space])
       index = Mirror.page_index()
       {stats, errors} = sync_details(source, [entry], index, opts)
+      refresh_dynamic_pages()
       {Map.put(stats, "spaces", 1), errors}
     else
       {:error, reason} -> raise_source_error(:page, confluence_id, reason)
@@ -250,7 +251,12 @@ defmodule ConfluencePhxMirror.Sync do
         true -> :unchanged
       end
 
-    with {:ok, page} <- Mirror.upsert_page(space, attrs) do
+    with {:ok, page} <- Mirror.upsert_page(space, attrs),
+         {:ok, page} <- Mirror.replace_labels(page, dto.labels) do
+      # Labels and properties are stored before any page renders, so label
+      # listings and property reports in a snapshot see the whole run.
+      {:ok, _properties} = Mirror.replace_properties(page, PageProperties.parse(dto.body.storage))
+
       {:ok,
        %{
          space: space,
@@ -320,14 +326,7 @@ defmodule ConfluencePhxMirror.Sync do
 
     rendered = Renderer.render(dto.body.export_view, context)
 
-    with {:ok, page} <- Mirror.replace_labels(page, dto.labels),
-         {:ok, page} <-
-           Mirror.update_rendered(page, %{
-             body_export: rendered.html,
-             body_text: rendered.text,
-             search_text: search_text(rendered.text, page, space, attachments),
-             synced_at: now()
-           }),
+    with {:ok, page} <- store_rendered_page(page, rendered, space, attachments),
          {:ok, _} <- Mirror.replace_links(page, rendered.links),
          {:ok, comments} <- mirror_comments(source, page, context) do
       page = Map.put(page, :space, space)
@@ -343,6 +342,37 @@ defmodule ConfluencePhxMirror.Sync do
          "notifications" => notifications
        }, attachment_errors ++ notification_errors}
     end
+  end
+
+  # Dynamic macros are resolved from the mirror, so the stored body and its
+  # search text both contain what a reader actually sees.
+  defp store_rendered_page(page, rendered, space, attachments) do
+    export = DynamicContent.expand(rendered.html, %{space: space})
+    text = Renderer.plain_text(export)
+
+    Mirror.update_rendered(page, %{
+      body_export: export,
+      body_text: text,
+      search_text: search_text(text, page, space, attachments),
+      synced_at: now()
+    })
+  end
+
+  # A page's labels or properties change what label listings and property
+  # reports show. Expansion is idempotent (the marker stays in the body), so
+  # every page carrying a marker is simply re-expanded in place.
+  defp refresh_dynamic_pages do
+    Enum.each(Mirror.pages_with_dynamic_content(), fn page ->
+      export = DynamicContent.expand(page.body_export, %{space: page.space})
+      text = Renderer.plain_text(export)
+
+      Mirror.update_rendered(page, %{
+        body_export: export,
+        body_text: text,
+        search_text: search_text(text, page, page.space, Mirror.attachments(page)),
+        synced_at: now()
+      })
+    end)
   end
 
   defp notify(:unchanged, _page, _space), do: {0, []}
