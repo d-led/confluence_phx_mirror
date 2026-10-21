@@ -6,6 +6,8 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias ConfluencePhxMirror.Audit.Entry
+
   @type t :: %__MODULE__{}
 
   @modes ~w(snapshot incremental webhook)
@@ -37,5 +39,20 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
 
   def duration(%__MODULE__{started_at: started_at, finished_at: finished_at}) do
     DateTime.diff(finished_at, started_at, :millisecond)
+  end
+
+  @doc "Audit entry for a run that just started."
+  def audit_event_started(%__MODULE__{} = run, mode, source_name) do
+    Entry.new("sync.started", "sync_run", run.id, %{mode: mode, source: source_name})
+  end
+
+  @doc "Audit entry for a run that finished, successfully or partially."
+  def audit_event_finished(%__MODULE__{} = run) do
+    Entry.new("sync.finished", "sync_run", run.id, %{status: run.status, stats: run.stats})
+  end
+
+  @doc "Audit entry for a run that could not even list its spaces."
+  def audit_event_failed(%__MODULE__{} = run, message) do
+    Entry.new("sync.failed", "sync_run", run.id, %{error: message})
   end
 end

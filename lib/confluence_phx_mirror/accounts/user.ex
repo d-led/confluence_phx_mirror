@@ -7,6 +7,8 @@ defmodule ConfluencePhxMirror.Accounts.User do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias ConfluencePhxMirror.Audit.Entry
+
   @roles ~w(admin member)
 
   schema "users" do
@@ -41,4 +43,29 @@ defmodule ConfluencePhxMirror.Accounts.User do
   @doc "Name to show in the UI."
   def display_name(%__MODULE__{display_name: name}) when is_binary(name) and name != "", do: name
   def display_name(%__MODULE__{email: email}), do: email |> String.split("@") |> hd()
+
+  @doc "Audit entry for a newly created reader account."
+  def audit_event_created(%__MODULE__{} = user) do
+    Entry.new("user.created", "user", user.id, %{email: user.email, role: user.role})
+  end
+
+  @doc "Audit entry for an account moving between admin and member."
+  def audit_event_role_changed(%__MODULE__{} = user) do
+    Entry.new("user.role_changed", "user", user.id, %{role: user.role})
+  end
+
+  @doc "Audit entry for a magic link being sent."
+  def audit_event_login_requested(%__MODULE__{} = user) do
+    Entry.new("user.login_requested", "user", user.id, %{email: user.email})
+  end
+
+  @doc "Audit entry for a magic link being used."
+  def audit_event_signed_in(%__MODULE__{} = user) do
+    Entry.new("user.signed_in", "user", user.id, %{method: "magic_link"})
+  end
+
+  @doc "Audit entry for an account signing out."
+  def audit_event_signed_out(%__MODULE__{} = user) do
+    Entry.new("user.signed_out", "user", user.id)
+  end
 end

@@ -10,6 +10,8 @@ defmodule ConfluencePhxMirror.Mirror.Page do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias ConfluencePhxMirror.Audit.Entry
+
   @type t :: %__MODULE__{}
 
   @types ~w(page blogpost)
@@ -95,5 +97,24 @@ defmodule ConfluencePhxMirror.Mirror.Page do
       "" -> "page"
       slug -> slug
     end
+  end
+
+  @doc "Audit entry for a page the mirror saw for the first time."
+  def audit_event_created(%__MODULE__{} = page, space) do
+    audit_entry("page.created", page, space)
+  end
+
+  @doc "Audit entry for a page whose Confluence version changed."
+  def audit_event_updated(%__MODULE__{} = page, space) do
+    audit_entry("page.updated", page, space)
+  end
+
+  defp audit_entry(action, page, space) do
+    Entry.new(action, "page", page.confluence_id, %{
+      space: space.key,
+      title: page.title,
+      version: page.version_number,
+      labels: page.labels
+    })
   end
 end

@@ -8,6 +8,8 @@ defmodule ConfluencePhxMirror.Mirror.Space do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias ConfluencePhxMirror.Audit.Entry
+
   @type t :: %__MODULE__{}
 
   schema "spaces" do
@@ -34,5 +36,10 @@ defmodule ConfluencePhxMirror.Mirror.Space do
     |> update_change(:key, &String.upcase/1)
     |> validate_format(:key, ~r/^[A-Z0-9_~.-]+$/, message: "is not a valid space key")
     |> unique_constraint(:key)
+  end
+
+  @doc "Audit entry for pages a sync stopped finding in Confluence."
+  def audit_event_pages_deleted(%__MODULE__{} = space, count) do
+    Entry.new("pages.deleted", "space", space.key, %{count: count})
   end
 end

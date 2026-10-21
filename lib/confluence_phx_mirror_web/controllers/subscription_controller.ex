@@ -6,6 +6,7 @@ defmodule ConfluencePhxMirrorWeb.SubscriptionController do
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Notifications
+  alias ConfluencePhxMirror.Notifications.Subscription
 
   @targets ~w(page space)
 
@@ -13,8 +14,8 @@ defmodule ConfluencePhxMirrorWeb.SubscriptionController do
     with_user(conn, fn user ->
       with :ok <- validate_target(target_type),
            {id, ""} <- Integer.parse(to_string(target_id)),
-           {:ok, _} <- Notifications.subscribe(user, target_type, id) do
-        Audit.user(user, "subscription.created", target_type, id)
+           {:ok, subscription} <- Notifications.subscribe(user, target_type, id) do
+        Audit.log({:user, user}, Subscription.audit_event_created(subscription, user))
 
         conn
         |> put_flash(:info, "You will get an e-mail when this #{target_type} changes.")
@@ -33,7 +34,7 @@ defmodule ConfluencePhxMirrorWeb.SubscriptionController do
       with :ok <- validate_target(target_type),
            {id, ""} <- Integer.parse(to_string(target_id)) do
         Notifications.unsubscribe(user, target_type, id)
-        Audit.user(user, "subscription.deleted", target_type, id)
+        Audit.log({:user, user}, Subscription.audit_event_deleted(user, target_type, id))
 
         conn
         |> put_flash(:info, "Subscription removed.")

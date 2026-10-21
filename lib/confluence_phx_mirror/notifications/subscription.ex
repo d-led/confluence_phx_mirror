@@ -8,6 +8,8 @@ defmodule ConfluencePhxMirror.Notifications.Subscription do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias ConfluencePhxMirror.Audit.Entry
+
   @target_types ~w(space page)
   @frequencies ~w(instant daily)
 
@@ -28,5 +30,18 @@ defmodule ConfluencePhxMirror.Notifications.Subscription do
     |> validate_inclusion(:target_type, @target_types)
     |> validate_inclusion(:frequency, @frequencies)
     |> unique_constraint([:user_id, :target_type, :target_id])
+  end
+
+  @doc "Audit entry for a user starting to watch a page or a space."
+  def audit_event_created(%__MODULE__{} = subscription, user) do
+    Entry.new("subscription.created", subscription.target_type, subscription.target_id, %{
+      user: user.email,
+      frequency: subscription.frequency
+    })
+  end
+
+  @doc "Audit entry for a user watching one less page or space."
+  def audit_event_deleted(user, target_type, target_id) do
+    Entry.new("subscription.deleted", target_type, target_id, %{user: user.email})
   end
 end

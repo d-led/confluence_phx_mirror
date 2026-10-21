@@ -6,6 +6,7 @@ defmodule ConfluencePhxMirrorWeb.SessionController do
   use ConfluencePhxMirrorWeb, :controller
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Audit
 
   def new(conn, _params) do
@@ -62,7 +63,7 @@ defmodule ConfluencePhxMirrorWeb.SessionController do
 
   def delete(conn, _params) do
     if user = conn.assigns[:current_user] do
-      Audit.user(user, "user.signed_out", "user", user.id)
+      Audit.log({:user, user}, User.audit_event_signed_out(user))
     end
 
     conn

@@ -8,6 +8,8 @@ defmodule ConfluencePhxMirror.Accounts.ApiToken do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias ConfluencePhxMirror.Audit.Entry
+
   schema "api_tokens" do
     field :name, :string
     field :token_hash, :string, redact: true
@@ -25,5 +27,19 @@ defmodule ConfluencePhxMirror.Accounts.ApiToken do
     |> cast(attrs, [:user_id, :name, :token_hash, :token_prefix, :expires_at])
     |> validate_required([:user_id, :name, :token_hash, :token_prefix])
     |> unique_constraint(:token_hash)
+  end
+
+  @doc "Audit entry for a token handed to a user (the plaintext is never stored)."
+  def audit_event_created(%__MODULE__{} = token, user) do
+    Entry.new("api_token.created", "api_token", token.id, %{
+      user: user.email,
+      name: token.name,
+      prefix: token.token_prefix
+    })
+  end
+
+  @doc "Audit entry for a revoked token."
+  def audit_event_revoked(%__MODULE__{} = token) do
+    Entry.new("api_token.revoked", "api_token", token.id, %{prefix: token.token_prefix})
   end
 end

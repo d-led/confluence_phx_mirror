@@ -6,6 +6,8 @@ defmodule ConfluencePhxMirror.Mirror.Attachment do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias ConfluencePhxMirror.Audit.Entry
+
   @type t :: %__MODULE__{}
 
   schema "attachments" do
@@ -59,5 +61,22 @@ defmodule ConfluencePhxMirror.Mirror.Attachment do
     unit = Enum.at(units, min(scale - 1, length(units) - 1))
     value = bytes / :math.pow(1024, scale)
     "#{Float.round(value * 1.0, 1)} #{unit}"
+  end
+
+  @doc "Audit entry for bytes copied into the blob store."
+  def audit_event_mirrored(%__MODULE__{} = attachment, page) do
+    Entry.new("attachment.mirrored", "attachment", attachment.confluence_id, %{
+      page: page.confluence_id,
+      filename: attachment.filename,
+      bytes: attachment.byte_size
+    })
+  end
+
+  @doc "Audit entry for a file Confluence no longer has on the page."
+  def audit_event_deleted(%__MODULE__{} = attachment, page) do
+    Entry.new("attachment.deleted", "attachment", attachment.confluence_id, %{
+      page: page.confluence_id,
+      filename: attachment.filename
+    })
   end
 end

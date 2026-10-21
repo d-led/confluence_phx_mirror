@@ -53,12 +53,12 @@ defmodule ConfluencePhxMirror.Webhooks do
     cond do
       is_nil(secret) and config()[:require_signature] ->
         finish(delivery, "rejected", "webhook secret is not configured")
-        Audit.webhook("webhook.rejected", delivery.id, %{reason: "not_configured"})
+        Audit.log(actor(delivery), Delivery.audit_event_rejected(delivery, "not_configured"))
         {:error, :not_configured}
 
       not signature_valid ->
         finish(delivery, "rejected", "signature mismatch")
-        Audit.webhook("webhook.rejected", delivery.id, %{reason: "invalid_signature"})
+        Audit.log(actor(delivery), Delivery.audit_event_rejected(delivery, "invalid_signature"))
         {:error, :invalid_signature}
 
       true ->
@@ -112,6 +112,8 @@ defmodule ConfluencePhxMirror.Webhooks do
     end
   end
 
+  defp actor(delivery), do: {:webhook, delivery.id}
+
   defp handle(delivery) do
     event = event_type(delivery.payload)
 
@@ -126,7 +128,7 @@ defmodule ConfluencePhxMirror.Webhooks do
     cond do
       is_nil(id) ->
         finish(delivery, "ignored", nil)
-        Audit.webhook("webhook.ignored", delivery.id, %{event: event})
+        Audit.log(actor(delivery), Delivery.audit_event_ignored(delivery, event))
         {:ok, Repo.get!(Delivery, delivery.id)}
 
       event in @removal_events ->
@@ -137,7 +139,7 @@ defmodule ConfluencePhxMirror.Webhooks do
 
       true ->
         finish(delivery, "ignored", nil)
-        Audit.webhook("webhook.ignored", delivery.id, %{event: event})
+        Audit.log(actor(delivery), Delivery.audit_event_ignored(delivery, event))
         {:ok, Repo.get!(Delivery, delivery.id)}
     end
   end
@@ -145,13 +147,13 @@ defmodule ConfluencePhxMirror.Webhooks do
   defp mark_deleted(delivery, id, event) do
     case Mirror.mark_deleted(id) do
       {:ok, _page} ->
-        Audit.webhook("page.deleted", delivery.id, %{page: id, event: event})
+        Audit.log(actor(delivery), Delivery.audit_event_page_deleted(delivery, id, event))
         finish(delivery, "processed", nil)
         {:ok, Repo.get!(Delivery, delivery.id)}
 
       {:error, :not_found} ->
         finish(delivery, "ignored", "page not in mirror")
-        Audit.webhook("webhook.ignored", delivery.id, %{event: event, page: id})
+        Audit.log(actor(delivery), Delivery.audit_event_ignored(delivery, event, %{page: id}))
         {:ok, Repo.get!(Delivery, delivery.id)}
     end
   end
@@ -159,7 +161,11 @@ defmodule ConfluencePhxMirror.Webhooks do
   defp enqueue_page(delivery, id, event) do
     case %{"confluence_id" => id} |> PageWorker.new() |> Oban.insert() do
       {:ok, job} ->
-        Audit.webhook("webhook.queued", delivery.id, %{event: event, page: id, job: job.id})
+        Audit.log(
+          actor(delivery),
+          Delivery.audit_event_queued(delivery, event, job.id, %{page: id})
+        )
+
         finish(delivery, "queued", nil)
         {:ok, Repo.get!(Delivery, delivery.id)}
 
@@ -173,17 +179,21 @@ defmodule ConfluencePhxMirror.Webhooks do
     case space_key(delivery.payload) do
       nil ->
         finish(delivery, "ignored", nil)
-        Audit.webhook("webhook.ignored", delivery.id, %{event: event, reason: "no space key"})
+
+        Audit.log(
+          actor(delivery),
+          Delivery.audit_event_ignored(delivery, event, %{reason: "no space key"})
+        )
+
         {:ok, Repo.get!(Delivery, delivery.id)}
 
       key ->
         case %{"space_key" => key} |> SpaceWorker.new() |> Oban.insert() do
           {:ok, job} ->
-            Audit.webhook("webhook.queued", delivery.id, %{
-              event: event,
-              space: key,
-              job: job.id
-            })
+            Audit.log(
+              actor(delivery),
+              Delivery.audit_event_queued(delivery, event, job.id, %{space: key})
+            )
 
             finish(delivery, "queued", nil)
             {:ok, Repo.get!(Delivery, delivery.id)}

@@ -2,23 +2,30 @@ defmodule ConfluencePhxMirror.Audit do
   @moduledoc """
   Append-only audit trail.
 
-  Every state change in the mirror is recorded with an actor: a signed-in user,
-  the system (scheduled syncs), or a webhook delivery. If writing an audit event
-  fails, the operation itself fails — an unauditable change must not happen.
+  This module is the only writer. The shape of an event belongs to the domain
+  that owns it — `Mirror.Page.audit_event_updated/2`,
+  `Sync.SyncRun.audit_event_failed/2`, `Webhooks.Delivery.audit_event_queued/4`
+  — so a call site only says who acted:
+
+      Audit.log(actor, Page.audit_event_updated(page, space))
+
+  If writing an event fails, the operation fails too: an unauditable change
+  must not happen.
   """
 
-  alias ConfluencePhxMirror.Audit.Event
+  alias ConfluencePhxMirror.Accounts.User
+  alias ConfluencePhxMirror.Audit.{Entry, Event}
   alias ConfluencePhxMirror.Repo
 
-  @type actor ::
-          {:user, ConfluencePhxMirror.Accounts.User.t()}
-          | {:system, String.t()}
-          | {:webhook, integer() | nil}
+  @type actor :: {:user, User.t()} | {:system, String.t()} | {:webhook, integer() | nil}
+
+  @doc "The actor of changes the mirror makes to itself, e.g. a scheduled sync."
+  @spec system_actor() :: actor()
+  def system_actor, do: {:system, "sync"}
 
   @doc "Records an audit event. Raises if it cannot be persisted."
-  @spec record(actor(), String.t(), String.t() | nil, String.t() | integer() | nil, map()) ::
-          Event.t()
-  def record(actor, action, entity_type, entity_id, metadata \\ %{}) do
+  @spec log(actor(), Entry.t()) :: Event.t()
+  def log(actor, %Entry{} = entry) do
     {actor_type, actor_id, actor_label} = normalise_actor(actor)
 
     %Event{}
@@ -26,31 +33,13 @@ defmodule ConfluencePhxMirror.Audit do
       actor_type: actor_type,
       actor_id: actor_id,
       actor_label: actor_label,
-      action: action,
-      entity_type: entity_type,
-      entity_id: to_string(entity_id),
-      metadata: stringify(metadata),
+      action: entry.action,
+      entity_type: entry.entity_type,
+      entity_id: to_string(entry.entity_id),
+      metadata: stringify(entry.metadata),
       inserted_at: DateTime.utc_now() |> DateTime.truncate(:second)
     })
     |> Repo.insert!()
-  end
-
-  def system(action, entity_type, entity_id, metadata \\ %{}) do
-    record({:system, "sync"}, action, entity_type, entity_id, metadata)
-  end
-
-  def webhook(action, delivery_id, metadata \\ %{}) do
-    record({:webhook, delivery_id}, action, "webhook_delivery", delivery_id, metadata)
-  end
-
-  def user(
-        %ConfluencePhxMirror.Accounts.User{} = user,
-        action,
-        entity_type,
-        entity_id,
-        metadata \\ %{}
-      ) do
-    record({:user, user}, action, entity_type, entity_id, metadata)
   end
 
   @doc "Newest first, for the admin audit view."

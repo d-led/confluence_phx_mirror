@@ -20,7 +20,7 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Blobs.{Key, Store}
   alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page}
+  alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.{DynamicContent, PageProperties, Renderer, SyncRun}
@@ -194,7 +194,7 @@ defmodule ConfluencePhxMirror.Sync do
           {deleted_count, guard_errors} = reconcile_deletions(space, dtos)
 
           if deleted_count > 0 do
-            Audit.system("pages.deleted", "space", space.key, %{count: deleted_count})
+            Audit.log(Audit.system_actor(), Space.audit_event_pages_deleted(space, deleted_count))
           end
 
           {entries ++ upserted, errors ++ page_errors ++ guard_errors, deleted + deleted_count}
@@ -449,10 +449,7 @@ defmodule ConfluencePhxMirror.Sync do
       if attachment.blob_key, do: Store.delete(attachment.blob_key)
       {:ok, _} = Repo.delete(attachment)
 
-      Audit.system("attachment.deleted", "attachment", attachment.confluence_id, %{
-        page: page.confluence_id,
-        filename: attachment.filename
-      })
+      Audit.log(Audit.system_actor(), Attachment.audit_event_deleted(attachment, page))
     end)
 
     []
@@ -485,11 +482,10 @@ defmodule ConfluencePhxMirror.Sync do
       |> Repo.insert_or_update()
       |> case do
         {:ok, attachment} ->
-          Audit.system("attachment.mirrored", "attachment", dto.id, %{
-            page: page.confluence_id,
-            filename: dto.filename,
-            bytes: dto.byte_size
-          })
+          Audit.log(
+            Audit.system_actor(),
+            Attachment.audit_event_mirrored(attachment, page)
+          )
 
           {:ok, attachment}
 
@@ -578,15 +574,14 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp audit_change(:unchanged, _page, _space, _dto), do: :ok
 
-  defp audit_change(change, page, space, dto) do
-    action = if change == :created, do: "page.created", else: "page.updated"
+  defp audit_change(change, page, space, _dto) do
+    entry =
+      case change do
+        :created -> Page.audit_event_created(page, space)
+        :updated -> Page.audit_event_updated(page, space)
+      end
 
-    Audit.system(action, "page", page.confluence_id, %{
-      space: space.key,
-      title: dto.title,
-      version: dto.version.number,
-      labels: dto.labels
-    })
+    Audit.log(Audit.system_actor(), entry)
   end
 
   defp merge_stats(left, right) do
@@ -609,7 +604,11 @@ defmodule ConfluencePhxMirror.Sync do
       })
       |> Repo.insert()
 
-    Audit.record(actor, "sync.started", "sync_run", run.id, %{mode: mode, source: source.name()})
+    Audit.log(
+      actor,
+      SyncRun.audit_event_started(run, mode, source.name())
+    )
+
     run
   end
 
@@ -628,7 +627,7 @@ defmodule ConfluencePhxMirror.Sync do
       })
       |> Repo.update()
 
-    Audit.record(actor, "sync.finished", "sync_run", run.id, %{status: status, stats: stats})
+    Audit.log(actor, SyncRun.audit_event_finished(run))
     {:ok, run}
   end
 
@@ -638,7 +637,7 @@ defmodule ConfluencePhxMirror.Sync do
       |> SyncRun.changeset(%{status: "failed", finished_at: now(), error: message})
       |> Repo.update()
 
-    Audit.system("sync.failed", "sync_run", run.id, %{error: message})
+    Audit.log(Audit.system_actor(), SyncRun.audit_event_failed(run, message))
   end
 
   defp normalize_errors(errors) do

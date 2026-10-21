@@ -45,7 +45,7 @@ defmodule ConfluencePhxMirror.Accounts do
         |> Repo.insert()
         |> case do
           {:ok, user} ->
-            Audit.system("user.created", "user", user.id, %{email: user.email, role: user.role})
+            Audit.log(Audit.system_actor(), User.audit_event_created(user))
             {:ok, user}
 
           {:error, changeset} ->
@@ -73,14 +73,14 @@ defmodule ConfluencePhxMirror.Accounts do
            %User{}
            |> User.changeset(attrs)
            |> Repo.insert() do
-      Audit.record(actor, "user.created", "user", user.id, %{email: user.email, role: user.role})
+      Audit.log(actor, User.audit_event_created(user))
       {:ok, user}
     end
   end
 
   def change_role(%User{} = user, role, actor) do
     with {:ok, user} <- user |> User.changeset(%{role: role}) |> Repo.update() do
-      Audit.record(actor, "user.role_changed", "user", user.id, %{role: role})
+      Audit.log(actor, User.audit_event_role_changed(user))
       {:ok, user}
     end
   end
@@ -147,7 +147,7 @@ defmodule ConfluencePhxMirror.Accounts do
         })
         |> Repo.insert()
 
-      Audit.system("user.login_requested", "user", user.id, %{email: user.email})
+      Audit.log(Audit.system_actor(), User.audit_event_login_requested(user))
 
       user
       |> ConfluencePhxMirror.Accounts.Emails.login_link(magic_link_url(plain))
@@ -207,7 +207,7 @@ defmodule ConfluencePhxMirror.Accounts do
     end)
     |> case do
       {:ok, user} ->
-        Audit.user(user, "user.signed_in", "user", user.id, %{method: "magic_link"})
+        Audit.log({:user, user}, User.audit_event_signed_in(user))
         {:ok, user}
 
       {:error, reason} ->
@@ -239,11 +239,7 @@ defmodule ConfluencePhxMirror.Accounts do
              token_prefix: prefix
            })
            |> Repo.insert() do
-      Audit.record(actor, "api_token.created", "api_token", token.id, %{
-        user: user.email,
-        name: name,
-        prefix: prefix
-      })
+      Audit.log(actor, ApiToken.audit_event_created(token, user))
 
       {:ok, plain, token}
     end
@@ -261,9 +257,7 @@ defmodule ConfluencePhxMirror.Accounts do
       token ->
         {:ok, _} = Repo.delete(token)
 
-        Audit.record(actor, "api_token.revoked", "api_token", token.id, %{
-          prefix: token.token_prefix
-        })
+        Audit.log(actor, ApiToken.audit_event_revoked(token))
 
         :ok
     end
