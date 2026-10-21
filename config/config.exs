@@ -16,7 +16,10 @@ config :confluence_phx_mirror,
 config :confluence_phx_mirror, Oban,
   repo: ConfluencePhxMirror.Repo,
   queues: [sync: 4, notifications: 10],
-  plugins: [Oban.Plugins.Pruner]
+  plugins: [
+    Oban.Plugins.Pruner,
+    {Oban.Plugins.Cron, crontab: [{"0 * * * *", ConfluencePhxMirror.Notifications.DigestWorker}]}
+  ]
 
 # Where the mirrored content comes from. `DemoSource` ships a rich offline
 # snapshot so the mirror can be demoed without Confluence credentials; use

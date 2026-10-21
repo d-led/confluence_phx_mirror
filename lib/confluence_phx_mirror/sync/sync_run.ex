@@ -6,6 +6,8 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{}
+
   @modes ~w(snapshot incremental webhook)
   @statuses ~w(running succeeded partial failed)
 

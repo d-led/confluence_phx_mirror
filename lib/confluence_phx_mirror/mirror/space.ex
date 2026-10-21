@@ -8,6 +8,8 @@ defmodule ConfluencePhxMirror.Mirror.Space do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{}
+
   schema "spaces" do
     field :key, :string
     field :name, :string

@@ -24,6 +24,8 @@ defmodule ConfluencePhxMirror.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import ConfluencePhxMirror.DataCase
+
+      use Oban.Testing, repo: ConfluencePhxMirror.Repo
     end
   end
 

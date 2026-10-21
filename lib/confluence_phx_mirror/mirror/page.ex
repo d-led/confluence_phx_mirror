@@ -10,6 +10,8 @@ defmodule ConfluencePhxMirror.Mirror.Page do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{}
+
   @types ~w(page blogpost)
   @statuses ~w(current draft archived)
 
