@@ -44,10 +44,13 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
 
   def page_tree(assigns) do
     ~H"""
-    <ul class={[
-      "menu menu-sm w-full gap-0.5 p-0",
-      @depth > 0 && "ml-3 border-l border-base-300/70 pl-2"
-    ]}>
+    <ul
+      id={@depth == 0 && "page-tree"}
+      class={[
+        "menu menu-sm w-full gap-0.5 p-0",
+        @depth > 0 && "ml-3 border-l border-base-300/70 pl-2"
+      ]}
+    >
       <li :for={node <- @nodes}>
         <.link
           navigate={URLs.content_path(@space_key, node.page)}

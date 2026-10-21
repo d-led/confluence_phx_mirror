@@ -164,6 +164,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             <.input
               field={@form[:q]}
               type="search"
+              aria-label="Search"
               placeholder="Search pages, decisions, people…"
               autocomplete="off"
               autofocus

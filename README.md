@@ -388,6 +388,20 @@ mix format --check-formatted
 mix credo --strict
 ```
 
+Tests are grouped by the question they answer:
+
+| Level | Files | Question |
+| --- | --- | --- |
+| Feature (`FeatureCase` + `phoenix_test`) | `test/…_web/features/` | can a reader get from A to B? |
+| LiveView | `test/…_web/live_views_test.exs` | what happens when a reader interacts? |
+| Controller | `test/…_web/controllers/` | what does one request return? |
+| API | `test/…_web/api_test.exs` | what does the JSON surface promise? |
+| Unit | `test/…/mirror`, `test/…/sync`, `test/…/blobs` | what does a pure module decide? |
+
+Feature tests use `PhoenixTest`, so they do not care whether a page is a
+controller or a LiveView: they visit, click, fill and assert the same way a
+reader would, and assert on paths and visible text rather than markup.
+
 Tests cover the CQL grammar, the renderer (cross-links, attachments, sanitising,
 native expand macros), blob keys/store, full sync + idempotency, updated pages
 arriving through a sync, deletions, notifications, magic links, API tokens,

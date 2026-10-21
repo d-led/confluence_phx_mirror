@@ -47,6 +47,30 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       assert comments["size"] == 2
     end
 
+    test "lists the ancestors of a page, root first", %{conn: conn} do
+      ancestors = conn |> get(~p"/api/v1/pages/1002/ancestors") |> json_response(200)
+
+      assert Enum.map(ancestors["results"], & &1["title"]) == [
+               "Engineering Handbook",
+               "Getting Started"
+             ]
+    end
+
+    test "lists the pages that link to a page", %{conn: conn} do
+      backlinks = conn |> get(~p"/api/v1/pages/1002/backlinks") |> json_response(200)
+
+      titles = Enum.map(backlinks["results"], & &1["title"])
+      assert "Getting Started" in titles
+      assert "Macros Gallery" in titles
+    end
+
+    test "an unknown page is a 404 in the API", %{conn: conn} do
+      body = conn |> get(~p"/api/v1/pages/999999") |> json_response(404)
+
+      assert body["error"] == "not_found"
+      assert body["message"] =~ "999999"
+    end
+
     test "searches text by default across all fields", %{conn: conn} do
       body = conn |> get(~p"/api/v1/search?q=rate+limit") |> json_response(200)
 
@@ -101,6 +125,16 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
         |> json_response(200)
 
       assert Enum.map(body["results"], & &1["title"]) == ["Release 2.0"]
+    end
+
+    test "an unparseable CQL query is rejected with its reason", %{conn: conn} do
+      body =
+        conn
+        |> get(~p"/wiki/rest/api/content/search?cql=space%20%3D")
+        |> json_response(400)
+
+      assert body["error"] == "invalid_cql"
+      assert body["message"] != ""
     end
   end
 
