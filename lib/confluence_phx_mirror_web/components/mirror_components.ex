@@ -424,16 +424,20 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
 
   def search_hit(assigns) do
     ~H"""
-    <article class="group rounded-xl border border-base-300/70 bg-base-100 p-4 transition hover:border-primary/40 hover:shadow-sm">
+    <article
+      data-hit
+      class="group relative rounded-xl border border-base-300/70 bg-base-100 p-4 transition hover:border-primary/40 hover:shadow-sm"
+    >
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <.link
             navigate={
               URLs.page_path(@result.space.key, @result.page.confluence_id, @result.page.slug)
             }
-            class="block truncate text-base font-semibold text-base-content group-hover:text-primary"
+            data-hit-link
+            class="block min-w-0 text-base font-semibold text-base-content after:absolute after:inset-0 after:content-[''] group-hover:text-primary"
           >
-            {highlight(@result.page.title, @terms)}
+            <span class="block truncate">{highlight(@result.page.title, @terms)}</span>
           </.link>
           <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-base-content/50">
             <span class="badge badge-ghost badge-xs">{@result.space.key}</span>
@@ -453,7 +457,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
       <p class="mt-2 line-clamp-2 text-xs leading-relaxed text-base-content/65">
         {highlight(@result.snippet, @terms)}
       </p>
-      <div class="mt-2"><.label_chips labels={@result.page.labels} /></div>
+      <div class="relative z-10 mt-2"><.label_chips labels={@result.page.labels} /></div>
     </article>
     """
   end

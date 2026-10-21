@@ -23,8 +23,8 @@ defmodule ConfluencePhxMirror.Mirror.Search.Filters do
       []
       |> text(params["q"])
       |> equality("space", params["space"])
-      |> equality("label", params["label"])
-      |> equality("type", params["type"])
+      |> values("label", params["labels"] || params["label"])
+      |> types(params["types"] || params["type"])
       |> equality("creator", params["creator"])
       |> number("ancestor", params["ancestor"])
       |> modified_after(params["updated"] || params["updated_after"])
@@ -52,10 +52,11 @@ defmodule ConfluencePhxMirror.Mirror.Search.Filters do
   end
 
   @doc "Field filters that participate in structured search."
-  def field_keys, do: ~w(space label type creator ancestor updated updated_after)
+  def field_keys, do: ~w(space labels label types type creator ancestor updated updated_after)
 
   defp trim(nil), do: nil
   defp trim(value) when is_binary(value), do: String.trim(value)
+  defp trim(value) when is_list(value), do: value |> Enum.join(",") |> String.trim()
   defp trim(value), do: value |> to_string() |> String.trim()
 
   defp text(clauses, value) when value in [nil, ""], do: clauses
@@ -63,15 +64,35 @@ defmodule ConfluencePhxMirror.Mirror.Search.Filters do
 
   defp equality(clauses, _field, value) when value in [nil, ""], do: clauses
 
-  defp equality(clauses, "type", value) do
-    if String.downcase(value) in ~w(page blogpost) do
-      clauses ++ [~s(type = #{String.downcase(value)})]
-    else
-      clauses
+  defp equality(clauses, field, value), do: clauses ++ [~s(#{field} = #{cql_string(value)})]
+
+  # Several values of one field narrow the result set ("all of these labels").
+  defp values(clauses, field, value) do
+    value
+    |> split()
+    |> Enum.reduce(clauses, &(&2 ++ [~s(#{field} = #{cql_string(&1)})]))
+  end
+
+  defp types(clauses, value) do
+    case value
+         |> split()
+         |> Enum.map(&String.downcase/1)
+         |> Enum.filter(&(&1 in ~w(page blogpost))) do
+      [] -> clauses
+      [type] -> clauses ++ [~s(type = #{type})]
+      types -> clauses ++ ["(" <> Enum.map_join(types, " OR ", &"type = #{&1}") <> ")"]
     end
   end
 
-  defp equality(clauses, field, value), do: clauses ++ [~s(#{field} = #{cql_string(value)})]
+  defp split(nil), do: []
+
+  defp split(value) do
+    value
+    |> to_string()
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
 
   defp number(clauses, _field, value) when value in [nil, ""], do: clauses
 

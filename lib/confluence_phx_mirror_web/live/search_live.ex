@@ -1,10 +1,13 @@
 defmodule ConfluencePhxMirrorWeb.SearchLive do
   @moduledoc """
-  Google-like search: one plain-text box with instant debounced results and a
-  row of structured filters (space, label, type, freshness).
+  Google-like search: one plain-text box with instant debounced results.
 
-  The filters are compiled to the CQL subset internally by
-  `Mirror.Search.Filters`; there is no raw CQL input in the reader UI.
+  Filters stay out of the way as pills, the way Confluence does it: the space
+  and the time window are single-choice pill menus, content types are toggle
+  pills, and labels are free-form pills you type and remove. Every control is
+  a real button with a 40px tap target, so the row works on touch as well as
+  with a mouse. The raw CQL is never exposed; `Mirror.Search.Filters` turns the
+  pills into the mirror's own query.
   """
 
   use ConfluencePhxMirrorWeb, :live_view
@@ -18,6 +21,14 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   defp page_size, do: Application.get_env(:confluence_phx_mirror, :search, [])[:page_size] || 30
 
   @debounce 220
+  @type_options [{"page", "Pages"}, {"blogpost", "Blog posts"}]
+  @window_options [
+    {"", "Any time"},
+    {"7d", "Past 7 days"},
+    {"30d", "Past 30 days"},
+    {"90d", "Past 90 days"},
+    {"365d", "Past year"}
+  ]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -28,9 +39,10 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
      assign(socket,
        q: "",
        space: "",
-       label: "",
-       type: "",
+       labels: "",
+       types: "",
        updated: "",
+       label_query: "",
        results: [],
        terms: [],
        error: nil,
@@ -38,20 +50,10 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
        elapsed_ms: nil,
        chips: [],
        spaces: spaces,
-       labels: labels,
+       label_catalog: labels,
        recent_pages: Mirror.recent_pages(6),
-       space_options: [{"All spaces", ""} | Enum.map(spaces, &{&1.name, &1.key})],
-       label_options: [
-         {"All labels", ""} | Enum.map(labels, fn {name, _count} -> {name, name} end)
-       ],
-       type_options: [{"Any type", ""}, {"Pages", "page"}, {"Blog posts", "blogpost"}],
-       updated_options: [
-         {"Any time", ""},
-         {"Past 7 days", "7d"},
-         {"Past 30 days", "30d"},
-         {"Past 90 days", "90d"},
-         {"Past year", "365d"}
-       ],
+       type_options: @type_options,
+       window_options: @window_options,
        form: to_form(empty_params(), as: :search),
        debounce: @debounce
      )}
@@ -74,8 +76,8 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
      assign(socket,
        q: filters["q"],
        space: filters["space"],
-       label: filters["label"],
-       type: filters["type"],
+       labels: filters["labels"],
+       types: filters["types"],
        updated: filters["updated"],
        results: results,
        terms: terms,
@@ -89,55 +91,174 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
   @impl true
   def handle_event("search", %{"search" => params}, socket) do
-    filters = take_filters(params)
-    {:noreply, push_patch(socket, to: search_path(filters), replace: true)}
+    q = params |> Map.get("q", "") |> to_string() |> String.trim()
+    {:noreply, patch(socket, Map.put(current_filters(socket), "q", q))}
   end
 
   def handle_event("clear", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/search")}
   end
 
-  defp empty_params, do: %{"q" => "", "space" => "", "label" => "", "type" => "", "updated" => ""}
+  def handle_event("set_space", %{"value" => value}, socket) do
+    space = if value == socket.assigns.space, do: "", else: value
+    {:noreply, patch(socket, Map.put(current_filters(socket), "space", space))}
+  end
+
+  def handle_event("toggle_type", %{"value" => value}, socket) do
+    types = toggle(label_values(socket.assigns.types), value)
+
+    {:noreply, patch(socket, Map.put(current_filters(socket), "types", Enum.join(types, ",")))}
+  end
+
+  def handle_event("set_updated", %{"value" => value}, socket) do
+    updated = if value == socket.assigns.updated, do: "", else: value
+
+    {:noreply, patch(socket, Map.put(current_filters(socket), "updated", updated))}
+  end
+
+  def handle_event("toggle_label", %{"label" => label}, socket) do
+    labels = toggle(label_values(socket.assigns.labels), label)
+
+    {:noreply, patch(socket, Map.put(current_filters(socket), "labels", Enum.join(labels, ",")))}
+  end
+
+  def handle_event("label_query", %{"label" => value}, socket) do
+    {:noreply, assign(socket, :label_query, value |> to_string() |> String.trim())}
+  end
+
+  def handle_event("add_label", %{"label" => value}, socket) do
+    case normalise_label(value) do
+      "" ->
+        {:noreply, socket}
+
+      label ->
+        labels = Enum.uniq(label_values(socket.assigns.labels) ++ [label])
+
+        socket =
+          socket
+          |> assign(:label_query, "")
+          |> patch(Map.put(current_filters(socket), "labels", Enum.join(labels, ",")))
+
+        {:noreply, socket}
+    end
+  end
+
+  defp empty_params do
+    %{"q" => "", "space" => "", "labels" => "", "types" => "", "updated" => ""}
+  end
+
+  defp current_filters(socket) do
+    %{
+      "q" => socket.assigns.q,
+      "space" => socket.assigns.space,
+      "labels" => socket.assigns.labels,
+      "types" => socket.assigns.types,
+      "updated" => socket.assigns.updated
+    }
+  end
 
   defp take_filters(params) do
-    Map.new(empty_params(), fn {key, _default} ->
-      {key, params |> Map.get(key, "") |> to_string() |> String.trim()}
-    end)
+    %{
+      "q" => clean(params["q"]),
+      "space" => clean(params["space"]),
+      "labels" => (params["labels"] || params["label"]) |> label_values() |> Enum.join(","),
+      "types" => (params["types"] || params["type"]) |> label_values() |> Enum.join(","),
+      "updated" => clean(params["updated"])
+    }
+  end
+
+  defp clean(nil), do: ""
+  defp clean(value), do: value |> to_string() |> String.trim()
+
+  defp patch(socket, filters) do
+    push_patch(socket, to: search_path(filters), replace: true)
   end
 
   defp search_path(filters) do
     query =
       filters
       |> Enum.reject(fn {_key, value} -> value == "" end)
+      |> Enum.sort()
       |> URI.encode_query()
 
     if query == "", do: ~p"/search", else: "/search?" <> query
   end
 
   defp chips(filters) do
-    filters
+    base = [
+      {"q", filters["q"]},
+      {"space", filters["space"]},
+      {"updated", filters["updated"]}
+    ]
+
+    types = Enum.map(label_values(filters["types"]), &{"types", &1})
+
+    (base ++ types)
     |> Enum.reject(fn {_key, value} -> value == "" end)
     |> Enum.map(fn {key, value} ->
       %{
         key: key,
         label: chip_label(key, value),
-        path: search_path(Map.put(filters, key, ""))
+        path: search_path(remove(filters, key, value))
       }
     end)
   end
 
+  defp remove(filters, "types", value) do
+    types = filters["types"] |> label_values() |> List.delete(value)
+    Map.put(filters, "types", Enum.join(types, ","))
+  end
+
+  defp remove(filters, key, _value), do: Map.put(filters, key, "")
+
   defp chip_label("q", value), do: ~s(“#{value}”)
   defp chip_label("space", value), do: "Space: #{value}"
-  defp chip_label("label", value), do: "Label: #{value}"
-  defp chip_label("type", "page"), do: "Type: pages"
-  defp chip_label("type", "blogpost"), do: "Type: blog posts"
-  defp chip_label("type", value), do: "Type: #{value}"
+  defp chip_label("types", "page"), do: "Type: pages"
+  defp chip_label("types", "blogpost"), do: "Type: blog posts"
+  defp chip_label("types", value), do: "Type: #{value}"
   defp chip_label("updated", "7d"), do: "Past 7 days"
   defp chip_label("updated", "30d"), do: "Past 30 days"
   defp chip_label("updated", "90d"), do: "Past 90 days"
   defp chip_label("updated", "365d"), do: "Past year"
   defp chip_label("updated", value), do: "Updated: #{value}"
   defp chip_label(key, value), do: "#{key}: #{value}"
+
+  defp label_values(value) do
+    value
+    |> to_string()
+    |> String.split(",", trim: true)
+    |> Enum.map(&normalise_label/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
+
+  defp normalise_label(value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> String.downcase()
+    |> String.replace(~r/\s+/u, "-")
+  end
+
+  defp toggle(list, value) do
+    if value in list, do: List.delete(list, value), else: list ++ [value]
+  end
+
+  defp space_label("", _spaces), do: "All spaces"
+
+  defp space_label(key, spaces) do
+    case Enum.find(spaces, &(&1.key == key)) do
+      nil -> "Space: #{key}"
+      space -> space.name
+    end
+  end
+
+  defp updated_label(value) do
+    Enum.find_value(@window_options, "Any time", fn
+      {^value, label} -> label
+      _ -> nil
+    end)
+  end
 
   @impl true
   def render(assigns) do
@@ -177,44 +298,29 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
               :if={@searched?}
               type="button"
               phx-click="clear"
-              class="btn btn-ghost btn-xs rounded-full"
+              class="btn btn-ghost btn-sm rounded-full"
               aria-label="Clear search"
             >
               <.icon name="hero-x-mark" class="size-4" />
             </button>
             <button type="submit" class="btn btn-primary btn-sm rounded-full px-4">Search</button>
           </div>
-
-          <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <.input
-              field={@form[:space]}
-              type="select"
-              options={@space_options}
-              class="select-sm rounded-full"
-            />
-            <.input
-              field={@form[:label]}
-              type="select"
-              options={@label_options}
-              class="select-sm rounded-full"
-            />
-            <.input
-              field={@form[:type]}
-              type="select"
-              options={@type_options}
-              class="select-sm rounded-full"
-            />
-            <.input
-              field={@form[:updated]}
-              type="select"
-              options={@updated_options}
-              class="select-sm rounded-full"
-            />
-          </div>
         </.form>
 
+        <.filter_bar
+          space={@space}
+          spaces={@spaces}
+          types={@types}
+          type_options={@type_options}
+          updated={@updated}
+          window_options={@window_options}
+          labels={@labels}
+          label_query={@label_query}
+          label_catalog={@label_catalog}
+        />
+
         <div class="mt-3 flex flex-wrap items-center gap-1.5">
-          <span :if={@chips == []} class="text-[11px] text-base-content/40">
+          <span :if={@chips == [] and @labels == ""} class="text-[11px] text-base-content/40">
             <span class="font-medium">Tip:</span> filters combine with your words.
           </span>
           <a
@@ -226,7 +332,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             <.icon name="hero-x-mark" class="size-3" />
           </a>
           <a
-            :if={length(@chips) > 1}
+            :if={length(@chips) + length(label_values(@labels)) > 1}
             href={~p"/search"}
             class="ml-1 text-[11px] text-base-content/45 hover:text-primary"
           >
@@ -283,13 +389,13 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             </div>
           </section>
 
-          <section :if={@labels != []} class="mt-8">
+          <section :if={@label_catalog != []} class="mt-8">
             <h2 class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-base-content/40">
               Browse by label
             </h2>
             <div class="flex flex-wrap gap-1.5">
               <a
-                :for={{label, count} <- Enum.take(@labels, 12)}
+                :for={{label, count} <- Enum.take(@label_catalog, 12)}
                 href={~p"/labels/#{label}"}
                 class="badge badge-outline badge-sm"
               >
@@ -300,6 +406,129 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
         <% end %>
       </div>
     </Layouts.app>
+    """
+  end
+
+  attr :space, :string, required: true
+  attr :spaces, :list, required: true
+  attr :types, :string, required: true
+  attr :type_options, :list, required: true
+  attr :updated, :string, required: true
+  attr :window_options, :list, required: true
+  attr :labels, :string, required: true
+  attr :label_query, :string, required: true
+  attr :label_catalog, :list, required: true
+
+  defp filter_bar(assigns) do
+    ~H"""
+    <div class="mt-3 flex flex-wrap items-center gap-2" id="search-filters">
+      <details class="dropdown">
+        <summary
+          id="space-filter"
+          class="btn btn-sm h-10 min-h-10 gap-1.5 rounded-full border-base-300 bg-base-100 px-3 font-normal"
+        >
+          <.icon name="hero-rectangle-stack" class="size-4 text-base-content/45" />
+          <span class="max-w-40 truncate">{space_label(@space, @spaces)}</span>
+          <.icon name="hero-chevron-down" class="size-3 opacity-45" />
+        </summary>
+        <ul class="menu dropdown-content z-50 mt-1 max-h-80 w-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1 shadow-xl">
+          <li>
+            <button
+              type="button"
+              phx-click="set_space"
+              phx-value-value=""
+              class={[@space == "" && "active"]}
+            >
+              All spaces
+            </button>
+          </li>
+          <li :for={space <- @spaces}>
+            <button
+              type="button"
+              phx-click="set_space"
+              phx-value-value={space.key}
+              class={[@space == space.key && "active"]}
+            >
+              <span class="min-w-0 flex-1 truncate">{space.name}</span>
+              <span class="badge badge-ghost badge-xs">{space.key}</span>
+            </button>
+          </li>
+        </ul>
+      </details>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          :for={{value, label} <- @type_options}
+          type="button"
+          phx-click="toggle_type"
+          phx-value-value={value}
+          aria-pressed={value in label_values(@types)}
+          class={[
+            "btn btn-sm h-10 min-h-10 rounded-full border-base-300 px-3.5 font-normal",
+            value in label_values(@types) && "border-primary bg-primary/10 text-primary"
+          ]}
+        >
+          {label}
+        </button>
+      </div>
+
+      <details class="dropdown">
+        <summary
+          id="updated-filter"
+          class="btn btn-sm h-10 min-h-10 gap-1.5 rounded-full border-base-300 bg-base-100 px-3 font-normal"
+        >
+          <.icon name="hero-clock" class="size-4 text-base-content/45" />
+          {updated_label(@updated)}
+          <.icon name="hero-chevron-down" class="size-3 opacity-45" />
+        </summary>
+        <ul class="menu dropdown-content z-50 mt-1 w-52 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl">
+          <li :for={{value, label} <- @window_options}>
+            <button
+              type="button"
+              phx-click="set_updated"
+              phx-value-value={value}
+              class={[@updated == value && "active"]}
+            >
+              {label}
+            </button>
+          </li>
+        </ul>
+      </details>
+
+      <div class="flex flex-wrap items-center gap-1.5" id="label-pills">
+        <span
+          :for={label <- label_values(@labels)}
+          class="inline-flex h-10 items-center gap-1 rounded-full border border-primary/30 bg-primary/10 pl-3 pr-1 text-xs font-medium text-primary"
+        >
+          {label}
+          <button
+            type="button"
+            phx-click="toggle_label"
+            phx-value-label={label}
+            class="grid size-8 place-items-center rounded-full transition hover:bg-primary/20"
+            aria-label={"Remove label #{label}"}
+          >
+            <.icon name="hero-x-mark" class="size-3.5" />
+          </button>
+        </span>
+
+        <form id="label-form" phx-change="label_query" phx-submit="add_label" class="flex">
+          <input
+            type="text"
+            name="label"
+            value={@label_query}
+            list="label-suggestions"
+            placeholder="+ label"
+            autocomplete="off"
+            phx-debounce="150"
+            class="h-10 w-28 rounded-full border border-dashed border-base-300 bg-base-100 px-3 text-xs placeholder:text-base-content/40 focus:border-primary/50 focus:outline-none sm:w-36 [&::-webkit-calendar-picker-indicator]:hidden"
+          />
+          <datalist id="label-suggestions">
+            <option :for={{name, _count} <- @label_catalog} value={name} />
+          </datalist>
+        </form>
+      </div>
+    </div>
     """
   end
 end
