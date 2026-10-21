@@ -15,6 +15,15 @@ csv = fn value ->
   |> Enum.reject(&(&1 == ""))
 end
 
+default_source = fn
+  {site, token}
+  when is_binary(site) and site != "" and is_binary(token) and token != "" ->
+    ConfluencePhxMirror.Confluence.HttpSource
+
+  _no_credentials ->
+    ConfluencePhxMirror.Confluence.DemoSource
+end
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -37,17 +46,57 @@ end
 
 # --- Mirror source -----------------------------------------------------------
 #
-# CM_SOURCE=demo (default) mirrors the bundled sample snapshot, so the app is
-# fully functional without Confluence credentials. CM_SOURCE=http mirrors a
-# real site using the REST API.
+# `CM_SOURCE` picks the upstream explicitly: `demo` mirrors the bundled sample
+# snapshot, `http` reads a real Confluence site through its REST API. Left
+# unset, configured credentials (`CM_CONFLUENCE_SITE` plus `CM_ATL_TOKEN`) mean
+# the real thing — a deployment that has them should not silently mirror
+# fixtures — and otherwise the demo snapshot keeps the app usable.
 source =
-  case System.get_env("CM_SOURCE", "demo") do
-    "http" -> ConfluencePhxMirror.Confluence.HttpSource
-    "live" -> ConfluencePhxMirror.Confluence.HttpSource
-    _demo -> ConfluencePhxMirror.Confluence.DemoSource
+  case {System.get_env("CM_SOURCE"), config_env()} do
+    {"http", _env} ->
+      ConfluencePhxMirror.Confluence.HttpSource
+
+    {"live", _env} ->
+      ConfluencePhxMirror.Confluence.HttpSource
+
+    {"demo", _env} ->
+      ConfluencePhxMirror.Confluence.DemoSource
+
+    # The suite must never reach for a real site because a developer happens to
+    # export credentials: tests use the demo snapshot unless told otherwise.
+    {nil, :test} ->
+      ConfluencePhxMirror.Confluence.DemoSource
+
+    {_unset, _env} ->
+      default_source.({System.get_env("CM_CONFLUENCE_SITE"), System.get_env("CM_ATL_TOKEN")})
   end
 
 config :confluence_phx_mirror, :source, source
+
+# --- Site isolation ----------------------------------------------------------
+#
+# A mirror instance shows exactly one site, and each site gets its own database,
+# so demo fixtures can never be mistaken for mirrored content (or the other way
+# round). In development the database name is derived from the configured site:
+# `..._demo` for the bundled snapshot, `..._dled_atlassian_net` for a real one.
+# Deployments set DATABASE_URL and stay in charge of their own database.
+if config_env() == :dev and System.get_env("DATABASE_URL") in [nil, ""] do
+  site_key =
+    case source do
+      ConfluencePhxMirror.Confluence.DemoSource ->
+        "demo"
+
+      _live ->
+        ConfluencePhxMirror.Sites.key_for(System.get_env("CM_CONFLUENCE_SITE"))
+    end
+
+  repo = Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Repo, [])
+  base = Keyword.get(repo, :database, "confluence_phx_mirror_dev")
+
+  config :confluence_phx_mirror,
+         ConfluencePhxMirror.Repo,
+         Keyword.put(repo, :database, ConfluencePhxMirror.Sites.database(base, site_key))
+end
 
 http_defaults =
   Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Confluence.HttpSource, [])
@@ -93,6 +142,20 @@ end
 
 if admin_groups = System.get_env("CM_ADMIN_GROUPS") do
   config :confluence_phx_mirror, :admin_groups, csv.(admin_groups)
+end
+
+# CM_PROXY_AUTH=true trusts the identity header set by a reverse proxy (e.g.
+# oauth2-proxy) and provisions accounts from it.
+if proxy_auth = System.get_env("CM_PROXY_AUTH") do
+  config :confluence_phx_mirror, :proxy_auth, proxy_auth in ~w(1 true yes)
+end
+
+if header = System.get_env("CM_PROXY_AUTH_HEADER") do
+  config :confluence_phx_mirror, :proxy_auth_header, String.downcase(header)
+end
+
+if header = System.get_env("CM_PROXY_AUTH_NAME_HEADER") do
+  config :confluence_phx_mirror, :proxy_auth_name_header, String.downcase(header)
 end
 
 if webhook_secret = System.get_env("CM_WEBHOOK_SECRET") do

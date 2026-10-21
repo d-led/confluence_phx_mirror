@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirror.Application do
     children = [
       ConfluencePhxMirrorWeb.Telemetry,
       ConfluencePhxMirror.Repo,
+      ConfluencePhxMirror.Sites.Guard,
       {DNSCluster,
        query: Application.get_env(:confluence_phx_mirror, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: ConfluencePhxMirror.PubSub},

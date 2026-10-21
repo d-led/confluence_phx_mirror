@@ -45,6 +45,12 @@ config :confluence_phx_mirror,
 
 config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.DemoSource, sync_interval_seconds: 0
 
+# Tests talk to stubbed HTTP transports, so the client-side pacing must not turn
+# a unit test into a minute-long wait.
+config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.HttpSource,
+  requests_per_second: 1_000,
+  burst: 1_000
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 
