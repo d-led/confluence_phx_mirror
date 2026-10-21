@@ -219,5 +219,26 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert run.error =~ "empty_listing_kept_existing_pages"
       assert Repo.aggregate(Page, :count) == pages_before
     end
+
+    test "space mode re-reads one space and leaves the others alone" do
+      demo_snapshot!()
+
+      assert {:ok, run} = Sync.run(:space, space_key: "PROD")
+
+      assert run.status == "succeeded"
+      assert run.stats["spaces"] == 1
+      assert {:ok, _page} = Mirror.find_page(2001)
+      assert {:ok, _page} = Mirror.find_page(1002)
+    end
+
+    test "incremental mode only touches pages that changed upstream" do
+      demo_snapshot!()
+
+      assert {:ok, run} =
+               Sync.run(:incremental, since: DateTime.add(DateTime.utc_now(), -60, :second))
+
+      assert run.status == "succeeded"
+      assert run.stats["pages"] == 0
+    end
   end
 end

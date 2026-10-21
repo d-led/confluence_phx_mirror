@@ -96,4 +96,47 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
       assert length(results) == 1
     end
   end
+
+  describe "CQL comparisons" do
+    test "compares space, type and title with inequality" do
+      assert "Release 2.0" in titles("space != ENG")
+      refute "Architecture Overview" in titles("space != ENG")
+
+      assert "Architecture Overview" in titles("type != blogpost")
+      refute "Release 2.0" in titles("type != blogpost")
+
+      assert titles(~s(title = "Architecture Overview")) == ["Architecture Overview"]
+      refute "Architecture Overview" in titles(~s(title != "Architecture Overview"))
+    end
+
+    test "filters by creator, parent and id" do
+      assert "Architecture Overview" in titles(~s(creator = "Jane Doe"))
+      assert "Architecture Overview" in titles("parent = 1001")
+      assert titles("id = 1002") == ["Architecture Overview"]
+      assert titles("id = 999999") == []
+    end
+
+    test "compares numbers and dates on both sides of a bound" do
+      assert titles("version > 10000") == []
+      assert "Architecture Overview" in titles("version >= 1")
+      assert titles("version < 0") == []
+      assert "Architecture Overview" in titles("version <= 10000")
+
+      assert titles(~s(created < "2000-01-01")) == []
+      assert "Architecture Overview" in titles(~s(created <= "2026-10-21"))
+      assert titles(~s(lastmodified < "2000-01-01")) == []
+      assert "Architecture Overview" in titles(~s(lastmodified >= "2026-10-01"))
+    end
+
+    test "orders by the requested field instead of by recency" do
+      {:ok, by_title} = Search.search("space = ENG ORDER BY title ASC")
+      sorted = Enum.map(by_title, & &1.page.title) |> Enum.sort()
+      assert Enum.map(by_title, & &1.page.title) == sorted
+
+      {:ok, by_version} = Search.search("space = ENG ORDER BY version DESC")
+
+      assert List.first(by_version).page.version_number >=
+               List.last(by_version).page.version_number
+    end
+  end
 end
