@@ -1,0 +1,32 @@
+defmodule ConfluencePhxMirror.Notifications.Subscription do
+  @moduledoc """
+  A user watching a space or a page.
+
+  `frequency` is `"instant"` (one e-mail per sync that changes the watched
+  content) or `"daily"` (rolled up by the digest worker).
+  """
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @target_types ~w(space page)
+  @frequencies ~w(instant daily)
+
+  schema "subscriptions" do
+    field :target_type, :string
+    field :target_id, :integer
+    field :frequency, :string, default: "instant"
+
+    belongs_to :user, ConfluencePhxMirror.Accounts.User
+
+    timestamps(type: :utc_datetime)
+  end
+
+  def changeset(subscription, attrs) do
+    subscription
+    |> cast(attrs, [:user_id, :target_type, :target_id, :frequency])
+    |> validate_required([:user_id, :target_type, :target_id, :frequency])
+    |> validate_inclusion(:target_type, @target_types)
+    |> validate_inclusion(:frequency, @frequencies)
+    |> unique_constraint([:user_id, :target_type, :target_id])
+  end
+end

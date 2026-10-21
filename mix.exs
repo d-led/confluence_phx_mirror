@@ -66,13 +66,19 @@ defmodule ConfluencePhxMirror.MixProject do
        compile: false,
        depth: 1},
       {:swoosh, "~> 1.16"},
+      {:gen_smtp, "~> 1.3"},
       {:req, "~> 0.5"},
+      {:floki, "~> 0.38"},
+      {:hammer, "~> 7.5"},
+      {:oban, "~> 2.20"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:ex_doc, "~> 0.38", only: :dev, runtime: false}
     ]
   end
 
@@ -89,13 +95,23 @@ defmodule ConfluencePhxMirror.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["compile", "tailwind confluence_phx_mirror", "esbuild confluence_phx_mirror"],
+      "assets.build": [
+        "compile",
+        "tailwind confluence_phx_mirror",
+        "esbuild confluence_phx_mirror"
+      ],
       "assets.deploy": [
         "tailwind confluence_phx_mirror --minify",
         "esbuild confluence_phx_mirror --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "credo --strict",
+        "test"
+      ]
     ]
   end
 end

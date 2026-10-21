@@ -56,6 +56,33 @@ config :confluence_phx_mirror, ConfluencePhxMirrorWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :confluence_phx_mirror, dev_routes: true
 
+# In development we assume an administrator, so the mirror UI and the admin
+# screens are immediately usable. Sign-in links are still sent through
+# smtp4dev (http://localhost:3001).
+config :confluence_phx_mirror, auto_admin: true
+config :confluence_phx_mirror, self_signup: true
+
+config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.DemoSource,
+  # A snapshot pull every 15 minutes, plus webhook driven updates.
+  sync_interval_seconds: 0
+
+config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.HttpSource,
+  base_url: System.get_env("CM_CONFLUENCE_SITE", "https://example.atlassian.net"),
+  email: System.get_env("CM_ATL_EMAIL"),
+  api_token: System.get_env("CM_ATL_TOKEN"),
+  requests_per_second: 5,
+  burst: 5
+
+config :confluence_phx_mirror, ConfluencePhxMirror.Mailer,
+  adapter: Swoosh.Adapters.SMTP,
+  relay: System.get_env("SMTP_HOST", "localhost"),
+  port: String.to_integer(System.get_env("SMTP_PORT", "2525")),
+  username: System.get_env("SMTP_USERNAME"),
+  password: System.get_env("SMTP_PASSWORD"),
+  tls: :never,
+  auth: :never,
+  retries: 1
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

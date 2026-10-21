@@ -20,16 +20,72 @@ if System.get_env("PHX_SERVER") do
   config :confluence_phx_mirror, ConfluencePhxMirrorWeb.Endpoint, server: true
 end
 
-if System.get_env("CM_ATL_TOKEN") do
-  config :confluence_phx_mirror, ConfluencePhxMirrorWeb, atl_token: System.get_env("CM_ATL_TOKEN")
-else
-  raise "CM_ATL_TOKEN must be set"
+# --- Mirror source -----------------------------------------------------------
+#
+# CM_SOURCE=demo (default) mirrors the bundled sample snapshot, so the app is
+# fully functional without Confluence credentials. CM_SOURCE=http mirrors a
+# real site using the REST API.
+source =
+  case System.get_env("CM_SOURCE", "demo") do
+    "http" -> ConfluencePhxMirror.Confluence.HttpSource
+    "live" -> ConfluencePhxMirror.Confluence.HttpSource
+    _demo -> ConfluencePhxMirror.Confluence.DemoSource
+  end
+
+config :confluence_phx_mirror, :source, source
+
+config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.HttpSource,
+  base_url: System.get_env("CM_CONFLUENCE_SITE"),
+  email: System.get_env("CM_ATL_EMAIL"),
+  api_token: System.get_env("CM_ATL_TOKEN"),
+  requests_per_second: String.to_integer(System.get_env("CM_REQUESTS_PER_SECOND", "5")),
+  burst: String.to_integer(System.get_env("CM_BURST", "5")),
+  spaces:
+    (case System.get_env("CM_SPACES") do
+       nil -> :all
+       "" -> :all
+       keys -> keys |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+     end),
+  sync_interval_seconds: String.to_integer(System.get_env("CM_SYNC_INTERVAL_SECONDS", "900"))
+
+config :confluence_phx_mirror,
+  blob_root: System.get_env("MIRROR_BLOB_ROOT", "priv/static/mirror"),
+  auto_admin: System.get_env("MIRROR_AUTO_ADMIN") in ~w(1 true yes),
+  self_signup: System.get_env("MIRROR_SELF_SIGNUP") in ~w(1 true yes),
+  webhooks: [
+    secret: System.get_env("CM_WEBHOOK_SECRET"),
+    require_signature: System.get_env("CM_WEBHOOK_REQUIRE_SIGNATURE", "true") in ~w(1 true yes)
+  ],
+  notifications: [
+    enabled: System.get_env("MIRROR_NOTIFICATIONS", "true") in ~w(1 true yes),
+    from:
+      {System.get_env("MIRROR_MAIL_FROM_NAME", "Confluence Mirror"),
+       System.get_env("MIRROR_MAIL_FROM", "mirror@localhost")},
+    digest_hour_utc: String.to_integer(System.get_env("MIRROR_DIGEST_HOUR_UTC", "8"))
+  ]
+
+if rate_limit = System.get_env("MIRROR_READER_RATE_LIMIT_PER_MINUTE") do
+  per_minute = String.to_integer(rate_limit)
+
+  config :confluence_phx_mirror,
+    reader_rate_limit: [
+      enabled: per_minute > 0,
+      html: [limit: per_minute, period_ms: 60_000],
+      api: [limit: max(div(per_minute, 2), 1), period_ms: 60_000],
+      attachments: [limit: per_minute * 2, period_ms: 60_000]
+    ]
 end
 
-if System.get_env("CM_CONFLUENCE_SITE") do
-  config :confluence_phx_mirror, ConfluencePhxMirrorWeb, confluence_site: System.get_env("CM_CONFLUENCE_SITE")
-else
-  raise "CM_ATL_TOKEN must be set"
+if smtp_relay = System.get_env("SMTP_RELAY") do
+  config :confluence_phx_mirror, ConfluencePhxMirror.Mailer,
+    adapter: Swoosh.Adapters.SMTP,
+    relay: smtp_relay,
+    port: String.to_integer(System.get_env("SMTP_PORT", "587")),
+    username: System.get_env("SMTP_USERNAME"),
+    password: System.get_env("SMTP_PASSWORD"),
+    tls: if(System.get_env("SMTP_TLS", "always") in ~w(never false 0), do: :never, else: :always),
+    auth:
+      if(System.get_env("SMTP_AUTH", "always") in ~w(never false 0), do: :never, else: :always)
 end
 
 config :confluence_phx_mirror, ConfluencePhxMirrorWeb.Endpoint,

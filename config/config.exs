@@ -11,6 +11,40 @@ config :confluence_phx_mirror,
   ecto_repos: [ConfluencePhxMirror.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Background jobs. Sync work is retried per source page, notification e-mails are
+# retried separately so a broken mailer never blocks the mirror.
+config :confluence_phx_mirror, Oban,
+  repo: ConfluencePhxMirror.Repo,
+  queues: [sync: 4, notifications: 10],
+  plugins: [Oban.Plugins.Pruner]
+
+# Where the mirrored content comes from. `DemoSource` ships a rich offline
+# snapshot so the mirror can be demoed without Confluence credentials; use
+# `ConfluencePhxMirror.Confluence.HttpSource` against a real site.
+config :confluence_phx_mirror, :source, ConfluencePhxMirror.Confluence.DemoSource
+
+config :confluence_phx_mirror,
+  mirror: [name: "Confluence Mirror", tagline: "Read-only, always available"],
+  blob_root: "priv/static/mirror",
+  # Postgres full-text configuration. `simple` works for every language and
+  # keeps search exact instead of applying English stemming.
+  search: [language: "simple"],
+  # Simulated / production users get auto-provisioned in dev and test.
+  auto_admin: false,
+  self_signup: false,
+  reader_rate_limit: [
+    enabled: true,
+    html: [limit: 240, period_ms: 60_000],
+    api: [limit: 120, period_ms: 60_000],
+    attachments: [limit: 300, period_ms: 60_000]
+  ],
+  notifications: [
+    enabled: true,
+    from: {"Confluence Mirror", "mirror@localhost"},
+    digest_hour_utc: 8
+  ],
+  webhooks: [secret: nil, require_signature: true]
+
 # Configure the endpoint
 config :confluence_phx_mirror, ConfluencePhxMirrorWeb.Endpoint,
   url: [host: "localhost"],

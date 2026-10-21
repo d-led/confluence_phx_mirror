@@ -20,8 +20,30 @@ config :confluence_phx_mirror, ConfluencePhxMirrorWeb.Endpoint,
   secret_key_base: "LJ4dfhf+oxVOz5DXoeVutkPU2KhuMpYsFInNzIWQeOgF5xRHeayQfrtjuBVLX1w7",
   server: false
 
-# In test we don't send emails
+# In test we don't send emails, we assert on them
 config :confluence_phx_mirror, ConfluencePhxMirror.Mailer, adapter: Swoosh.Adapters.Test
+
+# Oban runs manually in tests: each test drives the jobs it cares about.
+# See https://hexdocs.pm/oban/testing.html
+config :confluence_phx_mirror, Oban,
+  testing: :manual,
+  queues: false,
+  plugins: false
+
+config :confluence_phx_mirror,
+  auto_admin: true,
+  self_signup: true,
+  blob_root: "priv/static/mirror_test",
+  reader_rate_limit: [
+    enabled: true,
+    html: [limit: 1_000, period_ms: 60_000],
+    api: [limit: 1_000, period_ms: 60_000],
+    attachments: [limit: 1_000, period_ms: 60_000]
+  ],
+  notifications: [enabled: true, from: {"Mirror", "mirror@localhost"}, digest_hour_utc: 8],
+  webhooks: [secret: "test-webhook-secret", require_signature: true]
+
+config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.DemoSource, sync_interval_seconds: 0
 
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false

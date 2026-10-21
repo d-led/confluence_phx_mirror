@@ -10,7 +10,8 @@ defmodule ConfluencePhxMirror.Application do
     children = [
       ConfluencePhxMirrorWeb.Telemetry,
       ConfluencePhxMirror.Repo,
-      {DNSCluster, query: Application.get_env(:confluence_phx_mirror, :dns_cluster_query) || :ignore},
+      {DNSCluster,
+       query: Application.get_env(:confluence_phx_mirror, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: ConfluencePhxMirror.PubSub},
       # Start a worker by calling: ConfluencePhxMirror.Worker.start_link(arg)
       # {ConfluencePhxMirror.Worker, arg},
