@@ -50,6 +50,56 @@ same pipeline as a real site.
 * Re-read one page, as a webhook would:
   `mix confluence.webhook --page 1002 --event page_updated`
 
+## Browsing the mirror
+
+The reader UI follows Confluence's entity model instead of one flat page list:
+
+| URL | What it shows |
+| --- | --- |
+| `/` | home: spaces, recently updated, freshness |
+| `/spaces` | space directory with page and blog counts |
+| `/spaces/:key` | the space home page (Confluence's space link behaviour) |
+| `/spaces/:key/overview` | home teaser, top-level pages, recent, blog, labels, attachments |
+| `/spaces/:key/pages` | every page in the space, archived ones included and badged |
+| `/spaces/:key/blog` | the space's blog posts |
+| `/spaces/:key/blog/:id/:slug` | one blog post, rendered like a page |
+| `/spaces/:key/attachments` | all attachments of the space with download links |
+| `/spaces/:key/pages/:id/:slug` | one page |
+| `/labels`, `/labels/:name` | label catalog and everything carrying one label |
+| `/people`, `/people/:account_id` | authors seen on mirrored content |
+| `/recent` | newest content across all spaces |
+| `/search` | plain-text and structured search |
+
+Archived pages stay readable and searchable — Confluence only hides them from
+the page tree, and so does the sidebar here. Blog posts are kept out of the tree
+and live under the space's Blog tab.
+
+## What we adopted from the export/backup ecosystem
+
+The design was checked against six Confluence export/backup tools (a Go backup
+tool, a C# page-sync CLI, two Python markdown exporters, a JS SDK). The parts
+that fit a live, read-only mirror:
+
+* **Identity by Confluence id, not by path** (page-sync CLI) — pages are keyed by
+  `confluence_id` and version; slugs are cosmetic and redirect to the canonical
+  URL.
+* **Page-scoped attachment storage behind a blob store** (markdown exporter and
+  backup tool trees) — bytes are keyed by space/page/attachment, never in
+  Postgres or the repository.
+* **"Nothing silently lost"** (backup tool) — a failing page is recorded in the
+  run's errors and the run ends `partial` instead of aborting or pretending to
+  succeed.
+* **Empty-listing guard** (exporter's zero-pages invariant) — a source that
+  suddenly lists no pages for a space never marks that space's content deleted;
+  the run is flagged `partial` so an operator looks at it.
+* **Rendering fidelity from `export_view`** (markdown exporters re-implement
+  macros; we don't) — native `<details>` for expand, panels, lozenges, task
+  lists, TOC, gallery and Jira macros come from Confluence's own markup.
+
+Deliberately out of scope: uploads and write-back, markdown exports, page
+history, permissions, templates and smart content. The mirror is read-only and
+serves Confluence's rendering.
+
 ## Branding and skins
 
 Readers pick a skin in the header; the choice is a cookie, so the first paint is

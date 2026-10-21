@@ -6,7 +6,7 @@ defmodule ConfluencePhxMirror.SyncTest do
 
   alias ConfluencePhxMirror.Audit.Event
   alias ConfluencePhxMirror.Blobs.Store
-  alias ConfluencePhxMirror.Confluence.EditedSource
+  alias ConfluencePhxMirror.Confluence.{EditedSource, EmptyListingSource}
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Link, Page, Space}
   alias ConfluencePhxMirror.Notifications
@@ -194,6 +194,17 @@ defmodule ConfluencePhxMirror.SyncTest do
       deleted = Repo.get!(Page, page.id)
       assert deleted.deleted_at
       assert {:error, :not_found} = Mirror.find_page(1009)
+    end
+
+    test "an empty listing from the source never wipes a space" do
+      demo_snapshot!()
+      pages_before = Repo.aggregate(Page, :count)
+
+      assert {:ok, run} = Sync.run(:snapshot, source: EmptyListingSource)
+
+      assert run.status == "partial"
+      assert run.error =~ "empty_listing_kept_existing_pages"
+      assert Repo.aggregate(Page, :count) == pages_before
     end
   end
 end

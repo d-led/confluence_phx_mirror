@@ -1,0 +1,84 @@
+<Layouts.app
+  flash={@flash}
+  current_scope={@current_scope}
+  spaces={@spaces}
+  last_sync_run={@last_sync_run}
+  mirror_name={@mirror_name}
+  mirror_source={@mirror_source}
+  space={@space}
+  tree={@tree}
+  breadcrumbs={[%{title: @space.name, path: URLs.space_path(@space.key)}]}
+  page_title={@page_title}
+  rail?={false}
+>
+  <header class="border-b border-base-300/70 pb-4">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+          {@space.name}
+        </p>
+        <h1 class="mt-1 text-2xl font-semibold leading-tight">Attachments</h1>
+      </div>
+      <span class="text-xs tabular-nums text-base-content/50">{length(@attachments)} files</span>
+    </div>
+  </header>
+
+  <div class="mt-4 border-b border-base-300/70">
+    <.space_tabs space={@space} active={@active} />
+  </div>
+
+  <p :if={@attachments == []} class="mt-8 text-sm text-base-content/50">
+    No attachments mirrored.
+  </p>
+
+  <div :if={@attachments != []} class="mt-4 overflow-x-auto">
+    <table class="table table-sm">
+      <thead>
+        <tr class="text-[11px] uppercase tracking-wide text-base-content/45">
+          <th class="font-medium">File</th>
+          <th class="font-medium">Page</th>
+          <th class="text-right font-medium">Size</th>
+          <th class="text-right font-medium">Version</th>
+          <th class="text-right font-medium">Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={attachment <- @attachments} class="hover:bg-base-200/50">
+          <td class="max-w-[20rem]">
+            <a
+              href={
+                URLs.attachment_path(
+                  @space.key,
+                  attachment.page.confluence_id,
+                  attachment.confluence_id,
+                  attachment.filename
+                )
+              }
+              class="flex items-center gap-2 font-medium hover:text-primary"
+            >
+              <.icon name="hero-paper-clip" class="size-3.5 shrink-0 text-base-content/40" />
+              <span class="truncate">{attachment.filename}</span>
+            </a>
+          </td>
+          <td class="max-w-[22rem] text-xs">
+            <.link
+              navigate={URLs.content_path(@space.key, attachment.page)}
+              class="truncate text-base-content/60 hover:text-primary"
+            >
+              {attachment.page.title}
+            </.link>
+          </td>
+          <td class="whitespace-nowrap text-right text-xs tabular-nums text-base-content/55">
+            {ConfluencePhxMirror.Mirror.Attachment.human_size(attachment.byte_size)}
+          </td>
+          <td class="text-right text-xs tabular-nums text-base-content/55">
+            v{attachment.version_number}
+          </td>
+          <td class="whitespace-nowrap text-right text-xs text-base-content/55">
+            {Time.ago(attachment.external_updated_at)}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</Layouts.app>

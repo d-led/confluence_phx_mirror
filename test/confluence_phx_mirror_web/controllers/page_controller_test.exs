@@ -39,7 +39,34 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
   end
 
   test "unknown pages return 404", %{conn: conn} do
-    conn = get(conn, ~p"/spaces/ENG/pages/999999/missing")
-    assert response(conn, 404) =~ "Not Found"
+    body = conn |> get(~p"/spaces/ENG/pages/999999/missing") |> html_response(404)
+    assert body =~ "That content is not mirrored"
+  end
+
+  test "a blog post renders under the space blog URL", %{conn: conn} do
+    html = conn |> get(~p"/spaces/PROD/blog/2001/release-2-0") |> html_response(200)
+
+    assert html =~ "Release 2.0"
+    assert html =~ "Blog post"
+    assert html =~ ~s(href="/spaces/PROD/blog")
+  end
+
+  test "a stale blog slug redirects to the canonical blog URL", %{conn: conn} do
+    conn = get(conn, ~p"/spaces/PROD/blog/2001/old-release-notes")
+
+    assert redirected_to(conn) == ~p"/spaces/PROD/blog/2001/release-2-0"
+  end
+
+  test "a page is not served from the blog URL", %{conn: conn} do
+    body = conn |> get(~p"/spaces/ENG/blog/1002/architecture-overview") |> html_response(404)
+    assert body =~ "That blog post is not mirrored"
+  end
+
+  test "recently updated lists the newest content first", %{conn: conn} do
+    html = conn |> get(~p"/recent") |> html_response(200)
+
+    assert html =~ "Recently updated"
+    assert html =~ "Architecture Overview"
+    assert html =~ "Release 2.0"
   end
 end

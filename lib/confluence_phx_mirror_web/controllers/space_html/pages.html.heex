@@ -1,0 +1,80 @@
+<Layouts.app
+  flash={@flash}
+  current_scope={@current_scope}
+  spaces={@spaces}
+  last_sync_run={@last_sync_run}
+  mirror_name={@mirror_name}
+  mirror_source={@mirror_source}
+  space={@space}
+  tree={@tree}
+  breadcrumbs={[%{title: @space.name, path: URLs.space_path(@space.key)}]}
+  page_title={@page_title}
+  rail?={false}
+>
+  <header class="border-b border-base-300/70 pb-4">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+          {@space.name}
+        </p>
+        <h1 class="mt-1 text-2xl font-semibold leading-tight">Pages</h1>
+      </div>
+      <span class="text-xs tabular-nums text-base-content/50">{length(@pages)} items</span>
+    </div>
+  </header>
+
+  <div class="mt-4 border-b border-base-300/70">
+    <.space_tabs space={@space} active={@active} />
+  </div>
+
+  <p :if={@pages == []} class="mt-8 text-sm text-base-content/50">Nothing in this space yet.</p>
+
+  <div :if={@pages != []} class="mt-4 overflow-x-auto">
+    <table class="table table-sm">
+      <thead>
+        <tr class="text-[11px] uppercase tracking-wide text-base-content/45">
+          <th class="font-medium">Title</th>
+          <th class="font-medium">Kind</th>
+          <th class="font-medium">Status</th>
+          <th class="font-medium">Author</th>
+          <th class="text-right font-medium">Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={page <- @pages} class="hover:bg-base-200/50">
+          <td class="max-w-[28rem]">
+            <.link navigate={URLs.content_path(@space.key, page)} class="flex items-center gap-2">
+              <.icon
+                name={
+                  if page.type == "blogpost", do: "hero-newspaper", else: "hero-document-text"
+                }
+                class="size-3.5 shrink-0 text-base-content/40"
+              />
+              <span class="truncate font-medium">{page.title}</span>
+            </.link>
+          </td>
+          <td class="text-xs text-base-content/60">{kind(page.type)}</td>
+          <td>
+            <span class={[
+              "badge badge-xs",
+              if(page.status == "archived", do: "badge-warning", else: "badge-ghost")
+            ]}>
+              {page.status}
+            </span>
+          </td>
+          <td class="text-xs text-base-content/60">{page.author_name}</td>
+          <td
+            class="whitespace-nowrap text-right text-xs text-base-content/55"
+            title={Time.datetime(page.external_updated_at)}
+          >
+            {Time.ago(page.external_updated_at)}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="mt-4 text-[11px] text-base-content/45">
+    Archived pages stay readable and searchable; Confluence only hides them from the page tree.
+  </p>
+</Layouts.app>

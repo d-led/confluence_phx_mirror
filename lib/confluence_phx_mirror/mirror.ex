@@ -292,10 +292,15 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc """
   The whole page tree of a space as nested `%{page: page, children: [...]}`.
 
-  Built in one query; sibling order is alphabetical.
+  Built in one query; sibling order is alphabetical. Confluence keeps blog posts
+  out of the page tree and hides archived pages from navigation, so the tree
+  does the same — both remain reachable through their catalogs.
   """
   def tree(space_id) do
-    pages = list_pages(space_id)
+    pages =
+      space_id
+      |> list_pages(include_archived: false)
+      |> Enum.reject(&(&1.type == "blogpost"))
 
     children_by_parent = Enum.group_by(pages, & &1.parent_id)
     ids = MapSet.new(pages, & &1.id)
@@ -477,6 +482,133 @@ defmodule ConfluencePhxMirror.Mirror do
         select: count(p.id)
     )
   end
+
+  # ---------------------------------------------------------------------------
+  # Catalogs (the Confluence-style browse views)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Spaces with their content counts and latest change, for the space directory.
+
+  Returns `%{space: Space.t(), pages: integer, blog_posts: integer,
+  updated_at: DateTime.t() | nil}` ordered by name.
+  """
+  def space_catalog do
+    from(s in Space,
+      left_join: p in assoc(s, :pages),
+      where: is_nil(p.deleted_at) or is_nil(p.id),
+      group_by: s.id,
+      order_by: [asc: s.name],
+      select: %{
+        space: s,
+        pages: filter(count(p.id), p.type == "page"),
+        blog_posts: filter(count(p.id), p.type == "blogpost"),
+        updated_at: max(p.external_updated_at)
+      }
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Content of one space, archived pages included.
+
+  Options: `:type` (`"page"`, `"blogpost"` or `nil` for both), `:sort`
+  (`:title` or `:updated`) and `:limit`.
+  """
+  def pages_in_space(space_id, opts \\ []) do
+    sort = Keyword.get(opts, :sort, :title)
+    limit = Keyword.get(opts, :limit)
+
+    from(p in Page,
+      where: p.space_id == ^space_id and is_nil(p.deleted_at),
+      order_by: ^order_by(sort),
+      preload: [:space]
+    )
+    |> where_type(Keyword.get(opts, :type))
+    |> limit_rows(limit)
+    |> Repo.all()
+  end
+
+  @doc "Blog posts of a space (or of the whole mirror), newest first."
+  def blog_posts(space_id \\ nil, limit \\ 20) do
+    from(p in Page,
+      where: p.type == "blogpost" and is_nil(p.deleted_at),
+      order_by: [desc: p.external_updated_at],
+      limit: ^limit,
+      preload: [:space]
+    )
+    |> where_space(space_id)
+    |> Repo.all()
+  end
+
+  @doc "Attachments of every page in a space, for the space attachment list."
+  def attachments_in_space(space_id) do
+    from(a in Attachment,
+      join: p in assoc(a, :page),
+      where: p.space_id == ^space_id and is_nil(p.deleted_at),
+      order_by: [asc: a.filename],
+      preload: [page: :space]
+    )
+    |> Repo.all()
+  end
+
+  @doc "Labels used in one space, with their page counts."
+  def labels_in_space(space_id) do
+    from(l in Label,
+      join: p in assoc(l, :pages),
+      where: p.space_id == ^space_id and is_nil(p.deleted_at),
+      group_by: l.id,
+      order_by: [asc: l.name],
+      select: {l.name, count(p.id)}
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  People who authored mirrored content, with page counts.
+
+  Confluence's people directory is served from mirrored bylines rather than a
+  separate user sync: the mirror never invents accounts it has not seen.
+  """
+  def authors do
+    from(p in Page,
+      where: is_nil(p.deleted_at) and not is_nil(p.author_name),
+      group_by: [p.author_name, p.author_account_id],
+      order_by: [asc: p.author_name],
+      select: %{
+        name: p.author_name,
+        account_id: p.author_account_id,
+        pages: count(p.id),
+        updated_at: max(p.external_updated_at)
+      }
+    )
+    |> Repo.all()
+  end
+
+  @doc "All content authored by one Confluence account."
+  def pages_by_author(account_id) when is_binary(account_id) do
+    from(p in Page,
+      where: p.author_account_id == ^account_id and is_nil(p.deleted_at),
+      order_by: [desc: p.external_updated_at],
+      preload: [:space]
+    )
+    |> Repo.all()
+  end
+
+  @doc "Looks an author up by Confluence account id."
+  def find_author(account_id), do: Enum.find(authors(), &(&1.account_id == account_id))
+
+  defp where_type(query, nil), do: query
+  defp where_type(query, type), do: where(query, [p], p.type == ^type)
+
+  defp where_space(query, nil), do: query
+  defp where_space(query, space_id), do: where(query, [p], p.space_id == ^space_id)
+
+  defp order_by(:updated), do: [desc: :external_updated_at]
+  defp order_by(_title), do: [asc: :title]
+
+  defp limit_rows(query, nil), do: query
+  defp limit_rows(query, limit), do: limit(query, ^limit)
 
   def stats do
     %{

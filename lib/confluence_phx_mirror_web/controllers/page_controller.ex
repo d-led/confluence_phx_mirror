@@ -13,6 +13,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Webhooks
+  alias ConfluencePhxMirrorWeb.NotFound
   alias ConfluencePhxMirrorWeb.Presence
 
   def home(conn, _params) do
@@ -30,12 +31,12 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     case Mirror.find_space(key) do
       {:ok, space} ->
         case Mirror.get_space_home(space) do
-          nil -> render_space(conn, space)
+          nil -> redirect(conn, to: URLs.space_overview_path(space.key))
           home -> redirect(conn, to: URLs.page_path(space.key, home.confluence_id, home.slug))
         end
 
       {:error, :not_found} ->
-        not_found(conn, "Space #{key} is not mirrored.")
+        NotFound.call(conn, "Space #{key} is not mirrored.")
     end
   end
 
@@ -50,7 +51,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
         redirect(conn, to: canonical)
       end
     else
-      _ -> not_found(conn, "That page is not mirrored.")
+      _ -> NotFound.call(conn, "That page is not mirrored.")
     end
   end
 
@@ -59,8 +60,26 @@ defmodule ConfluencePhxMirrorWeb.PageController do
          {:ok, page} <- Mirror.find_page_by_path(space_key, id) do
       redirect(conn, to: URLs.page_path(page.space.key, page.confluence_id, page.slug))
     else
-      _ -> not_found(conn, "That page is not mirrored.")
+      _ -> NotFound.call(conn, "That page is not mirrored.")
     end
+  end
+
+  def blog_post(conn, %{"key" => space_key, "id" => id, "slug" => slug}) do
+    with {id, ""} <- Integer.parse(id),
+         {:ok, page} <- Mirror.find_page_by_path(space_key, id),
+         true <- page.type == "blogpost" do
+      if slug == page.slug do
+        render_page(conn, page, :blog)
+      else
+        redirect(conn, to: URLs.blog_post_path(page.space.key, page.confluence_id, page.slug))
+      end
+    else
+      _ -> NotFound.call(conn, "That blog post is not mirrored.")
+    end
+  end
+
+  def recent(conn, _params) do
+    render(conn, :recent, page_title: "Recently updated", pages: Mirror.list_all_pages())
   end
 
   def labels(conn, _params) do
@@ -81,22 +100,21 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     )
   end
 
-  defp render_page(conn, page) do
+  defp render_page(conn, page, kind \\ :page) do
     space = page.space
     user = conn.assigns[:current_user]
 
     breadcrumbs =
       [%{title: space.name, path: URLs.space_path(space.key)}] ++
-        Enum.map(Mirror.ancestor_pages(page), fn ancestor ->
-          %{
-            title: ancestor.title,
-            path: URLs.page_path(ancestor.space.key, ancestor.confluence_id, ancestor.slug)
-          }
-        end)
+        case kind do
+          :page -> ancestor_crumbs(page)
+          :blog -> [%{title: "Blog", path: URLs.space_blog_path(space.key)}]
+        end
 
     render(conn, :show,
       page_title: page.title,
       page: page,
+      kind: kind,
       space: space,
       tree: Mirror.tree(space.id),
       breadcrumbs: breadcrumbs,
@@ -111,15 +129,13 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     )
   end
 
-  defp render_space(conn, space) do
-    render(conn, :space,
-      page_title: space.name,
-      space: space,
-      tree: Mirror.tree(space.id),
-      root_pages: Mirror.root_pages(space.id),
-      recent_pages: Mirror.recent_pages_for_space(space, 6),
-      breadcrumbs: [%{title: space.name, path: URLs.space_path(space.key)}]
-    )
+  defp ancestor_crumbs(page) do
+    Enum.map(Mirror.ancestor_pages(page), fn ancestor ->
+      %{
+        title: ancestor.title,
+        path: URLs.page_path(ancestor.space.key, ancestor.confluence_id, ancestor.slug)
+      }
+    end)
   end
 
   defp subscribed?(%User{} = user, target_type, target_id) do
@@ -127,11 +143,4 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   end
 
   defp subscribed?(_user, _target_type, _target_id), do: false
-
-  defp not_found(conn, message) do
-    conn
-    |> put_status(:not_found)
-    |> put_view(ConfluencePhxMirrorWeb.ErrorHTML)
-    |> render(:"404", message: message)
-  end
 end

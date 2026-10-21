@@ -88,6 +88,27 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                   </.link>
                 </li>
                 <li :if={@spaces == []} class="menu-disabled"><span>No spaces mirrored yet</span></li>
+                <li class="menu-title text-[10px] uppercase tracking-wider">Browse</li>
+                <li>
+                  <.link navigate={~p"/spaces"} class="gap-2">
+                    <.icon name="hero-rectangle-stack" class="size-4" /> All spaces
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate={~p"/labels"} class="gap-2">
+                    <.icon name="hero-tag" class="size-4" /> Labels
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate={~p"/people"} class="gap-2">
+                    <.icon name="hero-users" class="size-4" /> People
+                  </.link>
+                </li>
+                <li>
+                  <.link navigate={~p"/recent"} class="gap-2">
+                    <.icon name="hero-clock" class="size-4" /> Recently updated
+                  </.link>
+                </li>
               </ul>
             </details>
 

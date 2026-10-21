@@ -50,7 +50,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     ]}>
       <li :for={node <- @nodes}>
         <.link
-          navigate={URLs.page_path(@space_key, node.page.confluence_id, node.page.slug)}
+          navigate={URLs.content_path(@space_key, node.page)}
           class={[
             "flex items-center gap-2 rounded-md py-1.5 pr-2 text-[13px]",
             @current && @current.id == node.page.id && "bg-primary/10 font-semibold text-primary"
@@ -399,7 +399,46 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   end
 
   attr :space, :map, required: true
+  attr :active, :atom, required: true, doc: ":overview, :pages, :blog or :attachments"
+
+  @doc "Confluence-style tabs shown on every space view."
+  def space_tabs(assigns) do
+    key = assigns.space.key
+
+    assigns =
+      assign(assigns,
+        tabs: [
+          {:overview, "Overview", URLs.space_overview_path(key)},
+          {:pages, "Pages", URLs.space_pages_path(key)},
+          {:blog, "Blog", URLs.space_blog_path(key)},
+          {:attachments, "Attachments", URLs.space_attachments_path(key)}
+        ]
+      )
+
+    ~H"""
+    <nav class="-mb-px flex gap-1 overflow-x-auto" aria-label="Space sections">
+      <.link
+        :for={{id, label, path} <- @tabs}
+        navigate={path}
+        class={[
+          "border-b-2 px-3 py-2 text-sm transition",
+          if(id == @active,
+            do: "border-primary font-semibold text-primary",
+            else:
+              "border-transparent text-base-content/60 hover:border-base-300 hover:text-base-content"
+          )
+        ]}
+      >
+        {label}
+      </.link>
+    </nav>
+    """
+  end
+
+  attr :space, :map, required: true
   attr :count, :integer, default: 0
+  attr :blog_posts, :integer, default: nil
+  attr :updated_at, :any, default: nil
 
   def space_card(assigns) do
     ~H"""
@@ -414,6 +453,12 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
       <span class="mt-2 text-sm font-semibold group-hover:text-primary">{@space.name}</span>
       <span class="mt-0.5 line-clamp-2 text-xs text-base-content/55">
         {@space.description || "No description."}
+      </span>
+      <span :if={@blog_posts} class="mt-2 text-[11px] tabular-nums text-base-content/45">
+        {@blog_posts} blog posts
+      </span>
+      <span :if={@updated_at} class="mt-3 text-[10px] uppercase tracking-wide text-base-content/35">
+        Updated {Time.ago(@updated_at)}
       </span>
     </.link>
     """

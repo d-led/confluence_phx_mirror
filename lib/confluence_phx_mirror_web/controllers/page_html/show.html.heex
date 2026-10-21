@@ -26,6 +26,7 @@
     <.rail_section title="Page info" icon="hero-information-circle">
       <dl>
         <.kv label="Space" value={"#{@space.name} (#{@space.key})"} />
+        <.kv :if={@kind == :blog} label="Kind" value="Blog post" />
         <.kv label="Confluence id" value={@page.confluence_id} />
         <.kv label="Version" value={"v#{@page.version_number}"} />
         <.kv label="Author" value={@page.author_name || "unknown"} />

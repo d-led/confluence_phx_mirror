@@ -190,19 +190,33 @@ defmodule ConfluencePhxMirror.Sync do
       case source.pages(space.key, opts) do
         {:ok, dtos} ->
           {upserted, page_errors} = upsert_entries(dtos, [space])
-          seen = Enum.map(dtos, & &1.id)
-          deleted_count = Mirror.mark_missing_deleted(space, seen)
+          {deleted_count, guard_errors} = reconcile_deletions(space, dtos)
 
           if deleted_count > 0 do
             Audit.system("pages.deleted", "space", space.key, %{count: deleted_count})
           end
 
-          {entries ++ upserted, errors ++ page_errors, deleted + deleted_count}
+          {entries ++ upserted, errors ++ page_errors ++ guard_errors, deleted + deleted_count}
 
         {:error, reason} ->
           {entries, [error("space", space.key, reason) | errors], deleted}
       end
     end)
+  end
+
+  # A source that suddenly lists no pages for a space is far more likely to be
+  # a permission or filtering problem than a mass deletion. Confluence export
+  # tools guard against exactly this, so an empty listing never wipes a space.
+  defp reconcile_deletions(space, [] = _dtos) do
+    if Mirror.count_pages(space.id) > 0 do
+      {0, [error("space", space.key, :empty_listing_kept_existing_pages)]}
+    else
+      {0, []}
+    end
+  end
+
+  defp reconcile_deletions(space, dtos) do
+    {Mirror.mark_missing_deleted(space, Enum.map(dtos, & &1.id)), []}
   end
 
   defp upsert_entries(dtos, spaces) do

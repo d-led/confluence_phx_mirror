@@ -1,0 +1,30 @@
+<Layouts.app
+  flash={@flash}
+  current_scope={@current_scope}
+  spaces={@spaces}
+  last_sync_run={@last_sync_run}
+  mirror_name={@mirror_name}
+  mirror_source={@mirror_source}
+  breadcrumbs={[%{title: "People", path: URLs.people_path()}]}
+  page_title={@page_title}
+  sidebar?={false}
+>
+  <header class="flex flex-wrap items-center gap-4 border-b border-base-300/70 pb-5">
+    <span class="grid size-14 place-items-center rounded-full bg-primary/10 text-lg font-semibold text-primary">
+      {initials(@author.name)}
+    </span>
+    <div>
+      <h1 class="text-2xl font-semibold leading-tight">{@author.name}</h1>
+      <p class="mt-1 text-xs text-base-content/50">
+        {@author.pages} items · last change {Time.ago(@author.updated_at)}
+      </p>
+    </div>
+  </header>
+
+  <section class="mt-6">
+    <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-base-content/50">
+      Authored content
+    </h2>
+    <.page_list pages={@pages} empty="Nothing authored by this person." />
+  </section>
+</Layouts.app>

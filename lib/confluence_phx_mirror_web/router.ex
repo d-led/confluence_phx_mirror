@@ -44,9 +44,18 @@ defmodule ConfluencePhxMirrorWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/spaces", SpaceController, :index
     get "/spaces/:key", PageController, :space
+    get "/spaces/:key/overview", SpaceController, :overview
+    get "/spaces/:key/pages", SpaceController, :pages
+    get "/spaces/:key/blog", SpaceController, :blog
+    get "/spaces/:key/blog/:id/:slug", PageController, :blog_post
+    get "/spaces/:key/attachments", SpaceController, :attachments
     get "/spaces/:space_key/pages/:id", PageController, :show
     get "/spaces/:space_key/pages/:id/:slug", PageController, :show
+    get "/people", PeopleController, :index
+    get "/people/:account_id", PeopleController, :show
+    get "/recent", PageController, :recent
     get "/labels", PageController, :labels
     get "/labels/:name", PageController, :label
     get "/about", PageController, :about

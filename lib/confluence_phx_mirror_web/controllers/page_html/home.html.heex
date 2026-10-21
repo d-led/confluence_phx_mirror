@@ -71,11 +71,14 @@
   </section>
 
   <section class="mt-10">
-    <div class="mb-3 flex items-end justify-between">
+    <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">Spaces</h2>
-      <a href={~p"/labels"} class="text-xs font-medium text-primary hover:underline">
-        Browse labels →
-      </a>
+      <div class="flex flex-wrap gap-3 text-xs font-medium text-primary">
+        <a href={~p"/spaces"} class="hover:underline">All spaces →</a>
+        <a href={~p"/labels"} class="hover:underline">Labels →</a>
+        <a href={~p"/people"} class="hover:underline">People →</a>
+        <a href={~p"/recent"} class="hover:underline">Recently updated →</a>
+      </div>
     </div>
     <.empty_state
       :if={@spaces == []}
@@ -100,13 +103,7 @@
       >
         <li :for={page <- @recent_pages}>
           <.link
-            navigate={
-              ConfluencePhxMirror.Mirror.URLs.page_path(
-                page.space.key,
-                page.confluence_id,
-                page.slug
-              )
-            }
+            navigate={ConfluencePhxMirror.Mirror.URLs.content_path(page.space.key, page)}
             class="group flex items-center gap-3 px-4 py-3 transition hover:bg-base-200/40"
           >
             <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-base-200 text-base-content/50">
