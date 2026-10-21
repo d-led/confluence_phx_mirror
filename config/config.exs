@@ -41,6 +41,10 @@ config :confluence_phx_mirror,
   # Simulated / production users get auto-provisioned in dev and test.
   auto_admin: false,
   self_signup: false,
+  # Administration: the `admin` role, membership of these groups, or these
+  # seeded e-mails (CM_ADMINS). Groups come from mirrored Confluence groups.
+  admins: [],
+  admin_groups: ["confluence-admins"],
   # Extra skins for the theme picker. Built-in skins (system/light/mirror/dark)
   # are always available; the shape is documented in ConfluencePhxMirrorWeb.Skins.
   skins: [],

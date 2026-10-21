@@ -8,6 +8,13 @@ env_integer = fn name, default ->
   end
 end
 
+csv = fn value ->
+  value
+  |> String.split(",", trim: true)
+  |> Enum.map(&(&1 |> String.trim() |> String.downcase()))
+  |> Enum.reject(&(&1 == ""))
+end
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -76,6 +83,16 @@ end
 
 if self_signup = System.get_env("MIRROR_SELF_SIGNUP") do
   config :confluence_phx_mirror, self_signup: self_signup in ~w(1 true yes)
+end
+
+# CM_ADMINS="ops@acme.com,lead@acme.com" seeds administrators by e-mail, and
+# CM_ADMIN_GROUPS="site-admins" decides which mirrored group grants admin.
+if admins = System.get_env("CM_ADMINS") do
+  config :confluence_phx_mirror, :admins, csv.(admins)
+end
+
+if admin_groups = System.get_env("CM_ADMIN_GROUPS") do
+  config :confluence_phx_mirror, :admin_groups, csv.(admin_groups)
 end
 
 if webhook_secret = System.get_env("CM_WEBHOOK_SECRET") do

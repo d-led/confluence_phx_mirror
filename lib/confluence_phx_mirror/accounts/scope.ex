@@ -7,7 +7,7 @@ defmodule ConfluencePhxMirror.Accounts.Scope do
   for future per-space scopes without changing every call site.
   """
 
-  alias ConfluencePhxMirror.Accounts.User
+  alias ConfluencePhxMirror.Accounts.{Admins, User}
 
   defstruct user: nil
 
@@ -18,7 +18,7 @@ defmodule ConfluencePhxMirror.Accounts.Scope do
 
   def user(%__MODULE__{user: user}), do: user
 
-  def admin?(%__MODULE__{user: %User{} = user}), do: User.admin?(user)
+  def admin?(%__MODULE__{user: %User{} = user}), do: Admins.admin?(user)
   def admin?(%__MODULE__{}), do: false
 
   def signed_in?(%__MODULE__{user: %User{}}), do: true

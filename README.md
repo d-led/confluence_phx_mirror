@@ -350,6 +350,10 @@ Development uses smtp4dev: SMTP on `localhost:2525`, web UI on
 * Development/test: admin is assumed.
 * Production: magic-link sign-in (single-use, 15 minutes, self sign-up
   controlled by `MIRROR_SELF_SIGNUP`).
+* Administrators are accounts with the `admin` role, members of an admin group
+  (`CM_ADMIN_GROUPS`, default `confluence-admins`) or seeded e-mails
+  (`CM_ADMINS`). Seeded addresses can always request a sign-in link, even with
+  self sign-up closed, so a fresh deployment has a way in.
 * API tokens: admin → *Users & tokens*; shown once, stored as SHA-256 hashes.
 * `Authorization: Bearer <token>` or Confluence-style Basic
   `base64(email:token)`.
@@ -403,6 +407,8 @@ A Confluence-compatible subset lives under `/wiki/rest/api` (`space`, `content`,
 | `MIRROR_BLOB_ROOT` | `var/mirror` | blob store root |
 | `MIRROR_AUTO_ADMIN` | `false` (dev/test `true`) | assume an admin |
 | `MIRROR_SELF_SIGNUP` | `false` | allow magic-link sign-up |
+| `CM_ADMINS` | – | seeded administrator e-mails (CSV) |
+| `CM_ADMIN_GROUPS` | `confluence-admins` | mirrored groups that grant admin (CSV) |
 | `MIRROR_NOTIFICATIONS` | `true` | enable e-mail notifications |
 | `MIRROR_MAIL_FROM` | `mirror@localhost` | sender address |
 | `MIRROR_DIGEST_HOUR_UTC` | `8` | daily digest hour |
@@ -415,7 +421,7 @@ A Confluence-compatible subset lives under `/wiki/rest/api` (`space`, `content`,
 
 * `/admin` – freshness, sync runs, audit trail, webhook deliveries, manual
   syncs.
-* `/admin/users` – accounts, roles, API tokens.
+* `/admin/users` – accounts, roles, mirrored groups, API tokens.
 * `/health` – DB check + content counters + last sync.
 * `audit_events` – append-only: `sync.started/finished/failed`, `page.*`,
   `attachment.*`, `user.*`, `api_token.*`, `subscription.*`, `webhook.*`.

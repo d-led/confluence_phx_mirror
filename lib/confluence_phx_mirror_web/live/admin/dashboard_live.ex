@@ -9,6 +9,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   import Ecto.Query
   import ConfluencePhxMirrorWeb.UIComponents
 
+  alias ConfluencePhxMirror.Accounts.Admins
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Repo
@@ -87,6 +88,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             · <a href={~p"/admin/users"} class="link link-primary">Users &amp; tokens</a>
             · <a href="/dev/dashboard" class="link link-primary">LiveDashboard</a>
             · <a href="/dev/mailbox" class="link link-primary">Mailbox</a>
+          </p>
+          <p :if={@current_user} class="mt-1 text-[11px] text-base-content/45">
+            Signed in as {@current_user.email}
+            <span :if={Admins.source(@current_user)} class="badge badge-primary badge-xs">
+              admin · {Admins.source(@current_user)}
+            </span>
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">

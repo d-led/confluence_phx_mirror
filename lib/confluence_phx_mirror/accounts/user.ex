@@ -66,6 +66,11 @@ defmodule ConfluencePhxMirror.Accounts.User do
     Entry.new("user.role_changed", "user", user.id, %{role: user.role})
   end
 
+  @doc "Audit entry for the mirrored groups an account belongs to."
+  def audit_event_groups_changed(%__MODULE__{} = user) do
+    Entry.new("user.groups_changed", "user", user.id, %{groups: user.groups})
+  end
+
   @doc "Audit entry for a magic link being sent."
   def audit_event_login_requested(%__MODULE__{} = user) do
     Entry.new("user.login_requested", "user", user.id, %{email: user.email})

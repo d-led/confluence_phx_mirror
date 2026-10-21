@@ -9,7 +9,7 @@ defmodule ConfluencePhxMirror.Accounts do
 
   import Ecto.Query
 
-  alias ConfluencePhxMirror.Accounts.{ApiToken, LoginToken, User}
+  alias ConfluencePhxMirror.Accounts.{Admins, ApiToken, LoginToken, User}
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Mailer
   alias ConfluencePhxMirror.Repo
@@ -85,6 +85,25 @@ defmodule ConfluencePhxMirror.Accounts do
   def change_role(%User{} = user, role, actor) do
     with {:ok, user} <- user |> User.changeset(%{role: role}) |> Repo.update() do
       Audit.log(actor, User.audit_event_role_changed(user))
+      {:ok, user}
+    end
+  end
+
+  @doc """
+  Sets the Confluence groups a reader belongs to.
+
+  Group membership is what grants space access and, for the configured admin
+  groups, administration.
+  """
+  def update_groups(%User{} = user, groups, actor) when is_list(groups) do
+    groups =
+      groups
+      |> Enum.map(&(&1 |> to_string() |> String.trim() |> String.downcase()))
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq()
+
+    with {:ok, user} <- user |> User.identity_changeset(%{groups: groups}) |> Repo.update() do
+      Audit.log(actor, User.audit_event_groups_changed(user))
       {:ok, user}
     end
   end
@@ -166,7 +185,10 @@ defmodule ConfluencePhxMirror.Accounts do
   defp login_user(email) do
     case get_user_by_email(email) do
       nil ->
-        if Application.get_env(:confluence_phx_mirror, :self_signup, false) do
+        # Seeded administrators (CM_ADMINS) can always sign in: otherwise a new
+        # deployment would need self sign-up just to reach the admin screens.
+        if Application.get_env(:confluence_phx_mirror, :self_signup, false) or
+             Admins.seeded?(email) do
           ensure_user(email)
         else
           {:error, :unknown_email}

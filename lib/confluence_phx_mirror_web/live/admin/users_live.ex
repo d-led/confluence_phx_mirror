@@ -4,6 +4,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   use ConfluencePhxMirrorWeb, :live_view
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.Admins
 
   @impl true
   def mount(_params, _session, socket) do
@@ -44,6 +45,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
     case Accounts.change_role(user, role, actor(socket)) do
       {:ok, _} -> {:noreply, socket |> put_flash(:info, "Role updated.") |> load()}
       {:error, _} -> {:noreply, put_flash(socket, :error, "Could not update the role.")}
+    end
+  end
+
+  def handle_event("update_groups", %{"user_id" => user_id, "groups" => groups}, socket) do
+    user = Accounts.get_user(String.to_integer(user_id))
+    groups = String.split(groups, ",", trim: true)
+
+    case Accounts.update_groups(user, groups, actor(socket)) do
+      {:ok, _} -> {:noreply, socket |> put_flash(:info, "Groups updated.") |> load()}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not update the groups.")}
     end
   end
 
@@ -172,12 +183,33 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
           <tbody>
             <tr :for={%{user: user, tokens: tokens} <- @users} class="align-top">
               <td>
-                <p class="font-medium">{user.email}</p>
+                <div class="flex items-center gap-1.5">
+                  <p class="font-medium">{user.email}</p>
+                  <span
+                    :if={Admins.source(user)}
+                    class="badge badge-primary badge-xs"
+                    title="Administrator"
+                  >
+                    admin · {Admins.source(user)}
+                  </span>
+                </div>
                 <p class="text-[11px] text-base-content/45">
                   {if user.last_sign_in_at,
                     do: "last seen #{ConfluencePhxMirrorWeb.Time.ago(user.last_sign_in_at)}",
                     else: "never signed in"}
                 </p>
+                <form phx-submit="update_groups" class="mt-1 flex items-center gap-1">
+                  <input type="hidden" name="user_id" value={user.id} />
+                  <input
+                    type="text"
+                    name="groups"
+                    value={Enum.join(user.groups || [], ", ")}
+                    placeholder="groups"
+                    class="input input-xs w-40"
+                    aria-label={"Groups of #{user.email}"}
+                  />
+                  <button type="submit" class="btn btn-ghost btn-xs">save</button>
+                </form>
               </td>
               <td>
                 <form phx-submit="change_role" class="flex items-center gap-1">
