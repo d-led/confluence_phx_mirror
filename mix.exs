@@ -78,6 +78,7 @@ defmodule ConfluencePhxMirror.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false}
     ]
   end
@@ -116,6 +117,7 @@ defmodule ConfluencePhxMirror.MixProject do
         "deps.unlock --unused",
         "format",
         "credo --strict",
+        "sobelow --config",
         "test"
       ]
     ]

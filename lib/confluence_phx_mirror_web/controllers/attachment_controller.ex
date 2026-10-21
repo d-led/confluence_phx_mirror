@@ -12,6 +12,9 @@ defmodule ConfluencePhxMirrorWeb.AttachmentController do
   alias ConfluencePhxMirror.Blobs.LocalStore
   alias ConfluencePhxMirror.Mirror
 
+  # The path comes from Blobs.Store, whose keys are sanitised segments under
+  # the blob root; attachment_controller_test covers the traversal attempt.
+  # sobelow_skip ["Traversal.SendFile"]
   def show(
         conn,
         %{

@@ -9,7 +9,10 @@ defmodule ConfluencePhxMirror.Blobs.LocalStore do
   """
   @behaviour ConfluencePhxMirror.Blobs.Store
 
+  # Every key was already accepted by validate_key/1 (no "..", no absolute
+  # path) before it reaches the filesystem.
   @impl true
+  # sobelow_skip ["Traversal.FileModule"]
   def put(key, data, opts) when is_binary(data) do
     with :ok <- validate_key(key),
          path = absolute_path(key, opts),
@@ -24,6 +27,7 @@ defmodule ConfluencePhxMirror.Blobs.LocalStore do
   end
 
   @impl true
+  # sobelow_skip ["Traversal.FileModule"]
   def read(key, opts) do
     with :ok <- validate_key(key) do
       File.read(absolute_path(key, opts))
@@ -31,6 +35,7 @@ defmodule ConfluencePhxMirror.Blobs.LocalStore do
   end
 
   @impl true
+  # sobelow_skip ["Traversal.FileModule"]
   def delete(key, opts) do
     with :ok <- validate_key(key) do
       case File.rm(absolute_path(key, opts)) do

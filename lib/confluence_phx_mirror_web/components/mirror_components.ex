@@ -244,6 +244,9 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   attr :page, :map, required: true
   attr :comments, :list, required: true
 
+  # Comment bodies go through Sync.Renderer, which strips scripts and event
+  # handlers before they are stored, exactly like page bodies.
+  # sobelow_skip ["XSS.Raw"]
   def comment_thread(assigns) do
     roots = Enum.filter(assigns.comments, &is_nil(&1.parent_id))
     replies = Enum.group_by(Enum.reject(assigns.comments, &is_nil(&1.parent_id)), & &1.parent_id)
@@ -381,6 +384,9 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   """
   def highlight(nil, _terms), do: ""
 
+  # The text is escaped before any markup is added; only our own <mark> tags
+  # are ever raw here, and search terms are escaped into them by the caller.
+  # sobelow_skip ["XSS.Raw"]
   def highlight(text, terms) do
     escaped = text |> to_string() |> Plug.HTML.html_escape() |> IO.iodata_to_binary()
 

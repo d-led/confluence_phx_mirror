@@ -100,6 +100,10 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     )
   end
 
+  # The page body is Confluence's export_view after Sync.Renderer sanitised it
+  # (scripts, event handlers and javascript: URLs removed) when the page was
+  # mirrored; rendering it raw is the whole point of the mirror.
+  # sobelow_skip ["XSS.Raw"]
   defp render_page(conn, page, kind \\ :page) do
     space = page.space
     user = conn.assigns[:current_user]

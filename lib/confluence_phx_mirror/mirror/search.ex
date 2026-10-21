@@ -119,6 +119,10 @@ defmodule ConfluencePhxMirror.Mirror.Search do
     end
   end
 
+  # The SQL is a template: every user value becomes a $N parameter (see
+  # param/2), and the only interpolations are the fixed language/function names
+  # and the integer limit/offset.
+  # sobelow_skip ["SQL.Query"]
   defp run_text(parameter, function, terms, limit, offset) do
     sql = """
     SELECT p.id, ts_rank_cd(p.search_vector, #{function}('#{@language}', $1)) AS rank
@@ -168,6 +172,9 @@ defmodule ConfluencePhxMirror.Mirror.Search do
     end
   end
 
+  # Same template as run_text/5: filters arrive as $N parameters and every
+  # identifier comes from a fixed clause (scalar/4, order_sql/3).
+  # sobelow_skip ["SQL.Query"]
   defp execute(%CQL.Query{} = query, opts) do
     limit = min(query.limit || Keyword.get(opts, :limit, @default_limit), @max_limit)
     offset = max(Keyword.get(opts, :start, 0), 0)

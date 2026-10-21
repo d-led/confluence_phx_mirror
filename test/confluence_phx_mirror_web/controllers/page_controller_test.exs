@@ -18,6 +18,16 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert html =~ "Last sync"
   end
 
+  test "reader pages only allow scripts from the mirror itself", %{conn: conn} do
+    conn = get(conn, ~p"/")
+
+    [policy] = get_resp_header(conn, "content-security-policy")
+    assert policy =~ "script-src 'self'"
+    assert policy =~ "connect-src 'self' ws: wss:"
+    assert policy =~ "frame-ancestors 'none'"
+    refute policy =~ "'unsafe-eval'"
+  end
+
   test "GET /spaces/:key redirects to the space home page", %{conn: conn} do
     conn = get(conn, ~p"/spaces/ENG")
     assert redirected_to(conn) == ~p"/spaces/ENG/pages/1000/engineering-handbook"

@@ -383,10 +383,20 @@ what `mix setup` and the `test` alias use.
 
 ```bash
 mix test                 # domain, rendering, search, auth, webhooks, web, presence
-mix precommit            # compile --warnings-as-errors, unused deps, format, credo --strict, tests
+mix precommit            # compile --warnings-as-errors, unused deps, format, credo --strict, sobelow, tests
 mix format --check-formatted
 mix credo --strict
+mix sobelow --config     # security pass, about a second
 ```
+
+Sobelow runs with `skip: true`, so every accepted finding is either a
+`# sobelow_skip [...]` comment with its reason at the call site (sanitised HTML,
+the parameterised CQL builder, blob keys) or an entry in `.sobelow-skips` for a
+reviewed template. Regenerate those entries with
+`mix sobelow --config --mark-skip-all` only after reviewing them again. The
+reader pipeline answers `Config.CSP` with a real Content-Security-Policy:
+scripts only from the mirror itself, inline styles allowed for Confluence's own
+markup.
 
 Tests are grouped by the question they answer:
 

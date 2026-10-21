@@ -10,7 +10,14 @@ defmodule ConfluencePhxMirrorWeb.Router do
     plug :fetch_live_flash
     plug :put_root_layout, html: {ConfluencePhxMirrorWeb.Layouts, :root}
     plug :protect_from_forgery
-    plug :put_secure_browser_headers
+    # Scripts may only come from the mirror itself (LiveView is bundled into
+    # assets/js/app.js); styles stay inline-friendly because Confluence's HTML
+    # carries style attributes and the palette is emitted per request.
+    plug :put_secure_browser_headers, %{
+      "content-security-policy" =>
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    }
+
     plug Plugs.FetchCurrentUser
     plug Plugs.AutoAdmin
     plug Plugs.Theme

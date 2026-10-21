@@ -1,0 +1,2 @@
+XSS.Raw: XSS,lib/confluence_phx_mirror_web/components/layouts/root.html.heex:14,200047D
+XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/page_html/show.html.heex:135,1CC329D

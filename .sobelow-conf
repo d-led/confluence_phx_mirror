@@ -1,0 +1,22 @@
+# Sobelow, as run by `mix precommit`.
+#
+# - `skip: true` honours `# sobelow_skip [...]` comments and the reviewed
+#   findings recorded in `.sobelow-skips` (regenerate with
+#   `mix sobelow --config --mark-skip-all` after a deliberate review).
+# - `exit: :low` fails the build on any finding at low confidence or above.
+# - `private: true` skips the update check, so no `.sobelow` cache is written.
+[
+  exit: :low,
+  format: "txt",
+  ignore: [],
+  ignore_files: [],
+  include_mix_tasks: false,
+  include_scripts: false,
+  out: nil,
+  private: true,
+  router: nil,
+  skip: true,
+  summary: false,
+  threshold: :low,
+  verbose: false
+]
