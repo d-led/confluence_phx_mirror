@@ -46,8 +46,34 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   @type result :: %{html: String.t(), links: [link()], text: String.t()}
 
-  @unsafe_elements ~w(script iframe object embed applet form input button)
+  # iframe/object/embed are not stripped here: they are replaced by an honest
+  # placeholder in `replace_live_only_content/2`, which runs later.
+  @unsafe_elements ~w(script applet form input button)
   @url_attributes ~w(href src action formaction poster)
+
+  # Macros Confluence renders in the browser (Jira issues, page tree, Connect
+  # and Forge apps) do not survive the REST API: the export carries an iframe or
+  # an unexpanded macro. A static mirror cannot run them, so it says so instead
+  # of pretending — inventing output would be a lie about the source.
+  @live_only_elements ~w(iframe object embed)
+
+  @macro_labels %{
+    "jira" => "a Jira issues search",
+    "jiraissues" => "a Jira issues list",
+    "jirachart" => "a Jira chart",
+    "toc" => "a table of contents",
+    "pagetree" => "a page tree",
+    "children" => "a child pages list",
+    "blog-posts" => "a blog posts list",
+    "recently-updated" => "a recently updated list",
+    "contentbylabel" => "a content by label list",
+    "page-properties-report" => "a page properties report",
+    "contributors" => "a contributors list",
+    "tasks-report" => "a tasks report",
+    "livesearch" => "a live search box",
+    "gadget" => "an external gadget",
+    "widget" => "an external widget"
+  }
 
   # Floki's parser drops text runs that are only whitespace, but the exporter
   # relies on them for the visible space between inline elements (two status
@@ -83,6 +109,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     rewritten =
       nodes
       |> traverse_and_rewrite(context)
+      |> replace_live_only_content(context)
       |> Floki.raw_html()
       |> restore_spaces()
 
@@ -103,6 +130,46 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   defp remove_unsafe_elements(nodes) do
     Enum.reduce(@unsafe_elements, nodes, &Floki.filter_out(&2, &1))
   end
+
+  defp replace_live_only_content(nodes, context) do
+    Floki.traverse_and_update(nodes, fn
+      {tag, _attrs, _children} when tag in @live_only_elements ->
+        unavailable("this embedded content", context)
+
+      {"ac:structured-macro", attrs, _children} = node ->
+        case List.keyfind(attrs, "ac:name", 0) do
+          {"ac:name", name} -> unavailable(macro_label(name), context)
+          nil -> node
+        end
+
+      node ->
+        node
+    end)
+  end
+
+  defp macro_label(name), do: Map.get(@macro_labels, name, "the #{name} macro")
+
+  # The link is written as a plain Confluence URL so the usual anchor rewriting
+  # turns it into an absolute link back to the original page.
+  defp unavailable(what, context) do
+    {"div", [{"class", "mirror-unavailable"}],
+     [
+       {"p", [],
+        [
+          {"strong", [], ["Sorry, this content cannot be shown in the static mirror."]},
+          " ",
+          what |> String.capitalize(),
+          " is rendered live by Confluence."
+        ]},
+       {"p", [], ["Open the ", original_link(context), " to see it there."]}
+     ]}
+  end
+
+  defp original_link(%{page: %{external_url: url}}) when is_binary(url) and url != "" do
+    {"a", [{"href", url}], ["original page"]}
+  end
+
+  defp original_link(_context), do: "original Confluence page"
 
   defp mark_spaces(html) do
     Regex.replace(@inter_tag_space, html, fn run ->

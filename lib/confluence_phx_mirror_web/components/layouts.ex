@@ -9,6 +9,8 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
 
   import ConfluencePhxMirrorWeb.MirrorComponents
 
+  alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirrorWeb.Skins
   alias ConfluencePhxMirrorWeb.Time
 
@@ -34,12 +36,44 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   slot :toolbar
 
   def app(assigns) do
-    assigns = assign(assigns, :current_user, assigns.current_scope && assigns.current_scope.user)
+    assigns =
+      assign(assigns,
+        current_user: assigns.current_scope && assigns.current_scope.user,
+        current_admin?: Scope.admin?(assigns.current_scope)
+      )
 
     ~H"""
+    <a
+      href="#mirror-content"
+      class="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-content"
+    >
+      Skip to content
+    </a>
+
     <div class="flex min-h-screen flex-col bg-base-100 text-base-content">
+      <div :if={Source.demo?(@mirror_source)} class="border-b border-warning/50 bg-warning/15">
+        <div class="mx-auto flex w-full max-w-[1600px] items-center gap-2 px-3 py-1.5 text-xs text-base-content/80 sm:px-5">
+          <.icon name="hero-beaker" class="size-4 shrink-0 text-warning" />
+          <p>
+            <span class="font-semibold">Demo data.</span>
+            This mirror was filled from a sample snapshot bundled with the application, not from a live Confluence site.
+          </p>
+        </div>
+      </div>
+
       <header class="sticky top-0 z-40 border-b border-base-300/70 bg-base-100/85 backdrop-blur">
-        <div class="mx-auto flex w-full max-w-[1600px] items-center gap-3 px-3 py-2 sm:px-5">
+        <div class="mx-auto flex w-full max-w-[1600px] items-center gap-2 px-3 py-2 sm:gap-3 sm:px-5">
+          <button
+            :if={@sidebar? and (@space || @spaces != [])}
+            type="button"
+            data-sidebar-toggle
+            aria-controls="mirror-sidebar"
+            aria-expanded="true"
+            aria-label="Browse spaces and pages"
+            class="-ml-1 grid size-11 shrink-0 place-items-center rounded-lg text-base-content/70 transition hover:bg-base-200 hover:text-base-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 lg:size-9"
+          >
+            <.icon name="hero-bars-3" class="size-5" />
+          </button>
           <.link
             navigate={~p"/"}
             class="group flex items-center gap-2.5 rounded-lg px-1 py-1 transition hover:bg-base-200/70"
@@ -118,7 +152,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
               <details class="dropdown dropdown-end">
                 <summary class="btn btn-ghost btn-sm gap-1.5" aria-label="Account">
                   <span class="grid size-6 place-items-center rounded-full bg-secondary text-[11px] font-semibold text-secondary-content">
-                    {initials(@current_user)}
+                    {initials(@current_user.display_name || @current_user.email)}
                   </span>
                 </summary>
                 <ul class="menu dropdown-content z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
@@ -126,7 +160,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                   <li>
                     <span class="text-xs uppercase tracking-wide text-base-content/50">{@current_user.role}</span>
                   </li>
-                  <li :if={@current_user.role == "admin"}>
+                  <li :if={@current_admin?}>
                     <.link navigate={~p"/admin"}><.icon name="hero-cog-6-tooth" class="size-4" />
                     Admin</.link>
                   </li>
@@ -155,11 +189,23 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
       </header>
 
       <div class="mx-auto flex w-full max-w-[1600px] flex-1 items-stretch">
+        <div
+          :if={@sidebar? and (@space || @spaces != [])}
+          data-sidebar-backdrop
+          hidden
+          aria-hidden="true"
+          class="fixed inset-0 z-40 bg-base-content/40 backdrop-blur-sm lg:hidden"
+        >
+        </div>
+
         <aside
           :if={@sidebar? and (@space || @spaces != [])}
-          class="hidden w-72 shrink-0 border-r border-base-300/60 bg-base-200/25 lg:block"
+          id="mirror-sidebar"
+          tabindex="-1"
+          aria-label={if @space, do: "Pages in #{@space.name}", else: "Mirrored spaces"}
+          class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] -translate-x-full overflow-y-auto overscroll-contain border-r border-base-300/60 bg-base-100 shadow-xl transition-transform duration-200 focus:outline-none motion-reduce:transition-none data-[open]:translate-x-0 lg:static lg:z-auto lg:w-72 lg:max-w-none lg:translate-x-0 lg:bg-base-200/25 lg:shadow-none lg:data-[collapsed]:hidden"
         >
-          <div class="sticky top-[57px] max-h-[calc(100vh-57px)] overflow-y-auto p-4">
+          <div class="p-4 lg:sticky lg:top-[57px] lg:max-h-[calc(100vh-57px)] lg:overflow-y-auto">
             <%= if @space do %>
               <div class="mb-3 flex items-center justify-between gap-2">
                 <.link
@@ -187,7 +233,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
           </div>
         </aside>
 
-        <main class="min-w-0 flex-1">
+        <main id="mirror-content" tabindex="-1" class="min-w-0 flex-1 focus:outline-none">
           {render_slot(@toolbar)}
           <div class="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8 lg:py-10">
             {render_slot(@inner_block)}
@@ -229,24 +275,14 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
     """
   end
 
-  defp initials(%{display_name: name, email: email}) do
-    source = name || email
+  defp source_label(nil), do: "not configured"
 
-    source
-    |> String.split(~r/[\s@._-]+/, trim: true)
-    |> Enum.take(2)
-    |> Enum.map_join(&String.first/1)
-    |> String.upcase()
-    |> case do
-      "" -> "?"
-      initials -> initials
+  defp source_label(module) do
+    case Source.kind(module) do
+      :demo -> "bundled demo snapshot (not a Confluence site)"
+      :live -> "Confluence REST API"
     end
   end
-
-  defp source_label(nil), do: "not configured"
-  defp source_label(ConfluencePhxMirror.Confluence.DemoSource), do: "bundled demo snapshot"
-  defp source_label(ConfluencePhxMirror.Confluence.HttpSource), do: "Confluence REST API"
-  defp source_label(module), do: inspect(module)
 
   attr :flash, :map, required: true
   attr :id, :string, default: "flash-group"

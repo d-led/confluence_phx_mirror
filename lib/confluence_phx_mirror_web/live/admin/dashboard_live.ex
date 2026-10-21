@@ -11,6 +11,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
   alias ConfluencePhxMirror.Accounts.Admins
   alias ConfluencePhxMirror.Audit
+  alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.{SnapshotWorker, SpaceWorker}
@@ -88,6 +89,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             · <a href={~p"/admin/users"} class="link link-primary">Users &amp; tokens</a>
             · <a href="/dev/dashboard" class="link link-primary">LiveDashboard</a>
             · <a href="/dev/mailbox" class="link link-primary">Mailbox</a>
+          </p>
+          <p
+            :if={Source.demo?(@mirror_source)}
+            class="mt-2 max-w-2xl rounded-lg bg-warning/15 px-3 py-2 text-[11px] text-base-content/70"
+          >
+            Demo data: this mirror reads a sample snapshot bundled with the application, so nothing here was mirrored from a real Confluence site. Set
+            <code>CM_SOURCE=http</code>
+            with site and token settings to mirror a live one.
           </p>
           <p :if={@current_user} class="mt-1 text-[11px] text-base-content/45">
             Signed in as {@current_user.email}
@@ -236,7 +245,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   defp status_class("running"), do: "badge-info"
   defp status_class(_), do: "badge-ghost"
 
-  defp source_name(ConfluencePhxMirror.Confluence.DemoSource), do: "bundled demo snapshot"
-  defp source_name(ConfluencePhxMirror.Confluence.HttpSource), do: "Confluence REST API"
-  defp source_name(module), do: inspect(module)
+  defp source_name(module) do
+    case Source.kind(module) do
+      :demo -> "bundled demo snapshot — demo data, not a mirrored site"
+      :live -> "Confluence REST API"
+    end
+  end
 end

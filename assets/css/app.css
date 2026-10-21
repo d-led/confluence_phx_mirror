@@ -456,6 +456,28 @@
 
 .confluence-content .mirror-dynamic-report { margin: 0.25rem 0 0; }
 
+/* Content only live Confluence can render (macros, app iframes) ---------- */
+
+.confluence-content .mirror-unavailable {
+  margin: 1rem 0;
+  padding: 0.7rem 1rem;
+  border: 1px dashed color-mix(in oklab, var(--color-warning) 60%, transparent);
+  border-radius: 0.5rem;
+  background: color-mix(in oklab, var(--color-warning) 8%, transparent);
+  font-size: 0.9rem;
+}
+
+.confluence-content .mirror-unavailable p {
+  margin: 0;
+  color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
+}
+
+.confluence-content .mirror-unavailable p + p {
+  margin-top: 0.25rem;
+  font-size: 0.9em;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
 /* Expand macro --------------------------------------------------------- */
 
 .confluence-content .expand-container {

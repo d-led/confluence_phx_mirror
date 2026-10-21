@@ -88,7 +88,7 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
 
     html =
       view
-      |> element("#new-token-#{admin.id}", "new token")
+      |> element("#new-token-#{admin.id}", "Token name")
       |> render_submit(%{"user_id" => admin.id, "name" => "demo"})
 
     assert html =~ "New API token"

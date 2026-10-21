@@ -3,6 +3,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.StatsController do
 
   use ConfluencePhxMirrorWeb, :controller
 
+  alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirrorWeb.Time
 
@@ -22,7 +23,10 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.StatsController do
             "finishedAt" => Time.iso(last_sync.finished_at),
             "stats" => last_sync.stats
           },
-      "source" => ConfluencePhxMirror.Confluence.Source.source() |> Module.split() |> List.last()
+      "source" => %{
+        "reader" => Source.source() |> Module.split() |> List.last(),
+        "kind" => Source.kind(Source.source())
+      }
     })
   end
 end

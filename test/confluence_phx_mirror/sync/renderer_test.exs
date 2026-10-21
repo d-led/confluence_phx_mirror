@@ -135,6 +135,54 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     end
   end
 
+  describe "content the mirror cannot render" do
+    test "an app iframe becomes a placeholder that says so" do
+      html = ~s(<p>before</p><iframe src="https://apps.example/embed"></iframe><p>after</p>)
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ "This embedded content is rendered live by Confluence."
+      assert result.html =~ "before"
+      assert result.html =~ "after"
+    end
+
+    test "a macro Confluence did not expand into the export becomes a placeholder" do
+      html = """
+      <ac:structured-macro ac:name="jira">
+        <ac:parameter ac:name="jql">project = ENG</ac:parameter>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(html, context(%{page: page()}))
+
+      assert result.html =~ "Sorry, this content cannot be shown in the static mirror."
+      assert result.html =~ "A jira issues search is rendered live by Confluence."
+      assert result.html =~ "original page"
+    end
+
+    test "the placeholder links back to the original page" do
+      html = ~s(<ac:structured-macro ac:name="pagetree"></ac:structured-macro>)
+
+      assert Renderer.render(html, context(%{page: page()})).html =~
+               ~s(href="#{page().external_url}")
+    end
+
+    test "an unknown macro is named as it is" do
+      html = ~s(<ac:structured-macro ac:name="acme-widget"></ac:structured-macro>)
+
+      assert Renderer.render(html, context()).html =~
+               "The acme-widget macro is rendered live by Confluence."
+    end
+  end
+
+  defp page do
+    %ConfluencePhxMirror.Mirror.Page{
+      confluence_id: 100,
+      title: "Home",
+      external_url: "https://dled.atlassian.net/wiki/spaces/ENG/pages/100/Home"
+    }
+  end
+
   describe "macros" do
     test "turns the expand macro into a native details element" do
       html = """
