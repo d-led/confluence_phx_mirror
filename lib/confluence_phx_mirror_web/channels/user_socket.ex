@@ -8,7 +8,7 @@ defmodule ConfluencePhxMirrorWeb.UserSocket do
   channel "page:*", ConfluencePhxMirrorWeb.PageChannel
 
   @impl true
-  def connect(_params, %{session: session}, socket) do
+  def connect(_params, %Phoenix.Socket{} = socket, %{session: session}) do
     user =
       case session["user_id"] do
         nil -> nil
@@ -18,7 +18,7 @@ defmodule ConfluencePhxMirrorWeb.UserSocket do
     {:ok, assign(socket, user_id: user && user.id, user_email: user && user.email)}
   end
 
-  def connect(_params, _info, _socket), do: :error
+  def connect(_params, _socket, _connect_info), do: :error
 
   @impl true
   def id(socket) do
