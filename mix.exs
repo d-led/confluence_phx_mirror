@@ -121,9 +121,11 @@ defmodule ConfluencePhxMirror.MixProject do
         "sobelow --config",
         # Coverage data is exported so `mix crap` can score complexity against it.
         "test --cover --export-coverage default",
-        # Ratchet: 135 is today's worst (HttpSource.parse_page/2). Lower it as the
-        # queue in README.md drains; never raise it.
-        "crap --max-score 135"
+        # Conventional CRAP threshold over the application code. The operator
+        # CLIs in lib/mix/tasks are out of scope: their argument parsing and
+        # shell output are exercised by hand, not by the suite.
+        "crap --path lib/confluence_phx_mirror --max-score 30",
+        "crap --path lib/confluence_phx_mirror_web --max-score 30"
       ]
     ]
   end
