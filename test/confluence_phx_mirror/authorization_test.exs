@@ -68,6 +68,20 @@ defmodule ConfluencePhxMirror.AuthorizationTest do
     assert Mirror.space_permissions(Mirror.get_space_by_key("ENG").id) == []
   end
 
+  test "a reader who is in the group according to Confluence may read the page" do
+    page = Mirror.get_page!(1003)
+    outsider = "late-joiner@demo.atlassian.net"
+
+    refute Authorization.can_read_page?(reader(outsider), page)
+
+    {:ok, _} =
+      Mirror.replace_group_members("confluence-users", [
+        %{email: outsider, display_name: "Late Joiner"}
+      ])
+
+    assert Authorization.can_read_page?(reader(outsider), page)
+  end
+
   defp anonymous, do: Scope.for_user(nil)
 
   defp reader(email, groups \\ []) do

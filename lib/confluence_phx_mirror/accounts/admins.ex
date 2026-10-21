@@ -6,7 +6,8 @@ defmodule ConfluencePhxMirror.Accounts.Admins do
 
     * the `admin` role on the account (set in the admin UI);
     * a group listed in `:admin_groups` (`CM_ADMIN_GROUPS`), so a mirrored
-      Confluence group grants administration to every reader in it;
+      Confluence group grants administration to every reader in it — the
+      membership comes from the sync, not from what the reader types;
     * an e-mail listed in `:admins` — the seeded `CM_ADMINS` list. Seeding gives
       an operator a first administrator before the UI exists, and a seeded
       address may sign in even when self sign-up is closed.
@@ -16,6 +17,7 @@ defmodule ConfluencePhxMirror.Accounts.Admins do
   """
 
   alias ConfluencePhxMirror.Accounts.User
+  alias ConfluencePhxMirror.Mirror
 
   @type source :: :role | :group | :seed | nil
 
@@ -32,15 +34,41 @@ defmodule ConfluencePhxMirror.Accounts.Admins do
   def source(%User{} = user) do
     cond do
       seeded?(user.email) -> :seed
-      Enum.any?(groups(user), &(&1 in admin_groups())) -> :group
+      in_admin_group?(user) -> :group
       true -> nil
     end
+  end
+
+  @doc "Whether a Confluence admin group, as last synced, includes the account."
+  @spec in_admin_group?(User.t()) :: boolean()
+  def in_admin_group?(%User{} = user) do
+    Mirror.member_of_any_group?(User.identity_keys(user), admin_groups())
   end
 
   @doc "Whether an e-mail is configured as an administrator (`CM_ADMINS`)."
   @spec seeded?(String.t() | nil) :: boolean()
   def seeded?(email) when is_binary(email), do: User.normalise_email(email) in admins()
   def seeded?(_email), do: false
+
+  @doc """
+  Whether the account cannot lose administration.
+
+  Seeded administrators and the local bootstrap account (`admin@localhost` in
+  dev/test) exist so a deployment always has a way in; the UI must not be able
+  to lock everyone out by demoting them.
+  """
+  @spec protected?(User.t() | nil) :: boolean()
+  def protected?(nil), do: false
+
+  def protected?(%User{} = user) do
+    seeded?(user.email) or User.normalise_email(user.email) == bootstrap_email()
+  end
+
+  defp bootstrap_email do
+    :confluence_phx_mirror
+    |> Application.get_env(:auto_admin_email, "admin@localhost")
+    |> User.normalise_email()
+  end
 
   @doc "Seeded administrator e-mails, normalised."
   def admins do
@@ -55,6 +83,4 @@ defmodule ConfluencePhxMirror.Accounts.Admins do
     |> Application.get_env(:admin_groups, [])
     |> Enum.map(&(&1 |> to_string() |> String.downcase()))
   end
-
-  defp groups(%User{groups: groups}), do: Enum.map(groups || [], &String.downcase/1)
 end

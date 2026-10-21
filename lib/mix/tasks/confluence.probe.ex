@@ -40,11 +40,16 @@ defmodule Mix.Tasks.Confluence.Probe do
       {:error, :missing_base_url} ->
         Mix.raise("CM_CONFLUENCE_SITE is not set.")
 
-      {:error, {:unauthorized, status}} ->
-        Mix.shell().error("Confluence rejected the credentials (HTTP #{status}).")
+      {:error, {:unauthorized, body}} ->
+        Mix.shell().error("Confluence rejected the credentials (HTTP 401).")
+        Mix.shell().error("Check CM_ATL_EMAIL and CM_ATL_TOKEN. Confluence said: #{body}")
+        exit({:shutdown, 1})
+
+      {:error, {:forbidden, body}} ->
+        Mix.shell().error("Confluence refused the call (HTTP 403) for the configured account.")
 
         Mix.shell().error(
-          "Check CM_ATL_EMAIL and CM_ATL_TOKEN, and that the account can use Confluence."
+          "Either the e-mail/token pair is wrong or the account cannot use Confluence on that site. Confluence said: #{body}"
         )
 
         exit({:shutdown, 1})

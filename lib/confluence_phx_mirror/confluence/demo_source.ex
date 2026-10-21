@@ -18,6 +18,9 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
   def name, do: "confluence-demo"
 
   @impl true
+  def kind, do: :demo
+
+  @impl true
   def spaces(_opts), do: {:ok, DemoContent.spaces()}
 
   @impl true
@@ -55,6 +58,17 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
   @impl true
   def space_permissions(space_key, _opts) do
     {:ok, Map.get(DemoContent.space_permissions(), space_key, [])}
+  end
+
+  @impl true
+  def group_members(group_name, _opts) do
+    members =
+      DemoContent.group_members()
+      |> Enum.find_value([], fn {name, members} ->
+        if String.downcase(name) == String.downcase(group_name), do: members
+      end)
+
+    {:ok, members}
   end
 
   @impl true

@@ -66,9 +66,24 @@ defmodule ConfluencePhxMirror.Confluence.Source do
           subject_type: String.t(),
           subject_key: String.t() | nil
         }
+  @type group_member :: %{
+          email: String.t() | nil,
+          account_id: String.t() | nil,
+          display_name: String.t() | nil
+        }
 
   @doc "Human readable source name, recorded on every sync run."
   @callback name() :: String.t()
+
+  @doc """
+  Where the content really comes from.
+
+  `:demo` is the bundled sample snapshot that ships with the mirror; `:live` is
+  a real Confluence site read over its REST API. Every screen that talks about
+  syncing must say which of the two it is showing — demo data is a fixture, not
+  a mirrored site.
+  """
+  @callback kind() :: :demo | :live
 
   @doc "All spaces the mirror is configured to import."
   @callback spaces(keyword()) :: {:ok, [space()]} | {:error, term()}
@@ -117,7 +132,22 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   @callback space_permissions(space_key :: String.t(), keyword()) ::
               {:ok, [permission()]} | {:error, term()}
 
-  @optional_callbacks changed_since: 2, restrictions: 2, space_permissions: 2
+  @doc """
+  Members of one Confluence group.
+
+  Groups are how Confluence grants access, so the sync mirrors membership for
+  every group the content refers to plus the configured admin groups. A source
+  that cannot read groups leaves the callback out; the mirror then keeps the
+  membership it already has.
+
+  Each member carries whichever identifiers the site exposes:
+
+      %{email: "jane@acme.com", account_id: "557058:...", display_name: "Jane"}
+  """
+  @callback group_members(group_name :: String.t(), keyword()) ::
+              {:ok, [group_member()]} | {:error, term()}
+
+  @optional_callbacks changed_since: 2, restrictions: 2, space_permissions: 2, group_members: 2
 
   @doc "The configured source module."
   def source do
@@ -127,4 +157,17 @@ defmodule ConfluencePhxMirror.Confluence.Source do
       ConfluencePhxMirror.Confluence.DemoSource
     )
   end
+
+  @doc "Whether the configured source is the bundled demo snapshot."
+  @spec demo?() :: boolean()
+  def demo?, do: demo?(source())
+
+  @doc "Whether a source module is the bundled demo snapshot."
+  @spec demo?(module() | nil) :: boolean()
+  def demo?(module), do: kind(module) == :demo
+
+  @doc "The kind (`:demo` or `:live`) of a source module."
+  @spec kind(module() | nil) :: :demo | :live
+  def kind(module) when is_atom(module) and not is_nil(module), do: module.kind()
+  def kind(_module), do: :live
 end

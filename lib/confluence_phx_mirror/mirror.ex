@@ -9,7 +9,17 @@ defmodule ConfluencePhxMirror.Mirror do
 
   import Ecto.Query
 
-  alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Label, Link, Page, PageProperty, Space}
+  alias ConfluencePhxMirror.Mirror.{
+    Attachment,
+    Comment,
+    GroupMember,
+    Label,
+    Link,
+    Page,
+    PageProperty,
+    Space
+  }
+
   alias ConfluencePhxMirror.Mirror.{PageRestriction, SpacePermission}
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.SyncRun
@@ -112,6 +122,122 @@ defmodule ConfluencePhxMirror.Mirror do
       |> Enum.uniq_by(&{&1.operation, &1.subject_type, &1.subject_key})
 
     if rows == [], do: 0, else: Repo.insert_all(schema, rows)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Group membership
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Groups the mirrored content refers to: the subjects of page restrictions and
+  space permissions. These are the groups whose membership decides access, so
+  these are the ones a sync has to keep current.
+
+  Returns `{name, key}` pairs; the key is the case-insensitive match form.
+  """
+  def referenced_groups do
+    from(r in PageRestriction, where: r.subject_type == "group", select: r.subject_key)
+    |> union(^from(p in SpacePermission, where: p.subject_type == "group", select: p.subject_key))
+    |> Repo.all()
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&{&1, GroupMember.key(&1)})
+    |> Enum.uniq_by(&elem(&1, 1))
+  end
+
+  @doc "Members Confluence reported for a group, ordered by display name."
+  def group_members(group) do
+    key = GroupMember.key(group)
+
+    from(m in GroupMember,
+      where: m.group_key == ^key,
+      order_by: [asc: m.display_name, asc: m.subject_key]
+    )
+    |> Repo.all()
+  end
+
+  @doc "Every mirrored group with its member count, for the admin screen."
+  def groups_with_counts do
+    from(m in GroupMember,
+      group_by: [m.group_key, m.group_name],
+      order_by: [asc: m.group_key],
+      select: {m.group_name, m.group_key, count(m.id)}
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Replaces what we know about one group's membership with what Confluence just
+  said. A member who left the group disappears here, which is the point.
+  """
+  def replace_group_members(group_name, members) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    group_key = GroupMember.key(group_name)
+
+    rows =
+      members
+      |> Enum.map(&member_row(&1, group_name, group_key, now))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq_by(& &1.subject_key)
+
+    Repo.transaction(fn ->
+      Repo.delete_all(from m in GroupMember, where: m.group_key == ^group_key)
+
+      if rows != [], do: Repo.insert_all(GroupMember, rows)
+      length(rows)
+    end)
+  end
+
+  defp member_row(member, group_name, group_key, now) do
+    case GroupMember.subject_key(member) do
+      nil ->
+        nil
+
+      subject_key ->
+        %{
+          group_name: group_name,
+          group_key: group_key,
+          subject_key: subject_key,
+          email: Map.get(member, :email),
+          account_id: Map.get(member, :account_id),
+          display_name: Map.get(member, :display_name),
+          inserted_at: now,
+          updated_at: now
+        }
+    end
+  end
+
+  @doc """
+  Whether any of `subject_keys` (a reader's e-mail and account id) belongs to
+  one of `group_keys`. Group names are compared case-insensitively.
+  """
+  def member_of_any_group?(subject_keys, group_keys) do
+    keys = Enum.map(group_keys, &GroupMember.key/1)
+    subjects = Enum.reject(subject_keys, &is_nil/1)
+
+    from(m in GroupMember,
+      where: m.group_key in ^keys and m.subject_key in ^subjects,
+      limit: 1,
+      select: 1
+    )
+    |> Repo.exists?()
+  end
+
+  @doc "Whether a reader belongs to one group."
+  def member_of_group?(subject_keys, group_key) do
+    member_of_any_group?(subject_keys, [group_key])
+  end
+
+  @doc "Names of the mirrored groups a reader belongs to, as Confluence spells them."
+  def groups_of(subject_keys) do
+    subjects = Enum.reject(subject_keys, &is_nil/1)
+
+    from(m in GroupMember,
+      where: m.subject_key in ^subjects,
+      order_by: [asc: m.group_name],
+      select: m.group_name
+    )
+    |> Repo.all()
+    |> Enum.uniq()
   end
 
   # ---------------------------------------------------------------------------
@@ -548,27 +674,9 @@ defmodule ConfluencePhxMirror.Mirror do
   # Catalogs (the Confluence-style browse views)
   # ---------------------------------------------------------------------------
 
-  @doc """
-  Spaces with their content counts and latest change, for the space directory.
-
-  Returns `%{space: Space.t(), pages: integer, blog_posts: integer,
-  updated_at: DateTime.t() | nil}` ordered by name.
-  """
-  def space_catalog do
-    from(s in Space,
-      left_join: p in assoc(s, :pages),
-      where: is_nil(p.deleted_at) or is_nil(p.id),
-      group_by: s.id,
-      order_by: [asc: s.name],
-      select: %{
-        space: s,
-        pages: filter(count(p.id), p.type == "page"),
-        blog_posts: filter(count(p.id), p.type == "blogpost"),
-        updated_at: max(p.external_updated_at)
-      }
-    )
-    |> Repo.all()
-  end
+  # The catalog queries themselves live in `ConfluencePhxMirror.Catalog`: they
+  # are filtered and paged per reader, which is a different job from the point
+  # lookups in this module.
 
   @doc """
   Content of one space, archived pages included.

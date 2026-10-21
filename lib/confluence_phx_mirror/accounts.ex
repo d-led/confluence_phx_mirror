@@ -82,10 +82,20 @@ defmodule ConfluencePhxMirror.Accounts do
     end
   end
 
+  @doc """
+  Changes the role of an account.
+
+  Seeded administrators (`CM_ADMINS`) and the local bootstrap account keep
+  their administration: demoting them would remove the only way back in.
+  """
   def change_role(%User{} = user, role, actor) do
-    with {:ok, user} <- user |> User.changeset(%{role: role}) |> Repo.update() do
-      Audit.log(actor, User.audit_event_role_changed(user))
-      {:ok, user}
+    if role != "admin" and Admins.protected?(user) do
+      {:error, :protected_admin}
+    else
+      with {:ok, user} <- user |> User.changeset(%{role: role}) |> Repo.update() do
+        Audit.log(actor, User.audit_event_role_changed(user))
+        {:ok, user}
+      end
     end
   end
 
@@ -293,7 +303,11 @@ defmodule ConfluencePhxMirror.Accounts do
   def authenticate_api_token(plain) when is_binary(plain) do
     now = now()
 
-    case Repo.one(from t in ApiToken, where: t.token_hash == ^hash(plain), preload: [:user]) do
+    case Repo.one(
+           from t in ApiToken,
+             where: not is_nil(t.user_id) and t.token_hash == ^hash(plain),
+             preload: [:user]
+         ) do
       nil ->
         {:error, :invalid_token}
 
@@ -301,14 +315,81 @@ defmodule ConfluencePhxMirror.Accounts do
         if expired?(token, now) do
           {:error, :expired_token}
         else
-          {:ok, _} =
-            token
-            |> Ecto.Changeset.change(last_used_at: now)
-            |> Repo.update()
-
+          touch(token, now)
           {:ok, token.user}
         end
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Service tokens (no user, one scope)
+  # ---------------------------------------------------------------------------
+
+  @doc "Tokens that belong to an integration rather than to a reader."
+  def list_service_tokens do
+    Repo.all(
+      from t in ApiToken,
+        where: is_nil(t.user_id),
+        order_by: [asc: t.name]
+    )
+  end
+
+  @doc "Creates a service token. The plaintext is returned once and never stored."
+  def create_service_token(name, scope, actor) do
+    plain = random_token()
+    prefix = String.slice(plain, 0, 8)
+
+    with {:ok, token} <-
+           %ApiToken{}
+           |> ApiToken.changeset(%{
+             name: name,
+             scope: scope,
+             token_hash: hash(plain),
+             token_prefix: prefix
+           })
+           |> Repo.insert() do
+      Audit.log(actor, ApiToken.audit_event_service_created(token))
+
+      {:ok, plain, token}
+    end
+  end
+
+  def revoke_service_token(id, actor) do
+    case Repo.one(from t in ApiToken, where: is_nil(t.user_id) and t.id == ^id) do
+      nil ->
+        {:error, :not_found}
+
+      token ->
+        {:ok, _} = Repo.delete(token)
+        Audit.log(actor, ApiToken.audit_event_revoked(token))
+        :ok
+    end
+  end
+
+  @doc "Authenticates a service token that was issued for `scope`."
+  def authenticate_service_token(plain, scope) when is_binary(plain) do
+    now = now()
+
+    case Repo.one(
+           from t in ApiToken,
+             where: is_nil(t.user_id) and t.scope == ^scope and t.token_hash == ^hash(plain)
+         ) do
+      nil ->
+        {:error, :invalid_token}
+
+      %ApiToken{} = token ->
+        if expired?(token, now) do
+          {:error, :expired_token}
+        else
+          touch(token, now)
+          {:ok, token}
+        end
+    end
+  end
+
+  defp touch(%ApiToken{} = token, now) do
+    {:ok, _} = token |> Ecto.Changeset.change(last_used_at: now) |> Repo.update()
+    :ok
   end
 
   @doc "Authenticates `email:token` basic credentials, for Confluence-style clients."

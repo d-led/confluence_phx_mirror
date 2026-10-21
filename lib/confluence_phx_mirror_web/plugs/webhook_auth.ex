@@ -9,19 +9,28 @@ defmodule ConfluencePhxMirrorWeb.Plugs.WebhookAuth do
       config :confluence_phx_mirror, :webhook_tokens, %{"confluence" => "s3cret"}
 
   A request authenticates by presenting the token as `Authorization: Bearer`,
-  `X-Webhook-Token`, or `?token=`. With no token configured the plug does
+  `X-Webhook-Token`, or `?token=`. Without a configured token the plug does
   nothing and the HMAC signature remains the only check; a configured receiver
   accepts either the token or a valid signature.
+
+  Service tokens issued in *Users & tokens* also work here: they have no user
+  and carry the `webhook` scope, so they cannot open the API or the reader UI.
   """
 
   import Plug.Conn
 
+  alias ConfluencePhxMirror.Accounts
+
   def init(opts), do: opts
 
   def call(conn, opts) do
-    case token_for(Keyword.get(opts, :receiver, "confluence")) do
-      nil -> conn
-      token -> authenticate(conn, token)
+    token = token_for(Keyword.get(opts, :receiver, "confluence"))
+    presented = presented(conn)
+
+    cond do
+      authenticated?(presented, token) -> assign(conn, :webhook_token_valid, true)
+      is_nil(token) -> conn
+      true -> reject(conn)
     end
   end
 
@@ -32,19 +41,20 @@ defmodule ConfluencePhxMirrorWeb.Plugs.WebhookAuth do
     end
   end
 
-  defp authenticate(conn, token) do
-    presented = presented(conn)
+  defp authenticated?(nil, _token), do: false
 
-    cond do
-      not is_binary(presented) ->
-        reject(conn)
+  defp authenticated?(presented, token) do
+    matches_config?(presented, token) or service_token?(presented)
+  end
 
-      Plug.Crypto.secure_compare(presented, token) ->
-        assign(conn, :webhook_token_valid, true)
+  defp matches_config?(_presented, nil), do: false
 
-      true ->
-        reject(conn)
-    end
+  defp matches_config?(presented, token) do
+    byte_size(presented) == byte_size(token) and Plug.Crypto.secure_compare(presented, token)
+  end
+
+  defp service_token?(presented) do
+    match?({:ok, _}, Accounts.authenticate_service_token(presented, "webhook"))
   end
 
   defp presented(conn) do

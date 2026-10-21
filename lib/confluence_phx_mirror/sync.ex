@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirror.Sync do
 
   import Ecto.Query
 
+  alias ConfluencePhxMirror.Accounts.Admins
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Blobs.{Key, Store}
   alias ConfluencePhxMirror.Confluence.Source
@@ -23,6 +24,7 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Sites
   alias ConfluencePhxMirror.Sync.{DynamicContent, PageProperties, Renderer, SyncRun}
 
   @type mode :: :snapshot | :incremental | :space | :page
@@ -47,6 +49,8 @@ defmodule ConfluencePhxMirror.Sync do
   def run(mode, opts \\ []) do
     source = Keyword.get(opts, :source, Source.source())
     actor = Keyword.get(opts, :actor, {:system, "sync"})
+    # One mirror holds one site's content; never let a sync write across sites.
+    Sites.verify!()
     run = start_run(source, mode, actor)
 
     try do
@@ -78,8 +82,16 @@ defmodule ConfluencePhxMirror.Sync do
         index = Mirror.page_index()
 
         {stats, detail_errors} = sync_details(source, entries, index, opts)
-        stats = Map.merge(stats, %{"spaces" => length(spaces), "deleted" => deleted})
-        {stats, errors ++ permission_errors ++ detail_errors}
+        {members, group_errors} = sync_groups(source, opts)
+
+        stats =
+          Map.merge(stats, %{
+            "spaces" => length(spaces),
+            "deleted" => deleted,
+            "group_members" => members
+          })
+
+        {stats, errors ++ permission_errors ++ detail_errors ++ group_errors}
 
       {:error, reason} ->
         raise_source_error(:spaces, nil, reason)
@@ -96,8 +108,12 @@ defmodule ConfluencePhxMirror.Sync do
       index = Mirror.page_index()
 
       {stats, detail_errors} = sync_details(source, entries, index, opts)
-      stats = Map.merge(stats, %{"spaces" => 1, "deleted" => deleted})
-      {stats, errors ++ permission_errors ++ detail_errors}
+      {members, group_errors} = sync_groups(source, opts)
+
+      stats =
+        Map.merge(stats, %{"spaces" => 1, "deleted" => deleted, "group_members" => members})
+
+      {stats, errors ++ permission_errors ++ detail_errors ++ group_errors}
     end
   end
 
@@ -111,8 +127,11 @@ defmodule ConfluencePhxMirror.Sync do
       index = Mirror.page_index()
       {stats, errors} = sync_details(source, [entry], index, opts)
       {_spaces, permission_errors} = sync_space_permissions(source, [space])
+      {members, group_errors} = sync_groups(source, opts)
       refresh_dynamic_pages()
-      {Map.put(stats, "spaces", 1), errors ++ permission_errors}
+
+      {Map.merge(stats, %{"spaces" => 1, "group_members" => members}),
+       errors ++ permission_errors ++ group_errors}
     else
       {:error, reason} -> raise_source_error(:page, confluence_id, reason)
     end
@@ -129,7 +148,11 @@ defmodule ConfluencePhxMirror.Sync do
         resolve_trees(spaces)
         index = Mirror.page_index()
         {stats, detail_errors} = sync_details(source, entries, index, opts)
-        {Map.put(stats, "spaces", length(spaces)), errors ++ permission_errors ++ detail_errors}
+        {members, group_errors} = sync_groups(source, opts)
+
+        stats = Map.merge(stats, %{"spaces" => length(spaces), "group_members" => members})
+
+        {stats, errors ++ permission_errors ++ detail_errors ++ group_errors}
 
       {:error, :not_supported} ->
         do_run(:snapshot, source, opts)
@@ -203,6 +226,38 @@ defmodule ConfluencePhxMirror.Sync do
       source.space_permissions(space.key, [])
     else
       :unsupported
+    end
+  end
+
+  # Groups are how Confluence grants access, so the sync refreshes the
+  # membership of every group it has to make decisions on: the ones the content
+  # mentions, plus whatever grants administration. A source that cannot read
+  # groups keeps the membership the mirror already has.
+  defp sync_groups(source, opts) do
+    if function_exported?(source, :group_members, 2) do
+      groups_to_refresh()
+      |> Enum.reduce({0, []}, &refresh_group(source, &1, &2, opts))
+    else
+      {0, []}
+    end
+  end
+
+  defp groups_to_refresh do
+    config_groups = for key <- Admins.admin_groups(), do: {key, key}
+    Enum.uniq_by(Mirror.referenced_groups() ++ config_groups, &elem(&1, 1))
+  end
+
+  defp refresh_group(source, {name, _key}, {count, errors}, opts) do
+    case source.group_members(name, opts) do
+      {:ok, members} ->
+        {:ok, stored} = Mirror.replace_group_members(name, members)
+        {count + stored, errors}
+
+      {:error, :not_supported} ->
+        {count, errors}
+
+      {:error, reason} ->
+        {count, [error("group", name, reason) | errors]}
     end
   end
 

@@ -6,6 +6,7 @@ defmodule ConfluencePhxMirror.Accounts.AdminsTest do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.Admins
   alias ConfluencePhxMirror.Accounts.User
+  alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Repo
 
   test "the admin role is the first source" do
@@ -22,9 +23,29 @@ defmodule ConfluencePhxMirror.Accounts.AdminsTest do
 
   test "membership of an admin group administers the mirror" do
     with_env(:admin_groups, ["confluence-admins"])
-    user = user_fixture(%{email: "lead@example.com"}) |> with_groups(["Confluence-Admins"])
+
+    {:ok, _} =
+      Mirror.replace_group_members("confluence-admins", [
+        %{email: "lead@example.com", display_name: "Lead"}
+      ])
+
+    user = user_fixture(%{email: "lead@example.com"})
 
     assert Admins.source(user) == :group
+  end
+
+  test "losing the group in Confluence takes administration away" do
+    with_env(:admin_groups, ["confluence-admins"])
+    user = user_fixture(%{email: "lead@example.com"})
+
+    {:ok, _} =
+      Mirror.replace_group_members("confluence-admins", [%{email: "lead@example.com"}])
+
+    assert Admins.admin?(user)
+
+    {:ok, _} = Mirror.replace_group_members("confluence-admins", [])
+
+    refute Admins.admin?(Accounts.get_user(user.id))
   end
 
   test "a plain member is not an administrator" do
@@ -41,9 +62,29 @@ defmodule ConfluencePhxMirror.Accounts.AdminsTest do
     assert user.groups == ["product-team", "site-admins"]
   end
 
-  defp with_groups(user, groups) do
-    {:ok, user} = user |> User.identity_changeset(%{groups: groups}) |> Repo.update()
-    user
+  test "seeded and bootstrap administrators cannot be demoted" do
+    with_env(:admins, ["ops@example.com"])
+
+    seeded = user_fixture(%{email: "ops@example.com", role: "admin"})
+    bootstrap = user_fixture(%{email: "admin@localhost", role: "admin"})
+
+    assert Admins.protected?(seeded)
+    assert Admins.protected?(bootstrap)
+
+    assert {:error, :protected_admin} = Accounts.change_role(seeded, "member", {:system, "test"})
+
+    assert {:error, :protected_admin} =
+             Accounts.change_role(bootstrap, "member", {:system, "test"})
+
+    assert Accounts.get_user(seeded.id).role == "admin"
+    assert Accounts.get_user(bootstrap.id).role == "admin"
+  end
+
+  test "an ordinary administrator can step down" do
+    admin = user_fixture(%{email: "lead@example.com", role: "admin"})
+
+    refute Admins.protected?(admin)
+    assert {:ok, %{role: "member"}} = Accounts.change_role(admin, "member", {:system, "test"})
   end
 
   defp with_env(key, value) do

@@ -324,8 +324,11 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
     end
 
     test "treats 401, 403 and 404 as their own outcomes" do
+      stub(fn conn -> Plug.Conn.resp(conn, 401, "bad token") end)
+      assert {:error, {:unauthorized, "bad token"}} = HttpSource.pages("ENG", [])
+
       stub(fn conn -> Plug.Conn.resp(conn, 403, "no access") end)
-      assert {:error, {:unauthorized, 403}} = HttpSource.pages("ENG", [])
+      assert {:error, {:forbidden, "no access"}} = HttpSource.pages("ENG", [])
 
       stub(fn conn -> Plug.Conn.resp(conn, 404, "gone") end)
       assert {:error, :not_found} = HttpSource.pages("ENG", [])

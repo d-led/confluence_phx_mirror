@@ -103,6 +103,15 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   def space_permissions(_space_key, _opts), do: {:error, :not_supported}
 
   @impl true
+  def group_members(group_name, _opts) do
+    path = "/group/#{URI.encode_www_form(group_name)}/member"
+
+    with {:ok, results} <- paginate_json(path, %{"limit" => page_limit()}) do
+      {:ok, Enum.map(results, &parse_group_member/1)}
+    end
+  end
+
+  @impl true
   def attachment_data(attachment, _opts) do
     with {:ok, url} <- SafeURL.resolve(attachment.download_url, config()[:base_url]),
          {:ok, response} <- request(:get, url, []) do
@@ -276,6 +285,14 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     }
   end
 
+  defp parse_group_member(member) do
+    %{
+      email: member["email"] || get_in(member, ["user", "email"]),
+      account_id: member["accountId"] || get_in(member, ["user", "accountId"]),
+      display_name: member["displayName"] || get_in(member, ["user", "displayName"])
+    }
+  end
+
   defp space_key_of(content) do
     cond do
       is_binary(get_in(content, ["space", "key"])) ->
@@ -321,14 +338,41 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   defp request_json(path, params) do
-    with {:ok, url} <- build_url(path, params),
-         {:ok, response} <- request(:get, url, []) do
+    with {:ok, url} <- build_url(path, params) do
+      json_request(:get, url)
+    end
+  end
+
+  @doc """
+  Sends a JSON request to the configured site.
+
+  Only `mix confluence.seed` writes to Confluence; the sync itself never calls
+  this with anything but `:get`. Kept here so writes share the same
+  authentication, rate limiting, retries and URL safety as reads.
+  """
+  @spec json(:get | :post | :put, String.t(), Enumerable.t() | map() | nil) ::
+          {:ok, term()} | {:error, term()}
+  def json(method, path, payload \\ nil) do
+    with {:ok, url} <- build_url(path, %{}) do
+      json_request(method, url, payload)
+    end
+  end
+
+  defp json_request(method, url, payload \\ nil) do
+    options = if payload, do: [json: payload], else: []
+
+    with {:ok, response} <- request(method, url, options) do
       cond do
         response.status in 200..299 ->
           decode_json(response.body)
 
-        response.status == 401 or response.status == 403 ->
-          {:error, {:unauthorized, response.status}}
+        response.status == 401 ->
+          {:error, {:unauthorized, body_snippet(response.body)}}
+
+        # Confluence answers 403 both for a wrong token and for a token whose
+        # account cannot read the site, so the message has to name both.
+        response.status == 403 ->
+          {:error, {:forbidden, body_snippet(response.body)}}
 
         response.status == 404 ->
           {:error, :not_found}
@@ -351,10 +395,10 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     SafeURL.resolve(url, config()[:base_url])
   end
 
-  defp request(method, url, _opts, attempt \\ 1) do
+  defp request(method, url, options, attempt \\ 1) do
     RateLimiter.acquire()
 
-    options = [
+    defaults = [
       headers: auth_headers(),
       receive_timeout: config()[:request_timeout_ms] || 30_000,
       connect_options: [timeout: config()[:connect_timeout_ms] || 10_000],
@@ -365,11 +409,13 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
     # `:req_options` lets a deployment (or a test) supply transport options such
     # as a stubbed plug; anything set here wins over the defaults above.
-    case Req.request([method: method, url: url] ++ options ++ (config()[:req_options] || [])) do
+    request = [method: method, url: url] ++ defaults ++ options ++ (config()[:req_options] || [])
+
+    case Req.request(request) do
       {:ok, %Req.Response{} = response} ->
         if retryable?(response) and attempt < max_attempts() do
           backoff(attempt)
-          request(method, url, [], attempt + 1)
+          request(method, url, options, attempt + 1)
         else
           check_size(response)
         end
@@ -377,7 +423,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       {:error, reason} ->
         if attempt < max_attempts() do
           backoff(attempt)
-          request(method, url, [], attempt + 1)
+          request(method, url, options, attempt + 1)
         else
           {:error, {:transport, reason}}
         end

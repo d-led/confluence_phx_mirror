@@ -19,6 +19,9 @@ defmodule ConfluencePhxMirror.Confluence.EditedSource do
   defdelegate name(), to: DemoSource
 
   @impl true
+  defdelegate kind(), to: DemoSource
+
+  @impl true
   defdelegate spaces(opts), to: DemoSource
 
   @impl true

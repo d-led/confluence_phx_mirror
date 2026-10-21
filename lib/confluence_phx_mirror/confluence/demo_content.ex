@@ -708,6 +708,15 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     "557058:" <> (name |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "."))
   end
 
+  defp member(name) do
+    %{email: email(name), account_id: account_id(name), display_name: name}
+  end
+
+  defp email(name) do
+    local = name |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, ".")
+    local <> "@demo.atlassian.net"
+  end
+
   defp attachment(id, page_id, filename, media_type, content) do
     %{
       id: id,
@@ -860,6 +869,26 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         %{operation: "read", subject_type: "authenticated", subject_key: nil},
         %{operation: "read", subject_type: "group", subject_key: "product-team"}
       ]
+    }
+  end
+
+  @doc """
+  Group membership, as Confluence reports it.
+
+  The same people who write the demo pages are the ones in its groups, so the
+  mirror can show an administrator granted by a synced group rather than by a
+  local role.
+  """
+  def group_members do
+    %{
+      "confluence-admins" => [member("Dana Whitfield"), member("Priya Nair")],
+      "confluence-users" => [
+        member("Dana Whitfield"),
+        member("Jane Doe"),
+        member("Priya Nair"),
+        member("Sam Rivera")
+      ],
+      "product-team" => [member("Priya Nair"), member("Sam Rivera")]
     }
   end
 

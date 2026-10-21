@@ -5,8 +5,7 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
   import Phoenix.LiveViewTest
 
   alias ConfluencePhxMirror.Accounts
-  alias ConfluencePhxMirror.Accounts.User
-  alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Mirror
 
   setup do
     demo_snapshot!()
@@ -38,9 +37,12 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
   test "a member of the admin group opens the dashboard", %{conn: conn} do
     with_env(:admin_groups, ["confluence-admins"])
 
-    user =
-      user_fixture(%{email: "lead@example.com"})
-      |> with_groups(["confluence-admins"])
+    {:ok, _} =
+      Mirror.replace_group_members("confluence-admins", [
+        %{email: "lead@example.com", display_name: "Lead"}
+      ])
+
+    user = user_fixture(%{email: "lead@example.com"})
 
     assert {:ok, _view, html} = live(sign_in(conn, user), ~p"/admin")
     assert html =~ "Mirror dashboard"
@@ -55,11 +57,6 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
   end
 
   defp sign_in(conn, user), do: Plug.Test.init_test_session(conn, %{"user_id" => user.id})
-
-  defp with_groups(user, groups) do
-    {:ok, user} = user |> User.identity_changeset(%{groups: groups}) |> Repo.update()
-    user
-  end
 
   defp with_env(key, value) do
     previous = Application.get_env(:confluence_phx_mirror, key)

@@ -14,6 +14,7 @@ defmodule ConfluencePhxMirror.Accounts.ApiToken do
     field :name, :string
     field :token_hash, :string, redact: true
     field :token_prefix, :string
+    field :scope, :string, default: "api"
     field :last_used_at, :utc_datetime
     field :expires_at, :utc_datetime
 
@@ -24,8 +25,9 @@ defmodule ConfluencePhxMirror.Accounts.ApiToken do
 
   def changeset(token, attrs) do
     token
-    |> cast(attrs, [:user_id, :name, :token_hash, :token_prefix, :expires_at])
-    |> validate_required([:user_id, :name, :token_hash, :token_prefix])
+    |> cast(attrs, [:user_id, :name, :token_hash, :token_prefix, :expires_at, :scope])
+    |> validate_required([:name, :token_hash, :token_prefix])
+    |> validate_inclusion(:scope, ~w(api webhook))
     |> unique_constraint(:token_hash)
   end
 
@@ -41,5 +43,15 @@ defmodule ConfluencePhxMirror.Accounts.ApiToken do
   @doc "Audit entry for a revoked token."
   def audit_event_revoked(%__MODULE__{} = token) do
     Entry.new("api_token.revoked", "api_token", token.id, %{prefix: token.token_prefix})
+  end
+
+  @doc "Audit entry for a token issued to an integration rather than a person."
+  def audit_event_service_created(%__MODULE__{} = token) do
+    Entry.new("api_token.created", "api_token", token.id, %{
+      kind: "service",
+      name: token.name,
+      prefix: token.token_prefix,
+      scope: token.scope
+    })
   end
 end

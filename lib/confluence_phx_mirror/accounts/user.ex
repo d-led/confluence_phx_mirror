@@ -18,6 +18,8 @@ defmodule ConfluencePhxMirror.Accounts.User do
     field :last_sign_in_at, :utc_datetime
     # Confluence identity used when evaluating mirrored permissions.
     field :confluence_account_id, :string
+    # Groups an administrator granted here, kept across syncs. Confluence group
+    # memberships come from the mirror itself (`Mirror.GroupMember`).
     field :groups, {:array, :string}, default: []
 
     has_many :api_tokens, ConfluencePhxMirror.Accounts.ApiToken
@@ -47,6 +49,15 @@ defmodule ConfluencePhxMirror.Accounts.User do
   """
   def identity_changeset(user, attrs) do
     cast(user, attrs, [:confluence_account_id, :groups])
+  end
+
+  @doc """
+  The identifiers Confluence can name this account by: its e-mail address and,
+  when known, its account id.
+  """
+  def identity_keys(%__MODULE__{} = user) do
+    [normalise_email(user.email), user.confluence_account_id]
+    |> Enum.reject(&is_nil/1)
   end
 
   def admin?(%__MODULE__{role: "admin"}), do: true
