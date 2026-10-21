@@ -5,7 +5,7 @@ defmodule ConfluencePhxMirror.WebhooksTest do
 
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.Page
-  alias ConfluencePhxMirror.Sync.PageWorker
+  alias ConfluencePhxMirror.Sync.{PageWorker, SpaceWorker}
   alias ConfluencePhxMirror.Webhooks
   alias ConfluencePhxMirror.Webhooks.Delivery
 
@@ -26,6 +26,11 @@ defmodule ConfluencePhxMirror.WebhooksTest do
     body = JSON.encode!(payload(event, page_id))
     headers = [{"x-hub-signature-256", Keyword.get(opts, :signature, sign(body))}]
     Webhooks.receive(JSON.decode!(body), body, headers)
+  end
+
+  defp deliver_payload(payload) do
+    body = JSON.encode!(payload)
+    Webhooks.receive(JSON.decode!(body), body, [{"x-hub-signature-256", sign(body)}])
   end
 
   describe "signatures" do
@@ -93,18 +98,43 @@ defmodule ConfluencePhxMirror.WebhooksTest do
     end
 
     test "attachment events queue the container page" do
-      body =
-        JSON.encode!(%{
-          "event" => "attachment_created",
-          "attachment" => %{"id" => "9001", "container" => %{"id" => "1002"}}
-        })
-
       assert {:ok, _delivery} =
-               Webhooks.receive(JSON.decode!(body), body, [
-                 {"x-hub-signature-256", sign(body)}
-               ])
+               deliver_payload(%{
+                 "event" => "attachment_created",
+                 "attachment" => %{"id" => "9001", "container" => %{"id" => "1002"}}
+               })
 
       assert_enqueued(worker: PageWorker, args: %{"confluence_id" => 1002})
+    end
+
+    test "comment events queue the page hosting the comment" do
+      assert {:ok, delivery} =
+               deliver_payload(%{
+                 "event" => "comment_created",
+                 "comment" => %{"id" => "3001", "container" => %{"id" => "1002"}}
+               })
+
+      assert delivery.status == "queued"
+      assert_enqueued(worker: PageWorker, args: %{"confluence_id" => 1002})
+    end
+
+    test "space events queue a space sync" do
+      assert {:ok, delivery} =
+               deliver_payload(%{
+                 "event" => "space_updated",
+                 "space" => %{"id" => "1", "key" => "ENG"}
+               })
+
+      assert delivery.status == "queued"
+      assert_enqueued(worker: SpaceWorker, args: %{"space_key" => "ENG"})
+    end
+
+    test "space events without a key are recorded as ignored" do
+      assert {:ok, delivery} =
+               deliver_payload(%{"event" => "space_updated", "space" => %{"id" => "1"}})
+
+      assert delivery.status == "ignored"
+      refute_enqueued(worker: SpaceWorker)
     end
 
     test "event types without a page are ignored" do

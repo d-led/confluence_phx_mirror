@@ -52,7 +52,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/spaces/:key/blog/:id/:slug", PageController, :blog_post
     get "/spaces/:key/attachments", SpaceController, :attachments
     get "/spaces/:space_key/pages/:id", PageController, :show
+    get "/spaces/:space_key/pages/:id/export.md", ExportController, :page
     get "/spaces/:space_key/pages/:id/:slug", PageController, :show
+    get "/spaces/:key/export.zip", ExportController, :space
     get "/people", PeopleController, :index
     get "/people/:account_id", PeopleController, :show
     get "/recent", PageController, :recent

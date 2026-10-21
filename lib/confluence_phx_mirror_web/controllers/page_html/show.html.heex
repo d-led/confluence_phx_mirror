@@ -104,6 +104,19 @@
         </li>
       </ul>
     </.rail_section>
+
+    <.rail_section title="Export" icon="hero-arrow-down-tray">
+      <a
+        href={~p"/spaces/#{@space.key}/pages/#{@page.confluence_id}/export.md"}
+        class="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+      >
+        Download this page as Markdown
+      </a>
+      <p class="mt-1 text-[11px] text-base-content/45">
+        Metadata is included as front matter; the whole space is available as a ZIP from the
+        space overview.
+      </p>
+    </.rail_section>
   </:rail>
 
   <article>

@@ -7,20 +7,26 @@ defmodule ConfluencePhxMirror.Webhooks do
   raw request body with HMAC-SHA256 (`X-Hub-Signature-256`, or the legacy
   `X-Hub-Signature`).
 
-  Accepted events are turned into incremental work: the affected page is
-  queued for a `Sync.PageWorker`; removal events mark the page deleted
-  immediately.
+  Accepted events are turned into incremental work: page, blog post and
+  attachment events re-sync the affected page; comment events re-sync the
+  page that hosts the comment; space events queue a space sync. Removal events
+  mark the page deleted immediately.
   """
 
   import Ecto.Query
 
   alias ConfluencePhxMirror.{Audit, Mirror, Repo}
-  alias ConfluencePhxMirror.Sync.PageWorker
+  alias ConfluencePhxMirror.Sync.{PageWorker, SpaceWorker}
   alias ConfluencePhxMirror.Webhooks.Delivery
 
   @removal_events ~w(page_removed page_trashed page_deleted content_deleted blogpost_removed)
-  @page_events ~w(page_created page_updated page_restored page_moved blogpost_created
-                  blogpost_updated attachment_created attachment_updated attachment_deleted)
+
+  @page_events ~w(page_created page_updated page_restored page_moved
+                  blogpost_created blogpost_updated
+                  attachment_created attachment_updated attachment_deleted attachment_trashed
+                  comment_created comment_updated comment_removed comment_replied)
+
+  @space_events ~w(space_created space_updated)
 
   @type outcome :: {:ok, Delivery.t()} | {:error, :invalid_signature | :not_configured | term()}
 
@@ -75,7 +81,7 @@ defmodule ConfluencePhxMirror.Webhooks do
     payload["event"] || payload["eventType"] || payload["event_type"]
   end
 
-  @doc "Page id affected by a webhook payload, for page and attachment events."
+  @doc "Page id affected by a webhook payload, for page, comment and attachment events."
   def page_id(payload) do
     candidates = [
       get_in(payload, ["page", "id"]),
@@ -83,11 +89,17 @@ defmodule ConfluencePhxMirror.Webhooks do
       get_in(payload, ["content", "id"]),
       get_in(payload, ["attachment", "container", "id"]),
       get_in(payload, ["attachment", "containerId"]),
+      get_in(payload, ["comment", "container", "id"]),
       payload["pageId"],
       payload["contentId"]
     ]
 
     Enum.find_value(candidates, &normalise_id/1)
+  end
+
+  @doc "Space key affected by a space webhook payload."
+  def space_key(payload) do
+    get_in(payload, ["space", "key"]) || payload["spaceKey"]
   end
 
   defp normalise_id(nil), do: nil
@@ -102,8 +114,15 @@ defmodule ConfluencePhxMirror.Webhooks do
 
   defp handle(delivery) do
     event = event_type(delivery.payload)
-    id = page_id(delivery.payload)
 
+    if event in @space_events do
+      enqueue_space(delivery, event)
+    else
+      handle_page_event(delivery, event, page_id(delivery.payload))
+    end
+  end
+
+  defp handle_page_event(delivery, event, id) do
     cond do
       is_nil(id) ->
         finish(delivery, "ignored", nil)
@@ -147,6 +166,32 @@ defmodule ConfluencePhxMirror.Webhooks do
       {:error, reason} ->
         finish(delivery, "failed", inspect(reason))
         {:error, reason}
+    end
+  end
+
+  defp enqueue_space(delivery, event) do
+    case space_key(delivery.payload) do
+      nil ->
+        finish(delivery, "ignored", nil)
+        Audit.webhook("webhook.ignored", delivery.id, %{event: event, reason: "no space key"})
+        {:ok, Repo.get!(Delivery, delivery.id)}
+
+      key ->
+        case %{"space_key" => key} |> SpaceWorker.new() |> Oban.insert() do
+          {:ok, job} ->
+            Audit.webhook("webhook.queued", delivery.id, %{
+              event: event,
+              space: key,
+              job: job.id
+            })
+
+            finish(delivery, "queued", nil)
+            {:ok, Repo.get!(Delivery, delivery.id)}
+
+          {:error, reason} ->
+            finish(delivery, "failed", inspect(reason))
+            {:error, reason}
+        end
     end
   end
 

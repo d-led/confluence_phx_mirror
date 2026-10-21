@@ -154,6 +154,19 @@
           Browse attachments <.icon name="hero-arrow-right" class="size-3.5" />
         </.link>
       </section>
+
+      <section class="rounded-xl border border-base-300/70 bg-base-100 p-4">
+        <h2 class="text-sm font-semibold">Export</h2>
+        <p class="mt-1 text-xs text-base-content/55">
+          The whole space as Markdown with its attachments, as a ZIP.
+        </p>
+        <a
+          href={~p"/spaces/#{@space.key}/export.zip"}
+          class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        >
+          Download Markdown (.zip) <.icon name="hero-arrow-down-tray" class="size-3.5" />
+        </a>
+      </section>
     </aside>
   </div>
 </Layouts.app>
