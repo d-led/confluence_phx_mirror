@@ -6,6 +6,8 @@ defmodule ConfluencePhxMirror.Webhooks.Delivery do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{}
+
   schema "webhook_deliveries" do
     field :event_type, :string
     field :payload, :map, default: %{}

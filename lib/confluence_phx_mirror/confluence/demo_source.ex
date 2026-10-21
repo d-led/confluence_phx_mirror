@@ -3,16 +3,16 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
   Offline source backed by `ConfluencePhxMirror.Confluence.DemoContent`.
 
   It behaves like a Confluence site: spaces, pages with ancestors, comments,
-  attachment bytes, incremental changes and even simulated edits (used by the
-  webhook demo). The rest of the application cannot tell the difference between
-  this source and the HTTP source.
+  attachment bytes and incremental changes. The rest of the application cannot
+  tell the difference between this source and the HTTP source.
+
+  The snapshot is a read-only constant. The mirror never writes content; pages
+  change only when a sync reads a different snapshot from the source.
   """
 
   @behaviour ConfluencePhxMirror.Confluence.Source
 
   alias ConfluencePhxMirror.Confluence.DemoContent
-
-  @edits_key {__MODULE__, :edits}
 
   @impl true
   def name, do: "confluence-demo"
@@ -75,30 +75,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
     {:ok, pages}
   end
 
-  @doc """
-  Pretends that a page was edited in Confluence.
-
-  The next sync of that page returns a higher version and an extra change note,
-  which is how the webhook demo shows "content changed → mirror updated".
-  """
-  def simulate_edit(page_id, attrs \\ %{}) do
-    edits = Map.put(edits(), page_id, Map.new(attrs))
-    :persistent_term.put(@edits_key, edits)
-    :ok
-  end
-
-  @doc "Removes all simulated edits (tests and demo resets)."
-  def reset_edits do
-    :persistent_term.put(@edits_key, %{})
-    :ok
-  end
-
-  defp edits, do: :persistent_term.get(@edits_key, %{})
-
   defp present(page) do
-    page
-    |> Map.put(:ancestors, ancestors(page.id, DemoContent.pages()))
-    |> apply_edit()
+    Map.put(page, :ancestors, ancestors(page.id, DemoContent.pages()))
   end
 
   defp ancestors(page_id, pages, acc \\ []) do
@@ -111,34 +89,6 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
 
       %{parent_id: parent_id} ->
         ancestors(parent_id, pages, [parent_id | acc])
-    end
-  end
-
-  defp apply_edit(page) do
-    case Map.get(edits(), page.id) do
-      nil ->
-        page
-
-      edit ->
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
-        revision = Map.get(edit, :revision, 1)
-        note = Map.get(edit, :note, "Updated in Confluence; the mirror picked it up.")
-
-        body =
-          page.body.export_view <>
-            ~s(<div class="panel" style="background-color: #e3fcef; border: 1px solid #57d9a3;"><div class="panelContent"><p><strong>Updated</strong> #{note}</p></div></div>)
-
-        %{
-          page
-          | version: %{
-              page.version
-              | number: page.version.number + revision,
-                message: note,
-                when: now
-            },
-            body: %{page.body | export_view: body},
-            updated_at: now
-        }
     end
   end
 end

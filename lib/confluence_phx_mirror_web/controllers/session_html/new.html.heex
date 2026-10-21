@@ -1,0 +1,57 @@
+<Layouts.app
+  flash={@flash}
+  current_scope={@current_scope}
+  spaces={@spaces}
+  last_sync_run={@last_sync_run}
+  mirror_name={@mirror_name}
+  mirror_source={@mirror_source}
+  page_title={@page_title}
+  sidebar?={false}
+>
+  <div class="mx-auto max-w-md py-8">
+    <div class="rounded-2xl border border-base-300/70 bg-base-100 p-6 shadow-sm sm:p-8">
+      <h1 class="text-2xl font-semibold">Sign in</h1>
+      <p class="mt-1 text-sm text-base-content/60">
+        We send a single-use link by e-mail. No passwords, no Confluence credentials.
+      </p>
+
+      <div
+        :if={@auto_admin}
+        class="mt-4 rounded-lg border border-info/30 bg-info/10 p-3 text-xs text-base-content/70"
+      >
+        <p class="font-medium">Development mode</p>
+        <p class="mt-0.5">
+          An administrator is assumed automatically, so this form is optional.
+          Any link would be delivered to smtp4dev at <a
+            href="http://localhost:3001"
+            class="link link-primary"
+            target="_blank"
+            rel="noopener"
+          >localhost:3001</a>.
+        </p>
+      </div>
+
+      <.form
+        for={@form}
+        id="signin-form"
+        action={~p"/session"}
+        method="post"
+        class="mt-6 space-y-4"
+      >
+        <.input
+          field={@form[:email]}
+          type="email"
+          label="E-mail address"
+          placeholder="you@example.com"
+          required
+          autocomplete="email"
+        />
+        <button type="submit" class="btn btn-primary w-full">Send sign-in link</button>
+      </.form>
+
+      <p class="mt-4 text-center text-xs text-base-content/45">
+        <a href={~p"/"} class="link link-hover">← Back to the mirror</a>
+      </p>
+    </div>
+  </div>
+</Layouts.app>

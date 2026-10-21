@@ -135,6 +135,26 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     end
   end
 
+  describe "macros" do
+    test "turns the expand macro into a native details element" do
+      html = """
+      <div class="expand-container">
+        <div class="expand-control"><span class="expand-control-icon">▶</span> <span class="expand-control-text">More details</span></div>
+        <div class="expand-content" style="display: none;"><p>Hidden <a href="/wiki/spaces/ENG/pages/101/Architecture">link</a></p></div>
+      </div>
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ "<details"
+      assert result.html =~ "<summary"
+      assert result.html =~ "More details"
+      refute result.html =~ "expand-control-icon"
+      refute result.html =~ "display: none"
+      assert result.html =~ ~s(href="/spaces/ENG/pages/101/architecture-overview")
+    end
+  end
+
   describe "text" do
     test "extracts readable plain text for full-text search" do
       html = "<h1>Title</h1><p>Some <strong>bold</strong> text.</p>"

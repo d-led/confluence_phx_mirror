@@ -3,6 +3,7 @@
 
 @import "tailwindcss" source(none);
 @import "phoenix-colocated/confluence_phx_mirror/colocated.css";
+@import "./author.css";
 @source "../css";
 @source "../js";
 @source "../../lib/confluence_phx_mirror_web";
@@ -102,4 +103,522 @@
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
-/* This file is for your main application CSS */
+/* ---------------------------------------------------------------------------
+   "mirror" skin: an Atlassian-inspired light theme.
+   Select it from the theme picker; it is just another daisyUI theme.
+   --------------------------------------------------------------------------- */
+@plugin "daisyui/packages/bundle/daisyui-theme" {
+  name: "mirror";
+  default: false;
+  prefersdark: false;
+  color-scheme: "light";
+  --color-base-100: #ffffff;
+  --color-base-200: #f4f5f7;
+  --color-base-300: #dfe1e6;
+  --color-base-content: #172b4d;
+  --color-primary: #0052cc;
+  --color-primary-content: #ffffff;
+  --color-secondary: #505f79;
+  --color-secondary-content: #ffffff;
+  --color-accent: #00b8d9;
+  --color-accent-content: #002b36;
+  --color-neutral: #42526e;
+  --color-neutral-content: #ffffff;
+  --color-info: #0052cc;
+  --color-info-content: #ffffff;
+  --color-success: #00875a;
+  --color-success-content: #ffffff;
+  --color-warning: #ffab00;
+  --color-warning-content: #172b4d;
+  --color-error: #de350b;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.375rem;
+  --radius-field: 0.375rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.21875rem;
+  --size-field: 0.21875rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Confluence export_view markup.
+
+   Macros are rendered by Confluence itself and stored verbatim, so the mirror
+   has to make that markup look at home here. Inline styles from Confluence
+   (panel colours, code borders) are preserved on purpose.
+   --------------------------------------------------------------------------- */
+
+.confluence-content {
+  color: var(--color-base-content);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.confluence-content > :first-child {
+  margin-top: 0;
+}
+
+.confluence-content h1,
+.confluence-content h2,
+.confluence-content h3,
+.confluence-content h4,
+.confluence-content h5,
+.confluence-content h6 {
+  margin: 1.6em 0 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+  scroll-margin-top: 5.5rem;
+}
+
+.confluence-content h1 { font-size: 1.65rem; }
+.confluence-content h2 {
+  font-size: 1.35rem;
+  border-bottom: 1px solid var(--color-base-300);
+  padding-bottom: 0.25rem;
+}
+.confluence-content h3 { font-size: 1.15rem; }
+.confluence-content h4 { font-size: 1rem; }
+
+.confluence-content p,
+.confluence-content ul,
+.confluence-content ol,
+.confluence-content table,
+.confluence-content blockquote {
+  margin: 0.75rem 0;
+}
+
+.confluence-content ul { list-style: disc; padding-left: 1.4rem; }
+.confluence-content ol { list-style: decimal; padding-left: 1.4rem; }
+.confluence-content li { margin: 0.2rem 0; }
+.confluence-content li > ul,
+.confluence-content li > ol { margin: 0.2rem 0; }
+
+.confluence-content a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.confluence-content a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.confluence-content strong { font-weight: 600; }
+
+.confluence-content hr {
+  border: 0;
+  border-top: 1px solid var(--color-base-300);
+  margin: 1.5rem 0;
+}
+
+.confluence-content blockquote {
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-base-200);
+  padding: 0.5rem 0.9rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+}
+
+.confluence-content img,
+.confluence-content .confluence-embedded-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.confluence-content kbd {
+  border: 1px solid var(--color-base-300);
+  border-bottom-width: 2px;
+  border-radius: 0.3rem;
+  background: var(--color-base-200);
+  padding: 0.05rem 0.35rem;
+  font-size: 0.75em;
+}
+
+/* Tables --------------------------------------------------------------- */
+
+.confluence-content table.confluenceTable,
+.confluence-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.confluence-content th,
+.confluence-content td {
+  border: 1px solid var(--color-base-300);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.confluence-content th {
+  background: var(--color-base-200);
+  font-weight: 600;
+}
+
+/* Panels --------------------------------------------------------------- */
+
+/* Info/note/warning panels keep Confluence's light backgrounds, so they keep its
+   dark text. Code blocks are also ``.panel`` in export_view but must follow the
+   active theme instead, hence the :not(.code). */
+.confluence-content .panel:not(.code) {
+  border-radius: 0.6rem;
+  margin: 1rem 0;
+  padding: 0.15rem 0.95rem;
+  color: #172b4d;
+}
+
+.confluence-content .panel:not(.code) a { color: #0052cc; }
+.confluence-content .panel:not(.code) .panelContent { padding: 0.15rem 0; }
+.confluence-content .panel:not(.code) .panelContent > :first-child { margin-top: 0.35rem; }
+.confluence-content .panel:not(.code) .panelContent > :last-child { margin-bottom: 0.35rem; }
+
+/* Code / preformatted -------------------------------------------------- */
+
+/* Confluence's code macro, plus a theme-aware syntax palette for the tokens
+   highlight.js produces (see assets/js/code_highlight.js). */
+.confluence-content {
+  --code-keyword: light-dark(#cf222e, #ff7b72);
+  --code-string: light-dark(#0a7d4f, #7ee787);
+  --code-number: light-dark(#0550ae, #79c0ff);
+  --code-comment: light-dark(#6e7781, #8b949e);
+  --code-function: light-dark(#8250df, #d2a8ff);
+  --code-type: light-dark(#953800, #ffa657);
+  --code-name: light-dark(#0550ae, #7ee787);
+  --code-attr: light-dark(#0550ae, #a5d6ff);
+  --code-punctuation: light-dark(#59636e, #c9d1d9);
+}
+
+.confluence-content .code.panel {
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+
+.confluence-content .codeHeader {
+  background: var(--color-base-300);
+  color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.8rem;
+}
+
+.confluence-content .codeContent {
+  padding: 0;
+}
+
+.confluence-content .codeContent pre,
+.confluence-content .preformatted pre {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  tab-size: 2;
+  color: var(--color-base-content);
+}
+
+.confluence-content .preformatted {
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+
+/* Inline code inside prose, e.g. `mix precommit`. */
+.confluence-content :not(pre) > code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  padding: 0.08rem 0.32rem;
+  border-radius: 0.3rem;
+  background: color-mix(in oklab, var(--color-base-300) 65%, transparent);
+  color: var(--color-base-content);
+}
+
+.confluence-content .hljs-comment,
+.confluence-content .hljs-quote,
+.confluence-content .hljs-doctag {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.confluence-content .hljs-keyword,
+.confluence-content .hljs-literal,
+.confluence-content .hljs-selector-tag,
+.confluence-content .hljs-meta .hljs-keyword {
+  color: var(--code-keyword);
+  font-weight: 600;
+}
+
+.confluence-content .hljs-string,
+.confluence-content .hljs-regexp,
+.confluence-content .hljs-addition,
+.confluence-content .hljs-meta .hljs-string {
+  color: var(--code-string);
+}
+
+.confluence-content .hljs-number,
+.confluence-content .hljs-symbol,
+.confluence-content .hljs-bullet,
+.confluence-content .hljs-link {
+  color: var(--code-number);
+}
+
+.confluence-content .hljs-title,
+.confluence-content .hljs-title.function_,
+.confluence-content .hljs-section {
+  color: var(--code-function);
+  font-weight: 600;
+}
+
+.confluence-content .hljs-type,
+.confluence-content .hljs-built_in,
+.confluence-content .hljs-title.class_,
+.confluence-content .hljs-meta {
+  color: var(--code-type);
+}
+
+.confluence-content .hljs-name,
+.confluence-content .hljs-tag {
+  color: var(--code-name);
+}
+
+.confluence-content .hljs-attr,
+.confluence-content .hljs-attribute,
+.confluence-content .hljs-variable,
+.confluence-content .hljs-template-variable,
+.confluence-content .hljs-property {
+  color: var(--code-attr);
+}
+
+.confluence-content .hljs-punctuation,
+.confluence-content .hljs-operator,
+.confluence-content .hljs-subst {
+  color: var(--code-punctuation);
+}
+
+.confluence-content .hljs-deletion {
+  color: var(--color-error);
+}
+
+.confluence-content .hljs-emphasis { font-style: italic; }
+.confluence-content .hljs-strong { font-weight: 700; }
+
+/* Expand macro --------------------------------------------------------- */
+
+.confluence-content .expand-container {
+  margin: 0.9rem 0;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  background: var(--color-base-100);
+}
+
+.confluence-content .expand-control {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.8rem;
+  background: var(--color-base-200);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.confluence-content .expand-control::marker {
+  color: var(--color-primary);
+}
+
+.confluence-content .expand-content {
+  padding: 0.6rem 0.9rem;
+  border-top: 1px solid var(--color-base-300);
+}
+
+/* Status lozenges ------------------------------------------------------ */
+
+.confluence-content .aui-lozenge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 3px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.6;
+}
+
+.aui-lozenge-success { background: #e3fcef; color: #006644; }
+.aui-lozenge-inprogress { background: #deebff; color: #0747a6; }
+.aui-lozenge-moved { background: #fffae6; color: #974f0c; }
+.aui-lozenge-default { background: #f4f5f7; color: #42526e; }
+
+/* TOC, children, excerpt, gallery, Jira -------------------------------- */
+
+.confluence-content .toc-macro {
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.6rem;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  font-size: 0.85rem;
+}
+
+.confluence-content .toc-macro ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.confluence-content .toc-macro li { margin: 0.15rem 0; }
+
+.confluence-content .children-display {
+  margin: 0.9rem 0;
+}
+
+.confluence-content .childpages-macro {
+  list-style: none;
+  padding-left: 0;
+}
+
+.confluence-content .childpages-macro li {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.45rem;
+  margin: 0.35rem 0;
+  background: var(--color-base-100);
+}
+
+.confluence-content .excerpt-macro {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 0.9rem;
+  font-size: 1.02rem;
+  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+}
+
+.confluence-content .gallery-macro .gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.6rem;
+}
+
+.confluence-content .gallery-image img {
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.5rem;
+  width: 100%;
+}
+
+.confluence-content .jira-issue-macro {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.6rem;
+  background: var(--color-base-100);
+  padding: 0.5rem 0.75rem;
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+}
+
+.confluence-content .jira-issue-macro .jira-issue-key {
+  font-weight: 700;
+}
+
+.confluence-content .jira-issue-macro .summary {
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}
+
+.confluence-content .confluence-userlink {
+  font-weight: 500;
+}
+
+/* Task lists ----------------------------------------------------------- */
+
+.confluence-content .inline-task-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.confluence-content .inline-task-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.35rem 0;
+}
+
+.confluence-content .inline-task-list li .aui-icon {
+  margin-top: 0.15rem;
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.confluence-content .inline-task-list li.checked {
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklab, var(--color-base-content) 30%, transparent);
+}
+
+.confluence-content .inline-task-list li.checked .aui-icon {
+  color: var(--color-success);
+  text-decoration: none;
+}
+
+/* Columns -------------------------------------------------------------- */
+
+.confluence-content .contentLayout2 .columnLayout {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.confluence-content .contentLayout2 .columnLayout.two-equal {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.confluence-content .contentLayout2 .cell {
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--color-base-100);
+}
+
+.confluence-content details {
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.85rem;
+  margin: 0.8rem 0;
+  background: var(--color-base-100);
+}
+
+.confluence-content summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.confluence-content .confluence-anchor-link {
+  display: block;
+  position: relative;
+  top: -5rem;
+  visibility: hidden;
+}
+
+@media print {
+  header, footer, aside, form { display: none !important; }
+  .confluence-content { font-size: 11pt; }
+}
+

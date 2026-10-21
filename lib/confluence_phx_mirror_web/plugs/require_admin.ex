@@ -4,24 +4,28 @@ defmodule ConfluencePhxMirrorWeb.Plugs.RequireAdmin do
   import Plug.Conn
   import Phoenix.Controller
 
-  alias ConfluencePhxMirror.Accounts.User
+  alias ConfluencePhxMirror.Accounts.Scope
 
   def init(opts), do: opts
 
   def call(conn, _opts) do
-    case conn.assigns[:current_user] do
-      %User{} = user ->
-        if User.admin?(user) do
-          conn
-        else
-          conn
-          |> put_flash(:error, "Administrator access required.")
-          |> redirect(to: "/")
-          |> halt()
-        end
+    scope = conn.assigns[:current_scope] || %Scope{}
 
-      nil ->
-        conn |> put_flash(:error, "Please sign in.") |> redirect(to: "/session") |> halt()
+    cond do
+      Scope.admin?(scope) ->
+        conn
+
+      Scope.signed_in?(scope) ->
+        conn
+        |> put_flash(:error, "Administrator access required.")
+        |> redirect(to: "/")
+        |> halt()
+
+      true ->
+        conn
+        |> put_flash(:error, "Please sign in.")
+        |> redirect(to: "/session")
+        |> halt()
     end
   end
 end

@@ -62,6 +62,14 @@ config :confluence_phx_mirror, dev_routes: true
 config :confluence_phx_mirror, auto_admin: true
 config :confluence_phx_mirror, self_signup: true
 
+# A development-only webhook secret so the signed webhook demo works out of the
+# box. Set CM_WEBHOOK_SECRET to override it.
+config :confluence_phx_mirror,
+  webhooks: [
+    secret: System.get_env("CM_WEBHOOK_SECRET", "dev-webhook-secret"),
+    require_signature: true
+  ]
+
 config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.DemoSource,
   # A snapshot pull every 15 minutes, plus webhook driven updates.
   sync_interval_seconds: 0
@@ -92,6 +100,38 @@ config :phoenix, :stacktrace_depth, 20
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
+
+# A sample site skin. It shows up in the theme picker without touching CSS:
+# see ConfluencePhxMirrorWeb.Skins for the supported palette keys.
+config :confluence_phx_mirror, :skins, [
+  %{
+    name: "acme",
+    label: "Acme",
+    icon: "hero-building-office-2",
+    scheme: :light,
+    colors: %{
+      base_100: "#ffffff",
+      base_200: "#f2f6ff",
+      base_300: "#d3deef",
+      base_content: "#11213d",
+      primary: "#0b5fff",
+      primary_content: "#ffffff",
+      secondary: "#3d5afe",
+      secondary_content: "#ffffff",
+      accent: "#00a3bf",
+      accent_content: "#012a33",
+      info: "#0b5fff",
+      info_content: "#ffffff",
+      success: "#007a5a",
+      success_content: "#ffffff",
+      warning: "#ffab00",
+      warning_content: "#11213d",
+      error: "#d32f2f",
+      error_content: "#ffffff"
+    },
+    radius: %{box: "0.75rem", field: "0.375rem", selector: "0.375rem"}
+  }
+]
 
 config :phoenix_live_view,
   # Include debug annotations and locations in rendered markup.

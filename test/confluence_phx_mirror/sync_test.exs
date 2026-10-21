@@ -6,7 +6,7 @@ defmodule ConfluencePhxMirror.SyncTest do
 
   alias ConfluencePhxMirror.Audit.Event
   alias ConfluencePhxMirror.Blobs.Store
-  alias ConfluencePhxMirror.Confluence.DemoSource
+  alias ConfluencePhxMirror.Confluence.EditedSource
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Link, Page, Space}
   alias ConfluencePhxMirror.Notifications
@@ -14,7 +14,6 @@ defmodule ConfluencePhxMirror.SyncTest do
   alias ConfluencePhxMirror.Sync
 
   setup do
-    DemoSource.reset_edits()
     clean_blobs()
     on_exit(&clean_blobs/0)
     :ok
@@ -121,20 +120,19 @@ defmodule ConfluencePhxMirror.SyncTest do
   end
 
   describe "page sync" do
-    test "picks up an edit, bumps the version and reindexes the page" do
+    test "picks up a page that changed upstream, bumps the version and reindexes it" do
       demo_snapshot!()
       before = Repo.get_by!(Page, confluence_id: 1002)
 
-      DemoSource.simulate_edit(1002, note: "Clarified the pipeline", revision: 1)
-
-      assert {:ok, run} = Sync.run(:page, confluence_id: 1002)
+      assert {:ok, run} = Sync.run(:page, confluence_id: 1002, source: EditedSource)
       assert run.status == "succeeded"
 
       after_sync = Repo.get_by!(Page, confluence_id: 1002)
 
       assert after_sync.version_number == before.version_number + 1
-      assert after_sync.body_export =~ "Clarified the pipeline"
-      assert after_sync.body_text =~ "Clarified the pipeline"
+      assert after_sync.version_message == EditedSource.edit_note()
+      assert after_sync.body_export =~ "Edited in Confluence"
+      assert after_sync.body_text =~ "Edited in Confluence"
 
       assert Repo.exists?(
                from e in Event,
@@ -157,9 +155,7 @@ defmodule ConfluencePhxMirror.SyncTest do
 
       {:ok, _} = Notifications.subscribe(user, "page", page.id)
 
-      DemoSource.simulate_edit(1002, note: "Notify the team")
-
-      assert {:ok, _run} = Sync.run(:page, confluence_id: 1002)
+      assert {:ok, _run} = Sync.run(:page, confluence_id: 1002, source: EditedSource)
 
       notification = Repo.one!(from n in Notification, where: n.user_id == ^user.id)
       assert notification.subject =~ "Architecture Overview"

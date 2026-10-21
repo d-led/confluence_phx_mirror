@@ -1,0 +1,38 @@
+<Layouts.app
+  flash={@flash}
+  current_scope={@current_scope}
+  spaces={@spaces}
+  last_sync_run={@last_sync_run}
+  mirror_name={@mirror_name}
+  mirror_source={@mirror_source}
+  page_title={@page_title}
+  sidebar?={false}
+>
+  <header class="border-b border-base-300/70 pb-4">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Browse</p>
+    <h1 class="mt-1 text-3xl font-semibold">Labels</h1>
+    <p class="mt-1 text-sm text-base-content/60">
+      Labels come from Confluence and are indexed for search (<code>label = incident</code>
+      filters by label).
+    </p>
+  </header>
+
+  <.empty_state
+    :if={@labels == []}
+    icon="hero-tag"
+    title="No labels yet"
+    body="Sync a space whose pages carry labels."
+  />
+
+  <div :if={@labels != []} class="mt-6 flex flex-wrap gap-2">
+    <a
+      :for={{label, count} <- @labels}
+      href={~p"/labels/#{label}"}
+      class="group inline-flex items-center gap-2 rounded-lg border border-base-300/70 bg-base-100 px-3 py-2 text-sm transition hover:border-primary/40 hover:bg-base-200/40"
+    >
+      <.icon name="hero-tag" class="size-3.5 text-base-content/40" />
+      <span class="font-medium group-hover:text-primary">{label}</span>
+      <span class="badge badge-ghost badge-xs tabular-nums">{count}</span>
+    </a>
+  </div>
+</Layouts.app>

@@ -26,7 +26,7 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Sync.{Renderer, SyncRun}
 
   @type mode :: :snapshot | :incremental | :space | :page
-  @type report :: {:ok, ConfluencePhxMirror.Sync.SyncRun.t()} | {:error, term()}
+  @type report :: {:ok, SyncRun.t()}
 
   # ---------------------------------------------------------------------------
   # Public entry points
@@ -41,10 +41,11 @@ defmodule ConfluencePhxMirror.Sync do
     * `:space_key` – required for `:space`
     * `:since` – for `:incremental`, defaults to one sync interval ago
     * `:actor` – audit actor, defaults to the system
+    * `:source` – upstream source module, defaults to the configured one
   """
   @spec run(mode(), keyword()) :: report()
   def run(mode, opts \\ []) do
-    source = Source.source()
+    source = Keyword.get(opts, :source, Source.source())
     actor = Keyword.get(opts, :actor, {:system, "sync"})
     run = start_run(source, mode, actor)
 
@@ -67,18 +68,20 @@ defmodule ConfluencePhxMirror.Sync do
   # ---------------------------------------------------------------------------
 
   defp do_run(:snapshot, source, opts) do
-    with {:ok, space_dtos} <- source.spaces(opts) do
-      spaces = upsert_spaces(space_dtos)
+    case source.spaces(opts) do
+      {:ok, space_dtos} ->
+        spaces = upsert_spaces(space_dtos)
 
-      {entries, errors, deleted} = sync_pages_of(spaces, source, opts)
-      resolve_trees(spaces)
-      index = Mirror.page_index()
+        {entries, errors, deleted} = sync_pages_of(spaces, source, opts)
+        resolve_trees(spaces)
+        index = Mirror.page_index()
 
-      {stats, detail_errors} = sync_details(source, entries, index, opts)
-      stats = Map.merge(stats, %{"spaces" => length(spaces), "deleted" => deleted})
-      {stats, errors ++ detail_errors}
-    else
-      {:error, reason} -> raise_source_error(:spaces, nil, reason)
+        {stats, detail_errors} = sync_details(source, entries, index, opts)
+        stats = Map.merge(stats, %{"spaces" => length(spaces), "deleted" => deleted})
+        {stats, errors ++ detail_errors}
+
+      {:error, reason} ->
+        raise_source_error(:spaces, nil, reason)
     end
   end
 
@@ -141,9 +144,21 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp upsert_spaces(space_dtos) do
     Enum.map(space_dtos, fn dto ->
-      {:ok, space} = Mirror.upsert_space(dto)
+      {:ok, space} = Mirror.upsert_space(space_attrs(dto))
       space
     end)
+  end
+
+  defp space_attrs(dto) do
+    %{
+      key: dto.key,
+      name: dto.name,
+      type: dto[:type] || "global",
+      description: dto[:description],
+      homepage_confluence_id: dto[:homepage_id],
+      external_url: dto[:url],
+      synced_at: now()
+    }
   end
 
   defp ensure_space(source, space_key, opts) do
@@ -151,7 +166,7 @@ defmodule ConfluencePhxMirror.Sync do
       {:ok, space_dtos} ->
         case Enum.find(space_dtos, &(&1.key == space_key)) do
           nil -> Mirror.upsert_space(%{key: space_key, name: space_key, type: "global"})
-          dto -> Mirror.upsert_space(dto)
+          dto -> Mirror.upsert_space(space_attrs(dto))
         end
 
       {:error, reason} ->
@@ -296,7 +311,7 @@ defmodule ConfluencePhxMirror.Sync do
            Mirror.update_rendered(page, %{
              body_export: rendered.html,
              body_text: rendered.text,
-             search_text: rendered.text <> " " <> Enum.join(page.labels, " "),
+             search_text: search_text(rendered.text, page, space, attachments),
              synced_at: now()
            }),
          {:ok, _} <- Mirror.replace_links(page, rendered.links),
@@ -331,6 +346,22 @@ defmodule ConfluencePhxMirror.Sync do
     error -> {0, [error("notification", page.confluence_id, Exception.message(error))]}
   end
 
+  # Text search covers every field a reader is likely to remember: body, labels,
+  # author, space and attachment filenames. Title is weighted separately by the
+  # generated tsvector column.
+  defp search_text(body_text, page, space, attachments) do
+    [
+      body_text,
+      Enum.join(page.labels, " "),
+      page.author_name,
+      space.name,
+      space.key,
+      Enum.map_join(attachments, " ", & &1.filename)
+    ]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+  end
+
   defp attachment_ref(space, page, attachment) do
     {attachment.filename,
      %{
@@ -352,11 +383,35 @@ defmodule ConfluencePhxMirror.Sync do
             end
           end)
 
-        {Enum.reject(attachments, &is_nil/1), errors}
+        {Enum.reject(attachments, &is_nil/1),
+         errors ++ prune_attachments(page, Enum.map(attachment_dtos, & &1.id))}
 
       {:error, reason} ->
         {[], [error("attachments", page.confluence_id, reason)]}
     end
+  end
+
+  # Attachments deleted in Confluence must disappear from the mirror too; the
+  # blob is removed first so a failed delete leaves a row pointing at nothing
+  # (visible in the audit log) instead of an orphaned file.
+  defp prune_attachments(page, kept_confluence_ids) do
+    stale =
+      Repo.all(
+        from a in Attachment,
+          where: a.page_id == ^page.id and a.confluence_id not in ^kept_confluence_ids
+      )
+
+    Enum.each(stale, fn attachment ->
+      if attachment.blob_key, do: Store.delete(attachment.blob_key)
+      {:ok, _} = Repo.delete(attachment)
+
+      Audit.system("attachment.deleted", "attachment", attachment.confluence_id, %{
+        page: page.confluence_id,
+        filename: attachment.filename
+      })
+    end)
+
+    []
   end
 
   defp mirror_attachment(source, space, page, dto) do
@@ -418,9 +473,8 @@ defmodule ConfluencePhxMirror.Sync do
   defp sha256_of(nil), do: nil
 
   defp sha256_of(blob_key) do
-    with {:ok, data} <- Store.read(blob_key) do
-      :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
-    else
+    case Store.read(blob_key) do
+      {:ok, data} -> :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
       _ -> nil
     end
   end
@@ -516,11 +570,7 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   defp finish_run(run, stats, errors, actor) do
-    status =
-      cond do
-        errors != [] -> "partial"
-        true -> "succeeded"
-      end
+    status = if errors == [], do: "succeeded", else: "partial"
 
     stats = Map.put(stats, "errors", normalize_errors(errors))
 

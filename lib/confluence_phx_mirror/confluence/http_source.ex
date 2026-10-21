@@ -89,9 +89,10 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   def attachment_data(attachment, _opts) do
     with {:ok, url} <- SafeURL.resolve(attachment.download_url, config()[:base_url]),
          {:ok, response} <- request(:get, url, []) do
-      cond do
-        response.status in 200..299 -> {:ok, response.body}
-        true -> {:error, {:http, response.status}}
+      if response.status in 200..299 do
+        {:ok, response.body}
+      else
+        {:error, {:http, response.status}}
       end
     end
   end
@@ -111,6 +112,35 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
         |> Enum.filter(fn page -> allowed == :all or page.space_key in List.wrap(allowed) end)
 
       {:ok, pages}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Diagnostics
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Verifies the configured URL and credentials against Confluence.
+
+  Used by `mix confluence.probe`; never called by the sync itself.
+  """
+  def probe do
+    with {:ok, base_url} <- configured_base_url(),
+         {:ok, body} <- request_json("/user/current", %{}) do
+      {:ok,
+       %{
+         base_url: base_url,
+         display_name: body["displayName"],
+         email: body["email"],
+         account_id: body["accountId"]
+       }}
+    end
+  end
+
+  defp configured_base_url do
+    case config()[:base_url] do
+      url when is_binary(url) and url != "" -> {:ok, url}
+      _ -> {:error, :missing_base_url}
     end
   end
 
@@ -293,7 +323,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       decode_body: false
     ]
 
-    case Req.request(method: method, url: url, options: options) do
+    case Req.request([method: method, url: url] ++ options) do
       {:ok, %Req.Response{} = response} ->
         if retryable?(response) and attempt < @max_attempts do
           backoff(attempt)
@@ -337,7 +367,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   defp decode_json(body) do
-    case Jason.decode(body) do
+    case JSON.decode(body) do
       {:ok, decoded} -> {:ok, decoded}
       {:error, _} -> {:error, :invalid_json}
     end

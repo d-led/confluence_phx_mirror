@@ -1,0 +1,9 @@
+{
+  "name": "confluence-phx-mirror-assets",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser dependencies bundled by esbuild; loaded from assets/js/app.js.",
+  "dependencies": {
+    "highlight.js": "^11.11.1"
+  }
+}

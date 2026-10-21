@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuth do
   import Plug.Conn
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.Scope
 
   def init(opts), do: opts
 
@@ -26,6 +27,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuth do
   defp authenticate(conn, {:ok, user}) do
     conn
     |> assign(:current_user, user)
+    |> assign(:current_scope, Scope.for_user(user))
     |> assign(:api_token, true)
   end
 
@@ -38,7 +40,11 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuth do
 
   defp assume_or_reject(conn) do
     if Application.get_env(:confluence_phx_mirror, :auto_admin, false) do
-      assign(conn, :current_user, Accounts.ensure_admin!())
+      user = Accounts.ensure_admin!()
+
+      conn
+      |> assign(:current_user, user)
+      |> assign(:current_scope, Scope.for_user(user))
     else
       conn
       |> put_resp_header("www-authenticate", ~s(Bearer realm="confluence-mirror"))
@@ -53,11 +59,15 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuth do
         {:bearer, String.trim(token)}
 
       ["Basic " <> encoded | _] ->
-        decoded = Base.decode64!(String.trim(encoded))
+        case Base.decode64(String.trim(encoded)) do
+          {:ok, decoded} ->
+            case String.split(decoded, ":", parts: 2) do
+              [email, token] -> {:basic, email, token}
+              _ -> :none
+            end
 
-        case String.split(decoded, ":", parts: 2) do
-          [email, token] -> {:basic, email, token}
-          _ -> :none
+          :error ->
+            :none
         end
 
       _ ->
@@ -68,6 +78,6 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuth do
   defp send_error(conn, status, code, message) do
     conn
     |> put_resp_content_type("application/json")
-    |> send_resp(status, Jason.encode!(%{error: code, message: message}))
+    |> send_resp(status, JSON.encode!(%{error: code, message: message}))
   end
 end

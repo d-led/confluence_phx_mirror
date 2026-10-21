@@ -17,7 +17,7 @@ defmodule ConfluencePhxMirror.Audit do
 
   @doc "Records an audit event. Raises if it cannot be persisted."
   @spec record(actor(), String.t(), String.t() | nil, String.t() | integer() | nil, map()) ::
-          %Event{}
+          Event.t()
   def record(actor, action, entity_type, entity_id, metadata \\ %{}) do
     {actor_type, actor_id, actor_label} = normalise_actor(actor)
 

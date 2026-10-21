@@ -7,6 +7,8 @@ defmodule ConfluencePhxMirror.Audit.Event do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{}
+
   @actor_types ~w(user system webhook)
 
   schema "audit_events" do

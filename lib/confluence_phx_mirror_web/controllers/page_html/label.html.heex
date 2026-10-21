@@ -1,0 +1,60 @@
+<Layouts.app
+  flash={@flash}
+  current_scope={@current_scope}
+  spaces={@spaces}
+  last_sync_run={@last_sync_run}
+  mirror_name={@mirror_name}
+  mirror_source={@mirror_source}
+  page_title={@page_title}
+  sidebar?={false}
+>
+  <header class="border-b border-base-300/70 pb-4">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Label</p>
+    <div class="mt-1 flex flex-wrap items-center gap-2">
+      <h1 class="text-3xl font-semibold">{@label}</h1>
+      <span class="badge badge-ghost badge-sm">{length(@pages)} pages</span>
+    </div>
+    <p class="mt-2 text-xs">
+      <a href={"/search?label=#{@label}"} class="link link-primary">
+        Search pages with this label →
+      </a>
+    </p>
+  </header>
+
+  <.empty_state
+    :if={@pages == []}
+    icon="hero-tag"
+    title="No pages with this label"
+    body="The label may have been removed in Confluence since the last sync."
+  />
+
+  <ul
+    :if={@pages != []}
+    class="mt-6 divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
+  >
+    <li :for={page <- @pages}>
+      <.link
+        navigate={
+          ConfluencePhxMirror.Mirror.URLs.page_path(page.space.key, page.confluence_id, page.slug)
+        }
+        class="group flex items-start gap-3 px-4 py-3 transition hover:bg-base-200/40"
+      >
+        <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-base-200 text-base-content/50">
+          <.icon
+            name={if page.type == "blogpost", do: "hero-newspaper", else: "hero-document-text"}
+            class="size-4"
+          />
+        </span>
+        <span class="min-w-0 flex-1">
+          <span class="block truncate text-sm font-medium group-hover:text-primary">{page.title}</span>
+          <span class="mt-0.5 block truncate text-[11px] text-base-content/45">
+            {page.space.name} · updated {Time.ago(page.external_updated_at)}
+          </span>
+          <span class="mt-1 block line-clamp-1 text-xs text-base-content/55">
+            {String.slice(page.body_text || "", 0, 160)}
+          </span>
+        </span>
+      </.link>
+    </li>
+  </ul>
+</Layouts.app>

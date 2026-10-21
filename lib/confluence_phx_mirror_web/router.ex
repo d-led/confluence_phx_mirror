@@ -1,6 +1,9 @@
 defmodule ConfluencePhxMirrorWeb.Router do
   use ConfluencePhxMirrorWeb, :router
 
+  alias ConfluencePhxMirrorWeb.LiveUserAuth
+  alias ConfluencePhxMirrorWeb.Plugs
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,30 +11,149 @@ defmodule ConfluencePhxMirrorWeb.Router do
     plug :put_root_layout, html: {ConfluencePhxMirrorWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug Plugs.FetchCurrentUser
+    plug Plugs.AutoAdmin
+    plug Plugs.Theme
+    plug Plugs.SiteContext
+    plug Plugs.ReaderRateLimit, scope: :html
   end
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug Plugs.ApiAuth
+    plug Plugs.ReaderRateLimit, scope: :api
   end
+
+  pipeline :attachments do
+    plug Plugs.ReaderRateLimit, scope: :attachments
+  end
+
+  pipeline :webhook do
+    plug :accepts, ["json"]
+  end
+
+  pipeline :health do
+    plug :accepts, ["json"]
+  end
+
+  # ---------------------------------------------------------------------------
+  # Reader-facing mirror
+  # ---------------------------------------------------------------------------
 
   scope "/", ConfluencePhxMirrorWeb do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/spaces/:key", PageController, :space
+    get "/spaces/:space_key/pages/:id", PageController, :show
+    get "/spaces/:space_key/pages/:id/:slug", PageController, :show
+    get "/labels", PageController, :labels
+    get "/labels/:name", PageController, :label
+    get "/about", PageController, :about
+    get "/theme/:name", ThemeController, :set
+
+    get "/session", SessionController, :new
+    post "/session", SessionController, :create
+    get "/session/:token", SessionController, :confirm
+    delete "/session", SessionController, :delete
+
+    post "/subscriptions", SubscriptionController, :create
+    delete "/subscriptions", SubscriptionController, :delete
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", ConfluencePhxMirrorWeb do
-  #   pipe_through :api
-  # end
+  live_session :reader, on_mount: [{LiveUserAuth, :default}] do
+    scope "/", ConfluencePhxMirrorWeb do
+      pipe_through :browser
+
+      live "/search", SearchLive, :index
+    end
+  end
+
+  live_session :admin, on_mount: [{LiveUserAuth, :admin}] do
+    scope "/admin", ConfluencePhxMirrorWeb.Admin do
+      pipe_through :browser
+
+      live "/", DashboardLive, :index
+      live "/users", UsersLive, :index
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Attachments (blob store)
+  # ---------------------------------------------------------------------------
+
+  scope "/attachments", ConfluencePhxMirrorWeb do
+    pipe_through :attachments
+
+    get "/:space_key/:page_id/:attachment_id/:filename", AttachmentController, :show
+  end
+
+  # ---------------------------------------------------------------------------
+  # Read-only API, Confluence-inspired
+  # ---------------------------------------------------------------------------
+
+  scope "/api/v1", ConfluencePhxMirrorWeb.Api.V1 do
+    pipe_through :api
+
+    get "/spaces", SpaceController, :index
+    get "/spaces/:key", SpaceController, :show
+    get "/spaces/:key/pages", PageController, :index
+
+    get "/pages/:id", PageController, :show
+    get "/pages/:id/children", PageController, :children
+    get "/pages/:id/ancestors", PageController, :ancestors
+    get "/pages/:id/labels", PageController, :labels
+    get "/pages/:id/attachments", PageController, :attachments
+    get "/pages/:id/comments", PageController, :comments
+    get "/pages/:id/backlinks", PageController, :backlinks
+    get "/page-by-path", PageController, :by_path
+
+    get "/labels", LabelController, :index
+    get "/search", SearchController, :index
+    get "/stats", StatsController, :show
+  end
+
+  # Confluence-compatible subset: existing bots keep working against the mirror.
+  # The CQL search endpoints come first so `/content/search` is not captured by
+  # `/content/:id`; everything else is served by the same presenters as v1.
+  scope "/wiki/rest/api", ConfluencePhxMirrorWeb.Api.Confluence do
+    pipe_through :api
+
+    get "/content/search", SearchController, :index
+    get "/search", SearchController, :index
+  end
+
+  scope "/wiki/rest/api", ConfluencePhxMirrorWeb.Api.V1 do
+    pipe_through :api
+
+    get "/space", SpaceController, :index
+    get "/space/:key", SpaceController, :show
+    get "/content", PageController, :index
+    get "/content/:id", PageController, :show
+    get "/content/:id/child/page", PageController, :children
+    get "/content/:id/child/attachment", PageController, :attachments
+    get "/content/:id/child/comment", PageController, :comments
+    get "/content/:id/label", PageController, :labels
+  end
+
+  # ---------------------------------------------------------------------------
+  # Webhooks and health
+  # ---------------------------------------------------------------------------
+
+  scope "/webhooks", ConfluencePhxMirrorWeb do
+    pipe_through :webhook
+
+    post "/confluence", WebhookController, :create
+  end
+
+  scope "/health", ConfluencePhxMirrorWeb do
+    pipe_through :health
+
+    get "/", HealthController, :show
+  end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:confluence_phx_mirror, :dev_routes) do
-    # If you want to use the LiveDashboard in production, you should put
-    # it behind authentication and allow only admins to access it.
-    # If your application does not have an admins-only section yet,
-    # you can use Plug.BasicAuth to set up some basic authentication
-    # as long as you are also using SSL (which you should anyway).
     import Phoenix.LiveDashboard.Router
 
     scope "/dev" do

@@ -11,6 +11,7 @@ defmodule ConfluencePhxMirror.Mirror do
 
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Label, Link, Page, Space}
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Sync.SyncRun
 
   # ---------------------------------------------------------------------------
   # Spaces
@@ -61,7 +62,8 @@ defmodule ConfluencePhxMirror.Mirror do
 
     from(p in Page,
       where: p.space_id == ^space_id and is_nil(p.deleted_at),
-      order_by: [asc: p.title]
+      order_by: [asc: p.title],
+      preload: [:space]
     )
     |> maybe_exclude_archived(include_archived?)
     |> Repo.all()
@@ -91,19 +93,22 @@ defmodule ConfluencePhxMirror.Mirror do
 
   @doc "Finds a page by space key and Confluence id."
   def find_page_by_path(space_key, confluence_id) do
-    with %Space{} = space <- get_space_by_key(space_key) do
-      from(p in Page,
-        where:
-          p.space_id == ^space.id and p.confluence_id == ^confluence_id and is_nil(p.deleted_at),
-        preload: [:space]
-      )
-      |> Repo.one()
-      |> case do
-        nil -> {:error, :not_found}
-        page -> {:ok, page}
-      end
-    else
-      _ -> {:error, :not_found}
+    case get_space_by_key(space_key) do
+      %Space{} = space ->
+        from(p in Page,
+          where:
+            p.space_id == ^space.id and p.confluence_id == ^confluence_id and
+              is_nil(p.deleted_at),
+          preload: [:space]
+        )
+        |> Repo.one()
+        |> case do
+          nil -> {:error, :not_found}
+          page -> {:ok, page}
+        end
+
+      nil ->
+        {:error, :not_found}
     end
   end
 
@@ -269,7 +274,8 @@ defmodule ConfluencePhxMirror.Mirror do
   def root_pages(space_id) do
     from(p in Page,
       where: p.space_id == ^space_id and is_nil(p.parent_id) and is_nil(p.deleted_at),
-      order_by: [asc: p.title]
+      order_by: [asc: p.title],
+      preload: [:space]
     )
     |> Repo.all()
   end
@@ -277,7 +283,8 @@ defmodule ConfluencePhxMirror.Mirror do
   def children(page) do
     from(p in Page,
       where: p.parent_id == ^page.id and is_nil(p.deleted_at),
-      order_by: [asc: p.title]
+      order_by: [asc: p.title],
+      preload: [:space]
     )
     |> Repo.all()
   end
@@ -310,19 +317,53 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc "Breadcrumb trail (space included) in Confluence order."
   def breadcrumbs(%Page{} = page) do
     ancestors =
-      page.ancestors
-      |> Enum.map(fn confluence_id ->
-        Repo.one(
-          from p in Page,
-            where: p.confluence_id == ^confluence_id and is_nil(p.deleted_at),
-            select: %{title: p.title, confluence_id: p.confluence_id, slug: p.slug},
-            limit: 1
-        )
+      page
+      |> ancestor_pages()
+      |> Enum.map(fn ancestor ->
+        %{title: ancestor.title, confluence_id: ancestor.confluence_id, slug: ancestor.slug}
       end)
-      |> Enum.reject(&is_nil/1)
 
     [%{title: page.space.name, space_key: page.space.key, kind: :space}] ++
       Enum.map(ancestors, &Map.put(&1, :kind, :page))
+  end
+
+  @doc "Ancestor pages in Confluence order (root first)."
+  def ancestor_pages(%Page{ancestors: ids}) when is_list(ids) do
+    pages =
+      Repo.all(
+        from p in Page,
+          where: p.confluence_id in ^ids and is_nil(p.deleted_at),
+          preload: [:space]
+      )
+
+    by_id = Map.new(pages, &{&1.confluence_id, &1})
+    Enum.flat_map(ids, fn id -> List.wrap(by_id[id]) end)
+  end
+
+  def ancestor_pages(_page), do: []
+
+  @doc "Most recent sync run (any status)."
+  def last_sync_run do
+    Repo.one(from r in SyncRun, order_by: [desc: r.started_at], limit: 1)
+  end
+
+  @doc "Most recent sync run that changed the mirror."
+  def last_successful_sync_run do
+    Repo.one(
+      from r in SyncRun,
+        where: r.status in ["succeeded", "partial"],
+        order_by: [desc: r.finished_at],
+        limit: 1
+    )
+  end
+
+  def get_space_home(%Space{homepage_confluence_id: nil}), do: nil
+
+  def get_space_home(%Space{homepage_confluence_id: id}) do
+    case find_page(id) do
+      {:ok, page} -> page
+      _ -> nil
+    end
   end
 
   def backlinks(%Page{id: id}) do
@@ -404,6 +445,26 @@ defmodule ConfluencePhxMirror.Mirror do
       where: is_nil(p.deleted_at),
       order_by: [desc: p.external_updated_at],
       limit: ^limit,
+      preload: [:space]
+    )
+    |> Repo.all()
+  end
+
+  def recent_pages_for_space(%Space{id: space_id}, limit) do
+    from(p in Page,
+      where: p.space_id == ^space_id and is_nil(p.deleted_at),
+      order_by: [desc: p.external_updated_at],
+      limit: ^limit,
+      preload: [:space]
+    )
+    |> Repo.all()
+  end
+
+  @doc "Every mirrored page, newest first (API listings)."
+  def list_all_pages do
+    from(p in Page,
+      where: is_nil(p.deleted_at),
+      order_by: [desc: p.external_updated_at],
       preload: [:space]
     )
     |> Repo.all()

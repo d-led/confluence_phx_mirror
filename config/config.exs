@@ -28,13 +28,18 @@ config :confluence_phx_mirror, :source, ConfluencePhxMirror.Confluence.DemoSourc
 
 config :confluence_phx_mirror,
   mirror: [name: "Confluence Mirror", tagline: "Read-only, always available"],
-  blob_root: "priv/static/mirror",
+  # Blob storage is runtime data, never source: keep it out of priv/static so
+  # the mirrored content cannot accidentally be checked in.
+  blob_root: "var/mirror",
   # Postgres full-text configuration. `simple` works for every language and
   # keeps search exact instead of applying English stemming.
   search: [language: "simple"],
   # Simulated / production users get auto-provisioned in dev and test.
   auto_admin: false,
   self_signup: false,
+  # Extra skins for the theme picker. Built-in skins (system/light/mirror/dark)
+  # are always available; the shape is documented in ConfluencePhxMirrorWeb.Skins.
+  skins: [],
   reader_rate_limit: [
     enabled: true,
     html: [limit: 240, period_ms: 60_000],
@@ -98,10 +103,10 @@ config :tailwind,
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+  metadata: [:request_id, :reason, :job_id, :user]
 
-# Use Jason for JSON parsing in Phoenix
-config :phoenix, :json_library, Jason
+# Use Elixir's built-in JSON codec (Elixir 1.18+); no Jason dependency.
+config :phoenix, :json_library, JSON
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

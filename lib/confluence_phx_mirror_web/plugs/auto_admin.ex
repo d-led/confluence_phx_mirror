@@ -9,6 +9,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.AutoAdmin do
   import Plug.Conn
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.Scope
 
   def init(opts), do: opts
 
@@ -19,6 +20,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.AutoAdmin do
       conn
       |> put_session(:user_id, user.id)
       |> assign(:current_user, user)
+      |> assign(:current_scope, Scope.for_user(user))
     else
       conn
     end

@@ -143,7 +143,7 @@ defmodule ConfluencePhxMirror.Accounts do
         |> LoginToken.changeset(%{
           user_id: user.id,
           token_hash: hash(plain),
-          expires_at: DateTime.add(DateTime.utc_now(), @login_token_minutes, :minute)
+          expires_at: DateTime.add(now(), @login_token_minutes, :minute)
         })
         |> Repo.insert()
 
@@ -175,7 +175,7 @@ defmodule ConfluencePhxMirror.Accounts do
 
   @doc "Consumes a magic link. Tokens are single-use and expire after 15 minutes."
   def consume_login(plain) when is_binary(plain) do
-    now = DateTime.utc_now()
+    now = now()
 
     case Repo.one(
            from t in LoginToken,
@@ -186,9 +186,10 @@ defmodule ConfluencePhxMirror.Accounts do
         {:error, :invalid}
 
       %LoginToken{} = token ->
-        cond do
-          DateTime.compare(token.expires_at, now) == :lt -> {:error, :expired}
-          true -> sign_in(token, now)
+        if DateTime.compare(token.expires_at, now) == :lt do
+          {:error, :expired}
+        else
+          sign_in(token, now)
         end
     end
   end
@@ -229,23 +230,23 @@ defmodule ConfluencePhxMirror.Accounts do
     plain = random_token()
     prefix = String.slice(plain, 0, 8)
 
-    {:ok, token} =
-      %ApiToken{}
-      |> ApiToken.changeset(%{
-        user_id: user.id,
+    with {:ok, token} <-
+           %ApiToken{}
+           |> ApiToken.changeset(%{
+             user_id: user.id,
+             name: name,
+             token_hash: hash(plain),
+             token_prefix: prefix
+           })
+           |> Repo.insert() do
+      Audit.record(actor, "api_token.created", "api_token", token.id, %{
+        user: user.email,
         name: name,
-        token_hash: hash(plain),
-        token_prefix: prefix
+        prefix: prefix
       })
-      |> Repo.insert()
 
-    Audit.record(actor, "api_token.created", "api_token", token.id, %{
-      user: user.email,
-      name: name,
-      prefix: prefix
-    })
-
-    {:ok, plain, token}
+      {:ok, plain, token}
+    end
   end
 
   def list_api_tokens(%User{id: user_id}) do
@@ -270,7 +271,7 @@ defmodule ConfluencePhxMirror.Accounts do
 
   @doc "Authenticates a bearer token."
   def authenticate_api_token(plain) when is_binary(plain) do
-    now = DateTime.utc_now()
+    now = now()
 
     case Repo.one(from t in ApiToken, where: t.token_hash == ^hash(plain), preload: [:user]) do
       nil ->
@@ -306,6 +307,8 @@ defmodule ConfluencePhxMirror.Accounts do
     do: DateTime.compare(expires_at, now) != :gt
 
   defp hash(value), do: :crypto.hash(:sha256, value) |> Base.encode16(case: :lower)
+
+  defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   defp random_token,
     do: :crypto.strong_rand_bytes(@api_token_bytes) |> Base.url_encode64(padding: false)

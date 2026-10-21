@@ -103,12 +103,58 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       {"img", attrs, children} ->
         {"img", rewrite_image(attrs, context), children}
 
+      {"div", attrs, children} ->
+        if has_class?(attrs, "expand-container") do
+          expand_to_details(children)
+        else
+          {"div", sanitise_attributes(attrs), children}
+        end
+
       {tag, attrs, children} ->
         {tag, sanitise_attributes(attrs), children}
 
       other ->
         other
     end)
+  end
+
+  # Confluence's expand macro is a div pair toggled by JavaScript. A mirror has
+  # no editing JavaScript, so it becomes the native, accessible equivalent: a
+  # closed <details> with the original control text as <summary>.
+  defp expand_to_details(children) do
+    control = find_child(children, "expand-control")
+    content = find_child(children, "expand-content")
+
+    if control && content do
+      {"details", [{"class", "expand-container"}],
+       [
+         {"summary", [{"class", "expand-control"}], reject_icon(control)},
+         {"div", [{"class", "expand-content"}], content}
+       ]}
+    else
+      {"div", [{"class", "expand-container"}], children}
+    end
+  end
+
+  defp find_child(children, class) do
+    Enum.find_value(children, fn
+      {"div", attrs, kids} -> if has_class?(attrs, class), do: kids
+      _ -> nil
+    end)
+  end
+
+  defp reject_icon(children) do
+    Enum.reject(children, fn
+      {"span", attrs, _kids} -> has_class?(attrs, "expand-control-icon")
+      _ -> false
+    end)
+  end
+
+  defp has_class?(attrs, class) do
+    case List.keyfind(attrs, "class", 0) do
+      {"class", value} -> class in String.split(value)
+      nil -> false
+    end
   end
 
   defp rewrite_anchor(attrs, children, context) do

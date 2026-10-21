@@ -1,10 +1,12 @@
 defmodule ConfluencePhxMirrorWeb.PageHTML do
-  @moduledoc """
-  This module contains pages rendered by PageController.
+  @moduledoc "Templates for the reader-facing mirror."
 
-  See the `page_html` directory for all templates available.
-  """
   use ConfluencePhxMirrorWeb, :html
+
+  import ConfluencePhxMirrorWeb.MirrorComponents
+  import ConfluencePhxMirrorWeb.UIComponents
+
+  alias ConfluencePhxMirrorWeb.Time
 
   embed_templates "page_html/*"
 end

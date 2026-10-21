@@ -62,4 +62,28 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
     assert {:error, message} = Search.search("colour = blue")
     assert message =~ "unknown field"
   end
+
+  describe "structured search" do
+    test "returns nothing before any criteria is given" do
+      assert Search.structured(%{}) == {:ok, [], []}
+    end
+
+    test "applies field filters without text" do
+      {:ok, results, []} = Search.structured(%{"space" => "ENG", "label" => "architecture"})
+      assert Enum.map(results, & &1.page.title) == ["Architecture Overview"]
+    end
+
+    test "intersects text with field filters and keeps the text ranking" do
+      {:ok, results, terms} = Search.structured(%{"q" => "pipeline", "space" => "ENG"})
+
+      assert hd(results).page.title == "Architecture Overview"
+      assert Enum.all?(results, &(&1.space.key == "ENG"))
+      assert terms == ["pipeline"]
+    end
+
+    test "does not leak pages from other spaces" do
+      {:ok, results, _terms} = Search.structured(%{"q" => "release", "space" => "OPS"})
+      refute Enum.any?(results, &(&1.page.title == "Release 2.0"))
+    end
+  end
 end

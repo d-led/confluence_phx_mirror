@@ -33,7 +33,7 @@ config :confluence_phx_mirror, Oban,
 config :confluence_phx_mirror,
   auto_admin: true,
   self_signup: true,
-  blob_root: "priv/static/mirror_test",
+  blob_root: "tmp/mirror_test",
   reader_rate_limit: [
     enabled: true,
     html: [limit: 1_000, period_ms: 60_000],

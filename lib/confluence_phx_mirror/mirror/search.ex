@@ -15,7 +15,7 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   import Ecto.Query
 
   alias ConfluencePhxMirror.Mirror.Page
-  alias ConfluencePhxMirror.Mirror.Search.CQL
+  alias ConfluencePhxMirror.Mirror.Search.{CQL, Filters, TextQuery}
   alias ConfluencePhxMirror.Repo
 
   @default_limit 25
@@ -28,6 +28,133 @@ defmodule ConfluencePhxMirror.Mirror.Search do
           rank: float(),
           snippet: String.t()
         }
+
+  @doc """
+  Structured search used by the UI and the v1 API.
+
+  `params` may contain `q`, `space`, `label`, `type`, `creator`, `ancestor` and
+  `updated` (`7d`, `30d`, `90d`, `365d` or an ISO date). Returns results and the
+  terms to highlight.
+  """
+  @spec structured(map(), keyword()) ::
+          {:ok, [result()], [String.t()]} | {:error, String.t()}
+  def structured(params, opts \\ []) do
+    params = Filters.normalise(params)
+    q = params["q"] || ""
+    field_params = Map.drop(params, ["q"])
+    fields? = Enum.any?(Filters.field_keys(), &(field_params[&1] not in [nil, ""]))
+
+    cond do
+      q == "" and not fields? ->
+        {:ok, [], []}
+
+      q != "" and not fields? ->
+        {:ok, results} = text(q, opts)
+        {:ok, results, text_terms(q)}
+
+      q == "" ->
+        case Filters.to_cql(field_params) do
+          {:ok, cql, _terms} ->
+            case search(cql, opts) do
+              {:ok, results} -> {:ok, results, []}
+              {:error, message} -> {:error, message}
+            end
+
+          :empty ->
+            {:ok, [], []}
+        end
+
+      true ->
+        # Text and fields are both present: rank by text, keep only pages that
+        # satisfy the field filters. The bound keeps the intersection cheap.
+        {:ok, field_cql, _} = Filters.to_cql(field_params)
+        {:ok, field_results} = search(field_cql, limit: @max_limit * 50)
+        allowed = MapSet.new(field_results, & &1.page.id)
+
+        {:ok, text_results} = text(q, limit: @max_limit * 50)
+
+        limit = min(Keyword.get(opts, :limit, @default_limit), @max_limit)
+        offset = max(Keyword.get(opts, :start, 0), 0)
+
+        results =
+          text_results
+          |> Enum.filter(&MapSet.member?(allowed, &1.page.id))
+          |> Enum.drop(offset)
+          |> Enum.take(limit)
+
+        {:ok, results, text_terms(q)}
+    end
+  end
+
+  defp text_terms(q) do
+    case TextQuery.parse(q) do
+      {:ok, _tsquery, terms} -> terms
+      _ -> Filters.terms(q)
+    end
+  end
+
+  @doc """
+  Full-text search across every indexed field (title, body, labels, author,
+  space and attachment filenames).
+
+  Plain words are ANDed and matched by prefix; `AND`/`OR`/`NOT` (uppercase),
+  parentheses, quoted phrases and a leading `-` are supported. Malformed input
+  falls back to Postgres' forgiving `websearch_to_tsquery`.
+  """
+  @spec text(String.t(), keyword()) :: {:ok, [result()]}
+  def text(query, opts \\ []) do
+    query = String.trim(query || "")
+    limit = min(Keyword.get(opts, :limit, @default_limit), @max_limit)
+    offset = max(Keyword.get(opts, :start, 0), 0)
+
+    case TextQuery.parse(query) do
+      :empty ->
+        {:ok, []}
+
+      {:ok, tsquery, terms} ->
+        run_text(tsquery, "to_tsquery", terms, limit, offset)
+
+      :error ->
+        run_text(query, "websearch_to_tsquery", fallback_terms(query), limit, offset)
+    end
+  end
+
+  defp run_text(parameter, function, terms, limit, offset) do
+    sql = """
+    SELECT p.id, ts_rank_cd(p.search_vector, #{function}('#{@language}', $1)) AS rank
+    FROM pages p
+    JOIN spaces s ON s.id = p.space_id
+    WHERE p.deleted_at IS NULL
+      AND p.search_vector @@ #{function}('#{@language}', $1)
+    ORDER BY rank DESC, p.external_updated_at DESC NULLS LAST
+    LIMIT #{Integer.to_string(limit)} OFFSET #{Integer.to_string(offset)}
+    """
+
+    rows = Repo.query!(sql, [parameter]).rows
+    ids = Enum.map(rows, fn [id, _rank] -> id end)
+    rank_by_id = Map.new(rows, fn [id, rank] -> {id, rank} end)
+
+    results =
+      ids
+      |> load_pages()
+      |> Enum.map(fn page ->
+        %{
+          page: page,
+          space: page.space,
+          rank: rank_by_id[page.id] || 0.0,
+          snippet: snippet(page, terms)
+        }
+      end)
+
+    {:ok, results}
+  end
+
+  defp fallback_terms(query) do
+    query
+    |> String.split(~r/\s+/u, trim: true)
+    |> Enum.map(&String.replace(&1, ~r/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/u, ""))
+    |> Enum.reject(&(String.length(&1) < 2))
+  end
 
   @doc """
   Parses and executes `cql`.

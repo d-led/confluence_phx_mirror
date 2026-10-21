@@ -1,0 +1,109 @@
+<Layouts.app
+  flash={@flash}
+  current_scope={@current_scope}
+  spaces={@spaces}
+  last_sync_run={@last_sync_run}
+  mirror_name={@mirror_name}
+  mirror_source={@mirror_source}
+  page_title={@page_title}
+  sidebar?={false}
+>
+  <header class="border-b border-base-300/70 pb-4">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">About</p>
+    <h1 class="mt-1 text-3xl font-semibold">How this mirror works</h1>
+  </header>
+
+  <div class="prose prose-sm mt-6 max-w-3xl text-base-content/75">
+    <p>
+      This is a <strong>read-only cache</strong> of Confluence. Pages, comments and
+      attachment metadata live in Postgres; attachment bytes live in a path-based blob
+      store. There is no write path back to Confluence.
+    </p>
+  </div>
+
+  <div class="mt-6 grid gap-4 sm:grid-cols-2">
+    <div class="rounded-xl border border-base-300/70 bg-base-100 p-5">
+      <h2 class="text-sm font-semibold">Freshness</h2>
+      <dl class="mt-3">
+        <.kv label="Pages" value={@stats.pages} />
+        <.kv label="Attachments" value={@stats.attachments} />
+        <.kv label="Labels" value={@stats.labels} />
+        <.kv
+          label="Last successful sync"
+          value={if @last_sync_run, do: Time.ago(@last_sync_run.finished_at), else: "never"}
+        />
+      </dl>
+    </div>
+
+    <div class="rounded-xl border border-base-300/70 bg-base-100 p-5">
+      <h2 class="text-sm font-semibold">Automation</h2>
+      <ul class="mt-3 space-y-2 text-xs text-base-content/65">
+        <li class="flex gap-2">
+          <.icon name="hero-clock" class="mt-0.5 size-3.5 shrink-0" />
+          Scheduled snapshot pulls, configurable per source.
+        </li>
+        <li class="flex gap-2">
+          <.icon name="hero-bolt" class="mt-0.5 size-3.5 shrink-0" />
+          Signed webhooks trigger an immediate page sync.
+        </li>
+        <li class="flex gap-2">
+          <.icon name="hero-envelope" class="mt-0.5 size-3.5 shrink-0" />
+          Subscribers get e-mail on change; daily digests are supported.
+        </li>
+        <li class="flex gap-2">
+          <.icon name="hero-shield-check" class="mt-0.5 size-3.5 shrink-0" />
+          Every sync, webhook and account change is audited.
+        </li>
+      </ul>
+      <p class="mt-3 text-[11px] text-base-content/45">
+        Webhook secret: {if @webhook_secret_configured,
+          do: "configured",
+          else: "not configured (webhooks reject deliveries)"}
+      </p>
+    </div>
+  </div>
+
+  <section class="mt-8">
+    <h2 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">API</h2>
+    <div class="mt-3 overflow-hidden rounded-xl border border-base-300/70">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GET /api/v1/spaces</code></td><td>Mirrored spaces with page counts</td>
+          </tr>
+          <tr>
+            <td><code>GET /api/v1/pages/:id</code></td><td>
+              Page, body (storage + export view), labels
+            </td>
+          </tr>
+          <tr>
+            <td><code>GET /api/v1/search?q=…</code></td><td>
+              Full-text search with structured filters
+            </td>
+          </tr>
+          <tr>
+            <td><code>GET /wiki/rest/api/content/:id</code></td><td>
+              Confluence-compatible representation
+            </td>
+          </tr>
+          <tr>
+            <td><code>POST /webhooks/confluence</code></td><td>
+              Signed Confluence webhook receiver
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-2 text-xs text-base-content/55">
+      Authentication uses bearer API tokens (admin → Users) or basic <code>email:token</code>. Reader requests are rate limited and responses carry
+      <code>X-RateLimit-*</code>
+      headers.
+    </p>
+  </section>
+</Layouts.app>

@@ -1,0 +1,150 @@
+<Layouts.app
+  flash={@flash}
+  current_scope={@current_scope}
+  spaces={@spaces}
+  last_sync_run={@last_sync_run}
+  mirror_name={@mirror_name}
+  mirror_source={@mirror_source}
+  space={@space}
+  tree={@tree}
+  current_page={@page}
+  breadcrumbs={@breadcrumbs}
+  page_title={@page_title}
+  rail?={true}
+>
+  <:rail>
+    <.rail_section title="Reading now" icon="hero-users">
+      <div data-presence-topic={ConfluencePhxMirrorWeb.Presence.topic(@page.confluence_id)}>
+        <p class="flex items-baseline gap-1.5">
+          <span data-presence-count class="text-2xl font-semibold tabular-nums">{@readers}</span>
+          <span class="text-xs text-base-content/55">reading this page</span>
+        </p>
+        <ul data-presence-list class="mt-2 space-y-1 text-xs text-base-content/60"></ul>
+      </div>
+    </.rail_section>
+
+    <.rail_section title="Page info" icon="hero-information-circle">
+      <dl>
+        <.kv label="Space" value={"#{@space.name} (#{@space.key})"} />
+        <.kv label="Confluence id" value={@page.confluence_id} />
+        <.kv label="Version" value={"v#{@page.version_number}"} />
+        <.kv label="Author" value={@page.author_name || "unknown"} />
+        <.kv label="Created" value={Time.date(@page.external_created_at)} />
+        <.kv label="Updated" value={Time.datetime(@page.external_updated_at)} />
+        <.kv label="Mirrored" value={Time.datetime(@page.synced_at)} />
+      </dl>
+    </.rail_section>
+
+    <.rail_section title="Attachments" icon="hero-paper-clip">
+      <.attachment_list page={@page} attachments={@attachments} />
+    </.rail_section>
+
+    <.rail_section title="Watch" icon="hero-bell">
+      <%= if @current_user do %>
+        <%= if @subscribed? do %>
+          <p class="text-xs text-base-content/60">You get an e-mail when this page changes.</p>
+          <form action={~p"/subscriptions"} method="post" class="mt-2">
+            <input type="hidden" name="_method" value="delete" />
+            <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+            <input type="hidden" name="target_type" value="page" />
+            <input type="hidden" name="target_id" value={@page.id} />
+            <button type="submit" class="btn btn-outline btn-xs w-full">Stop watching</button>
+          </form>
+        <% else %>
+          <p class="text-xs text-base-content/60">Get an e-mail when this page changes.</p>
+          <form action={~p"/subscriptions"} method="post" class="mt-2">
+            <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+            <input type="hidden" name="target_type" value="page" />
+            <input type="hidden" name="target_id" value={@page.id} />
+            <button type="submit" class="btn btn-primary btn-xs w-full">Watch this page</button>
+          </form>
+        <% end %>
+        <div class="mt-3 border-t border-base-300/60 pt-2">
+          <%= if @space_subscribed? do %>
+            <p class="text-[11px] text-base-content/50">Watching the whole space.</p>
+          <% else %>
+            <form action={~p"/subscriptions"} method="post">
+              <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+              <input type="hidden" name="target_type" value="space" />
+              <input type="hidden" name="target_id" value={@space.id} />
+              <button type="submit" class="btn btn-ghost btn-xs w-full">
+                Watch all of {@space.key}
+              </button>
+            </form>
+          <% end %>
+        </div>
+      <% else %>
+        <p class="text-xs text-base-content/60">
+          <a href={~p"/session"} class="link link-primary">Sign in</a>
+          to get notified when this page changes.
+        </p>
+      <% end %>
+    </.rail_section>
+
+    <.rail_section title="Linked from" icon="hero-arrow-uturn-left">
+      <.page_list pages={@backlinks} empty="No other mirrored page links here yet." />
+    </.rail_section>
+
+    <.rail_section title="Outgoing links" icon="hero-arrow-top-right-on-square">
+      <p :if={@outgoing_links == []} class="text-xs text-base-content/50">No links.</p>
+      <ul :if={@outgoing_links != []} class="space-y-1.5">
+        <li :for={link <- Enum.take(@outgoing_links, 12)} class="truncate text-xs">
+          <a
+            href={link.href}
+            class="text-primary hover:underline"
+            target={if link.kind == "external", do: "_blank"}
+            rel={if link.kind == "external", do: "noopener noreferrer"}
+          >
+            {link.label || link.href}
+          </a>
+          <span class="ml-1 text-[10px] uppercase tracking-wide text-base-content/35">
+            {link.kind}
+          </span>
+        </li>
+      </ul>
+    </.rail_section>
+  </:rail>
+
+  <article>
+    <.page_header title={@page.title} eyebrow={@space.name}>
+      <:badges>
+        <.badges status={@page.status} type={@page.type} />
+      </:badges>
+      <:meta>
+        <.page_meta page={@page} />
+      </:meta>
+    </.page_header>
+
+    <.label_chips labels={@page.labels} class="mt-3" />
+
+    <div class="confluence-content mt-6">
+      {Phoenix.HTML.raw(@page.body_export || "")}
+    </div>
+
+    <section :if={@children != []} class="mt-10 border-t border-base-300/70 pt-6">
+      <h2 class="mb-3 flex items-center gap-2 text-sm font-semibold">
+        <.icon name="hero-rectangle-stack" class="size-4 text-base-content/50" /> Child pages
+        <span class="badge badge-ghost badge-sm">{length(@children)}</span>
+      </h2>
+      <ul class="grid gap-2 sm:grid-cols-2">
+        <li :for={child <- @children}>
+          <.link
+            navigate={
+              ConfluencePhxMirror.Mirror.URLs.page_path(
+                @space.key,
+                child.confluence_id,
+                child.slug
+              )
+            }
+            class="group flex items-center gap-2 rounded-lg border border-base-300/70 bg-base-100 px-3 py-2 text-sm transition hover:border-primary/40 hover:bg-base-200/40"
+          >
+            <.icon name="hero-document-text" class="size-4 shrink-0 text-base-content/40" />
+            <span class="truncate group-hover:text-primary">{child.title}</span>
+          </.link>
+        </li>
+      </ul>
+    </section>
+
+    <.comment_thread page={@page} comments={@comments} />
+  </article>
+</Layouts.app>

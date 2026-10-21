@@ -43,18 +43,19 @@ defmodule ConfluencePhxMirror.Blobs.LocalStore do
 
   @impl true
   def exists?(key, opts) do
-    with :ok <- validate_key(key) do
-      File.regular?(absolute_path(key, opts))
-    else
-      _ -> false
+    case validate_key(key) do
+      :ok -> File.regular?(absolute_path(key, opts))
+      {:error, _reason} -> false
     end
   end
 
   @impl true
   def size(key, opts) do
-    with :ok <- validate_key(key),
-         {:ok, %File.Stat{size: size}} <- File.stat(absolute_path(key, opts)) do
-      {:ok, size}
+    with :ok <- validate_key(key) do
+      case File.stat(absolute_path(key, opts)) do
+        {:ok, %File.Stat{size: size}} -> {:ok, size}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 

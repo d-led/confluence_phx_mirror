@@ -48,14 +48,27 @@ config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.HttpSource,
      end),
   sync_interval_seconds: String.to_integer(System.get_env("CM_SYNC_INTERVAL_SECONDS", "900"))
 
+if blob_root = System.get_env("MIRROR_BLOB_ROOT") do
+  config :confluence_phx_mirror, blob_root: blob_root
+end
+
+if auto_admin = System.get_env("MIRROR_AUTO_ADMIN") do
+  config :confluence_phx_mirror, auto_admin: auto_admin in ~w(1 true yes)
+end
+
+if self_signup = System.get_env("MIRROR_SELF_SIGNUP") do
+  config :confluence_phx_mirror, self_signup: self_signup in ~w(1 true yes)
+end
+
+if webhook_secret = System.get_env("CM_WEBHOOK_SECRET") do
+  config :confluence_phx_mirror,
+    webhooks: [
+      secret: webhook_secret,
+      require_signature: System.get_env("CM_WEBHOOK_REQUIRE_SIGNATURE", "true") in ~w(1 true yes)
+    ]
+end
+
 config :confluence_phx_mirror,
-  blob_root: System.get_env("MIRROR_BLOB_ROOT", "priv/static/mirror"),
-  auto_admin: System.get_env("MIRROR_AUTO_ADMIN") in ~w(1 true yes),
-  self_signup: System.get_env("MIRROR_SELF_SIGNUP") in ~w(1 true yes),
-  webhooks: [
-    secret: System.get_env("CM_WEBHOOK_SECRET"),
-    require_signature: System.get_env("CM_WEBHOOK_REQUIRE_SIGNATURE", "true") in ~w(1 true yes)
-  ],
   notifications: [
     enabled: System.get_env("MIRROR_NOTIFICATIONS", "true") in ~w(1 true yes),
     from:

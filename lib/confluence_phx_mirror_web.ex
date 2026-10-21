@@ -43,6 +43,7 @@ defmodule ConfluencePhxMirrorWeb do
       use Gettext, backend: ConfluencePhxMirrorWeb.Gettext
 
       import Plug.Conn
+      import Phoenix.Component, only: [to_form: 1, to_form: 2]
 
       unquote(verified_routes())
     end
@@ -88,8 +89,8 @@ defmodule ConfluencePhxMirrorWeb do
       import ConfluencePhxMirrorWeb.CoreComponents
 
       # Common modules used in templates
-      alias Phoenix.LiveView.JS
       alias ConfluencePhxMirrorWeb.Layouts
+      alias Phoenix.LiveView.JS
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())

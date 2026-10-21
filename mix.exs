@@ -5,7 +5,7 @@ defmodule ConfluencePhxMirror.MixProject do
     [
       app: :confluence_phx_mirror,
       version: "0.1.0",
-      elixir: "~> 1.17",
+      elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -74,7 +74,6 @@ defmodule ConfluencePhxMirror.MixProject do
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},
-      {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
@@ -96,11 +95,13 @@ defmodule ConfluencePhxMirror.MixProject do
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": [
+        "cmd --cd assets npm ci",
         "compile",
         "tailwind confluence_phx_mirror",
         "esbuild confluence_phx_mirror"
       ],
       "assets.deploy": [
+        "cmd --cd assets npm ci",
         "tailwind confluence_phx_mirror --minify",
         "esbuild confluence_phx_mirror --minify",
         "phx.digest"

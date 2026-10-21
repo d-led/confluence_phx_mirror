@@ -24,6 +24,8 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/confluence_phx_mirror"
 import topbar from "../vendor/topbar"
+import initPagePresence from "./page_presence"
+import {highlightCode} from "./code_highlight"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
@@ -39,6 +41,12 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()
+
+// Presence for controller-rendered pages: no-op when the page has no widget.
+initPagePresence()
+
+// Colour the code inside Confluence's code macro after the page is parsed.
+highlightCode()
 
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()

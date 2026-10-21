@@ -1,0 +1,21 @@
+/* ---------------------------------------------------------------------------
+   Site skin overrides.
+
+   Colours, radii and `color-scheme` belong in config (`ConfluencePhxMirrorWeb.Skins`),
+   because the palette is emitted per request and needs no rebuild. This file is
+   for everything a palette cannot express: fonts, spacing, component tweaks.
+
+   It is loaded after the main stylesheet, so plain CSS wins without !important.
+   Scope rules to `[data-theme="<your-skin>"]` when they should only apply to
+   one skin; the mirror sets that attribute on <html>.
+
+   Example — a branded skin declared in config as `%{name: "acme", ...}`:
+
+   [data-theme="acme"] {
+     --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+   }
+
+   [data-theme="acme"] .confluence-content h2 {
+     letter-spacing: -0.01em;
+   }
+   --------------------------------------------------------------------------- */

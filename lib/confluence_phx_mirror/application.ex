@@ -13,6 +13,7 @@ defmodule ConfluencePhxMirror.Application do
       {DNSCluster,
        query: Application.get_env(:confluence_phx_mirror, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: ConfluencePhxMirror.PubSub},
+      ConfluencePhxMirrorWeb.Presence,
       ConfluencePhxMirror.RateLimit,
       rate_limiter_spec(),
       {Oban, Application.fetch_env!(:confluence_phx_mirror, Oban)},

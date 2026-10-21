@@ -4,6 +4,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.FetchCurrentUser do
   import Plug.Conn
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.Scope
 
   def init(opts), do: opts
 
@@ -14,6 +15,8 @@ defmodule ConfluencePhxMirrorWeb.Plugs.FetchCurrentUser do
         id -> Accounts.get_user(id)
       end
 
-    assign(conn, :current_user, user)
+    conn
+    |> assign(:current_user, user)
+    |> assign(:current_scope, Scope.for_user(user))
   end
 end
