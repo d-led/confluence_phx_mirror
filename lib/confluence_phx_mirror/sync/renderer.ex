@@ -49,6 +49,13 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   @unsafe_elements ~w(script iframe object embed applet form input button)
   @url_attributes ~w(href src action formaction poster)
 
+  # Floki's parser drops text runs that are only whitespace, but the exporter
+  # relies on them for the visible space between inline elements (two status
+  # lozenges would touch, `<strong>` next to `<em>` would read "onetwo").
+  # Each run travels through the parse as a marker and comes back verbatim.
+  @inter_tag_space ~r/(?<=>)\s+(?=<)/u
+  @space_marker ~r/\x{E000}([A-Za-z0-9_-]+)\x{E001}/u
+
   @doc """
   Sanitises and rewrites `html` for `context`.
 
@@ -61,6 +68,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   def render(html, context) when is_binary(html) do
     nodes =
       html
+      |> mark_spaces()
       |> Floki.parse_fragment!()
       |> remove_unsafe_elements()
 
@@ -76,6 +84,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       nodes
       |> traverse_and_rewrite(context)
       |> Floki.raw_html()
+      |> restore_spaces()
 
     %{html: rewritten, links: links, text: plain_text(rewritten)}
   end
@@ -93,6 +102,18 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp remove_unsafe_elements(nodes) do
     Enum.reduce(@unsafe_elements, nodes, &Floki.filter_out(&2, &1))
+  end
+
+  defp mark_spaces(html) do
+    Regex.replace(@inter_tag_space, html, fn run ->
+      "\uE000" <> Base.url_encode64(run, padding: false) <> "\uE001"
+    end)
+  end
+
+  defp restore_spaces(html) do
+    Regex.replace(@space_marker, html, fn _, encoded ->
+      Base.url_decode64!(encoded, padding: false)
+    end)
   end
 
   defp traverse_and_rewrite(nodes, context) do

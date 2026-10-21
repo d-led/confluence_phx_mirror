@@ -155,6 +155,23 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     end
   end
 
+  describe "inline spacing" do
+    test "keeps the space between two inline elements" do
+      html =
+        ~s(<p>Statuses: <span class="aui-lozenge">DONE</span> <span class="aui-lozenge">MOVED</span></p>)
+
+      assert Renderer.render(html, context()).html =~
+               ~s(<p>Statuses: <span class="aui-lozenge">DONE</span> <span class="aui-lozenge">MOVED</span></p>)
+    end
+
+    test "keeps the original whitespace inside preformatted text" do
+      html = "<pre><span>a</span>\n   <span>b</span></pre>"
+
+      assert Renderer.render(html, context()).html =~
+               "<pre><span>a</span>\n   <span>b</span></pre>"
+    end
+  end
+
   describe "text" do
     test "extracts readable plain text for full-text search" do
       html = "<h1>Title</h1><p>Some <strong>bold</strong> text.</p>"
