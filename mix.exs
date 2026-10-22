@@ -123,12 +123,12 @@ defmodule ConfluencePhxMirror.MixProject do
         "esbuild confluence_phx_mirror --minify",
         "phx.digest"
       ],
-      # Static analysis: no database, no test run, under a few seconds. This is
-      # the alias to run while working.
+      # Static analysis: no database, no test run, under a few seconds. Read-only
+      # on purpose — a check that rewrites files cannot run in CI.
       lint: [
         "compile --warnings-as-errors",
-        "deps.unlock --unused",
-        "format",
+        "deps.unlock --check-unused",
+        "format --check-formatted",
         "credo --strict",
         "sobelow --config"
       ],
@@ -142,11 +142,12 @@ defmodule ConfluencePhxMirror.MixProject do
       # `cmd` on purpose: Mix refuses to run a task twice in one invocation, so
       # two plain `crap` entries would silently check only the first path.
       complexity: [
-        "cmd mix crap --path lib/confluence_phx_mirror --max-score 30",
-        "cmd mix crap --path lib/confluence_phx_mirror_web --max-score 30"
+        "cmd mix crap --path lib/confluence_phx_mirror --max-score 30 --verbose",
+        "cmd mix crap --path lib/confluence_phx_mirror_web --max-score 30 --verbose"
       ],
-      # What CI runs: cheapest signal first.
-      precommit: ["lint", "cover", "complexity"]
+      # What CI runs: the report script, which chains lint, cover and complexity
+      # and prints one summary. `mix lint` and `mix cover` stay available alone.
+      precommit: ["cmd scripts/quality.sh"]
     ]
   end
 end
