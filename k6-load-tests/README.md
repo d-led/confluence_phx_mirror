@@ -49,6 +49,17 @@ guard rails:
 | 2 000 | 122 963 | 4 360 ms | 6 068 ms | 0% | `POOL_SIZE=100` — best of the four |
 | 2 000 | 79 319 | 7 856 ms | 9 366 ms | 0% | `POOL_SIZE=500` |
 | 2 000 | 44 650 | 27 669 ms | 36 939 ms | 0.5% | `POOL_SIZE=1 000` — twice the connections, a third of the throughput |
+| nav 2 000 | 85 060 | 9 621 ms | 12 771 ms | 0% | `POOL_SIZE=100`, navigation only (no search) |
+
+CPU split during those 2000-reader runs, sampled every 5 s (`ps` `%cpu`,
+summed per process class, 8 cores): the application's BEAM held ~270%, Postgres
+~42%, the load generator ~17%. The database is not the busy component, and
+neither is the connection count: the lever is work per request.
+
+The `nav2000` row is slower than the mixed row, which is not a fair comparison:
+the two ran at different times on a shared laptop with another test suite
+running. It exists to separate browsing from searching when both are measured
+on the same host, back to back.
 
 The 2000-reader rows are one replica on 8 cores with Postgres on the same host,
 `CM_READER_RATE_LIMIT_PER_MINUTE` lifted (2000 VUs share one client address, so

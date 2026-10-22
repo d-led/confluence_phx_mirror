@@ -157,6 +157,25 @@ raise the pool:
 sudo sysctl -w kern.ipc.somaxconn=4096      # macOS, needs root; Linux: net.core.somaxconn
 ```
 
+**Reader sockets are a different resource, and they need no tuning here.** The
+web server is Bandit, whose acceptor count and per-acceptor connection cap come
+from Thousand Island: `num_acceptors` defaults to 100 and `max_connections` per
+acceptor to 16 384, so 2000 sockets are two orders of magnitude below the
+default (Cowboy's `transport_options: [num_acceptors: 100, max_connections:
+10_000]` does not apply to Bandit). What does need attention is the file
+descriptor limit of the process that starts the release:
+
+```bash
+ulimit -n 65536            # before starting the server; macOS defaults are low
+```
+
+**Measure a release, not a dev server.** `config/dev.exs` sets
+`debug_heex_annotations: true`, which adds an attribute to every rendered
+element, and runs the code reloader: both inflate response size and render
+cost. The pool-size table above was taken on a dev server and is therefore a
+*relative* comparison; take absolute capacity numbers from
+`MIX_ENV=prod PHX_SERVER=true bin/confluence_phx_mirror start`.
+
 **Postgres itself.** The settings these runs were measured with are in
 [`deploy/postgres-tuning.conf`](../deploy/postgres-tuning.conf) — `max_connections`,
 `shared_buffers`, `effective_cache_size`, a deliberately small `work_mem`
