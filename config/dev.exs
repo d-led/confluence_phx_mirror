@@ -71,7 +71,9 @@ config :confluence_phx_mirror,
   ]
 
 config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.DemoSource,
-  # A snapshot pull every 15 minutes, plus webhook driven updates.
+  # The demo snapshot is a constant, so re-reading it on a timer buys nothing;
+  # the admin screen and webhooks pull on demand. A real site keeps the
+  # `CM_SYNC_INTERVAL_SECONDS` schedule (one hour by default).
   sync_interval_seconds: 0
 
 config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.HttpSource,

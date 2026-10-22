@@ -125,7 +125,7 @@ config :confluence_phx_mirror,
              keys -> keys |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
            end,
          sync_interval_seconds:
-           String.to_integer(System.get_env("CM_SYNC_INTERVAL_SECONDS", "900"))
+           String.to_integer(System.get_env("CM_SYNC_INTERVAL_SECONDS", "3600"))
        )
 
 if blob_root = System.get_env("MIRROR_BLOB_ROOT") do

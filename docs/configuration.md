@@ -33,7 +33,7 @@ Configuration is read at boot; a running development server does **not** reload
 | `CM_HTTP_RETRIES` | `3` | attempts per Confluence request |
 | `CM_HTTP_PAGE_SIZE` | `50` | content page size when paginating |
 | `CM_HTTP_RETRY_BACKOFF_MS` | `250` | first retry delay (doubles per attempt) |
-| `CM_SYNC_INTERVAL_SECONDS` | `900` | scheduled snapshot (`0` disables) |
+| `CM_SYNC_INTERVAL_SECONDS` | `3600` | scheduled snapshot (`0` disables) |
 | `CM_SYNC_LOOKBACK_SECONDS` | `3600` | minimum window for an incremental pull |
 
 `CM_SOURCE` is explicit when set (`demo`, or `http` — `live` is accepted as an

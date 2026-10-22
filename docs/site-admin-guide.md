@@ -73,7 +73,7 @@ when a sync pulls a newer snapshot.
 
 ## Keeping the mirror current
 
-* `CM_SYNC_INTERVAL_SECONDS` (default `900`) schedules snapshot pulls; `0`
+* `CM_SYNC_INTERVAL_SECONDS` (default `3600`) schedules snapshot pulls; `0`
   disables them.
 * Webhooks react to single changes within seconds — see [Webhooks](#webhooks).
 
