@@ -171,10 +171,24 @@ ulimit -n 65536            # before starting the server; macOS defaults are low
 
 **Measure a release, not a dev server.** `config/dev.exs` sets
 `debug_heex_annotations: true`, which adds an attribute to every rendered
-element, and runs the code reloader: both inflate response size and render
-cost. The pool-size table above was taken on a dev server and is therefore a
-*relative* comparison; take absolute capacity numbers from
-`MIX_ENV=prod PHX_SERVER=true bin/confluence_phx_mirror start`.
+element, and runs the code reloader: both are pure per-request overhead. The
+difference is not subtle — the same build, same 100-connection pool, same host,
+`hey -n 2000 -c 50`:
+
+| endpoint | dev | `MIX_ENV=prod` |
+| --- | --- | --- |
+| `/health` | 224 rps | **3 027 rps** |
+| `/` (home) | 224 rps | **1 152 rps** |
+| a mirrored page | 259 rps | **885 rps** |
+| a mirrored page, `-c 200` | — | 726 rps |
+
+So one replica of this application serves roughly 900 page views per second on
+eight laptop cores, and the pool-size table above was measured through an 18×
+handicap — it compares pool sizes fairly, but its absolute numbers mean nothing.
+Take capacity numbers from `MIX_ENV=prod PHX_SERVER=true … start`, and note that
+a closed-loop load test with think time (VUs that sleep between requests) cannot
+report more than `VUs / (think time + latency)` however fast the server is; use
+a fixed arrival rate to find the knee.
 
 **Postgres itself.** The settings these runs were measured with are in
 [`deploy/postgres-tuning.conf`](../deploy/postgres-tuning.conf) — `max_connections`,
