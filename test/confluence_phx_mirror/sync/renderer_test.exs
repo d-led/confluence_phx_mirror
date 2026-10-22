@@ -226,5 +226,17 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       assert Renderer.render(html, context()).text == "Title Some bold text."
     end
+
+    test "leaves Confluence's inline colour rules out of the text" do
+      html = """
+      <style>[data-colorid=aruk1kcdwm]{color:#97a0af}</style>
+      <p data-colorid="aruk1kcdwm">Coloured panel text</p>
+      """
+
+      text = Renderer.render(html, context()).text
+
+      assert text == "Coloured panel text"
+      refute text =~ "data-colorid="
+    end
   end
 end

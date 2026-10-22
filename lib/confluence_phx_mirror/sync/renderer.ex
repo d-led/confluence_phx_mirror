@@ -120,12 +120,23 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   def plain_text(html) when is_binary(html) do
     html
     |> Floki.parse_fragment!()
+    |> drop_text_excluded()
     |> Floki.text(sep: " ")
     |> String.replace(~r/\s+/u, " ")
     |> String.trim()
   end
 
   def plain_text(_), do: ""
+
+  # Confluence's `export_view` inlines its own colour rules in `<style>` blocks.
+  # Those rules are kept in the rendered HTML (they style the page), but their
+  # text content is not prose: leaving it in `body_text` puts
+  # `[data-colorid=…]{color:#97a0af}` into previews and search snippets.
+  @text_excluded_elements ~w(style script noscript head title template)
+
+  defp drop_text_excluded(nodes) do
+    Enum.reduce(@text_excluded_elements, nodes, &Floki.filter_out(&2, &1))
+  end
 
   defp remove_unsafe_elements(nodes) do
     Enum.reduce(@unsafe_elements, nodes, &Floki.filter_out(&2, &1))
