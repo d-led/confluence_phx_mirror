@@ -22,7 +22,7 @@ defmodule ConfluencePhxMirror.Authorization do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Mirror.{Space, SpacePermission}
+  alias ConfluencePhxMirror.Mirror.{PageRestriction, Space, SpacePermission}
   alias ConfluencePhxMirror.Repo
 
   import Ecto.Query
@@ -130,6 +130,67 @@ defmodule ConfluencePhxMirror.Authorization do
   end
 
   defp group_subject(_scope), do: nil
+
+  @doc """
+  Narrows an already-loaded list of pages to the ones the reader may see.
+
+  Offline cousins of `restrict_spaces/2`: a caller that has pages in hand (an
+  archive, a page of search results) asks once, and the answer costs two
+  queries no matter how many pages there are — one for the spaces' permissions
+  and one for the pages' restrictions.
+  """
+  @spec readable_pages(Scope.t(), [ConfluencePhxMirror.Mirror.Page.t()]) ::
+          [ConfluencePhxMirror.Mirror.Page.t()]
+  def readable_pages(%Scope{} = scope, pages) do
+    if Scope.admin?(scope) do
+      pages
+    else
+      spaces = space_permissions_by(Enum.map(pages, & &1.space_id))
+      restrictions = page_restrictions_by(Enum.map(pages, & &1.id))
+      Enum.filter(pages, &visible?(scope, &1, spaces, restrictions))
+    end
+  end
+
+  defp visible?(scope, page, spaces, restrictions) do
+    allows?(scope, Map.get(spaces, page.space_id, [])) and
+      allows?(scope, Map.get(restrictions, page.id, []))
+  end
+
+  # No rows means open, exactly like space_allows?/2 and page_allows?/2.
+  defp allows?(_scope, []), do: true
+  defp allows?(scope, subjects), do: Enum.any?(subjects, &subject_matches?(scope, &1))
+
+  defp space_permissions_by(space_ids) do
+    ids = ids(space_ids)
+
+    from(sp in SpacePermission,
+      where: sp.operation == "read" and sp.space_id in ^ids,
+      select: {sp.space_id, sp.subject_type, sp.subject_key}
+    )
+    |> Repo.all()
+    |> group_subjects()
+  end
+
+  defp page_restrictions_by(page_ids) do
+    ids = ids(page_ids)
+
+    from(r in PageRestriction,
+      where: r.operation == "read" and r.page_id in ^ids,
+      select: {r.page_id, r.subject_type, r.subject_key}
+    )
+    |> Repo.all()
+    |> group_subjects()
+  end
+
+  defp ids(values), do: values |> Enum.uniq() |> Enum.reject(&is_nil/1)
+
+  defp group_subjects(rows) do
+    Enum.group_by(
+      rows,
+      &elem(&1, 0),
+      fn {_id, type, key} -> %{subject_type: type, subject_key: key} end
+    )
+  end
 
   defp space_allows?(scope, space_id) do
     case Mirror.space_permissions(space_id) do

@@ -3,6 +3,8 @@ defmodule ConfluencePhxMirror.ExportTest do
 
   import ConfluencePhxMirror.Fixtures
 
+  alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Mirror
 
@@ -91,6 +93,30 @@ defmodule ConfluencePhxMirror.ExportTest do
              archive,
              "Engineering Handbook/Getting Started/Architecture Overview/attachments/diagram.svg"
            )
+  end
+
+  describe "a space archive for one reader" do
+    test "omits pages the reader may not open" do
+      names =
+        "ENG"
+        |> Mirror.get_space_by_key()
+        |> Export.space_archive(Scope.for_user(user_fixture()))
+        |> Enum.to_list()
+        |> entry_names()
+
+      refute Enum.any?(names, &String.contains?(&1, "Macros Gallery"))
+    end
+
+    test "keeps every page for an administrator" do
+      names =
+        "ENG"
+        |> Mirror.get_space_by_key()
+        |> Export.space_archive(Scope.for_user(Accounts.ensure_admin!()))
+        |> Enum.to_list()
+        |> entry_names()
+
+      assert Enum.any?(names, &String.contains?(&1, "Macros Gallery"))
+    end
   end
 
   defp entry_names(entries), do: Enum.map(entries, &elem(&1, 0))

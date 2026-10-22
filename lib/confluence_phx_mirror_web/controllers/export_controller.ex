@@ -54,7 +54,7 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
       ~s(attachment; filename="#{Export.archive_name(space)}")
     )
     |> send_chunked(200)
-    |> stream_zip(Export.space_archive(space))
+    |> stream_zip(Export.space_archive(space, scope(conn)))
   end
 
   defp scope(conn), do: Scope.for_user(conn.assigns[:current_user])

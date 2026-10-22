@@ -12,6 +12,8 @@ defmodule ConfluencePhxMirror.Export do
   has to fit in memory.
   """
 
+  alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Blobs.{Key, Store}
   alias ConfluencePhxMirror.Export.Markdown
   alias ConfluencePhxMirror.Mirror
@@ -31,10 +33,15 @@ defmodule ConfluencePhxMirror.Export do
 
   @doc """
   Stream of `{path_in_zip, data_or_fun}` entries for a space archive.
+
+  With a scope, the archive holds only the pages that reader may open — the
+  space check is not enough, because Confluence restricts single pages inside a
+  space that is otherwise readable. `nil` keeps every page and is for callers
+  that have already decided (an administrator, a test).
   """
-  @spec space_archive(Space.t()) :: Enumerable.t()
-  def space_archive(%Space{} = space) do
-    pages = Mirror.list_pages(space.id)
+  @spec space_archive(Space.t(), Scope.t() | nil) :: Enumerable.t()
+  def space_archive(%Space{} = space, scope \\ nil) do
+    pages = space.id |> Mirror.list_pages() |> readable(scope)
     plan = plan_files(space, pages)
 
     index = {plan.index, index_markdown(space, pages, plan)}
@@ -50,10 +57,12 @@ defmodule ConfluencePhxMirror.Export do
     Stream.concat([index], Stream.concat(page_entries, attachment_entries))
   end
 
+  defp readable(pages, nil), do: pages
+  defp readable(pages, %Scope{} = scope), do: Authorization.readable_pages(scope, pages)
+
   # ---------------------------------------------------------------------------
   # Path planning
   # ---------------------------------------------------------------------------
-
   defp plan_files(space, pages) do
     root = sanitise(space.name)
     by_confluence = Map.new(pages, &{&1.confluence_id, &1})
