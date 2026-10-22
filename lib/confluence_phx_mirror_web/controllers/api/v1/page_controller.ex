@@ -13,7 +13,9 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
     space_key = params["key"] || params["spaceKey"]
 
     case fetch_pages(space_key) do
-      {:ok, pages} ->
+      {:ok, all_pages} ->
+        pages = Authorization.readable_pages(conn.assigns.current_scope, all_pages)
+
         items =
           pages
           |> Enum.drop(start)
