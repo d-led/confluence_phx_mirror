@@ -119,6 +119,36 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert Repo.aggregate(Link, :count) == links
       assert Repo.aggregate(Attachment, :count) == attachments
     end
+
+    test "a second snapshot reports how much it did not have to fetch" do
+      demo_snapshot!()
+      {:ok, _first} = Sync.run(:snapshot)
+
+      assert {:ok, run} = Sync.run(:snapshot)
+
+      assert run.stats["changed"] == 0
+      assert run.stats["unchanged"] == 40
+      assert run.stats["attachments_downloaded"] == 0
+    end
+
+    test "an unchanged page is not re-rendered or re-fetched" do
+      demo_snapshot!()
+      {:ok, _first} = Sync.run(:snapshot)
+
+      before = Repo.get_by!(Page, confluence_id: 1002)
+
+      assert {:ok, run} = Sync.run(:snapshot)
+
+      after_sync = Repo.get_by!(Page, confluence_id: 1002)
+
+      # The page was left exactly as it was mirrored: no new render, no
+      # attachments and comments asked for again.
+      assert after_sync.synced_at == before.synced_at
+      assert after_sync.body_export == before.body_export
+      assert run.stats["attachments"] == 0
+      assert run.stats["comments"] == 0
+      assert run.stats["links"] == 0
+    end
   end
 
   describe "page sync" do

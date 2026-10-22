@@ -18,6 +18,7 @@ defmodule ConfluencePhxMirror.Application do
       ConfluencePhxMirror.RateLimit,
       rate_limiter_spec(),
       {Oban, Application.fetch_env!(:confluence_phx_mirror, Oban)},
+      ConfluencePhxMirror.Sync.Log,
       ConfluencePhxMirror.Sync.Scheduler,
       ConfluencePhxMirrorWeb.Endpoint
     ]

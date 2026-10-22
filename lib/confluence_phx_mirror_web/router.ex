@@ -100,6 +100,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
       live "/", DashboardLive, :index
       live "/users", UsersLive, :index
       live "/audit", AuditLive, :index
+      live "/sync-log", SyncLogLive, :index
     end
   end
 

@@ -171,12 +171,40 @@ defmodule ConfluencePhxMirror.Audit do
   defp run_summary(stats) do
     counters =
       for {key, noun} <- @sync_counters, amount = stats[key] || 0, amount > 0 do
-        "#{amount} #{pluralize(amount, noun)}"
+        "#{amount} #{pluralize(amount, noun)}#{reused(key, stats)}"
       end
 
     changes = if counters == [], do: "no changes", else: Enum.join(counters, ", ")
 
     "#{changes} · #{length(stats["errors"] || [])} errors"
+  end
+
+  # A snapshot re-reads every page and file, but most of them have not changed:
+  # saying so is the difference between "43 pages" and "43 pages, 38 already
+  # current", which is what an operator wants to know about a nightly sync.
+  defp reused("pages", stats) do
+    share(stats["changed"], stats["unchanged"], "changed", "already current")
+  end
+
+  defp reused("attachments", stats) do
+    total = stats["attachments"] || 0
+    downloaded = stats["attachments_downloaded"] || 0
+
+    share(downloaded, total - downloaded, "downloaded", "reused")
+  end
+
+  defp reused(_key, _stats), do: ""
+
+  defp share(changed, unchanged, changed_word, unchanged_word) do
+    parts = [
+      changed && changed > 0 && "#{changed} #{changed_word}",
+      unchanged && unchanged > 0 && "#{unchanged} #{unchanged_word}"
+    ]
+
+    case Enum.filter(parts, & &1) do
+      [] -> ""
+      parts -> " (" <> Enum.join(parts, ", ") <> ")"
+    end
   end
 
   defp trigger(%{"trigger" => trigger}) when is_binary(trigger) and trigger != "",

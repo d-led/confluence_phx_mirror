@@ -41,8 +41,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
   @impl true
   def handle_event("snapshot", _params, socket) do
-    %{"trigger" => requested_by(socket)} |> SnapshotWorker.new() |> Oban.insert()
-    {:noreply, put_flash(socket, :info, "Snapshot queued. Runs appear below within seconds.")}
+    %{"trigger" => requested_by(socket)}
+    |> SnapshotWorker.new()
+    |> Oban.insert()
+
+    {:noreply, put_flash(socket, :info, "Sync queued. Runs appear below within seconds.")}
+  end
+
+  def handle_event("full_sync", _params, socket) do
+    %{"trigger" => "#{requested_by(socket)}, re-reading everything", "mode" => "snapshot"}
+    |> SnapshotWorker.new()
+    |> Oban.insert()
+
+    {:noreply, put_flash(socket, :info, "Full re-read queued: every page will be fetched again.")}
   end
 
   def handle_event("sync_space", %{"key" => key}, socket) do
@@ -116,6 +127,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           </p>
           <p class="mt-1 text-xs text-base-content/50">
             <a href={~p"/admin/audit"} class="link link-primary">Audit log</a>
+            · <a href={~p"/admin/sync-log"} class="link link-primary">Sync log</a>
             · <a href={~p"/admin/users"} class="link link-primary">Users &amp; tokens</a>
             · <a href="/dev/dashboard" class="link link-primary">LiveDashboard</a>
           </p>
@@ -148,6 +160,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
               </li>
             </ul>
           </details>
+          <button
+            type="button"
+            phx-click="full_sync"
+            class="btn btn-ghost btn-sm gap-1.5"
+            title="Fetch and re-render every page, even the ones that did not change"
+          >
+            <.icon name="hero-arrow-path-rounded-square" class="size-4" /> Re-read everything
+          </button>
         </div>
       </header>
 

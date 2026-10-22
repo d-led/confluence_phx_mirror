@@ -115,9 +115,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
             Every change the mirror made or saw — newest first, append-only.
           </p>
         </div>
-        <.link navigate={~p"/admin"} class="btn btn-ghost btn-sm gap-1.5">
-          <.icon name="hero-arrow-left" class="size-4" /> Dashboard
-        </.link>
+        <div class="flex items-center gap-2">
+          <.link navigate={~p"/admin/sync-log"} class="btn btn-ghost btn-sm gap-1.5">
+            <.icon name="hero-arrow-path" class="size-4" /> Sync log
+          </.link>
+          <.link navigate={~p"/admin"} class="btn btn-ghost btn-sm gap-1.5">
+            <.icon name="hero-arrow-left" class="size-4" /> Dashboard
+          </.link>
+        </div>
       </header>
 
       <form id="audit-filter" phx-change="filter" class="mt-5 flex flex-wrap items-center gap-2">

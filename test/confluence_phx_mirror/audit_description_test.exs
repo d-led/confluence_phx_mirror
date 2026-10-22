@@ -55,15 +55,18 @@ defmodule ConfluencePhxMirror.AuditDescriptionTest do
                "stats" => %{
                  "spaces" => 1,
                  "pages" => 43,
+                 "changed" => 5,
+                 "unchanged" => 38,
                  "attachments" => 15,
+                 "attachments_downloaded" => 2,
                  "comments" => 2,
                  "links" => 77,
                  "errors" => []
                }
              }
            ) ==
-             "Finished a snapshot sync: 1 space, 43 pages, 15 attachments, " <>
-               "2 comments, 77 links · 0 errors"
+             "Finished a snapshot sync: 1 space, 43 pages (5 changed, 38 already current), " <>
+               "15 attachments (2 downloaded, 13 reused), 2 comments, 77 links · 0 errors"
 
     assert sentence("sync.finished", %{"mode" => "webhook", "stats" => %{}}) ==
              "Finished a webhook sync: no changes · 0 errors"

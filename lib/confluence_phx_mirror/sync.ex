@@ -26,7 +26,7 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sites
-  alias ConfluencePhxMirror.Sync.{DynamicContent, PageProperties, Renderer, SyncRun}
+  alias ConfluencePhxMirror.Sync.{DynamicContent, Log, PageProperties, Renderer, SyncRun}
 
   @type mode :: :snapshot | :incremental | :space | :page
   @type report :: {:ok, SyncRun.t()}
@@ -61,6 +61,13 @@ defmodule ConfluencePhxMirror.Sync do
       sync_run_id: run.id,
       mode: mode_to_string(mode),
       source: source_label(source),
+      trigger: trigger
+    )
+
+    Log.current_run(run.id)
+
+    Log.add(:info, "started a #{mode} sync of #{source_label(source)}",
+      sync_run_id: run.id,
       trigger: trigger
     )
 
@@ -109,7 +116,7 @@ defmodule ConfluencePhxMirror.Sync do
         spaces = upsert_spaces(space_dtos)
         {spaces, permission_errors} = sync_space_permissions(source, spaces)
 
-        {entries, errors, deleted} = sync_pages_of(spaces, source, opts)
+        {entries, counts, errors, deleted} = sync_pages_of(spaces, source, opts)
         resolve_trees(spaces)
         index = Mirror.page_index()
 
@@ -123,6 +130,7 @@ defmodule ConfluencePhxMirror.Sync do
             "deleted" => deleted,
             "group_members" => members
           })
+          |> Map.merge(page_counts(counts))
 
         {stats, errors ++ permission_errors ++ detail_errors ++ group_errors}
 
@@ -136,7 +144,7 @@ defmodule ConfluencePhxMirror.Sync do
 
     with {:ok, space} <- ensure_space(source, space_key, opts) do
       {_spaces, permission_errors} = sync_space_permissions(source, [space])
-      {entries, errors, deleted} = sync_pages_of([space], source, opts)
+      {entries, counts, errors, deleted} = sync_pages_of([space], source, opts)
       resolve_trees([space])
       index = Mirror.page_index()
 
@@ -145,6 +153,7 @@ defmodule ConfluencePhxMirror.Sync do
 
       stats =
         Map.merge(stats, %{"spaces" => 1, "deleted" => deleted, "group_members" => members})
+        |> Map.merge(page_counts(counts))
 
       {stats, errors ++ permission_errors ++ detail_errors ++ group_errors}
     end
@@ -152,10 +161,11 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp do_run(:page, source, opts) do
     confluence_id = Keyword.fetch!(opts, :confluence_id)
+    previous = Page |> Repo.get_by(confluence_id: confluence_id) |> light()
 
     with {:ok, dto} <- source.page(confluence_id, opts),
          {:ok, space} <- ensure_space(source, dto.space_key, opts),
-         {:ok, entry} <- upsert_page_record(space, dto) do
+         {:ok, entry} <- upsert_page_record(space, dto, previous, force: true) do
       resolve_trees([space])
       index = Mirror.page_index()
       {stats, errors} = sync_details(source, [entry], index, opts)
@@ -163,8 +173,13 @@ defmodule ConfluencePhxMirror.Sync do
       {members, group_errors} = sync_groups(source, opts)
       refresh_dynamic_pages()
 
-      {Map.merge(stats, %{"spaces" => 1, "group_members" => members}),
-       errors ++ permission_errors ++ group_errors}
+      {Map.merge(stats, %{
+         "spaces" => 1,
+         "pages" => 1,
+         "changed" => if(entry.change == :updated, do: 1, else: 0),
+         "unchanged" => if(entry.change == :unchanged, do: 1, else: 0),
+         "group_members" => members
+       }), errors ++ permission_errors ++ group_errors}
     else
       {:error, reason} -> raise_source_error(:page, confluence_id, reason)
     end
@@ -177,13 +192,15 @@ defmodule ConfluencePhxMirror.Sync do
       {:ok, dtos} ->
         spaces = ensure_spaces_for(source, dtos, opts)
         {spaces, permission_errors} = sync_space_permissions(source, spaces)
-        {entries, errors} = upsert_entries(dtos, spaces)
+        {entries, counts, errors} = upsert_entries(dtos, spaces)
         resolve_trees(spaces)
         index = Mirror.page_index()
         {stats, detail_errors} = sync_details(source, entries, index, opts)
         {members, group_errors} = sync_groups(source, opts)
 
-        stats = Map.merge(stats, %{"spaces" => length(spaces), "group_members" => members})
+        stats =
+          Map.merge(stats, %{"spaces" => length(spaces), "group_members" => members})
+          |> Map.merge(page_counts(counts))
 
         {stats, errors ++ permission_errors ++ detail_errors ++ group_errors}
 
@@ -334,22 +351,39 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   defp sync_pages_of(spaces, source, opts) do
-    Enum.reduce(spaces, {[], [], 0}, fn space, {entries, errors, deleted} ->
+    Enum.reduce(spaces, {[], %{changed: 0, unchanged: 0}, [], 0}, fn space,
+                                                                     {entries, counts, errors,
+                                                                      deleted} ->
       case source.pages(space.key, opts) do
         {:ok, dtos} ->
-          {upserted, page_errors} = upsert_entries(dtos, [space])
+          {upserted, space_counts, page_errors} = upsert_entries(dtos, [space])
           {deleted_count, guard_errors} = reconcile_deletions(space, dtos)
 
           if deleted_count > 0 do
             Audit.log(Audit.system_actor(), Space.audit_event_pages_deleted(space, deleted_count))
           end
 
-          {entries ++ upserted, errors ++ page_errors ++ guard_errors, deleted + deleted_count}
+          {entries ++ upserted, add_counts(counts, space_counts),
+           errors ++ page_errors ++ guard_errors, deleted + deleted_count}
 
         {:error, reason} ->
-          {entries, [error("space", space.key, reason) | errors], deleted}
+          {entries, counts, [error("space", space.key, reason) | errors], deleted}
       end
     end)
+  end
+
+  defp add_counts(left, right) do
+    Map.merge(left, right, fn _key, a, b -> a + b end)
+  end
+
+  # `pages` is what the run saw; `changed` is what it had to look at. The gap is
+  # the point of an incremental mirror, so it is reported, not hidden.
+  defp page_counts(counts) do
+    %{
+      "pages" => counts.changed + counts.unchanged,
+      "changed" => counts.changed,
+      "unchanged" => counts.unchanged
+    }
   end
 
   # A source that suddenly lists no pages for a space is far more likely to be
@@ -367,51 +401,96 @@ defmodule ConfluencePhxMirror.Sync do
     {Mirror.mark_missing_deleted(space, Enum.map(dtos, & &1.id)), []}
   end
 
+  # A snapshot of a real site lists hundreds of thousands of pages, so the run
+  # is built around not touching them: existing pages are loaded once as a light
+  # index, unchanged pages cost one key lookup, and only pages that changed are
+  # rendered and asked for their attachments and comments.
   defp upsert_entries(dtos, spaces) do
     by_key = Map.new(spaces, &{&1.key, &1})
+    existing = existing_pages()
 
-    Enum.map_reduce(dtos, [], fn dto, errors ->
-      case Map.fetch(by_key, dto.space_key) do
-        {:ok, space} ->
-          case upsert_page_record(space, dto) do
-            {:ok, entry} -> {entry, errors}
-            {:error, reason} -> {nil, [error("page", dto.id, reason) | errors]}
-          end
+    {entries, counts, errors} =
+      Enum.reduce(dtos, {[], %{changed: 0, unchanged: 0}, []}, fn dto,
+                                                                  {entries, counts, errors} ->
+        case Map.fetch(by_key, dto.space_key) do
+          {:ok, space} ->
+            case upsert_page_record(space, dto, Map.get(existing, dto.id)) do
+              {:ok, :unchanged} ->
+                {entries, Map.update!(counts, :unchanged, &(&1 + 1)), errors}
 
-        :error ->
-          {nil, [error("page", dto.id, {:unknown_space, dto.space_key}) | errors]}
-      end
-    end)
-    |> then(fn {entries, errors} -> {Enum.reject(entries, &is_nil/1), errors} end)
+              {:ok, entry} ->
+                {[entry | entries], Map.update!(counts, :changed, &(&1 + 1)), errors}
+
+              {:error, reason} ->
+                {entries, counts, [error("page", dto.id, reason) | errors]}
+            end
+
+          :error ->
+            {entries, counts, [error("page", dto.id, {:unknown_space, dto.space_key}) | errors]}
+        end
+      end)
+
+    {Enum.reverse(entries), counts, errors}
   end
 
-  defp upsert_page_record(space, dto) do
+  # Only the fields change detection needs: a page body can be megabytes, and
+  # keeping 400k of them in memory to compare them would defeat the purpose.
+  # Confluence bumps the version on every edit, which is the signal we need.
+  defp existing_pages do
+    from(p in Page,
+      select: {p.confluence_id, p.version_number, p.title, p.type, not is_nil(p.body_export)}
+    )
+    |> Repo.all()
+    |> Map.new(fn {id, version, title, type, rendered?} ->
+      {id, light(version, title, type, rendered?)}
+    end)
+  end
+
+  defp light(version, title, type, rendered?),
+    do: %{version_number: version, title: title, type: type, rendered?: rendered?}
+
+  defp light(%Page{} = page),
+    do: light(page.version_number, page.title, page.type, not is_nil(page.body_export))
+
+  defp light(nil), do: nil
+
+  defp upsert_page_record(space, dto, previous, opts \\ []) do
     attrs = page_attrs(dto)
-    previous = Repo.get_by(Page, confluence_id: dto.id)
+    force? = Keyword.get(opts, :force, false)
 
-    change =
-      cond do
-        is_nil(previous) -> :created
-        previous.version_number != attrs.version_number -> :updated
-        previous.body_storage != attrs.body_storage -> :updated
-        previous.title != attrs.title -> :updated
-        true -> :unchanged
-      end
+    case change_of(previous, attrs) do
+      :unchanged when not force? ->
+        {:ok, :unchanged}
 
-    with {:ok, page} <- Mirror.upsert_page(space, attrs),
-         {:ok, page} <- Mirror.replace_labels(page, dto.labels) do
-      # Labels and properties are stored before any page renders, so label
-      # listings and property reports in a snapshot see the whole run.
-      {:ok, _properties} = Mirror.replace_properties(page, PageProperties.parse(dto.body.storage))
+      change ->
+        with {:ok, page} <- Mirror.upsert_page(space, attrs),
+             {:ok, page} <- Mirror.replace_labels(page, dto.labels) do
+          # Labels and properties are stored before any page renders, so label
+          # listings and property reports in a snapshot see the whole run.
+          {:ok, _properties} =
+            Mirror.replace_properties(page, PageProperties.parse(dto.body.storage))
 
-      {:ok,
-       %{
-         space: space,
-         dto: dto,
-         page: page,
-         change: change,
-         previous_version: previous && previous.version_number
-       }}
+          {:ok,
+           %{
+             space: space,
+             dto: dto,
+             page: page,
+             change: change,
+             previous_version: previous && previous.version_number
+           }}
+        end
+    end
+  end
+
+  defp change_of(nil, _attrs), do: :created
+
+  defp change_of(previous, attrs) do
+    cond do
+      previous.version_number != attrs.version_number -> :updated
+      previous.title != attrs.title -> :updated
+      previous.type != attrs.type -> :updated
+      not previous.rendered? -> :updated
+      true -> :unchanged
     end
   end
 
@@ -445,18 +524,40 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp sync_details(source, entries, index, _opts) do
     initial =
-      {%{"pages" => 0, "attachments" => 0, "comments" => 0, "links" => 0, "notifications" => 0},
-       []}
+      {%{
+         "attachments" => 0,
+         "attachments_downloaded" => 0,
+         "comments" => 0,
+         "links" => 0,
+         "notifications" => 0
+       }, []}
 
-    Enum.reduce(entries, initial, fn entry, {stats, errors} ->
-      case render_entry(source, entry, index) do
-        {:ok, page_stats, entry_errors} ->
-          {merge_stats(stats, page_stats), errors ++ entry_errors}
+    entries
+    |> Task.async_stream(&render_entry(source, &1, index),
+      max_concurrency: concurrency(),
+      timeout: :infinity,
+      ordered: false
+    )
+    |> Enum.reduce(initial, fn
+      {:ok, {:ok, page_stats, entry_errors}}, {stats, errors} ->
+        {merge_stats(stats, page_stats), errors ++ entry_errors}
 
-        {:error, reason} ->
-          {stats, [error("page", entry.dto.id, reason) | errors]}
-      end
+      {:ok, {:error, reason, dto}}, {stats, errors} ->
+        Log.add(:warn, "page failed: #{dto.title}", page: dto.id, reason: format_error(reason))
+        {stats, [error("page", dto.id, reason) | errors]}
+
+      {:exit, reason}, {stats, errors} ->
+        {stats, [error("page", nil, {:exit, inspect(reason)}) | errors]}
     end)
+  end
+
+  # Detail work is network-bound (one attachments and one comments call per
+  # changed page), so a handful run at once; the source's rate limiter still
+  # paces the requests.
+  defp concurrency do
+    :confluence_phx_mirror
+    |> Application.get_env(Source.source(), [])
+    |> Keyword.get(:sync_concurrency, 4)
   end
 
   defp render_entry(source, %{space: space, dto: dto, page: page, change: change}, index) do
@@ -483,12 +584,14 @@ defmodule ConfluencePhxMirror.Sync do
 
       {:ok,
        %{
-         "pages" => 1,
          "attachments" => length(attachments),
+         "attachments_downloaded" => Enum.count(attachments, & &1.downloaded?),
          "comments" => comments,
          "links" => length(rendered.links),
          "notifications" => notifications
        }, attachment_errors ++ restriction_errors ++ notification_errors}
+    else
+      {:error, reason} -> {:error, reason, dto}
     end
   end
 
@@ -621,10 +724,9 @@ defmodule ConfluencePhxMirror.Sync do
       if attachment.blob_key, do: Store.delete(attachment.blob_key)
       {:ok, _} = Repo.delete(attachment)
 
-      Logger.info("attachment pruned",
+      Log.add(:warn, "attachment pruned: #{attachment.filename}",
         attachment: attachment.confluence_id,
-        page: page.confluence_id,
-        filename: attachment.filename
+        page: page.confluence_id
       )
     end)
 
@@ -639,7 +741,7 @@ defmodule ConfluencePhxMirror.Sync do
 
     blob_key = Key.attachment(space.key, page.confluence_id, confluence_id, dto.filename)
 
-    with {:ok, blob_key} <- ensure_blob(source, dto, existing, blob_key) do
+    with {:ok, blob_key, downloaded?} <- ensure_blob(source, dto, existing, blob_key) do
       attrs = %{
         confluence_id: confluence_id,
         page_id: page.id,
@@ -661,13 +763,13 @@ defmodule ConfluencePhxMirror.Sync do
       |> Repo.insert_or_update()
       |> case do
         {:ok, attachment} ->
-          Logger.debug("attachment mirrored",
+          Log.add(:debug, "attachment mirrored: #{dto.filename}",
             attachment: confluence_id,
             page: page.confluence_id,
-            filename: dto.filename
+            downloaded: downloaded?
           )
 
-          {:ok, attachment}
+          {:ok, Map.put(attachment, :downloaded?, downloaded?)}
 
         {:error, changeset} ->
           {:error, changeset}
@@ -681,11 +783,11 @@ defmodule ConfluencePhxMirror.Sync do
         Store.exists?(blob_key)
 
     if current? do
-      {:ok, blob_key}
+      {:ok, blob_key, false}
     else
       with {:ok, data} <- source.attachment_data(dto, []),
            {:ok, _key} <- Store.put(blob_key, data) do
-        {:ok, blob_key}
+        {:ok, blob_key, true}
       end
     end
   end
@@ -754,11 +856,10 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp audit_change(:unchanged, _page, _space, _dto), do: :ok
 
-  # One line per changed page: the audit log keeps the run, the console keeps the
-  # detail an operator would grep for when a single page looks wrong.
+  # One line per changed page: the audit log keeps the run, the live log keeps
+  # the detail an operator greps for when a single page looks wrong.
   defp audit_change(change, page, space, _dto) do
-    Logger.debug("page mirrored",
-      change: change,
+    Log.add(:info, "page #{change}: #{page.title}",
       page: page.confluence_id,
       space: space.key,
       version: page.version_number
@@ -823,6 +924,15 @@ defmodule ConfluencePhxMirror.Sync do
       errors: length(errors)
     )
 
+    Log.add(
+      if(errors == [], do: :info, else: :warn),
+      "finished a #{run.mode} sync: #{stats["pages"] || 0} pages, " <>
+        "#{stats["attachments"] || 0} attachments, #{length(errors)} errors",
+      sync_run_id: run.id
+    )
+
+    Log.current_run(nil)
+
     {:ok, run}
   end
 
@@ -831,6 +941,9 @@ defmodule ConfluencePhxMirror.Sync do
       run
       |> SyncRun.changeset(%{status: "failed", finished_at: now(), error: message})
       |> Repo.update()
+
+    Log.add(:error, "sync failed: #{message}", sync_run_id: run.id, trigger: trigger)
+    Log.current_run(nil)
 
     Audit.log(Audit.system_actor(), SyncRun.audit_event_failed(run, message, trigger: trigger))
   end

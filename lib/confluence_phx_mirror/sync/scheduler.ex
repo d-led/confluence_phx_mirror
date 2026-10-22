@@ -26,7 +26,7 @@ defmodule ConfluencePhxMirror.Sync.Scheduler do
   @impl true
   def handle_info(:snapshot, %{interval: interval} = state) do
     if interval > 0 do
-      %{"trigger" => "the #{humanise(interval)} schedule"}
+      %{"trigger" => "the #{humanise(interval)} schedule", "mode" => "incremental"}
       |> SnapshotWorker.new()
       |> Oban.insert()
       |> case do
