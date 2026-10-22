@@ -108,14 +108,24 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     """
   end
 
-  # A space's home page carries the space's title, and a sub-page can repeat an
-  # ancestor's name; either way the reader would see the same word twice in one
-  # trail. Keep the first occurrence and drop the current title entirely.
   defp trail(items, current) do
-    Enum.reduce(items, [], fn item, acc ->
-      repeated? = item.title == current or Enum.any?(acc, &(&1.title == item.title))
-      if repeated?, do: acc, else: acc ++ [item]
-    end)
+    case items do
+      [] ->
+        []
+
+      [space | rest] ->
+        [space | Enum.reject(rest, &redundant?(&1, space, current))]
+    end
+  end
+
+  # The space crumb already stands for the space's home page, so repeating that
+  # page next to it would read "Engineering Handbook › Engineering Handbook".
+  # The rule is the page's identity, not its title: a page that happens to share
+  # the space's name keeps its own crumb.
+  defp redundant?(item, space, current) do
+    homepage = space[:homepage_confluence_id]
+
+    item.title == current or (homepage && item[:confluence_id] == homepage)
   end
 
   # Root stays first, the immediate parent stays next to the current page, and

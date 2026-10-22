@@ -119,11 +119,10 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     user = conn.assigns[:current_user]
 
     breadcrumbs =
-      [%{title: space.name, path: URLs.space_path(space.key)}] ++
-        case kind do
-          :page -> ancestor_crumbs(page)
-          :blog -> [%{title: "Blog", path: URLs.space_blog_path(space.key)}]
-        end
+      case kind do
+        :page -> page |> Mirror.breadcrumbs() |> crumb_paths(space)
+        :blog -> [space_crumb(space), %{title: "Blog", path: URLs.space_blog_path(space.key)}]
+      end
 
     render(conn, :show,
       page_title: page.title,
@@ -143,13 +142,23 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     )
   end
 
-  defp ancestor_crumbs(page) do
-    Enum.map(Mirror.ancestor_pages(page), fn ancestor ->
-      %{
-        title: ancestor.title,
-        path: URLs.page_path(ancestor.space.key, ancestor.confluence_id, ancestor.slug)
-      }
-    end)
+  # A crumb keeps the identity it was built with — the space's home page id, a
+  # page's Confluence id — because the breadcrumb component needs it to avoid
+  # naming the same page twice; a path is all the template needs to link it.
+  defp crumb_paths(crumbs, space), do: Enum.map(crumbs, &crumb_path(&1, space))
+
+  defp crumb_path(%{kind: :space} = crumb, space),
+    do: Map.put(crumb, :path, URLs.space_path(space.key))
+
+  defp crumb_path(%{kind: :page} = crumb, space),
+    do: Map.put(crumb, :path, URLs.page_path(space.key, crumb.confluence_id, crumb.slug))
+
+  defp space_crumb(space) do
+    %{
+      title: space.name,
+      path: URLs.space_path(space.key),
+      homepage_confluence_id: space.homepage_confluence_id
+    }
   end
 
   defp subscribed?(%User{} = user, target_type, target_id) do

@@ -23,7 +23,9 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
 
     assert html =~ "Emergency Revocation"
     assert html =~ "Certificate Rotation"
-    assert html =~ "Show 6 hidden levels"
+    # Five levels sit between the space's home page — which the space crumb
+    # already represents, so it is not repeated — and the immediate parent.
+    assert html =~ "Show 5 hidden levels"
     assert html =~ "Networking"
   end
 
@@ -32,6 +34,32 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
 
     assert html =~ "Getting Started"
     refute html =~ "hidden levels"
+  end
+
+  test "a page named like its space keeps its own crumb", %{conn: conn} do
+    space = space_fixture(%{key: "GLOSS", name: "Glossary", homepage_confluence_id: 7001})
+
+    page_fixture(space, %{confluence_id: 7001, title: "Glossary", slug: "glossary"})
+
+    page_fixture(space, %{
+      confluence_id: 7002,
+      title: "Glossary",
+      slug: "glossary-2",
+      ancestors: [7001]
+    })
+
+    page_fixture(space, %{
+      confluence_id: 7003,
+      title: "Terms",
+      slug: "terms",
+      ancestors: [7001, 7002]
+    })
+
+    html = conn |> get(~p"/spaces/GLOSS/pages/7003/terms") |> html_response(200)
+
+    # 7001 is the space's home page, so the space crumb stands for it; 7002 only
+    # shares the space's name, so the trail must still name it.
+    assert html =~ ~s(href="/spaces/GLOSS/pages/7002/glossary-2")
   end
 
   test "reader pages only allow scripts from the mirror itself", %{conn: conn} do

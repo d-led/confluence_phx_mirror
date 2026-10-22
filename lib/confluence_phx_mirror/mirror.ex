@@ -516,8 +516,14 @@ defmodule ConfluencePhxMirror.Mirror do
         %{title: ancestor.title, confluence_id: ancestor.confluence_id, slug: ancestor.slug}
       end)
 
-    [%{title: page.space.name, space_key: page.space.key, kind: :space}] ++
-      Enum.map(ancestors, &Map.put(&1, :kind, :page))
+    [
+      %{
+        title: page.space.name,
+        space_key: page.space.key,
+        homepage_confluence_id: page.space.homepage_confluence_id,
+        kind: :space
+      }
+    ] ++ Enum.map(ancestors, &Map.put(&1, :kind, :page))
   end
 
   @doc "Ancestor pages in Confluence order (root first)."
