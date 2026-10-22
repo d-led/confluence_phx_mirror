@@ -21,7 +21,7 @@ config :confluence_phx_mirror,
 # waits.
 config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
   queue_target: 200,
-  queue_interval: 2_000,
+  queue_interval: 2_000
 
 # Background jobs. Sync work is retried per source page, notification e-mails are
 # retried separately so a broken mailer never blocks the mirror.
