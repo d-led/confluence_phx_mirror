@@ -99,11 +99,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
     levels = Map.get(@levels, level, ~w(debug info warn error)a)
     needle = String.downcase(query)
 
-    entries
-    |> Enum.filter(&(&1.level in levels))
-    |> Enum.filter(fn entry ->
-      needle == "" or String.contains?(String.downcase(entry.message), needle) or
-        String.contains?(String.downcase(inspect(entry.details)), needle)
+    Enum.filter(entries, fn entry ->
+      entry.level in levels and
+        (needle == "" or String.contains?(String.downcase(entry.message), needle) or
+           String.contains?(String.downcase(inspect(entry.details)), needle))
     end)
   end
 
