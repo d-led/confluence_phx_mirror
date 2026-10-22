@@ -64,6 +64,12 @@ database:
 * The resolved content is ordinary HTML: it is searchable, printable and part
   of the page's plain text. Unsupported macros render a short notice instead of
   disappearing silently.
+* Confluence resolves these per viewer; a static mirror resolves them once and
+  shows the answer to everyone who opens the page. A listing therefore only
+  contributes pages whose audience is at least as wide as the host page's
+  (`Authorization.readable_alongside/2`): a page restricted to a group may list
+  open pages, and an open page may not name a restricted one. Where Confluence
+  would show that title to some readers, the mirror shows it to none.
 
 The alternatives from the Confluence world do not apply here: Confluence fires
 `page_updated` only for the page that was edited (not for pages that display its

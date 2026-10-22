@@ -22,19 +22,24 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent do
   changes, without a dependency graph or recursion.
   """
 
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.URLs
 
   @doc """
-  Expands every dynamic macro marker in `html` for the given space context.
+  Expands every dynamic macro marker in `html` for the space context.
+
+  The context carries the page the macros appear on, because a listing baked in
+  at sync time is shown to every reader of that page and may only name pages
+  they may open themselves (see `Authorization.readable_alongside/2`).
   """
-  @spec expand(String.t(), %{space: Mirror.Space.t()}) :: String.t()
-  def expand(html, %{space: space}) when is_binary(html) do
+  @spec expand(String.t(), %{space: Mirror.Space.t(), page: Mirror.Page.t()}) :: String.t()
+  def expand(html, %{space: space, page: page}) when is_binary(html) do
     html
     |> Floki.parse_fragment!()
     |> Floki.traverse_and_update(fn
       {"div", attrs, _children} = node ->
-        if marker?(attrs), do: {"div", attrs, resolve(attrs, space)}, else: node
+        if marker?(attrs), do: {"div", attrs, resolve(attrs, space, page)}, else: node
 
       node ->
         node
@@ -46,10 +51,10 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent do
 
   defp marker?(attrs), do: "mirror-macro" in classes(attrs)
 
-  defp resolve(attrs, space) do
+  defp resolve(attrs, space, host) do
     case attr(attrs, "data-macro") do
-      "content-by-label" -> content_by_label(attrs, space)
-      "page-properties-report" -> properties_report(attrs, space)
+      "content-by-label" -> content_by_label(attrs, space, host)
+      "page-properties-report" -> properties_report(attrs, space, host)
       macro -> [notice("Dynamic macro #{inspect(macro)} is not supported by the mirror.")]
     end
   end
@@ -58,18 +63,18 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent do
   # content-by-label
   # ---------------------------------------------------------------------------
 
-  defp content_by_label(attrs, space) do
+  defp content_by_label(attrs, space, host) do
     labels = split(attr(attrs, "data-labels"))
     match = if attr(attrs, "data-match") == "any", do: :any, else: :all
 
-    pages =
+    candidates =
       Mirror.pages_for_labels(labels,
         match: match,
         limit: positive_int(attr(attrs, "data-limit"), 10),
         space_id: space_id(attr(attrs, "data-space"), space)
       )
 
-    case pages do
+    case Authorization.readable_alongside(host, candidates) do
       [] ->
         [empty("No content carries these labels yet.")]
 
@@ -95,11 +100,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent do
   # page-properties-report
   # ---------------------------------------------------------------------------
 
-  defp properties_report(attrs, space) do
+  defp properties_report(attrs, space, host) do
     report_space = report_space(attr(attrs, "data-space"), space)
     report = Mirror.property_report(report_space.id, split(attr(attrs, "data-columns")))
+    rows = listable_rows(report.rows, host)
 
-    case report.rows do
+    case rows do
       [] ->
         [empty("No page in this space declares properties yet.")]
 
@@ -113,6 +119,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent do
            ]}
         ]
     end
+  end
+
+  defp listable_rows(rows, host) do
+    listable =
+      host
+      |> Authorization.readable_alongside(Enum.map(rows, & &1.page))
+      |> MapSet.new(& &1.id)
+
+    Enum.filter(rows, &MapSet.member?(listable, &1.page.id))
   end
 
   defp report_row(%{page: page, values: values}, columns) do

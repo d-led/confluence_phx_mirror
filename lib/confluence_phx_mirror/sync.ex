@@ -622,7 +622,7 @@ defmodule ConfluencePhxMirror.Sync do
   # Dynamic macros are resolved from the mirror, so the stored body and its
   # search text both contain what a reader actually sees.
   defp store_rendered_page(page, rendered, space, attachments) do
-    export = DynamicContent.expand(rendered.html, %{space: space})
+    export = DynamicContent.expand(rendered.html, %{space: space, page: page})
     text = Renderer.plain_text(export)
 
     Mirror.update_rendered(page, %{
@@ -638,7 +638,7 @@ defmodule ConfluencePhxMirror.Sync do
   # every page carrying a marker is simply re-expanded in place.
   defp refresh_dynamic_pages do
     Enum.each(Mirror.pages_with_dynamic_content(), fn page ->
-      export = DynamicContent.expand(page.body_export, %{space: page.space})
+      export = DynamicContent.expand(page.body_export, %{space: page.space, page: page})
       text = Renderer.plain_text(export)
 
       Mirror.update_rendered(page, %{

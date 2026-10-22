@@ -230,6 +230,48 @@ defmodule ConfluencePhxMirror.Authorization do
       allows?(scope, Map.get(restrictions, page.id, []))
   end
 
+  @doc """
+  The pages from `pages` that may be listed on `host` without telling a reader
+  about content they may not open.
+
+  Confluence resolves a macro per viewer. A static mirror resolves it once, at
+  sync time, and bakes one answer into the page for everybody, so a listed page
+  may only be one whose audience is at least as wide as the host's: everyone who
+  may read `host` may read it too. A page restricted to a group may list open
+  pages; an open page may not list a restricted one.
+  """
+  @spec readable_alongside(Mirror.Page.t(), [ConfluencePhxMirror.Mirror.Page.t()]) ::
+          [ConfluencePhxMirror.Mirror.Page.t()]
+  def readable_alongside(%Mirror.Page{} = host, pages) do
+    spaces = space_permissions_by([host.space_id | Enum.map(pages, & &1.space_id)])
+    restrictions = page_restrictions_by([host.id | Enum.map(pages, & &1.id)])
+    host_subjects = effective_subjects(host, spaces, restrictions)
+
+    Enum.filter(pages, fn page ->
+      at_least_as_wide?(effective_subjects(page, spaces, restrictions), host_subjects)
+    end)
+  end
+
+  # A page's own restrictions decide before its space does, and no named subject
+  # means everybody may read it.
+  defp effective_subjects(page, spaces, restrictions) do
+    case Map.get(restrictions, page.id, []) do
+      [] -> space_subjects(page, spaces)
+      subjects -> MapSet.new(subjects, &{&1.subject_type, &1.subject_key})
+    end
+  end
+
+  defp space_subjects(page, spaces) do
+    case Map.get(spaces, page.space_id, []) do
+      [] -> :everyone
+      subjects -> MapSet.new(subjects, &{&1.subject_type, &1.subject_key})
+    end
+  end
+
+  defp at_least_as_wide?(:everyone, _host), do: true
+  defp at_least_as_wide?(_contributor, :everyone), do: false
+  defp at_least_as_wide?(contributor, host), do: MapSet.subset?(host, contributor)
+
   # No rows means open, exactly like space_allows?/2 and page_allows?/2.
   defp allows?(_scope, []), do: true
   defp allows?(scope, subjects), do: Enum.any?(subjects, &subject_matches?(scope, &1))

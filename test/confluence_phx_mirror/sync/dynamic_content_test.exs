@@ -3,67 +3,93 @@ defmodule ConfluencePhxMirror.Sync.DynamicContentTest do
 
   import ConfluencePhxMirror.Fixtures
 
+  alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Sync.DynamicContent
 
   setup do
     demo_snapshot!()
-    %{space: Mirror.get_space_by_key("ENG")}
+
+    {:ok, host} = Mirror.find_page_by_path("ENG", Demo.open_page_number())
+    {:ok, restricted_host} = Mirror.find_page_by_path("ENG", Demo.restricted_page_number())
+
+    %{host: host, restricted_host: restricted_host}
   end
 
-  defp expand(marker, space), do: DynamicContent.expand(marker, %{space: space})
+  defp expand(marker, host), do: DynamicContent.expand(marker, %{space: host.space, page: host})
 
   describe "content-by-label" do
-    test "lists the pages carrying the label", %{space: space} do
+    test "lists the pages carrying the label", %{host: host} do
       html =
         expand(
           ~s(<div class="mirror-macro" data-macro="content-by-label" data-labels="architecture"></div>),
-          space
+          host
         )
 
       assert html =~ "Content by label: architecture"
       assert html =~ ~s(href="/spaces/ENG/pages/1002/architecture-overview")
-      refute html =~ "Macros Gallery"
+      refute html =~ Demo.restricted_page_title()
     end
 
-    test "supports match=any across several labels", %{space: space} do
+    test "supports match=any across several labels", %{host: host} do
       html =
         expand(
           ~s(<div class="mirror-macro" data-macro="content-by-label" data-labels="architecture,search" data-match="any"></div>),
-          space
+          host
         )
 
       assert html =~ "Architecture Overview"
       assert html =~ "Search and CQL"
     end
 
-    test "honours the limit", %{space: space} do
+    test "honours the limit", %{host: host} do
       html =
         expand(
           ~s(<div class="mirror-macro" data-macro="content-by-label" data-labels="architecture,search,macros" data-match="any" data-limit="1"></div>),
-          space
+          host
         )
 
       assert html |> String.split("<li") |> length() == 2
     end
 
-    test "explains an empty result", %{space: space} do
+    test "explains an empty result", %{host: host} do
       html =
         expand(
           ~s(<div class="mirror-macro" data-macro="content-by-label" data-labels="nothing-here"></div>),
-          space
+          host
         )
 
       assert html =~ "No content carries these labels yet."
     end
+
+    test "an open page does not name a page its readers may not open", %{host: host} do
+      html =
+        expand(
+          ~s(<div class="mirror-macro" data-macro="content-by-label" data-labels="macros"></div>),
+          host
+        )
+
+      refute html =~ Demo.restricted_page_title()
+      assert html =~ "No content carries these labels yet."
+    end
+
+    test "a page restricted to the same group may name it", %{restricted_host: host} do
+      html =
+        expand(
+          ~s(<div class="mirror-macro" data-macro="content-by-label" data-labels="macros"></div>),
+          host
+        )
+
+      assert html =~ Demo.restricted_page_title()
+    end
   end
 
   describe "page-properties-report" do
-    test "renders a table from the properties stored during sync", %{space: space} do
+    test "renders a table from the properties stored during sync", %{restricted_host: host} do
       html =
         expand(
           ~s(<div class="mirror-macro" data-macro="page-properties-report" data-columns="Owner,Status"></div>),
-          space
+          host
         )
 
       assert html =~ "Page properties report"
@@ -72,17 +98,28 @@ defmodule ConfluencePhxMirror.Sync.DynamicContentTest do
       assert html =~ "Platform"
       assert html =~ "Review"
     end
+
+    test "leaves out rows an open page's readers may not open", %{host: host} do
+      html =
+        expand(
+          ~s(<div class="mirror-macro" data-macro="page-properties-report" data-columns="Owner,Status"></div>),
+          host
+        )
+
+      assert html =~ "Architecture Overview"
+      refute html =~ Demo.restricted_page_title()
+    end
   end
 
-  test "marks unsupported dynamic macros instead of silently dropping them", %{space: space} do
+  test "marks unsupported dynamic macros instead of silently dropping them", %{host: host} do
     html =
-      expand(~s(<div class="mirror-macro" data-macro="content-by-user"></div>), space)
+      expand(~s(<div class="mirror-macro" data-macro="content-by-user"></div>), host)
 
     assert html =~ "not supported by the mirror"
   end
 
-  test "leaves ordinary markup untouched", %{space: space} do
-    html = expand("<p>Plain <strong>content</strong>.</p>", space)
+  test "leaves ordinary markup untouched", %{host: host} do
+    html = expand("<p>Plain <strong>content</strong>.</p>", host)
 
     assert html == "<p>Plain <strong>content</strong>.</p>"
   end
