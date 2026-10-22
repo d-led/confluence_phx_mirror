@@ -135,6 +135,39 @@ if blob_root = System.get_env("MIRROR_BLOB_ROOT") do
   config :confluence_phx_mirror, blob_root: blob_root
 end
 
+# The three switch columns from here on hand out identity without a sign-in.
+# They belong to development and to the bundled demo, so a production release
+# that mirrors a real site refuses to start with them on rather than quietly
+# serving the mirror to whoever visits. `MIRROR_ALLOW_UNSAFE_IDENTITY` is the
+# acknowledgement for a deliberate demo in a release; the demo source needs none.
+unsafe_identity_env = [
+  {"MIRROR_AUTO_ADMIN", System.get_env("MIRROR_AUTO_ADMIN")},
+  {"MIRROR_SELF_SIGNUP", System.get_env("MIRROR_SELF_SIGNUP")},
+  {"CM_PROXY_AUTH", System.get_env("CM_PROXY_AUTH")}
+]
+
+acknowledged? =
+  ConfluencePhxMirror.Config.IdentityGuard.enabled?(
+    System.get_env(ConfluencePhxMirror.Config.IdentityGuard.acknowledgement_variable())
+  )
+
+requested =
+  for {name, value} <- unsafe_identity_env,
+      ConfluencePhxMirror.Config.IdentityGuard.enabled?(value),
+      do: name
+
+if requested != [] and
+     not ConfluencePhxMirror.Config.IdentityGuard.allowed?(config_env(), source, acknowledged?) do
+  raise """
+  #{Enum.join(requested, ", ")} hands out an identity without a sign-in, and this
+  release mirrors #{inspect(source)} in production.
+
+  The mirror refuses to start rather than serve itself to every visitor.
+  To run the demo in a release, set CM_SOURCE=demo (the demo source needs no
+  acknowledgement). To insist, set #{ConfluencePhxMirror.Config.IdentityGuard.acknowledgement_variable()}=1.
+  """
+end
+
 if auto_admin = System.get_env("MIRROR_AUTO_ADMIN") do
   config :confluence_phx_mirror, auto_admin: auto_admin in ~w(1 true yes)
 end
