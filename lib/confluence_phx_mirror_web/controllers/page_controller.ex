@@ -146,6 +146,10 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     |> Enum.any?(&(&1 == etag or &1 == "*"))
   end
 
+  # `page.body_export` is rendered raw on purpose — see `render_page/3`: Sync
+  # sanitised it when the page was mirrored, and re-rendering it is the mirror's
+  # whole job. sobelow cannot see across the function boundary.
+  # sobelow_skip ["XSS.Raw"]
   defp do_render_page(conn, page, kind) do
     space = page.space
     user = conn.assigns[:current_user]
