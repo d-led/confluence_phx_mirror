@@ -44,6 +44,18 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
            |> Enum.any?(fn {_key, %{metas: metas}} -> metas != [] end)
   end
 
+  test "a restricted page cannot be joined, so its readers stay unlisted" do
+    {:ok, _run} = ConfluencePhxMirror.Sync.run(:snapshot)
+    page = Mirror.get_page!(1003)
+
+    socket = socket(UserSocket, nil, %{})
+
+    assert {:error, %{reason: "page_not_found"}} =
+             subscribe_and_join(socket, PageChannel, Presence.topic(page.confluence_id))
+
+    assert Presence.count(1003) == 0
+  end
+
   test "joining an unknown page is rejected" do
     socket = socket(UserSocket, nil, %{})
 

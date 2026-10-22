@@ -4,6 +4,7 @@ defmodule ConfluencePhxMirrorWeb.UserSocket do
   use Phoenix.Socket
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.Scope
 
   channel "page:*", ConfluencePhxMirrorWeb.PageChannel
 
@@ -15,7 +16,13 @@ defmodule ConfluencePhxMirrorWeb.UserSocket do
         id -> Accounts.get_user(id)
       end
 
-    {:ok, assign(socket, user_id: user && user.id, user_email: user && user.email)}
+    {:ok,
+     assign(socket,
+       user_id: user && user.id,
+       user_email: user && user.email,
+       user_name: user && user.display_name,
+       scope: Scope.for_user(user)
+     )}
   end
 
   def connect(_params, _socket, _connect_info), do: :error
