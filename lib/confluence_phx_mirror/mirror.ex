@@ -507,9 +507,25 @@ defmodule ConfluencePhxMirror.Mirror do
   does the same — both remain reachable through their catalogs.
   """
   def tree(space_id) do
+    # Only what the sidebar draws. Selecting whole rows pulled `body_storage` and
+    # `body_export` — every page's full content — and preloaded each page's
+    # space, to render a list of titles and links.
     pages =
-      space_id
-      |> list_pages(include_archived: false)
+      from(p in Page,
+        where: p.space_id == ^space_id and is_nil(p.deleted_at),
+        where: p.status != "archived",
+        order_by: [asc: p.title],
+        select: %{
+          id: p.id,
+          space_id: p.space_id,
+          parent_id: p.parent_id,
+          title: p.title,
+          type: p.type,
+          slug: p.slug,
+          confluence_id: p.confluence_id
+        }
+      )
+      |> Repo.all()
       |> Enum.reject(&(&1.type == "blogpost"))
 
     children_by_parent = Enum.group_by(pages, & &1.parent_id)
