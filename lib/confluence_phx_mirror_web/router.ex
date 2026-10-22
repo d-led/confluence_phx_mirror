@@ -52,21 +52,15 @@ defmodule ConfluencePhxMirrorWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
-    get "/spaces", SpaceController, :index
     get "/spaces/:key", PageController, :space
     get "/spaces/:key/overview", SpaceController, :overview
-    get "/spaces/:key/pages", SpaceController, :pages
-    get "/spaces/:key/blog", SpaceController, :blog
     get "/spaces/:key/blog/:id/:slug", PageController, :blog_post
-    get "/spaces/:key/attachments", SpaceController, :attachments
     get "/spaces/:space_key/pages/:id", PageController, :show
     get "/spaces/:space_key/pages/:id/export.md", ExportController, :page
     get "/spaces/:space_key/pages/:id/:slug", PageController, :show
     get "/spaces/:key/export.zip", ExportController, :space
-    get "/people", PeopleController, :index
     get "/people/:account_id", PeopleController, :show
     get "/recent", PageController, :recent
-    get "/labels", PageController, :labels
     get "/labels/:name", PageController, :label
     get "/about", PageController, :about
     get "/theme/:name", ThemeController, :set
@@ -83,6 +77,16 @@ defmodule ConfluencePhxMirrorWeb.Router do
   live_session :reader, on_mount: [{LiveUserAuth, :default}] do
     scope "/", ConfluencePhxMirrorWeb do
       pipe_through :browser
+
+      # Catalogs share one LiveView: one debounced filter box, one URL shape
+      # (`?q=…&offset=…`), one pager. Filtering and paging happen in the
+      # database, so the pages stay usable with thousands of entries.
+      live "/spaces", CatalogLive, :spaces
+      live "/spaces/:key/pages", CatalogLive, :pages
+      live "/spaces/:key/blog", CatalogLive, :blog
+      live "/spaces/:key/attachments", CatalogLive, :attachments
+      live "/people", CatalogLive, :people
+      live "/labels", CatalogLive, :labels
 
       live "/search", SearchLive, :index
     end

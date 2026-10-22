@@ -136,8 +136,9 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
       <li :for={node <- @nodes}>
         <.link
           navigate={URLs.content_path(@space_key, node.page)}
+          aria-current={@current && @current.id == node.page.id && "page"}
           class={[
-            "flex items-center gap-2 rounded-md py-1.5 pr-2 text-[13px]",
+            "flex min-h-9 items-center gap-2 rounded-md py-1.5 pr-2 text-[13px]",
             @current && @current.id == node.page.id && "bg-primary/10 font-semibold text-primary"
           ]}
         >
@@ -386,9 +387,10 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     """
   end
 
-  defp initials(nil), do: "?"
+  @doc "Two letters for the avatar bubble of an author."
+  def initials(nil), do: "?"
 
-  defp initials(name) do
+  def initials(name) do
     name
     |> String.split(~r/[\s@._-]+/, trim: true)
     |> Enum.take(2)
@@ -515,8 +517,9 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
       <.link
         :for={{id, label, path} <- @tabs}
         navigate={path}
+        aria-current={id == @active && "page"}
         class={[
-          "border-b-2 px-3 py-2 text-sm transition",
+          "flex min-h-11 items-center border-b-2 px-3 text-sm transition sm:min-h-10",
           if(id == @active,
             do: "border-primary font-semibold text-primary",
             else:
@@ -539,20 +542,28 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     ~H"""
     <.link
       navigate={~p"/spaces/#{@space.key}"}
-      class="group flex flex-col rounded-xl border border-base-300/70 bg-base-100 p-4 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+      class="group flex h-full flex-col rounded-xl border border-base-300/70 bg-base-100 p-4 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 motion-reduce:hover:translate-y-0"
     >
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between gap-2">
         <span class="badge badge-ghost badge-sm">{@space.key}</span>
-        <span class="text-[11px] tabular-nums text-base-content/45">{@count} pages</span>
+        <span class="text-[11px] tabular-nums text-base-content/45">
+          {@count} {if @count == 1, do: "page", else: "pages"}
+        </span>
       </div>
       <span class="mt-2 text-sm font-semibold group-hover:text-primary">{@space.name}</span>
       <span class="mt-0.5 line-clamp-2 text-xs text-base-content/55">
         {@space.description || "No description."}
       </span>
-      <span :if={@blog_posts} class="mt-2 text-[11px] tabular-nums text-base-content/45">
-        {@blog_posts} blog posts
+      <span
+        :if={@blog_posts not in [nil, 0]}
+        class="mt-2 text-[11px] tabular-nums text-base-content/45"
+      >
+        {@blog_posts} {if @blog_posts == 1, do: "blog post", else: "blog posts"}
       </span>
-      <span :if={@updated_at} class="mt-3 text-[10px] uppercase tracking-wide text-base-content/35">
+      <span
+        :if={@updated_at}
+        class="mt-auto pt-3 text-[10px] uppercase tracking-wide text-base-content/35"
+      >
         Updated {Time.ago(@updated_at)}
       </span>
     </.link>

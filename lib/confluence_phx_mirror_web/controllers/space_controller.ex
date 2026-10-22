@@ -1,7 +1,11 @@
 defmodule ConfluencePhxMirrorWeb.SpaceController do
   @moduledoc """
-  Confluence-style space browsing: the space directory, the space overview and
-  the per-space catalogs of pages, blog posts and attachments.
+  Confluence-style space browsing: the space overview.
+
+  The space directory and the per-space catalogs (pages, blog, attachments) are
+  `ConfluencePhxMirrorWeb.CatalogLive` because they are filtered and paged;
+  what stays here is the overview and the redirect from a space link to the
+  space home page, which is what readers expect from a space link.
 
   `/spaces/:key` redirects to the space home page when Confluence has one (that
   is what readers expect from a space link); the overview lives at
@@ -16,14 +20,6 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirrorWeb.NotFound
 
-  def index(conn, _params) do
-    catalog =
-      Mirror.space_catalog()
-      |> Enum.filter(&Authorization.can_read_space?(scope(conn), &1.space))
-
-    render(conn, :index, page_title: "Spaces", catalog: catalog)
-  end
-
   def show(conn, %{"key" => key}) do
     with_space(conn, key, fn conn, space ->
       case Mirror.get_space_home(space) do
@@ -35,42 +31,6 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
 
   def overview(conn, %{"key" => key}) do
     with_space(conn, key, &render_overview/2)
-  end
-
-  def pages(conn, %{"key" => key}) do
-    with_space(conn, key, fn conn, space ->
-      render(conn, :pages,
-        page_title: "#{space.name} · Pages",
-        active: :pages,
-        space: space,
-        tree: Mirror.tree(space.id),
-        pages: Mirror.pages_in_space(space.id)
-      )
-    end)
-  end
-
-  def blog(conn, %{"key" => key}) do
-    with_space(conn, key, fn conn, space ->
-      render(conn, :blog,
-        page_title: "#{space.name} · Blog",
-        active: :blog,
-        space: space,
-        tree: Mirror.tree(space.id),
-        posts: Mirror.blog_posts(space.id, 50)
-      )
-    end)
-  end
-
-  def attachments(conn, %{"key" => key}) do
-    with_space(conn, key, fn conn, space ->
-      render(conn, :attachments,
-        page_title: "#{space.name} · Attachments",
-        active: :attachments,
-        space: space,
-        tree: Mirror.tree(space.id),
-        attachments: Mirror.attachments_in_space(space.id)
-      )
-    end)
   end
 
   defp render_overview(conn, space) do

@@ -96,10 +96,6 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     render(conn, :recent, page_title: "Recently updated", pages: pages)
   end
 
-  def labels(conn, _params) do
-    render(conn, :labels, page_title: "Labels", labels: Mirror.list_labels())
-  end
-
   def label(conn, %{"name" => name}) do
     pages = visible(conn, Mirror.pages_for_label(name))
     render(conn, :label, page_title: "Label: #{name}", label: name, pages: pages)

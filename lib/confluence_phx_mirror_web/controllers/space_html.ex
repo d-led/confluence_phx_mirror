@@ -9,7 +9,4 @@ defmodule ConfluencePhxMirrorWeb.SpaceHTML do
   alias ConfluencePhxMirrorWeb.Time
 
   embed_templates "space_html/*"
-
-  defp kind("blogpost"), do: "Blog post"
-  defp kind(_type), do: "Page"
 end
