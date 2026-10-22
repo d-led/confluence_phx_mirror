@@ -32,6 +32,10 @@ defmodule ConfluencePhxMirrorWeb.Router do
     plug Plugs.ReaderRateLimit, scope: :api
   end
 
+  # The attachment route only ever reads, so there is no state to protect with a
+  # CSRF token; it fetches the session solely so the reader's permissions can be
+  # applied to the bytes.
+  # sobelow_skip ["Config.CSRF"]
   pipeline :attachments do
     # Attachment bytes are content: the page decides who may read them, so this
     # pipeline needs the reader's identity as much as the HTML pipeline does.
