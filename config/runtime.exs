@@ -209,6 +209,13 @@ if System.get_env("CM_TRUST_PROXY_HEADERS", "false") in ~w(1 true yes) do
   config :confluence_phx_mirror, trust_proxy_headers: true
 end
 
+# The webhook intake always keeps a per-client cap: a delivery is stored before
+# its signature is checked, so this is the only limit that must not be off.
+if webhook_limit = System.get_env("CM_WEBHOOK_RATE_LIMIT_PER_MINUTE") do
+  config :confluence_phx_mirror,
+    webhook_rate_limit: [limit: String.to_integer(webhook_limit), period_ms: 60_000]
+end
+
 # CM_WEBHOOK_TOKENS="confluence=s3cret,backup=other-secret" authenticates
 # webhook deliveries with a fixed token instead of an HMAC signature. The token
 # only works on the webhook route.

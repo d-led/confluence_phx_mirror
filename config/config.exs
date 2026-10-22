@@ -65,6 +65,10 @@ config :confluence_phx_mirror,
   # Extra skins for the theme picker. Built-in skins (system/light/mirror/dark)
   # are always available; the shape is documented in ConfluencePhxMirrorWeb.Skins.
   skins: [],
+  # Deliveries are stored before their signature is checked so a rejected event
+  # stays auditable; that intake is therefore always metered, even where the
+  # reader limits below are switched off.
+  webhook_rate_limit: [limit: 60, period_ms: 60_000],
   reader_rate_limit: [
     enabled: true,
     html: [limit: 240, period_ms: 60_000],

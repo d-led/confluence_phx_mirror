@@ -46,6 +46,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
 
   pipeline :webhook do
     plug :accepts, ["json"]
+    plug Plugs.WebhookRateLimit
     plug Plugs.WebhookAuth, receiver: "confluence"
   end
 
