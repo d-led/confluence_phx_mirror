@@ -7,11 +7,19 @@
 //
 // PROFILES: smoke (2 VUs, 10s) · 200 (200 VUs, 3m) · 2000 (2000 VUs, 5m)
 //           nav2000 (same ramp as 2000, navigation only — no search)
+//           throughput (constant arrival rate; set RPS, no think time)
 //
 // `nav2000` exists because browsing and searching cost very different amounts
 // of work; a mixed profile averages the two and hides which one is the wall.
 //
-//   k6 run -e PROFILE=200 -e BASE_URL=http://localhost:4000 k6-load-tests/reader.js
+// `throughput` is the only profile that measures *capacity*. A closed-loop
+// profile (VUs that sleep between iterations) is bounded by its own think time:
+// 2000 VUs sleeping ~2 s cannot exceed a few hundred rps however fast the
+// server is. This one asks for a fixed rate and reports the latency and error
+// rate the server answers with, so raising `RPS` until p95 breaks gives the
+// knee.
+//
+//   k6 run -e PROFILE=throughput -e RPS=800 -e BASE_URL=http://localhost:4000 k6-load-tests/reader.js
 //
 // Seed content must exist: `mix setup` (demo) or a synced site.
 
@@ -22,6 +30,8 @@ import { Rate, Trend } from "k6/metrics";
 const BASE_URL = __ENV.BASE_URL || "http://localhost:4000";
 const PROFILE = __ENV.PROFILE || "smoke";
 const NAVIGATION_ONLY = PROFILE.startsWith("nav");
+const THROUGHPUT = PROFILE === "throughput";
+const RPS = Number(__ENV.RPS || 200);
 
 const pageLoads = new Trend("page_load_ms", true);
 const searchLoads = new Trend("search_load_ms", true);
@@ -51,6 +61,15 @@ const profiles = {
   },
   2000: { executor: "ramping-vus", startVUs: 0, stages: stages2000 },
   nav2000: { executor: "ramping-vus", startVUs: 0, stages: stages2000 },
+  throughput: {
+    executor: "constant-arrival-rate",
+    rate: RPS,
+    timeUnit: "1s",
+    duration: __ENV.DURATION || "60s",
+    // Enough VUs that the rate, not the pool of workers, is the limit.
+    preAllocatedVUs: RPS,
+    maxVUs: RPS * 3,
+  },
 };
 
 export const options = {
@@ -100,6 +119,12 @@ function record(metric, response, name) {
 }
 
 export default function (data) {
+  if (THROUGHPUT) {
+    // No think time: the arrival rate is the input, latency is the answer.
+    hit(data);
+    return;
+  }
+
   if (NAVIGATION_ONLY) {
     navigate(data);
     return;
@@ -156,6 +181,24 @@ function conditionalGet(url, name) {
   }
 
   return ok;
+}
+
+// One request, no think time: the unit of the throughput profile. It keeps the
+// mix a reader produces (mostly pages, some spaces and the home page) so the
+// capacity number is about the real read path, not one hot endpoint.
+function hit(data) {
+  const key = pick(data.spaces);
+  const pages = data.pages[key] || [];
+  const roll = Math.random();
+
+  if (roll < 0.1 || pages.length === 0) {
+    record(pageLoads, http.get(`${BASE_URL}/`), "home");
+  } else if (roll < 0.3) {
+    record(pageLoads, http.get(`${BASE_URL}/spaces/${key}`), `space ${key}`);
+  } else {
+    const page = pick(pages);
+    record(pageLoads, http.get(`${BASE_URL}/spaces/${key}/pages/${page.id}`), "page");
+  }
 }
 
 function navigate(data) {
