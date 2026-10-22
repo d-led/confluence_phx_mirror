@@ -38,3 +38,4 @@ confluence_phx_mirror-*.tar
 npm-debug.log
 /assets/node_modules/
 
+var/k6/
