@@ -11,6 +11,18 @@ config :confluence_phx_mirror,
   ecto_repos: [ConfluencePhxMirror.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# The pool is DBConnection's (`Ecto.Adapters.Postgres` → Postgrex →
+# `DBConnection.ConnectionPool`), so its queue tuning applies here. The defaults
+# (queue_target: 50, queue_interval: 1000) treat a 50 ms wait as a sign that the
+# pool is too small and start shedding requests soon after — which is right for a
+# server that must stay responsive and wrong for a read-only mirror, where a
+# reader waiting 300 ms beats a reader getting a 500. `pool_size` itself comes
+# from `POOL_SIZE` (config/runtime.exs): this only decides how patiently the pool
+# waits.
+config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
+  queue_target: 200,
+  queue_interval: 2_000,
+
 # Background jobs. Sync work is retried per source page, notification e-mails are
 # retried separately so a broken mailer never blocks the mirror.
 config :confluence_phx_mirror, Oban,
