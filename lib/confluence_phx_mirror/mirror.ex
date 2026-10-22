@@ -43,6 +43,28 @@ defmodule ConfluencePhxMirror.Mirror do
     end
   end
 
+  @doc "A mirrored space by its local id (subscriptions and jobs point at it)."
+  def find_space_by_id(id) when is_integer(id) do
+    case Repo.get(Space, id) do
+      nil -> {:error, :not_found}
+      space -> {:ok, space}
+    end
+  end
+
+  @doc """
+  A page by its local id.
+
+  Subscriptions and notifications point at `page.id`, not at Confluence's id —
+  `find_page/1` looks up the mirrored identity and would answer no for a local
+  id that happens to match another page's Confluence id.
+  """
+  def find_page_by_local_id(id) when is_integer(id) do
+    case Repo.get(Page, id) do
+      nil -> {:error, :not_found}
+      page -> {:ok, page}
+    end
+  end
+
   def get_space!(key) do
     get_space_by_key(key) || raise Ecto.NoResultsError, queryable: Space
   end
