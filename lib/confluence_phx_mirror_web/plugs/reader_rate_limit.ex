@@ -9,6 +9,8 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ReaderRateLimit do
 
   import Plug.Conn
 
+  import Phoenix.Controller, only: [put_view: 2, render: 3]
+
   alias ConfluencePhxMirror.RateLimit
 
   def init(opts), do: opts
@@ -47,23 +49,35 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ReaderRateLimit do
         |> put_resp_header("retry-after", Integer.to_string(retry_after))
         |> put_resp_header("x-ratelimit-limit", Integer.to_string(limit))
         |> put_resp_header("x-ratelimit-remaining", "0")
-        |> reject(scope)
+        |> reject(scope, retry_after)
         |> halt()
     end
   end
 
-  defp reject(conn, :api) do
+  defp reject(conn, :api, _retry_after) do
     conn
     |> put_resp_content_type("application/json")
     |> send_resp(429, JSON.encode!(%{error: "rate_limited", message: "Too many requests."}))
   end
 
-  defp reject(conn, _scope) do
+  defp reject(conn, :html, retry_after) do
     conn
-    |> put_resp_content_type("text/plain")
-    |> send_resp(429, "Too many requests. Please slow down.\n")
+    |> put_status(429)
+    |> put_view(ConfluencePhxMirrorWeb.ErrorHTML)
+    |> render(:"429", %{retry_after: retry_after, theme: conn.assigns[:theme]})
   end
 
+  defp reject(conn, _scope, retry_after) do
+    conn
+    |> put_resp_content_type("text/plain")
+    |> send_resp(429, "Too many requests. Please slow down (#{retry_after}s).\n")
+  end
+
+  # A signed-in reader is limited by identity. Anonymous readers are limited by
+  # address — but behind a reverse proxy or a load balancer that address is the
+  # proxy's, so every reader would share one bucket unless the proxy headers are
+  # trusted. `CM_TRUST_PROXY_HEADERS=true` opts into that, for deployments that
+  # terminate TLS in front of the mirror (see docs/configuration.md).
   defp key(conn, scope) do
     case conn.assigns[:current_user] do
       %{id: id} -> "#{scope}:user:#{id}"
@@ -72,6 +86,25 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ReaderRateLimit do
   end
 
   defp client_ip(conn) do
-    conn.remote_ip |> :inet.ntoa() |> to_string()
+    if Application.get_env(:confluence_phx_mirror, :trust_proxy_headers, false) do
+      forwarded_ip(conn) || peer_ip(conn)
+    else
+      peer_ip(conn)
+    end
   end
+
+  defp forwarded_ip(conn) do
+    case get_req_header(conn, "x-forwarded-for") do
+      [forwarded | _rest] ->
+        forwarded |> String.split(",") |> List.first() |> String.trim() |> blank_to_nil()
+
+      [] ->
+        nil
+    end
+  end
+
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(value), do: value
+
+  defp peer_ip(conn), do: conn.remote_ip |> :inet.ntoa() |> to_string()
 end

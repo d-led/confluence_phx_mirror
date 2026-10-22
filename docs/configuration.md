@@ -107,6 +107,16 @@ proxy.
 | `CM_RATE_LIMIT_HTML_PER_MINUTE` | the base limit | HTML budget |
 | `CM_RATE_LIMIT_API_PER_MINUTE` | half the base limit (min. 1) | JSON and Confluence-compatible API budget |
 | `CM_RATE_LIMIT_ATTACHMENTS_PER_MINUTE` | twice the base limit | attachment budget |
+| `CM_TRUST_PROXY_HEADERS` | `false` | limit readers by `X-Forwarded-For` instead of the socket address |
+
+Anonymous readers are limited by address. Behind a reverse proxy or load
+balancer that address is the proxy's, so every reader would share one budget and
+one busy script would throttle the whole site — set `CM_TRUST_PROXY_HEADERS=true`
+only when the mirror accepts traffic exclusively from that proxy. Signed-in
+readers are always limited by identity, proxy or not.
+
+A throttled browser request answers `429` with a page that names the retry
+window (and a `Retry-After` header); API clients get JSON.
 
 ## Skins
 
