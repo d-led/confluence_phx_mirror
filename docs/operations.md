@@ -125,6 +125,46 @@ MIX_ENV=prod PHX_SERVER=true POOL_SIZE=40 CM_SYNC_CONCURRENCY=4 \
 scripts/load-test.sh 200 2000      # different host from the mirror, ideally
 ```
 
+**Measured.** The same 2000-reader run (`scripts/load-test.sh 2000`, five
+minutes, one replica, 8 cores, Postgres on the same host) with only `POOL_SIZE`
+changed:
+
+| `POOL_SIZE` | requests | rps | p95 | p99 | failures | peak backends |
+| --- | --- | --- | --- | --- | --- | --- |
+| 20 | 118 213 | 390 | 5.0 s | 6.6 s | 0% | 27 |
+| 100 | 122 963 | **407** | **4.4 s** | **6.1 s** | 0% | 107 |
+| 500 | 79 319 | 263 | 7.9 s | 9.4 s | 0% | 525 |
+| 1 000 | 44 650 | 145 | 27.7 s | 36.9 s | 0.5% | 1 007 |
+
+Throughput peaks around a hundred connections and falls by two thirds at a
+thousand: on a fixed number of cores, extra backends only add context switches.
+Past ~100 per replica, add replicas.
+
+Every row misses the 800 ms p95 target, so at 2000 readers connections are not
+the binding constraint — the ~15 queries a page view costs are. Fixing those
+(the home page's per-space queries are pinned in `query_budget_test.exs`) is
+worth more than any pool size here.
+
+**A pool of 2000 has a second wall.** DBConnection opens its connections as the
+pool starts, all at once, so the kernel's listen backlog decides how many get
+through. macOS clamps it to 128 (`kern.ipc.somaxconn`): a 2000-wide pool is
+greeted with `connection reset by peer` — 1810 of 2000 connects failed — and the
+replica dies during boot; 1000 boots with ~860 connects retried, 1900 dies.
+Linux defaults to 4096 (`net.core.somaxconn`). Raise the backlog before you
+raise the pool:
+
+```bash
+sudo sysctl -w kern.ipc.somaxconn=4096      # macOS, needs root; Linux: net.core.somaxconn
+```
+
+**Postgres itself.** The settings these runs were measured with are in
+[`deploy/postgres-tuning.conf`](../deploy/postgres-tuning.conf) — `max_connections`,
+`shared_buffers`, `effective_cache_size`, a deliberately small `work_mem`
+(per sort node *per connection*), `random_page_cost` for SSD, and
+`pg_stat_statements` so the next question is answered with numbers. Note that
+`effective_io_concurrency` must be 0 on macOS: Postgres refuses to start on
+platforms without `posix_fadvise()`.
+
 **What a too-small pool looks like.** p95 climbing into seconds while CPU and
 `pg_stat_activity` show short queries, plus `DBConnection.ConnectionError …
 dropped from queue` in the logs. If `pg_stat_activity` shows long queries

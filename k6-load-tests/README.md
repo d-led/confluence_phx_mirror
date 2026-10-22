@@ -45,6 +45,18 @@ guard rails:
 | 200 | 14 756 | 114 ms | 314 ms | 5.6% (all `429`) | rate limiter, not the mirror |
 | 200 | 4 382 | 10 190 ms | 23 628 ms | 1.2% (`500` from DB queue) | `POOL_SIZE=10` exhausted |
 | 200 | 2 248 | 37 101 ms | 40 723 ms | 0.7% | `POOL_SIZE=40`, but the run shared the host with another server and a test suite: not a valid number |
+| 2 000 | 118 213 | 5 001 ms | 6 593 ms | 0% | `POOL_SIZE=20` |
+| 2 000 | 122 963 | 4 360 ms | 6 068 ms | 0% | `POOL_SIZE=100` — best of the four |
+| 2 000 | 79 319 | 7 856 ms | 9 366 ms | 0% | `POOL_SIZE=500` |
+| 2 000 | 44 650 | 27 669 ms | 36 939 ms | 0.5% | `POOL_SIZE=1 000` — twice the connections, a third of the throughput |
+
+The 2000-reader rows are one replica on 8 cores with Postgres on the same host,
+`CM_READER_RATE_LIMIT_PER_MINUTE` lifted (2000 VUs share one client address, so
+the limiter would otherwise answer instead of the mirror). They say two things:
+the pool size curve peaks around a hundred connections, and even there p95 is
+seconds — the remaining cost is the ~15 queries a page view issues, not the
+number of connections. Sizing guidance lives in
+[`docs/operations.md`](../docs/operations.md#sizing-the-connection-pool).
 
 So: a small pool saturates before 200 concurrent readers, and the queue, not the
 queries, is what a reader would feel.
