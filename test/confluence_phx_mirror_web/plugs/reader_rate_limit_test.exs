@@ -60,6 +60,15 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ReaderRateLimitTest do
     assert get(reader(peer, "203.0.113.10"), "/").status == 429
   end
 
+  test "a forged entry ahead of the proxy's own record buys no fresh bucket" do
+    allow_one_request_per_minute()
+    Application.put_env(:confluence_phx_mirror, :trust_proxy_headers, true)
+    peer = {198, 51, 100, 4}
+
+    assert get(reader(peer, "203.0.113.30"), "/").status == 200
+    assert get(reader(peer, "10.9.9.9, 203.0.113.30"), "/").status == 429
+  end
+
   test "proxy headers are ignored unless the deployment trusts them" do
     allow_one_request_per_minute()
     peer = {198, 51, 100, 3}

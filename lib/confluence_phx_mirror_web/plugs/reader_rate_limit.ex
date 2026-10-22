@@ -93,10 +93,14 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ReaderRateLimit do
     end
   end
 
+  # Each proxy appends the address it observed, so the *last* entry is the one
+  # hop a caller cannot write: the connection our trusted proxy accepted. The
+  # first entry is whatever the caller chose to send, and keying on it would
+  # hand out a fresh bucket for every made-up address.
   defp forwarded_ip(conn) do
     case get_req_header(conn, "x-forwarded-for") do
       [forwarded | _rest] ->
-        forwarded |> String.split(",") |> List.first() |> String.trim() |> blank_to_nil()
+        forwarded |> String.split(",") |> List.last() |> String.trim() |> blank_to_nil()
 
       [] ->
         nil
