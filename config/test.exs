@@ -43,7 +43,12 @@ config :confluence_phx_mirror,
   notifications: [enabled: true, from: {"Mirror", "mirror@localhost"}, digest_hour_utc: 8],
   webhooks: [secret: "test-webhook-secret", require_signature: true]
 
-config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.DemoSource, sync_interval_seconds: 0
+config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.DemoSource,
+  sync_interval_seconds: 0,
+  # The SQL sandbox hands a test one connection, so detailing pages in
+  # parallel here would just queue behind it. Production reads this from
+  # `CM_SYNC_CONCURRENCY`.
+  sync_concurrency: 1
 
 # Tests talk to stubbed HTTP transports, so the client-side pacing must not turn
 # a unit test into a minute-long wait.
