@@ -103,12 +103,20 @@ Tests start processes with `start_supervised!/1`; wait for a process with
 
 ## Quality gates
 
+Static analysis and tests are separate aliases, because they answer different
+questions and one is much slower than the other:
+
 ```bash
-mix precommit            # compile --warnings-as-errors, unused deps, format, credo --strict, sobelow, cover + crap, tests
-mix format --check-formatted
-mix credo --strict
-mix sobelow --config     # security pass, about a second
+mix lint                 # compile --warnings-as-errors, unused deps, format, credo --strict, sobelow
+mix cover                # the suite with the coverage export the complexity gate needs
+mix complexity           # CRAP over the application code
+mix precommit            # all three, cheapest signal first (what CI runs)
 ```
+
+`mix lint` needs no database and no test run, so it is the one to keep in a
+file-watcher or a pre-commit hook. `mix format --check-formatted`,
+`mix credo --strict` and `mix sobelow --config` (about a second) can of course
+be run on their own.
 
 Sobelow runs with `skip: true`, so every accepted finding is either a
 `# sobelow_skip [...]` comment with its reason at the call site (sanitised HTML,
@@ -121,17 +129,17 @@ markup.
 
 `mix crap` (ex_crap) scores every function by cyclomatic complexity and its test
 coverage, so untested complexity becomes a ranked queue instead of a vague
-feeling. It needs exported coverage data:
+feeling. It reads exported coverage data, which is why `mix complexity` follows
+`mix cover`:
 
 ```bash
-mix test --cover --export-coverage default
-mix crap --verbose      # full table; `mix crap` prints only the offenders
+mix cover && mix crap --verbose   # full table; `mix crap` prints only the offenders
 ```
 
-`precommit` runs it over the application code with the conventional threshold of
-`30` (a complexity-5 function with no tests). Only the operator CLIs under
-`lib/mix/tasks` stay outside the gate — their argument parsing and shell output
-are exercised by hand, not by the suite.
+`mix complexity` runs it over the application code with the conventional
+threshold of `30` (a complexity-5 function with no tests). Only the operator CLIs
+under `lib/mix/tasks` stay outside the gate — their argument parsing and shell
+output are exercised by hand, not by the suite.
 
 ## Changing behaviour
 

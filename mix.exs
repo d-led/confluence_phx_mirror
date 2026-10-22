@@ -27,7 +27,9 @@ defmodule ConfluencePhxMirror.MixProject do
 
   def cli do
     [
-      preferred_envs: [precommit: :test]
+      # The test-shaped aliases run against the test environment, the way
+      # `mix test` itself does.
+      preferred_envs: [cover: :test, complexity: :test, precommit: :test]
     ]
   end
 
@@ -113,20 +115,27 @@ defmodule ConfluencePhxMirror.MixProject do
         "esbuild confluence_phx_mirror --minify",
         "phx.digest"
       ],
-      precommit: [
+      # Static analysis: no database, no test run, under a few seconds. This is
+      # the alias to run while working.
+      lint: [
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",
         "credo --strict",
-        "sobelow --config",
-        # Coverage data is exported so `mix crap` can score complexity against it.
-        "test --cover --export-coverage default",
-        # Conventional CRAP threshold over the application code. The operator
-        # CLIs in lib/mix/tasks are out of scope: their argument parsing and
-        # shell output are exercised by hand, not by the suite.
+        "sobelow --config"
+      ],
+      # Tests with the coverage data the complexity gate needs.
+      cover: ["test --cover --export-coverage default"],
+      # CRAP scores every function by complexity and coverage; it reads the
+      # exported coverage, so it runs after `mix cover`. The conventional
+      # threshold applies to the application code — the operator CLIs in
+      # lib/mix/tasks are exercised by hand, not by the suite.
+      complexity: [
         "crap --path lib/confluence_phx_mirror --max-score 30",
         "crap --path lib/confluence_phx_mirror_web --max-score 30"
-      ]
+      ],
+      # What CI runs: cheapest signal first.
+      precommit: ["lint", "cover", "complexity"]
     ]
   end
 end
