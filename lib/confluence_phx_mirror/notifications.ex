@@ -10,7 +10,8 @@ defmodule ConfluencePhxMirror.Notifications do
 
   import Ecto.Query
 
-  alias ConfluencePhxMirror.Accounts.User
+  alias ConfluencePhxMirror.Accounts.{Scope, User}
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror.Page
   alias ConfluencePhxMirror.Notifications.{Notification, Subscription}
   alias ConfluencePhxMirror.Repo
@@ -61,11 +62,20 @@ defmodule ConfluencePhxMirror.Notifications do
     if enabled?() do
       page
       |> subscribers()
+      |> Enum.filter(&may_read?(&1.user, page))
       |> Enum.map(&notify_subscriber(&1, page, action))
       |> Enum.reject(&match?({:error, _}, &1))
     else
       []
     end
+  end
+
+  # A subscription is what the reader asked for; whether they may read the page
+  # is still decided here, from the permissions as they stand at delivery time.
+  # A page that became restricted, or a reader who lost a group, stops getting
+  # its title by e-mail.
+  defp may_read?(%User{} = user, page) do
+    Authorization.can_read_page?(Scope.for_user(user), page)
   end
 
   defp subscribers(page) do
