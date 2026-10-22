@@ -9,6 +9,8 @@ defmodule ConfluencePhxMirrorWeb.PeopleController do
 
   use ConfluencePhxMirrorWeb, :controller
 
+  alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirrorWeb.NotFound
 
@@ -21,8 +23,14 @@ defmodule ConfluencePhxMirrorWeb.PeopleController do
         render(conn, :show,
           page_title: author.name,
           author: author,
-          pages: Mirror.pages_by_author(author.account_id)
+          pages: readable_pages(conn, Mirror.pages_by_author(author.account_id))
         )
     end
+  end
+
+  # A byline lists what that person wrote *and* what the reader may open; a
+  # restricted page stays with its author, not with every visitor.
+  defp readable_pages(conn, pages) do
+    Authorization.readable_pages(Scope.for_user(conn.assigns[:current_user]), pages)
   end
 end

@@ -21,7 +21,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   def home(conn, _params) do
     render(conn, :home,
       page_title: "Home",
-      spaces: Mirror.spaces_with_counts(),
+      spaces: readable_spaces(conn),
       recent_pages: visible(conn, Mirror.recent_pages(8)),
       labels: Mirror.list_labels(),
       stats: Mirror.stats(),
@@ -170,6 +170,16 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   defp scope(conn), do: Scope.for_user(conn.assigns[:current_user])
 
   defp readable?(conn, page), do: Authorization.can_read_page?(scope(conn), page)
+
+  # The home rail is the same list as the space switcher, so it asks the same
+  # question; a space the reader may not open is not advertised here either.
+  defp readable_spaces(conn) do
+    scope = scope(conn)
+
+    Enum.filter(Mirror.spaces_with_counts(), fn {space, _count} ->
+      Authorization.can_read_space?(scope, space)
+    end)
+  end
 
   defp visible(conn, pages), do: Enum.filter(pages, &readable?(conn, &1))
 end

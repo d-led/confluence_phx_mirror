@@ -79,7 +79,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
            space: space,
            items: items,
            more?: more?,
-           tree: tree(space),
+           tree: tree(space, socket),
            breadcrumbs: breadcrumbs(space),
            copy: copy,
            page_title: copy.page_title,
@@ -198,21 +198,63 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
   defp entries(:people, _socket, _space, opts), do: Catalog.people(opts)
   defp entries(:labels, _socket, _space, opts), do: Catalog.labels(opts)
 
-  defp entries(:pages, _socket, space, opts) do
-    Catalog.contents(space, Keyword.update!(opts, :sort, &order/1))
+  defp entries(:pages, socket, space, opts) do
+    space
+    |> Catalog.contents(Keyword.update!(opts, :sort, &order/1))
+    |> readable(socket)
   end
 
-  defp entries(:blog, _socket, space, opts),
+  defp entries(:blog, socket, space, opts),
     do:
-      Catalog.contents(
-        space,
+      space
+      |> Catalog.contents(
         Keyword.merge([type: "blogpost", sort: :recent], Keyword.delete(opts, :sort))
       )
+      |> readable(socket)
 
-  defp entries(:attachments, _socket, space, opts), do: Catalog.attachments(space, opts)
+  defp entries(:attachments, socket, space, opts) do
+    space |> Catalog.attachments(opts) |> readable(socket)
+  end
 
-  defp tree(nil), do: []
-  defp tree(space), do: Mirror.tree(space.id)
+  # The catalog pages in the database, so a row the reader may not open is
+  # dropped here; `more?` stays as the query reported it, which can offer one
+  # further page that turns out empty rather than hiding rows.
+  defp readable(%{items: items} = result, socket) do
+    %{result | items: Authorization.readable_pages(scope(socket), items)}
+  end
+
+  defp tree(nil, _socket), do: []
+
+  defp tree(space, socket) do
+    space.id
+    |> Mirror.tree()
+    |> visible_tree(socket)
+  end
+
+  # A restricted page drops out of the tree, and its readable children move up
+  # to the nearest readable ancestor rather than disappearing with it. One
+  # permission question for the whole tree, not one per node.
+  defp visible_tree(nodes, socket) do
+    visible =
+      Authorization.readable_pages(scope(socket), tree_pages(nodes))
+      |> MapSet.new(& &1.id)
+
+    keep_visible(nodes, visible)
+  end
+
+  defp tree_pages(nodes),
+    do:
+      Enum.flat_map(nodes, fn %{page: page, children: children} ->
+        [page | tree_pages(children)]
+      end)
+
+  defp keep_visible(nodes, visible) do
+    Enum.flat_map(nodes, fn %{page: page, children: children} ->
+      kept = keep_visible(children, visible)
+
+      if MapSet.member?(visible, page.id), do: [%{page: page, children: kept}], else: kept
+    end)
+  end
 
   defp breadcrumbs(nil), do: []
   defp breadcrumbs(space), do: [%{title: space.name, path: URLs.space_path(space.key)}]
