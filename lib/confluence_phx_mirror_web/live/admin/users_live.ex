@@ -15,7 +15,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
        new_token: nil,
        proxy_auth?: Application.get_env(:confluence_phx_mirror, :proxy_auth, false),
        proxy_header:
-         Application.get_env(:confluence_phx_mirror, :proxy_auth_header, "x-forwarded-email")
+         Application.get_env(:confluence_phx_mirror, :proxy_auth_header, "x-forwarded-email"),
+       page_title: "Users & tokens"
      )
      |> load()}
   end
@@ -129,7 +130,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       last_sync_run={@last_sync_run}
       mirror_name={@mirror_name}
       mirror_source={@mirror_source}
-      page_title="Users"
+      page_title="Users &amp; tokens"
       sidebar?={false}
     >
       <header class="flex flex-wrap items-end justify-between gap-3 border-b border-base-300/70 pb-5">
@@ -154,7 +155,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
             <code class="mt-2 block select-all break-all rounded-lg bg-base-100 px-3 py-2 font-mono text-xs">
               {@new_token.token}
             </code>
-            <p class="mt-2 text-[11px] text-base-content/55">
+            <p class="mt-2 text-[11px] text-base-content/70">
               Shown once. It is stored hashed and cannot be retrieved again.
             </p>
           </div>
@@ -185,7 +186,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                       admin · {Admins.source(user)}
                     </span>
                   </div>
-                  <p class="text-[11px] text-base-content/45">
+                  <p class="text-[11px] text-base-content/70">
                     {if user.last_sign_in_at,
                       do: "last seen #{Time.ago(user.last_sign_in_at)}",
                       else: "never signed in"}
@@ -197,7 +198,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                 <input type="hidden" name="user_id" value={user.id} />
                 <select
                   name="role"
-                  class="select select-sm select-bordered rounded-lg"
+                  class="select select-sm select-bordered min-h-11 rounded-lg sm:min-h-0"
                   aria-label={"Role of #{user.email}"}
                   disabled={Admins.protected?(user)}
                   title={Admins.protected?(user) && "Seeded or bootstrap administrator"}
@@ -208,23 +209,28 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                 <button
                   :if={Admins.protected?(user)}
                   type="button"
-                  class="btn btn-ghost btn-sm btn-disabled gap-1"
+                  class="btn btn-ghost btn-sm btn-disabled min-h-11 gap-1 sm:min-h-0"
                   title="Seeded or bootstrap administrator"
                 >
                   <.icon name="hero-lock-closed" class="size-3.5" /> Protected
                 </button>
-                <button :if={not Admins.protected?(user)} type="submit" class="btn btn-ghost btn-sm">
+                <button
+                  :if={not Admins.protected?(user)}
+                  type="submit"
+                  class="btn btn-ghost btn-sm min-h-11 sm:min-h-0"
+                  data-confirm={user.role == "admin" && demotion_warning(user)}
+                >
                   Save
                 </button>
               </form>
             </div>
 
             <div class="mt-3 flex flex-wrap items-center gap-1.5">
-              <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/40">
+              <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/70">
                 Confluence groups
               </span>
               <span :for={group <- synced_groups} class="badge badge-ghost badge-xs">{group}</span>
-              <span :if={synced_groups == []} class="text-[11px] text-base-content/40">
+              <span :if={synced_groups == []} class="text-[11px] text-base-content/70">
                 none in the last sync
               </span>
             </div>
@@ -233,7 +239,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               <form phx-submit="update_groups" class="flex items-end gap-1.5">
                 <input type="hidden" name="user_id" value={user.id} />
                 <label class="min-w-0 flex-1">
-                  <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/40">
+                  <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/70">
                     Extra groups (granted here)
                   </span>
                   <input
@@ -241,11 +247,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                     name="groups"
                     value={Enum.join(user.groups || [], ", ")}
                     placeholder="e.g. incident-responders"
-                    class="input input-sm mt-1 w-full rounded-lg"
+                    class="input input-sm mt-1 min-h-11 w-full rounded-lg sm:min-h-0"
                     aria-label={"Extra groups of #{user.email}"}
                   />
                 </label>
-                <button type="submit" class="btn btn-ghost btn-sm">Save</button>
+                <button type="submit" class="btn btn-ghost btn-sm min-h-11 sm:min-h-0">
+                  Save
+                </button>
               </form>
 
               <form
@@ -255,18 +263,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               >
                 <input type="hidden" name="user_id" value={user.id} />
                 <label class="min-w-0 flex-1">
-                  <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/40">
+                  <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/70">
                     Token name
                   </span>
                   <input
                     type="text"
                     name="name"
                     placeholder="token name"
-                    class="input input-sm mt-1 w-full rounded-lg"
+                    class="input input-sm mt-1 min-h-11 w-full rounded-lg sm:min-h-0"
                     required
                   />
                 </label>
-                <button type="submit" class="btn btn-outline btn-sm">Create</button>
+                <button type="submit" class="btn btn-outline btn-sm min-h-11 sm:min-h-0">
+                  Create
+                </button>
               </form>
             </div>
 
@@ -277,17 +287,25 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               >
                 <code class="font-mono">{token.token_prefix}…</code>
                 <span class="max-w-[10rem] truncate">{token.name}</span>
-                <span :if={token.last_used_at} class="text-base-content/40">
+                <span :if={token.last_used_at} class="text-base-content/70">
                   used {Time.ago(token.last_used_at)}
                 </span>
                 <form phx-submit="revoke_token">
                   <input type="hidden" name="user_id" value={user.id} />
                   <input type="hidden" name="token_id" value={token.id} />
-                  <button type="submit" class="btn btn-ghost btn-xs text-error">revoke</button>
+                  <button
+                    type="submit"
+                    class="btn btn-ghost btn-xs min-h-11 text-error sm:min-h-0"
+                    data-confirm={
+                      "Revoke token “#{token.name}”? Anything using it stops working immediately."
+                    }
+                  >
+                    Revoke token
+                  </button>
                 </form>
               </li>
             </ul>
-            <p :if={tokens == []} class="mt-3 text-[11px] text-base-content/40">
+            <p :if={tokens == []} class="mt-3 text-[11px] text-base-content/70">
               No personal tokens.
             </p>
           </article>
@@ -296,7 +314,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
         <aside class="space-y-5">
           <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">
             <h2 class="text-sm font-semibold">Account provisioning</h2>
-            <p class="mt-1 text-[11px] text-base-content/55">
+            <p class="mt-1 text-[11px] text-base-content/70">
               Accounts are created on first sign-in — there is no account form.
             </p>
             <ul class="mt-3 space-y-2 text-xs">
@@ -332,7 +350,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
 
           <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">
             <h2 class="text-sm font-semibold">Administrators from Confluence</h2>
-            <p class="mt-1 text-[11px] text-base-content/55">
+            <p class="mt-1 text-[11px] text-base-content/70">
               Members of the admin groups as the last sync read them. They do not need an account here.
             </p>
 
@@ -344,12 +362,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               <ul class="mt-1.5 space-y-1">
                 <li :for={member <- members} class="flex items-baseline gap-2 text-xs">
                   <span class="truncate">{member.display_name || member.subject_key}</span>
-                  <span :if={member.email} class="truncate text-[11px] text-base-content/40">
+                  <span :if={member.email} class="truncate text-[11px] text-base-content/70">
                     {member.email}
                   </span>
                 </li>
               </ul>
-              <p :if={members == []} class="mt-1.5 text-[11px] text-base-content/40">
+              <p :if={members == []} class="mt-1.5 text-[11px] text-base-content/70">
                 No members synced yet — run a sync.
               </p>
             </div>
@@ -358,7 +376,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
           <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">
             <div>
               <h2 class="text-sm font-semibold">Service tokens</h2>
-              <p class="mt-0.5 text-[11px] text-base-content/45">
+              <p class="mt-0.5 text-[11px] text-base-content/70">
                 For integrations, not people. A <code>webhook</code>
                 token is accepted as <code>X-Webhook-Token</code>
                 on the Confluence webhook route and cannot open the API or the reader UI.
@@ -375,17 +393,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                 name="name"
                 placeholder="name, e.g. confluence-webhooks"
                 required
-                class="input input-sm w-full rounded-lg"
+                class="input input-sm min-h-11 w-full rounded-lg sm:min-h-0"
               />
               <div class="flex gap-2">
                 <select
                   name="scope"
-                  class="select select-sm flex-1 rounded-lg"
+                  class="select select-sm min-h-11 flex-1 rounded-lg sm:min-h-0"
                   aria-label="Token scope"
                 >
                   <option value="webhook">webhook</option>
                 </select>
-                <button type="submit" class="btn btn-primary btn-sm">Create</button>
+                <button type="submit" class="btn btn-primary btn-sm min-h-11 sm:min-h-0">
+                  Create
+                </button>
               </div>
             </form>
 
@@ -396,7 +416,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               >
                 <div class="min-w-0 flex-1">
                   <p class="truncate text-xs font-medium">{token.name}</p>
-                  <p class="text-[11px] text-base-content/45">
+                  <p class="text-[11px] text-base-content/70">
                     <code class="font-mono">{token.token_prefix}…</code>
                     · {token.scope} · {if token.last_used_at,
                       do: "used #{Time.ago(token.last_used_at)}",
@@ -405,11 +425,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                 </div>
                 <form phx-submit="revoke_service_token">
                   <input type="hidden" name="token_id" value={token.id} />
-                  <button type="submit" class="btn btn-ghost btn-xs text-error">revoke</button>
+                  <button
+                    type="submit"
+                    class="btn btn-ghost btn-xs min-h-11 text-error sm:min-h-0"
+                    data-confirm={
+                      "Revoke token “#{token.name}”? Deliveries that use it are rejected from then on."
+                    }
+                  >
+                    Revoke token
+                  </button>
                 </form>
               </li>
             </ul>
-            <p :if={@service_tokens == []} class="mt-3 text-[11px] text-base-content/40">
+            <p :if={@service_tokens == []} class="mt-3 text-[11px] text-base-content/70">
               No service tokens yet.
             </p>
           </div>
@@ -417,5 +445,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       </div>
     </Layouts.app>
     """
+  end
+
+  # A role is an access decision: say what the person loses before it happens.
+  defp demotion_warning(user) do
+    "Demote #{user.email} to member? They lose access to the admin screens immediately."
   end
 end

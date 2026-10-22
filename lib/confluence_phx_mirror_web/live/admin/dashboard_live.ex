@@ -31,7 +31,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     {:ok,
      assign(socket,
        webhook_secret?:
-         is_binary(Application.get_env(:confluence_phx_mirror, :webhooks, [])[:secret])
+         is_binary(Application.get_env(:confluence_phx_mirror, :webhooks, [])[:secret]),
+       page_title: "Admin"
      )
      |> load()}
   end
@@ -113,7 +114,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Operations</p>
           <h1 class="mt-1 text-3xl font-semibold">Mirror dashboard</h1>
           <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/60">
-            <span class="uppercase tracking-[0.14em] text-base-content/40">Mirroring</span>
+            <span class="uppercase tracking-[0.14em] text-base-content/70">Mirroring</span>
             <a
               :if={@mirror_url}
               href={@mirror_url}
@@ -125,11 +126,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             </a>
             <span :if={is_nil(@mirror_url)} class="text-sm font-medium">{source_name(@mirror_source)}</span>
           </p>
-          <p class="mt-1 text-xs text-base-content/50">
+          <p class="mt-1 text-xs text-base-content/70">
             <a href={~p"/admin/audit"} class="link link-primary">Audit log</a>
             · <a href={~p"/admin/sync-log"} class="link link-primary">Sync log</a>
             · <a href={~p"/admin/users"} class="link link-primary">Users &amp; tokens</a>
-            · <a href="/dev/dashboard" class="link link-primary">LiveDashboard</a>
+            <span :if={dev_routes?()}>
+              · <a href="/dev/dashboard" class="link link-primary">LiveDashboard</a>
+            </span>
           </p>
           <p
             :if={Source.demo?(@mirror_source)}
@@ -139,7 +142,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             <code>CM_SOURCE=http</code>
             with site and token settings to mirror a live one.
           </p>
-          <p :if={@current_user} class="mt-1 text-[11px] text-base-content/45">
+          <p :if={@current_user} class="mt-1 text-[11px] text-base-content/70">
             Signed in as {@current_user.email}
             <span :if={Admins.source(@current_user)} class="badge badge-primary badge-xs">
               admin · {Admins.source(@current_user)}
@@ -147,14 +150,24 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <button type="button" phx-click="snapshot" class="btn btn-primary btn-sm gap-1.5">
+          <button
+            type="button"
+            phx-click="snapshot"
+            phx-disable-with="Queueing…"
+            class="btn btn-primary btn-sm gap-1.5"
+          >
             <.icon name="hero-arrow-path" class="size-4" /> Sync now
           </button>
           <details :if={@spaces != []} class="dropdown dropdown-end">
             <summary class="btn btn-outline btn-sm">Sync one space</summary>
-            <ul class="menu dropdown-content z-50 mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
+            <ul class="menu dropdown-content z-50 mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
               <li :for={{space, _count} <- @space_counts}>
-                <button type="button" phx-click="sync_space" phx-value-key={space.key}>
+                <button
+                  type="button"
+                  phx-click="sync_space"
+                  phx-value-key={space.key}
+                  phx-disable-with="Queueing…"
+                >
                   {space.name} <span class="badge badge-ghost badge-xs">{space.key}</span>
                 </button>
               </li>
@@ -163,6 +176,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           <button
             type="button"
             phx-click="full_sync"
+            phx-disable-with="Queueing…"
             class="btn btn-ghost btn-sm gap-1.5"
             title="Fetch and re-render every page, even the ones that did not change"
           >
@@ -232,17 +246,17 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           </:actions>
           <ul class="divide-y divide-base-300/60">
             <li :for={event <- @audit} class="flex items-baseline gap-3 py-2 text-xs">
-              <span class="w-20 shrink-0 text-[11px] text-base-content/45">
+              <span class="w-20 shrink-0 text-[11px] text-base-content/70">
                 {Time.ago(event.inserted_at)}
               </span>
               <span class="min-w-0 flex-1 truncate">
-                <span class="font-mono text-[11px] uppercase tracking-wide text-base-content/45">
+                <span class="font-mono text-[11px] uppercase tracking-wide text-base-content/70">
                   {event.action}
                 </span>
                 <span class="ml-2 text-base-content/70">{event.actor_label || event.actor_type}</span>
               </span>
             </li>
-            <li :if={@audit == []} class="py-2 text-xs text-base-content/50">
+            <li :if={@audit == []} class="py-2 text-xs text-base-content/70">
               Nothing has happened yet.
             </li>
           </ul>
@@ -274,7 +288,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       </div>
 
       <section class="mt-8">
-        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-base-content/50">
+        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-base-content/70">
           Recently updated pages
         </h2>
         <div class="flex flex-wrap gap-2">
@@ -287,12 +301,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           >
             <span class="badge badge-ghost badge-xs">{page.space.key}</span>
             <span class="max-w-[20rem] truncate">{page.title}</span>
-            <span class="text-[10px] text-base-content/40">{Time.ago(page.external_updated_at)}</span>
+            <span class="text-[10px] text-base-content/70">{Time.ago(page.external_updated_at)}</span>
           </.link>
         </div>
       </section>
     </Layouts.app>
     """
+  end
+
+  defp dev_routes? do
+    Application.get_env(:confluence_phx_mirror, :dev_routes, false)
   end
 
   defp status_class("succeeded"), do: "badge-success"

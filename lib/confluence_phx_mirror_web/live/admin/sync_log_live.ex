@@ -40,7 +40,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
        query: "",
        paused?: false,
        level_options: @level_options,
-       counts: count(entries)
+       counts: count(entries),
+       page_title: "Sync log"
      )}
   end
 
@@ -114,7 +115,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
 
   defp time(entry), do: entry.at |> Time.datetime() |> String.replace(" UTC", "")
 
-  defp level_badge(:debug), do: {"·", "text-base-content/35"}
+  defp level_badge(:debug), do: {"·", "text-base-content/70"}
   defp level_badge(:info), do: {"info", "text-base-content/60"}
   defp level_badge(:warn), do: {"warn", "text-warning"}
   defp level_badge(:error), do: {"error", "text-error"}
@@ -208,7 +209,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
         </button>
       </div>
 
-      <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-base-content/45">
+      <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-base-content/70">
         <span>{@counts.info} info</span>
         <span>{@counts.debug} debug</span>
         <span>{@counts.warn} warnings</span>
@@ -222,7 +223,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
         phx-hook=".Follow"
         class="mt-2 max-h-[70vh] overflow-y-auto rounded-xl border border-base-300/70 bg-base-100 font-mono text-[11px]"
       >
-        <p class="hidden only:block px-4 py-10 text-center font-sans text-sm text-base-content/50">
+        <p class="hidden only:block px-4 py-10 text-center font-sans text-sm text-base-content/70">
           Nothing yet. Lines appear here as soon as a sync starts.
         </p>
         <div
@@ -231,7 +232,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
           class="flex flex-wrap items-baseline gap-x-2 border-b border-base-300/40 px-3 py-1.5 last:border-0"
         >
           <time
-            class="w-16 shrink-0 tabular-nums text-base-content/35"
+            class="w-16 shrink-0 tabular-nums text-base-content/70"
             title={Time.datetime(entry.at)}
           >
             {time(entry)}
@@ -241,9 +242,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
           </span>
           <span class="min-w-0 flex-1">
             {entry.message}
-            <span :if={details(entry) != ""} class="text-base-content/35">· {details(entry)}</span>
+            <span :if={details(entry) != ""} class="text-base-content/70">· {details(entry)}</span>
           </span>
-          <span :if={entry.run_id} class="shrink-0 text-base-content/25">#{entry.run_id}</span>
+          <span :if={entry.run_id} class="shrink-0 text-base-content/70">#{entry.run_id}</span>
         </div>
       </div>
 

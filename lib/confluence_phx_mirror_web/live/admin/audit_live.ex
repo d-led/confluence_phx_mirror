@@ -30,7 +30,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
        actor_types: @actor_types,
        page_size: @page_size,
        offset: 0,
-       events: Audit.search(limit: @page_size)
+       events: Audit.search(limit: @page_size),
+       page_title: "Audit log"
      )}
   end
 
@@ -164,7 +165,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
           class="flex flex-wrap gap-x-4 gap-y-1 px-4 py-3"
         >
           <time
-            class="w-24 shrink-0 text-[11px] text-base-content/45"
+            class="w-24 shrink-0 text-[11px] text-base-content/70"
             title={Time.datetime(event.inserted_at)}
           >
             {Time.ago(event.inserted_at)}
@@ -173,20 +174,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
           <div class="min-w-0 flex-1">
             <p class="text-sm">
               <span class="font-medium">{Audit.describe(event)}</span>
-              <span class="ml-1 font-mono text-[10px] uppercase tracking-wide text-base-content/35">
+              <span class="ml-1 font-mono text-[10px] uppercase tracking-wide text-base-content/70">
                 {event.action}
               </span>
             </p>
-            <p class="mt-0.5 text-[11px] text-base-content/50">
+            <p class="mt-0.5 text-[11px] text-base-content/70">
               {Audit.actor(event)} · {event.entity_type} #{event.entity_id}
               <%= for {key, value} <- details(event) do %>
-                · <span class="text-base-content/40">{key}</span> {value}
+                · <span class="text-base-content/70">{key}</span> {value}
               <% end %>
             </p>
           </div>
         </li>
 
-        <li :if={@events == []} class="px-4 py-10 text-center text-sm text-base-content/50">
+        <li :if={@events == []} class="px-4 py-10 text-center text-sm text-base-content/70">
           No events match this filter.
         </li>
       </ul>
