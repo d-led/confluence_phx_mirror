@@ -11,7 +11,8 @@ defmodule ConfluencePhxMirror.Mirror.Attachment do
   @type t :: %__MODULE__{}
 
   schema "attachments" do
-    field :confluence_id, :integer
+    # Confluence Cloud uses ids like "att164058"; older sites use numbers.
+    field :confluence_id, :string
     field :filename, :string
     field :media_type, :string, default: "application/octet-stream"
     field :byte_size, :integer

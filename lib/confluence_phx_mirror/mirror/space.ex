@@ -29,11 +29,15 @@ defmodule ConfluencePhxMirror.Mirror.Space do
   @required_fields [:key, :name]
   @optional_fields [:type, :description, :homepage_confluence_id, :external_url, :synced_at]
 
+  @doc "A space key as the mirror stores it: Confluence keys are case-insensitive."
+  def normalise_key(key) when is_binary(key), do: String.upcase(key)
+  def normalise_key(key), do: key
+
   def changeset(space, attrs) do
     space
     |> cast(attrs, @required_fields ++ @optional_fields)
     |> validate_required(@required_fields)
-    |> update_change(:key, &String.upcase/1)
+    |> update_change(:key, &normalise_key/1)
     |> validate_format(:key, ~r/^[A-Z0-9_~.-]+$/, message: "is not a valid space key")
     |> unique_constraint(:key)
   end

@@ -37,7 +37,7 @@ config :confluence_phx_mirror,
   # Passwordless sign-in links.
   accounts: [login_token_minutes: 15],
   # How far back an incremental pull starts when the source has no cursor.
-  sync: [lookback_seconds: 3600],
+  sync: [lookback_seconds: 3600, personal_spaces: false],
   # Simulated / production users get auto-provisioned in dev and test.
   auto_admin: false,
   self_signup: false,
@@ -45,6 +45,11 @@ config :confluence_phx_mirror,
   # seeded e-mails (CM_ADMINS). Groups come from mirrored Confluence groups.
   admins: [],
   admin_groups: ["confluence-admins"],
+  # Accounts are provisioned by the reverse proxy's identity header when
+  # enabled; the endpoint must then only be reachable through that proxy.
+  proxy_auth: false,
+  proxy_auth_header: "x-forwarded-email",
+  proxy_auth_name_header: "x-forwarded-user",
   # Extra skins for the theme picker. Built-in skins (system/light/mirror/dark)
   # are always available; the shape is documented in ConfluencePhxMirrorWeb.Skins.
   skins: [],

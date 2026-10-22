@@ -25,24 +25,28 @@ defmodule Mix.Tasks.Confluence.Seed do
   def run(args) do
     Mix.Task.run("app.start")
 
-    {opts, _, invalid} = OptionParser.parse(args, strict: [space: :string, confirm: :boolean])
+    {opts, _, invalid} =
+      OptionParser.parse(args, strict: [space: :string, from: :string, confirm: :boolean])
+
     reject_invalid(invalid)
 
     space_key =
       opts[:space] || Mix.raise("Pass the target space, for example `--space ENG`.")
 
+    from = opts[:from]
+
     ensure_live_source!()
     ensure_admin!(space_key)
 
     if opts[:confirm] do
-      seed(space_key)
+      seed(space_key, from)
     else
-      plan(space_key)
+      plan(space_key, from)
     end
   end
 
-  defp plan(space_key) do
-    case Seed.plan(space_key) do
+  defp plan(space_key, from) do
+    case Seed.plan(space_key, from: from) do
       {:ok, decisions} ->
         Mix.shell().info(header(space_key, "planned"))
         print(decisions)
@@ -53,8 +57,8 @@ defmodule Mix.Tasks.Confluence.Seed do
     end
   end
 
-  defp seed(space_key) do
-    case Seed.run(space_key) do
+  defp seed(space_key, from) do
+    case Seed.run(space_key, from: from) do
       {:ok, decisions} ->
         Mix.shell().info(header(space_key, "done"))
         print(decisions)
@@ -71,15 +75,23 @@ defmodule Mix.Tasks.Confluence.Seed do
 
   defp print(decisions) do
     Enum.each(decisions, fn decision ->
-      Mix.shell().info("  #{symbol(decision.action)} #{decision.title}#{page_note(decision)}")
+      Mix.shell().info(
+        "  #{symbol(decision.action)} #{decision.title}#{page_note(decision)}#{detail(decision)}"
+      )
     end)
   end
 
   defp symbol(:create), do: "+"
   defp symbol(:exists), do: "="
   defp symbol(:foreign), do: "!"
+  defp symbol(:extras), do: "~"
+  defp symbol(:skipped), do: "-"
+
+  defp detail(%{detail: detail}), do: " — " <> detail
+  defp detail(_decision), do: ""
   defp page_note(%{page_id: nil}), do: ""
-  defp page_note(%{page_id: id}), do: " (#{id})"
+  defp page_note(%{page_id: id}) when is_binary(id) or is_integer(id), do: " (#{id})"
+  defp page_note(_decision), do: ""
 
   defp header(space_key, verb), do: "\nSpace #{space_key}: #{verb} #{Seed.label()} pages\n"
 

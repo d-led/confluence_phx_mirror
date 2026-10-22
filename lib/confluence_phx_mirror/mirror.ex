@@ -48,7 +48,8 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   def upsert_space(attrs) do
-    space = Repo.get_by(Space, key: attrs.key) || %Space{}
+    key = Space.normalise_key(attrs.key)
+    space = Repo.get_by(Space, key: key) || %Space{}
     space |> Space.changeset(attrs) |> Repo.insert_or_update()
   end
 

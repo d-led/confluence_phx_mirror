@@ -16,11 +16,12 @@ csv = fn value ->
 end
 
 default_source = fn
-  {site, token}
-  when is_binary(site) and site != "" and is_binary(token) and token != "" ->
+  {site, email, token}
+  when is_binary(site) and site != "" and is_binary(email) and email != "" and
+         is_binary(token) and token != "" ->
     ConfluencePhxMirror.Confluence.HttpSource
 
-  _no_credentials ->
+  _missing_credentials ->
     ConfluencePhxMirror.Confluence.DemoSource
 end
 
@@ -48,9 +49,10 @@ end
 #
 # `CM_SOURCE` picks the upstream explicitly: `demo` mirrors the bundled sample
 # snapshot, `http` reads a real Confluence site through its REST API. Left
-# unset, configured credentials (`CM_CONFLUENCE_SITE` plus `CM_ATL_TOKEN`) mean
-# the real thing — a deployment that has them should not silently mirror
-# fixtures — and otherwise the demo snapshot keeps the app usable.
+# unset, a complete set of credentials (`CM_CONFLUENCE_SITE`, `CM_ATL_EMAIL`,
+# `CM_ATL_TOKEN`) means the real thing — a deployment that has them should not
+# silently mirror fixtures — and otherwise the demo snapshot keeps the app
+# usable.
 source =
   case {System.get_env("CM_SOURCE"), config_env()} do
     {"http", _env} ->
@@ -68,7 +70,11 @@ source =
       ConfluencePhxMirror.Confluence.DemoSource
 
     {_unset, _env} ->
-      default_source.({System.get_env("CM_CONFLUENCE_SITE"), System.get_env("CM_ATL_TOKEN")})
+      default_source.({
+        System.get_env("CM_CONFLUENCE_SITE"),
+        System.get_env("CM_ATL_EMAIL"),
+        System.get_env("CM_ATL_TOKEN")
+      })
   end
 
 config :confluence_phx_mirror, :source, source
@@ -242,7 +248,9 @@ config :confluence_phx_mirror,
            env_integer.(
              "CM_SYNC_LOOKBACK_SECONDS",
              Keyword.get(sync_defaults, :lookback_seconds, 3600)
-           )
+           ),
+         personal_spaces:
+           System.get_env("CM_SYNC_PERSONAL_SPACES", "false") in ["true", "1", "yes"]
        )
 
 if smtp_relay = System.get_env("SMTP_RELAY") do

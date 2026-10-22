@@ -50,17 +50,22 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   @impl true
   def pages(space_key, _opts) do
-    params = %{
+    # Confluence Cloud does not filter on a comma-separated type list (`type=page,
+    # blogpost` silently returns nothing), so ask for one content type at a time.
+    with {:ok, pages} <- paginate_json("/content", content_params(space_key, "page")),
+         {:ok, posts} <- paginate_json("/content", content_params(space_key, "blogpost")) do
+      {:ok, Enum.map(pages ++ posts, &parse_page(&1, space_key))}
+    end
+  end
+
+  defp content_params(space_key, type) do
+    %{
       "spaceKey" => space_key,
-      "type" => "page,blogpost",
+      "type" => type,
       "status" => "current",
       "limit" => page_limit(),
       "expand" => @page_expand
     }
-
-    with {:ok, results} <- paginate_json("/content", params) do
-      {:ok, Enum.map(results, &parse_page(&1, space_key))}
-    end
   end
 
   @impl true
@@ -113,14 +118,61 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   @impl true
   def attachment_data(attachment, _opts) do
-    with {:ok, url} <- SafeURL.resolve(attachment.download_url, config()[:base_url]),
-         {:ok, response} <- request(:get, url, []) do
-      if response.status in 200..299 do
-        {:ok, response.body}
-      else
-        {:error, {:http, response.status}}
+    with {:ok, url} <- download_url(attachment.download_url) do
+      download(url)
+    end
+  end
+
+  # Attachment bytes live behind a redirect on Confluence Cloud (the media API),
+  # so the download is followed by hand: every hop has to stay on the site or on
+  # an explicitly allowed Atlassian host.
+  defp download(url, attempt \\ 1) do
+    with {:ok, response} <- request(:get, url, []) do
+      cond do
+        response.status in 200..299 ->
+          {:ok, response.body}
+
+        response.status in [301, 302, 303, 307, 308] and attempt < 4 ->
+          with {:ok, next} <- redirect_target(response, url), do: download(next, attempt + 1)
+
+        true ->
+          {:error, {:http, response.status}}
       end
     end
+  end
+
+  defp redirect_target(response, current) do
+    with [location | _] <- List.wrap(response.headers["location"]),
+         target = current |> URI.merge(location) |> URI.to_string(),
+         true <- download_host?(target) do
+      {:ok, target}
+    else
+      _ -> {:error, {:redirect_not_allowed, response.headers["location"]}}
+    end
+  end
+
+  defp download_host?(url) do
+    host = url |> URI.parse() |> Map.get(:host) || ""
+    site = config()[:base_url] |> URI.parse() |> Map.get(:host)
+    allowed = [site | List.wrap(config()[:download_hosts] || default_download_hosts())]
+
+    Enum.any?(allowed, fn suffix -> is_binary(suffix) and suffix != "" and host == suffix end) or
+      Enum.any?(allowed, fn suffix ->
+        is_binary(suffix) and host != "" and String.ends_with?(host, "." <> suffix)
+      end)
+  end
+
+  # The media API sits on these domains; a deployment can narrow or extend it
+  # with `:download_hosts`.
+  defp default_download_hosts, do: ["atlassian.com", "atlassian.net", "atl-paas.net"]
+
+  # Confluence hands out download links relative to the REST root
+  # (`/rest/api/content/…/download`), and older exports use the web path
+  # (`/download/attachments/…`). Each needs a different base.
+  defp download_url(path) when is_binary(path) do
+    if String.starts_with?(path, "/rest/api"),
+      do: build_url(path, %{}),
+      else: SafeURL.resolve(public_url(path), config()[:base_url])
   end
 
   @impl true
@@ -274,7 +326,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   defp parse_attachment(content, page_id) do
     %{
-      id: parse_id(content["id"]),
+      id: to_string(content["id"]),
       page_id: page_id,
       filename: content["title"],
       media_type: get_in(content, ["extensions", "mediaType"]) || "application/octet-stream",
@@ -350,7 +402,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   this with anything but `:get`. Kept here so writes share the same
   authentication, rate limiting, retries and URL safety as reads.
   """
-  @spec json(:get | :post | :put, String.t(), Enumerable.t() | map() | nil) ::
+  @spec json(:get | :post | :put | :delete, String.t(), Enumerable.t() | map() | nil) ::
           {:ok, term()} | {:error, term()}
   def json(method, path, payload \\ nil) do
     with {:ok, url} <- build_url(path, %{}) do
@@ -358,11 +410,51 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     end
   end
 
+  @doc """
+  Uploads one attachment to a page.
+
+  Used only by `mix confluence.seed`: the sync itself never writes.
+  """
+  @spec upload_attachment(integer(), String.t(), String.t(), binary()) ::
+          {:ok, map()} | {:error, term()}
+  def upload_attachment(page_id, filename, media_type, bytes) do
+    boundary = "----mirror#{System.unique_integer([:positive])}"
+
+    body = [
+      "--#{boundary}\r\n",
+      "Content-Disposition: form-data; name=\"file\"; filename=\"",
+      filename,
+      "\"\r\n",
+      "Content-Type: ",
+      media_type,
+      "\r\n\r\n",
+      bytes,
+      "\r\n--#{boundary}--\r\n"
+    ]
+
+    with {:ok, url} <- build_url("/content/#{page_id}/child/attachment", %{}) do
+      request_json(:post, url,
+        headers: [
+          # Confluence's XSRF check expects this header on uploads.
+          {"x-atlassian-token", "no-check"},
+          {"content-type", "multipart/form-data; boundary=#{boundary}"}
+        ],
+        body: IO.iodata_to_binary(body)
+      )
+    end
+  end
+
   defp json_request(method, url, payload \\ nil) do
     options = if payload, do: [json: payload], else: []
+    request_json(method, url, options)
+  end
 
+  defp request_json(method, url, options) do
     with {:ok, response} <- request(method, url, options) do
       cond do
+        response.status in 200..299 and response.body in ["", nil] ->
+          {:ok, %{}}
+
         response.status in 200..299 ->
           decode_json(response.body)
 
@@ -384,6 +476,10 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   defp build_url(path, params) do
+    # Confluence's own links (`_links.next`, attachment downloads) are relative to
+    # the REST root and already carry `/rest/api`; the base below adds it.
+    path = String.replace_prefix(path, "/rest/api", "")
+
     url =
       if String.starts_with?(path, ["http://", "https://"]) do
         path
@@ -398,8 +494,10 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   defp request(method, url, options, attempt \\ 1) do
     RateLimiter.acquire()
 
+    {extra_headers, options} = Keyword.pop(options, :headers, [])
+
     defaults = [
-      headers: auth_headers(),
+      headers: auth_headers() ++ extra_headers,
       receive_timeout: config()[:request_timeout_ms] || 30_000,
       connect_options: [timeout: config()[:connect_timeout_ms] || 10_000],
       redirect: false,

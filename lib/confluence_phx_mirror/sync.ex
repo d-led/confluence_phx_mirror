@@ -74,6 +74,7 @@ defmodule ConfluencePhxMirror.Sync do
   defp do_run(:snapshot, source, opts) do
     case source.spaces(opts) do
       {:ok, space_dtos} ->
+        {space_dtos, skipped} = importable_spaces(space_dtos)
         spaces = upsert_spaces(space_dtos)
         {spaces, permission_errors} = sync_space_permissions(source, spaces)
 
@@ -87,6 +88,7 @@ defmodule ConfluencePhxMirror.Sync do
         stats =
           Map.merge(stats, %{
             "spaces" => length(spaces),
+            "skipped_spaces" => skipped,
             "deleted" => deleted,
             "group_members" => members
           })
@@ -166,6 +168,25 @@ defmodule ConfluencePhxMirror.Sync do
     raise "Confluence #{scope} fetch failed#{if id, do: " for #{inspect(id)}"}: #{inspect(reason)}"
   end
 
+  # Everyone has a personal space, and mirroring the sync account's own drafts
+  # is rarely what an operator wants, so personal spaces are skipped unless the
+  # deployment asks for them (`CM_SYNC_PERSONAL_SPACES=true`). Syncing one space
+  # explicitly still works: the filter only applies to a whole-site snapshot.
+  defp importable_spaces(space_dtos) do
+    if personal_spaces?() do
+      {space_dtos, 0}
+    else
+      personal = Enum.filter(space_dtos, &(&1[:type] == "personal"))
+      {space_dtos -- personal, length(personal)}
+    end
+  end
+
+  defp personal_spaces? do
+    :confluence_phx_mirror
+    |> Application.get_env(:sync, [])
+    |> Keyword.get(:personal_spaces, false)
+  end
+
   # ---------------------------------------------------------------------------
   # Spaces and pages
   # ---------------------------------------------------------------------------
@@ -223,7 +244,10 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp fetch_space_permissions(source, space) do
     if function_exported?(source, :space_permissions, 2) do
-      source.space_permissions(space.key, [])
+      case source.space_permissions(space.key, []) do
+        {:error, :not_supported} -> :unsupported
+        other -> other
+      end
     else
       :unsupported
     end
@@ -252,6 +276,12 @@ defmodule ConfluencePhxMirror.Sync do
       {:ok, members} ->
         {:ok, stored} = Mirror.replace_group_members(name, members)
         {count + stored, errors}
+
+      # The site simply has no such group; that is an empty membership, not a
+      # failure a reader should see.
+      {:error, :not_found} ->
+        {:ok, _} = Mirror.replace_group_members(name, [])
+        {count, errors}
 
       {:error, :not_supported} ->
         {count, errors}
@@ -539,7 +569,7 @@ defmodule ConfluencePhxMirror.Sync do
           end)
 
         {Enum.reject(attachments, &is_nil/1),
-         errors ++ prune_attachments(page, Enum.map(attachment_dtos, & &1.id))}
+         errors ++ prune_attachments(page, Enum.map(attachment_dtos, &to_string(&1.id)))}
 
       {:error, reason} ->
         {[], [error("attachments", page.confluence_id, reason)]}
@@ -567,13 +597,16 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   defp mirror_attachment(source, space, page, dto) do
-    existing = Repo.get_by(Attachment, confluence_id: dto.id)
+    # Confluence hands out numeric ids on older sites and "att164058" on newer
+    # ones; the mirror stores the text form either way.
+    confluence_id = to_string(dto.id)
+    existing = Repo.get_by(Attachment, confluence_id: confluence_id)
 
-    blob_key = Key.attachment(space.key, page.confluence_id, dto.id, dto.filename)
+    blob_key = Key.attachment(space.key, page.confluence_id, confluence_id, dto.filename)
 
     with {:ok, blob_key} <- ensure_blob(source, dto, existing, blob_key) do
       attrs = %{
-        confluence_id: dto.id,
+        confluence_id: confluence_id,
         page_id: page.id,
         filename: dto.filename,
         media_type: dto.media_type,

@@ -66,11 +66,13 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
       stub(fn conn ->
         assert conn.request_path == "/wiki/rest/api/content"
         assert conn.query_params["spaceKey"] == "ENG"
-        assert conn.query_params["type"] == "page,blogpost"
+        # Cloud returns nothing for a comma-separated type list, so each type is
+        # asked for on its own.
+        assert conn.query_params["type"] in ["page", "blogpost"]
         Req.Test.json(conn, %{"results" => [page_json()]})
       end)
 
-      assert {:ok, [page]} = HttpSource.pages("ENG", [])
+      assert {:ok, [page, _post]} = HttpSource.pages("ENG", [])
 
       assert page.id == 1002
       assert page.title == "Architecture Overview"
@@ -93,7 +95,12 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
     end
 
     test "fills in the defaults Confluence omits" do
-      stub(fn conn -> Req.Test.json(conn, %{"results" => [%{"id" => 7, "_links" => %{}}]}) end)
+      stub(fn conn ->
+        results =
+          if conn.query_params["type"] == "page", do: [%{"id" => 7, "_links" => %{}}], else: []
+
+        Req.Test.json(conn, %{"results" => results})
+      end)
 
       assert {:ok, [page]} = HttpSource.pages("ENG", [])
 
@@ -111,10 +118,15 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
       stub(fn conn ->
         case conn.query_params["start"] do
           nil ->
-            Req.Test.json(conn, %{
-              "results" => [page_json(%{"id" => "1", "title" => "First"})],
-              "_links" => %{"next" => "#{@base_url}/wiki/rest/api/content?start=50"}
-            })
+            # Only the page listing has a second page to follow.
+            if conn.query_params["type"] == "page" do
+              Req.Test.json(conn, %{
+                "results" => [page_json(%{"id" => "1", "title" => "First"})],
+                "_links" => %{"next" => "#{@base_url}/wiki/rest/api/content?start=50"}
+              })
+            else
+              Req.Test.json(conn, %{"results" => []})
+            end
 
           "50" ->
             Req.Test.json(conn, %{"results" => [page_json(%{"id" => "2", "title" => "Second"})]})
