@@ -133,7 +133,8 @@ config :logger, :default_formatter,
     :status,
     :pages,
     :attachments,
-    :errors
+    :errors,
+    :trigger
   ]
 
 # Use Elixir's built-in JSON codec (Elixir 1.18+); no Jason dependency.
