@@ -130,9 +130,12 @@ defmodule ConfluencePhxMirror.MixProject do
       # exported coverage, so it runs after `mix cover`. The conventional
       # threshold applies to the application code — the operator CLIs in
       # lib/mix/tasks are exercised by hand, not by the suite.
+      #
+      # `cmd` on purpose: Mix refuses to run a task twice in one invocation, so
+      # two plain `crap` entries would silently check only the first path.
       complexity: [
-        "crap --path lib/confluence_phx_mirror --max-score 30",
-        "crap --path lib/confluence_phx_mirror_web --max-score 30"
+        "cmd mix crap --path lib/confluence_phx_mirror --max-score 30",
+        "cmd mix crap --path lib/confluence_phx_mirror_web --max-score 30"
       ],
       # What CI runs: cheapest signal first.
       precommit: ["lint", "cover", "complexity"]
