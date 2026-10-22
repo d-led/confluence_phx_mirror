@@ -22,17 +22,39 @@ defmodule ConfluencePhxMirror.Mirror.Search.Filters do
     clauses =
       []
       |> text(params["q"])
-      |> equality("space", params["space"])
+      |> spaces(params)
       |> values("label", params["labels"] || params["label"])
       |> types(params["types"] || params["type"])
       |> equality("creator", params["creator"])
       |> number("ancestor", params["ancestor"])
-      |> modified_after(params["updated"] || params["updated_after"])
+      |> modified(params)
 
     case clauses do
       [] -> :empty
       _ -> {:ok, Enum.join(clauses, " AND "), terms(params["q"])}
     end
+  end
+
+  @doc """
+  The reader's words as one query: the four text boxes of advanced search say
+  *all of these*, *this phrase*, *any of these* and *none of these*, which is
+  exactly the query language the text engine reads.
+
+      iex> compose_text(%{"q" => "rate limit", "phrase" => "token bucket", "none" => "draft"})
+      "rate limit \\"token bucket\\" -draft"
+  """
+  @spec compose_text(params()) :: String.t()
+  def compose_text(params) do
+    params = if is_map(params), do: normalise(params), else: %{}
+
+    [
+      words(params["q"]),
+      phrase(params["phrase"]),
+      any_of(params["any"]),
+      none_of(params["none"])
+    ]
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join(" ")
   end
 
   @doc "Words to highlight in results, stripped of query punctuation."
@@ -52,7 +74,43 @@ defmodule ConfluencePhxMirror.Mirror.Search.Filters do
   end
 
   @doc "Field filters that participate in structured search."
-  def field_keys, do: ~w(space labels label types type creator ancestor updated updated_after)
+  def field_keys,
+    do:
+      ~w(space spaces labels label types type creator ancestor updated updated_after from to title)
+
+  defp words(value), do: value |> to_string() |> String.replace("\"", " ") |> squash()
+
+  defp phrase(value) do
+    case squash(to_string(value)) do
+      "" -> ""
+      words -> ~s("#{words}")
+    end
+  end
+
+  defp any_of(value) do
+    case value |> to_string() |> tokenise() do
+      [] -> ""
+      words -> "(" <> Enum.join(words, " OR ") <> ")"
+    end
+  end
+
+  defp none_of(value) do
+    value
+    |> to_string()
+    |> tokenise()
+    |> Enum.map_join(" ", &("-" <> &1))
+  end
+
+  # A phrase or a list of alternatives may contain its own punctuation; only
+  # the words matter here.
+  defp tokenise(value) do
+    value
+    |> String.replace(~r/["()]/, " ")
+    |> squash()
+    |> String.split(" ", trim: true)
+  end
+
+  defp squash(value), do: value |> String.split(~r/\s+/u, trim: true) |> Enum.join(" ")
 
   defp trim(nil), do: nil
   defp trim(value) when is_binary(value), do: String.trim(value)
@@ -65,6 +123,18 @@ defmodule ConfluencePhxMirror.Mirror.Search.Filters do
   defp equality(clauses, _field, value) when value in [nil, ""], do: clauses
 
   defp equality(clauses, field, value), do: clauses ++ [~s(#{field} = #{cql_string(value)})]
+
+  # Choosing several spaces widens the search ("any of these"), unlike labels,
+  # which narrow it.
+  defp spaces(clauses, params) do
+    keys = params |> Map.get("spaces", "") |> split()
+
+    case keys do
+      [] -> equality(clauses, "space", params["space"])
+      [key] -> equality(clauses, "space", key)
+      keys -> clauses ++ ["(" <> Enum.map_join(keys, " OR ", &"space = #{cql_string(&1)}") <> ")"]
+    end
+  end
 
   # Several values of one field narrow the result set ("all of these labels").
   defp values(clauses, field, value) do
@@ -103,13 +173,50 @@ defmodule ConfluencePhxMirror.Mirror.Search.Filters do
     end
   end
 
-  # "7d", "30d", "90d", "365d", "any" or an ISO date.
+  # "7d", "30d", "90d", "365d", "any", an ISO date, or an explicit range.
+  defp modified(clauses, params) do
+    clauses
+    |> modified_after(params["updated"] || params["updated_after"])
+    |> modified_between(params)
+  end
+
   defp modified_after(clauses, value) when value in [nil, "", "any"], do: clauses
 
   defp modified_after(clauses, value) do
     case cutoff(value) do
       nil -> clauses
       date -> clauses ++ [~s(lastmodified > "#{date}")]
+    end
+  end
+
+  defp modified_between(clauses, params) do
+    clauses
+    |> changed_after(params["from"])
+    |> changed_before(params["to"])
+  end
+
+  defp changed_after(clauses, value) when value in [nil, ""], do: clauses
+
+  defp changed_after(clauses, value) do
+    case iso(value) do
+      nil -> clauses
+      date -> clauses ++ [~s(lastmodified > "#{date}")]
+    end
+  end
+
+  defp changed_before(clauses, value) when value in [nil, ""], do: clauses
+
+  defp changed_before(clauses, value) do
+    case iso(value) do
+      nil -> clauses
+      date -> clauses ++ [~s(lastmodified < "#{date}")]
+    end
+  end
+
+  defp iso(value) do
+    case Date.from_iso8601(value) do
+      {:ok, date} -> Date.to_iso8601(date)
+      _ -> nil
     end
   end
 

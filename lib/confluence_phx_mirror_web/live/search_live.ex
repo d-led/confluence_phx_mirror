@@ -1,13 +1,21 @@
 defmodule ConfluencePhxMirrorWeb.SearchLive do
   @moduledoc """
-  Google-like search: one plain-text box with instant debounced results.
+  Google-like search, with an advanced panel for the questions a plain box
+  cannot express.
 
-  Filters stay out of the way as pills, the way Confluence does it: the space
-  and the time window are single-choice pill menus, content types are toggle
-  pills, and labels are free-form pills you type and remove. Every control is
-  a real button with a 40px tap target, so the row works on touch as well as
-  with a mouse. The raw CQL is never exposed; `Mirror.Search.Filters` turns the
-  pills into the mirror's own query.
+  The quick path is the pill bar: space, content type, time window and labels,
+  the way Confluence does it. Behind "Advanced" sits the widget-assisted panel:
+
+    * the four text boxes Confluence offers — all of these words, this exact
+      phrase, any of these words, none of these words — which are composed into
+      the one query the text engine reads;
+    * several spaces at once, a contributor picked from the people the mirror
+      has seen, a last-modified date range and an explicit sort.
+
+  Every control is a real button or input with a 40px tap target, so the row
+  works on touch as well as with a mouse. The raw CQL is never exposed;
+  `Mirror.Search.Filters` turns the widgets into the mirror's own query, and the
+  whole state of a search lives in the URL so it can be shared.
   """
 
   use ConfluencePhxMirrorWeb, :live_view
@@ -22,6 +30,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
   @debounce 220
   @type_options [{"page", "Pages"}, {"blogpost", "Blog posts"}]
+  @sort_options [{"", "Best match"}, {"newest", "Newest first"}, {"oldest", "Oldest first"}]
   @window_options [
     {"", "Any time"},
     {"7d", "Past 7 days"},
@@ -38,7 +47,16 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     {:ok,
      assign(socket,
        q: "",
+       phrase: "",
+       any: "",
+       none: "",
        space: "",
+       spaces_filter: "",
+       creator: "",
+       from: "",
+       to: "",
+       sort: "",
+       advanced?: false,
        labels: "",
        types: "",
        updated: "",
@@ -50,10 +68,12 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
        elapsed_ms: nil,
        chips: [],
        spaces: spaces,
+       authors: Mirror.authors(),
        label_catalog: labels,
        recent_pages: Mirror.recent_pages(6),
        type_options: @type_options,
        window_options: @window_options,
+       sort_options: @sort_options,
        form: to_form(empty_params(), as: :search),
        debounce: @debounce
      )}
@@ -65,7 +85,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     started = System.monotonic_time(:microsecond)
 
     {results, terms, error} =
-      case Search.structured(filters, limit: page_size()) do
+      case Search.structured(filters, limit: page_size(), sort: sort_of(filters["sort"])) do
         {:ok, results, terms} -> {results, terms, nil}
         {:error, message} -> {[], [], message}
       end
@@ -75,7 +95,16 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     {:noreply,
      assign(socket,
        q: filters["q"],
+       phrase: filters["phrase"],
+       any: filters["any"],
+       none: filters["none"],
        space: filters["space"],
+       spaces_filter: filters["spaces"],
+       creator: filters["creator"],
+       from: filters["from"],
+       to: filters["to"],
+       sort: filters["sort"],
+       advanced?: advanced?(filters),
        labels: filters["labels"],
        types: filters["types"],
        updated: filters["updated"],
@@ -97,6 +126,34 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
   def handle_event("clear", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/search")}
+  end
+
+  # The advanced panel submits every widget at once; a blank control simply
+  # stops filtering, so the URL always describes what is on screen.
+  def handle_event("advanced", %{"search" => params}, socket) do
+    filters =
+      current_filters(socket)
+      |> Map.merge(%{
+        "q" => clean(params["q"]),
+        "phrase" => clean(params["phrase"]),
+        "any" => clean(params["any"]),
+        "none" => clean(params["none"]),
+        "spaces" => params |> Map.get("spaces", []) |> List.wrap() |> Enum.join(","),
+        "creator" => clean(params["creator"]),
+        "from" => clean(params["from"]),
+        "to" => clean(params["to"]),
+        "sort" => clean(params["sort"])
+      })
+
+    {:noreply, patch(socket, filters)}
+  end
+
+  def handle_event("toggle_advanced", _params, socket) do
+    {:noreply, assign(socket, :advanced?, not socket.assigns.advanced?)}
+  end
+
+  def handle_event("set_sort", %{"sort" => value}, socket) do
+    {:noreply, patch(socket, Map.put(current_filters(socket), "sort", clean(value)))}
   end
 
   def handle_event("set_space", %{"value" => value}, socket) do
@@ -144,13 +201,35 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   end
 
   defp empty_params do
-    %{"q" => "", "space" => "", "labels" => "", "types" => "", "updated" => ""}
+    %{
+      "q" => "",
+      "phrase" => "",
+      "any" => "",
+      "none" => "",
+      "space" => "",
+      "spaces" => "",
+      "creator" => "",
+      "from" => "",
+      "to" => "",
+      "sort" => "",
+      "labels" => "",
+      "types" => "",
+      "updated" => ""
+    }
   end
 
   defp current_filters(socket) do
     %{
       "q" => socket.assigns.q,
+      "phrase" => socket.assigns.phrase,
+      "any" => socket.assigns.any,
+      "none" => socket.assigns.none,
       "space" => socket.assigns.space,
+      "spaces" => socket.assigns.spaces_filter,
+      "creator" => socket.assigns.creator,
+      "from" => socket.assigns.from,
+      "to" => socket.assigns.to,
+      "sort" => socket.assigns.sort,
       "labels" => socket.assigns.labels,
       "types" => socket.assigns.types,
       "updated" => socket.assigns.updated
@@ -160,12 +239,30 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   defp take_filters(params) do
     %{
       "q" => clean(params["q"]),
+      "phrase" => clean(params["phrase"]),
+      "any" => clean(params["any"]),
+      "none" => clean(params["none"]),
       "space" => clean(params["space"]),
+      "spaces" => (params["spaces"] || "") |> space_values() |> Enum.join(","),
+      "creator" => clean(params["creator"]),
+      "from" => clean(params["from"]),
+      "to" => clean(params["to"]),
+      "sort" => clean(params["sort"]),
       "labels" => (params["labels"] || params["label"]) |> label_values() |> Enum.join(","),
       "types" => (params["types"] || params["type"]) |> label_values() |> Enum.join(","),
       "updated" => clean(params["updated"])
     }
   end
+
+  # The advanced panel is open whenever something in it is filtering, so a
+  # shared link opens with its controls visible.
+  defp advanced?(filters) do
+    Enum.any?(~w(phrase any none spaces creator from to sort), &(filters[&1] != ""))
+  end
+
+  defp sort_of("newest"), do: :newest
+  defp sort_of("oldest"), do: :oldest
+  defp sort_of(_sort), do: :relevance
 
   defp clean(nil), do: ""
   defp clean(value), do: value |> to_string() |> String.trim()
@@ -187,14 +284,22 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   defp chips(filters) do
     base = [
       {"q", filters["q"]},
+      {"phrase", filters["phrase"]},
+      {"any", filters["any"]},
+      {"none", filters["none"]},
       {"space", filters["space"]},
+      {"spaces", filters["spaces"]},
+      {"creator", filters["creator"]},
+      {"from", filters["from"]},
+      {"to", filters["to"]},
+      {"sort", filters["sort"]},
       {"updated", filters["updated"]}
     ]
 
     types = Enum.map(label_values(filters["types"]), &{"types", &1})
 
     (base ++ types)
-    |> Enum.reject(fn {_key, value} -> value == "" end)
+    |> Enum.reject(fn {_key, value} -> value in [nil, "", "relevance"] end)
     |> Enum.map(fn {key, value} ->
       %{
         key: key,
@@ -212,6 +317,15 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   defp remove(filters, key, _value), do: Map.put(filters, key, "")
 
   defp chip_label("q", value), do: ~s(“#{value}”)
+  defp chip_label("phrase", value), do: ~s(Phrase: “#{value}”)
+  defp chip_label("any", value), do: "Any of: #{value}"
+  defp chip_label("none", value), do: "Without: #{value}"
+  defp chip_label("spaces", value), do: "Spaces: #{String.replace(value, ",", ", ")}"
+  defp chip_label("creator", value), do: "By: #{value}"
+  defp chip_label("from", value), do: "Modified after #{value}"
+  defp chip_label("to", value), do: "Modified before #{value}"
+  defp chip_label("sort", "newest"), do: "Sort: newest first"
+  defp chip_label("sort", "oldest"), do: "Sort: oldest first"
   defp chip_label("space", value), do: "Space: #{value}"
   defp chip_label("types", "page"), do: "Type: pages"
   defp chip_label("types", "blogpost"), do: "Type: blog posts"
@@ -228,6 +342,16 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     |> to_string()
     |> String.split(",", trim: true)
     |> Enum.map(&normalise_label/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
+
+  # Space keys are matched as Confluence spells them, so they are only trimmed.
+  defp space_values(value) do
+    value
+    |> List.wrap()
+    |> Enum.flat_map(&String.split(to_string(&1), ",", trim: true))
+    |> Enum.map(&String.trim/1)
     |> Enum.reject(&(&1 == ""))
     |> Enum.uniq()
   end
@@ -317,6 +441,53 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           labels={@labels}
           label_query={@label_query}
           label_catalog={@label_catalog}
+        />
+
+        <div class="mt-2 flex items-center justify-between gap-2">
+          <button
+            id="advanced-toggle"
+            type="button"
+            phx-click="toggle_advanced"
+            aria-expanded={@advanced?}
+            class={[
+              "inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition",
+              @advanced? && "bg-primary/10 text-primary",
+              !@advanced? && "text-base-content/60 hover:bg-base-200/60 hover:text-base-content"
+            ]}
+          >
+            <.icon name="hero-adjustments-horizontal" class="size-4" />
+            {if @advanced?, do: "Hide advanced search", else: "Advanced search"}
+          </button>
+
+          <label class="flex items-center gap-1.5 text-[11px] text-base-content/50">
+            <span>Sort</span>
+            <select
+              id="sort-filter"
+              class="select select-xs rounded-full border-base-300 bg-base-100"
+              phx-change="set_sort"
+              name="sort"
+            >
+              <option :for={{value, label} <- @sort_options} value={value} selected={value == @sort}>
+                {label}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <.advanced_panel
+          :if={@advanced?}
+          q={@q}
+          phrase={@phrase}
+          any={@any}
+          none={@none}
+          spaces_filter={@spaces_filter}
+          spaces={@spaces}
+          creator={@creator}
+          authors={@authors}
+          from={@from}
+          to={@to}
+          updated={@updated}
+          window_options={@window_options}
         />
 
         <div class="mt-3 flex flex-wrap items-center gap-1.5">
@@ -529,6 +700,180 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
         </form>
       </div>
     </div>
+    """
+  end
+
+  attr :q, :string, required: true
+  attr :phrase, :string, required: true
+  attr :any, :string, required: true
+  attr :none, :string, required: true
+  attr :spaces_filter, :string, required: true
+  attr :spaces, :list, required: true
+  attr :creator, :string, required: true
+  attr :authors, :list, required: true
+  attr :from, :string, required: true
+  attr :to, :string, required: true
+  attr :updated, :string, required: true
+  attr :window_options, :list, required: true
+
+  # The widget-assisted panel. It is one form so any change re-runs the search
+  # with everything the reader has set, and every control is a plain input whose
+  # value comes back from the URL.
+  defp advanced_panel(assigns) do
+    ~H"""
+    <form
+      id="advanced-search"
+      phx-change="advanced"
+      phx-submit="advanced"
+      class="mt-3 rounded-xl border border-base-300/80 bg-base-200/30 p-4"
+    >
+      <div class="grid gap-3 sm:grid-cols-2">
+        <.advanced_field
+          name="search[q]"
+          label="All of these words"
+          value={@q}
+          placeholder="rate limit"
+        />
+        <.advanced_field
+          name="search[phrase]"
+          label="This exact phrase"
+          value={@phrase}
+          placeholder="token bucket"
+        />
+        <.advanced_field
+          name="search[any]"
+          label="Any of these words"
+          value={@any}
+          placeholder="runbook incident"
+        />
+        <.advanced_field
+          name="search[none]"
+          label="None of these words"
+          value={@none}
+          placeholder="draft obsolete"
+        />
+      </div>
+
+      <div class="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <p class="mb-1 text-[11px] font-medium text-base-content/60">Spaces</p>
+          <div
+            id="advanced-spaces"
+            class="max-h-40 overflow-y-auto rounded-lg border border-base-300 bg-base-100 p-1.5"
+          >
+            <label
+              :for={space <- @spaces}
+              class="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-base-200/60"
+            >
+              <input
+                type="checkbox"
+                name="search[spaces][]"
+                value={space.key}
+                checked={space.key in space_values(@spaces_filter)}
+                class="checkbox checkbox-xs checkbox-primary"
+              />
+              <span class="min-w-0 flex-1 truncate">{space.name}</span>
+              <span class="text-[10px] text-base-content/40">{space.key}</span>
+            </label>
+            <p :if={@spaces == []} class="px-1.5 py-1 text-xs text-base-content/50">
+              Nothing mirrored yet.
+            </p>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <label
+              class="mb-1 block text-[11px] font-medium text-base-content/60"
+              for="advanced-creator"
+            >
+              Contributor
+            </label>
+            <select
+              id="advanced-creator"
+              name="search[creator]"
+              class="select select-sm w-full rounded-lg border-base-300 bg-base-100"
+            >
+              <option value="">Anyone</option>
+              <option :for={author <- @authors} value={author.name} selected={author.name == @creator}>
+                {author.name} ({author.pages})
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              class="mb-1 block text-[11px] font-medium text-base-content/60"
+              for="advanced-updated"
+            >
+              Last modified
+            </label>
+            <div class="flex flex-wrap items-center gap-2">
+              <select
+                id="advanced-updated"
+                class="select select-sm rounded-lg border-base-300 bg-base-100"
+                phx-change="set_updated"
+                name="updated"
+              >
+                <option
+                  :for={{value, label} <- @window_options}
+                  value={value}
+                  selected={value == @updated}
+                >
+                  {label}
+                </option>
+              </select>
+              <input
+                type="date"
+                name="search[from]"
+                value={@from}
+                aria-label="Modified after"
+                class="input input-sm w-36 rounded-lg border-base-300 bg-base-100"
+              />
+              <span class="text-xs text-base-content/40">to</span>
+              <input
+                type="date"
+                name="search[to]"
+                value={@to}
+                aria-label="Modified before"
+                class="input input-sm w-36 rounded-lg border-base-300 bg-base-100"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-base-content/45">
+        <p>
+          Words in <span class="font-medium">Any</span>
+          widen the search; <span class="font-medium">None</span>
+          excludes. Several spaces are searched together.
+        </p>
+        <a href={~p"/search"} class="link link-hover text-primary">Reset everything</a>
+      </div>
+    </form>
+    """
+  end
+
+  attr :name, :string, required: true
+  attr :label, :string, required: true
+  attr :value, :string, required: true
+  attr :placeholder, :string, default: nil
+
+  defp advanced_field(assigns) do
+    ~H"""
+    <label class="block">
+      <span class="mb-1 block text-[11px] font-medium text-base-content/60">{@label}</span>
+      <input
+        type="text"
+        name={@name}
+        value={@value}
+        placeholder={@placeholder}
+        autocomplete="off"
+        phx-debounce="400"
+        class="input input-sm w-full rounded-lg border-base-300 bg-base-100"
+      />
+    </label>
     """
   end
 end

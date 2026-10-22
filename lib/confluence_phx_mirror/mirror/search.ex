@@ -40,16 +40,19 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   @doc """
   Structured search used by the UI and the v1 API.
 
-  `params` may contain `q`, `space`, `label`, `type`, `creator`, `ancestor` and
-  `updated` (`7d`, `30d`, `90d`, `365d` or an ISO date). Returns results and the
-  terms to highlight.
+  `params` may contain the text boxes advanced search offers (`q`, `phrase`,
+  `any`, `none`), the field filters (`space`, `spaces`, `label`, `type`,
+  `creator`, `ancestor`, `updated`, `from`, `to`).
+
+  Options: `:sort` (`:relevance` by default, `:newest` or `:oldest`),
+  `:limit` and `:start`.
   """
   @spec structured(map(), keyword()) ::
           {:ok, [result()], [String.t()]} | {:error, String.t()}
   def structured(params, opts \\ []) do
     params = Filters.normalise(params)
-    q = params["q"] || ""
-    field_params = Map.drop(params, ["q"])
+    q = Filters.compose_text(params)
+    field_params = Map.drop(params, ["q", "phrase", "any", "none"])
     fields? = Enum.any?(Filters.field_keys(), &(field_params[&1] not in [nil, ""]))
 
     cond do
@@ -57,14 +60,14 @@ defmodule ConfluencePhxMirror.Mirror.Search do
         {:ok, [], []}
 
       q != "" and not fields? ->
-        {:ok, results} = text(q, opts)
-        {:ok, results, text_terms(q)}
+        {:ok, results} = text(q, scan_opts(opts))
+        {:ok, page(results, opts), text_terms(q)}
 
       q == "" ->
         case Filters.to_cql(field_params) do
           {:ok, cql, _terms} ->
-            case search(cql, opts) do
-              {:ok, results} -> {:ok, results, []}
+            case search(cql, scan_opts(opts)) do
+              {:ok, results} -> {:ok, page(results, opts), []}
               {:error, message} -> {:error, message}
             end
 
@@ -81,18 +84,41 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
         {:ok, text_results} = text(q, limit: max_result_scan())
 
-        limit = min(Keyword.get(opts, :limit, default_limit()), max_limit())
-        offset = max(Keyword.get(opts, :start, 0), 0)
-
-        results =
-          text_results
-          |> Enum.filter(&MapSet.member?(allowed, &1.page.id))
-          |> Enum.drop(offset)
-          |> Enum.take(limit)
-
-        {:ok, results, text_terms(q)}
+        results = Enum.filter(text_results, &MapSet.member?(allowed, &1.page.id))
+        {:ok, page(results, opts), text_terms(q)}
     end
   end
+
+  # Sorting by recency is a different question from "what matches best", so the
+  # ranking is replaced wholesale rather than used as a tie-break — and the scan
+  # has to be wide enough for the page to be taken after sorting.
+  defp scan_opts(opts) do
+    case sort(opts) do
+      :relevance -> opts
+      _ -> Keyword.put(opts, :limit, max_result_scan())
+    end
+  end
+
+  defp page(results, opts) do
+    limit = min(Keyword.get(opts, :limit, default_limit()), max_limit())
+    offset = max(Keyword.get(opts, :start, 0), 0)
+
+    results
+    |> sorted(sort(opts))
+    |> Enum.drop(offset)
+    |> Enum.take(limit)
+  end
+
+  defp sort(opts), do: Keyword.get(opts, :sort, :relevance)
+
+  defp sorted(results, :relevance), do: results
+
+  defp sorted(results, :newest),
+    do: Enum.sort_by(results, &updated_at/1, {:desc, DateTime})
+
+  defp sorted(results, :oldest), do: Enum.sort_by(results, &updated_at/1, {:asc, DateTime})
+
+  defp updated_at(result), do: result.page.external_updated_at || ~U[1970-01-01 00:00:00Z]
 
   defp text_terms(q) do
     case TextQuery.parse(q) do
