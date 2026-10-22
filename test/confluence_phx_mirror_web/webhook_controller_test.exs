@@ -134,4 +134,46 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
       refute_enqueued(worker: PageWorker)
     end
   end
+
+  describe "metering the intake" do
+    setup do
+      previous = Application.get_env(:confluence_phx_mirror, :webhook_rate_limit)
+
+      Application.put_env(:confluence_phx_mirror, :webhook_rate_limit,
+        limit: 2,
+        period_ms: 60_000
+      )
+
+      on_exit(fn ->
+        Application.put_env(:confluence_phx_mirror, :webhook_rate_limit, previous)
+      end)
+
+      :ok
+    end
+
+    test "unsigned deliveries are capped, and the ones accepted stay auditable", %{conn: _conn} do
+      body = JSON.encode!(payload("page_updated", 1002))
+      # Its own address, so the case does not share a bucket with the other
+      # deliveries this file makes.
+      caller = unique_address()
+
+      assert post_unsigned(caller, body).status == 401
+      assert post_unsigned(caller, body).status == 401
+      assert post_unsigned(caller, body).status == 429
+
+      assert Repo.aggregate(Delivery, :count) == 2
+    end
+
+    # Loopback, but an address no other case in this file uses.
+    defp unique_address do
+      {127, 0, 0, 20 + rem(System.unique_integer([:positive]), 200)}
+    end
+
+    defp post_unsigned(address, body) do
+      build_conn()
+      |> Map.put(:remote_ip, address)
+      |> put_req_header("content-type", "application/json")
+      |> post(~p"/webhooks/confluence", body)
+    end
+  end
 end
