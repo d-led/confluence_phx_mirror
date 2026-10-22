@@ -4,6 +4,7 @@ defmodule ConfluencePhxMirrorWeb.SubscriptionControllerTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Notifications
 
@@ -57,5 +58,43 @@ defmodule ConfluencePhxMirrorWeb.SubscriptionControllerTest do
     conn = delete(conn, ~p"/subscriptions", %{target_type: "nope", target_id: 1})
 
     assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Invalid subscription."
+  end
+
+  describe "watching something the reader may not open" do
+    setup do
+      # The suite assumes an administrator; these cases need a real reader.
+      previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
+      Application.put_env(:confluence_phx_mirror, :auto_admin, false)
+      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
+      :ok
+    end
+
+    test "is refused without saying whether the page exists", %{conn: conn} do
+      {:ok, page} = Mirror.find_page(Demo.restricted_page())
+      reader = user_fixture()
+
+      conn =
+        conn
+        |> init_test_session(%{user_id: reader.id})
+        |> post(~p"/subscriptions", %{target_type: "page", target_id: page.id})
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "Could not create the subscription."
+
+      refute Notifications.subscribed?(reader, "page", page.id)
+    end
+
+    test "is allowed for a page the reader may open", %{conn: conn} do
+      {:ok, page} = Mirror.find_page(Demo.open_page())
+      reader = user_fixture()
+
+      conn =
+        conn
+        |> init_test_session(%{user_id: reader.id})
+        |> post(~p"/subscriptions", %{target_type: "page", target_id: page.id})
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "You will get an e-mail"
+      assert Notifications.subscribed?(reader, "page", page.id)
+    end
   end
 end
