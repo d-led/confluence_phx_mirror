@@ -26,6 +26,7 @@ import {hooks as colocatedHooks} from "phoenix-colocated/confluence_phx_mirror"
 import topbar from "../vendor/topbar"
 import initPagePresence from "./page_presence"
 import {highlightCode} from "./code_highlight"
+import "./sidebar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
