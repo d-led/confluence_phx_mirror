@@ -3,6 +3,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
 
   use ConfluencePhxMirrorWeb, :controller
 
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirrorWeb.Api.V1.Presenter
@@ -138,7 +139,8 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
 
   def by_path(conn, params) do
     with {id, ""} <- Integer.parse(to_string(params["id"])),
-         {:ok, page} <- Mirror.find_page_by_path(params["space"] || params["spaceKey"], id) do
+         {:ok, page} <- Mirror.find_page_by_path(params["space"] || params["spaceKey"], id),
+         true <- readable?(conn, page) do
       json(conn, Presenter.page(page))
     else
       _ -> error(conn, 404, "Page is not mirrored.")
@@ -156,12 +158,17 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
 
   defp with_page(conn, id, fun) do
     with {id, ""} <- Integer.parse(to_string(id)),
-         {:ok, page} <- Mirror.find_page(id) do
+         {:ok, page} <- Mirror.find_page(id),
+         true <- readable?(conn, page) do
       fun.(page)
     else
       _ -> error(conn, 404, "Page #{id} is not mirrored.")
     end
   end
+
+  # The API answers as the caller: a page the reader may not open is not
+  # mirrored as far as that reader is concerned, exactly like the HTML view.
+  defp readable?(conn, page), do: Authorization.can_read_page?(conn.assigns.current_scope, page)
 
   defp pagination(params) do
     start = parse_int(params["start"], 0)
