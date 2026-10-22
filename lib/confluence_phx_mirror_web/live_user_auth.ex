@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Sites
 
   def on_mount(:default, _params, session, socket) do
     {:cont, attach_site_context(assign_scope(socket, session))}
@@ -50,12 +51,12 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
   end
 
   defp attach_site_context(socket) do
-    mirror = Application.get_env(:confluence_phx_mirror, :mirror, [])
-
     assign(socket,
       spaces: Authorization.readable_spaces(socket.assigns.current_scope),
       last_sync_run: Mirror.last_successful_sync_run(),
-      mirror_name: Keyword.get(mirror, :name, "Confluence Mirror"),
+      mirror_name: Sites.name(),
+      mirror_url: Sites.url(),
+      mirror_host: Sites.host(),
       mirror_source: ConfluencePhxMirror.Confluence.Source.source()
     )
   end

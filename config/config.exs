@@ -122,7 +122,19 @@ config :tailwind,
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id, :reason, :job_id, :user]
+  metadata: [
+    :request_id,
+    :reason,
+    :job_id,
+    :user,
+    :sync_run_id,
+    :mode,
+    :source,
+    :status,
+    :pages,
+    :attachments,
+    :errors
+  ]
 
 # Use Elixir's built-in JSON codec (Elixir 1.18+); no Jason dependency.
 config :phoenix, :json_library, JSON

@@ -10,15 +10,17 @@ defmodule ConfluencePhxMirrorWeb.Plugs.SiteContext do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Sites
 
   def init(opts), do: opts
 
   def call(conn, _opts) do
-    mirror = Application.get_env(:confluence_phx_mirror, :mirror, [])
     scope = Scope.for_user(conn.assigns[:current_user])
 
     conn
-    |> assign(:mirror_name, Keyword.get(mirror, :name, "Confluence Mirror"))
+    |> assign(:mirror_name, Sites.name())
+    |> assign(:mirror_url, Sites.url())
+    |> assign(:mirror_host, Sites.host())
     |> assign(:spaces, Authorization.readable_spaces(scope))
     |> assign(:last_sync_run, Mirror.last_successful_sync_run())
     |> assign(:mirror_source, ConfluencePhxMirror.Confluence.Source.source())

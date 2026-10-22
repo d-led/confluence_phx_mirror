@@ -21,6 +21,8 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   attr :spaces, :list, default: []
   attr :last_sync_run, :any, default: nil
   attr :mirror_name, :string, default: "Confluence Mirror"
+  attr :mirror_url, :string, default: nil
+  attr :mirror_host, :string, default: nil
   attr :mirror_source, :any, default: nil
   attr :space, :any, default: nil
   attr :tree, :list, default: []
@@ -79,11 +81,13 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             class="group flex items-center gap-2.5 rounded-lg px-1 py-1 transition hover:bg-base-200/70"
           >
             <span class="grid size-8 place-items-center rounded-lg bg-primary font-bold text-primary-content shadow-sm transition group-hover:scale-105">
-              C
+              {brand_initial(@mirror_name)}
             </span>
             <span class="hidden flex-col leading-tight sm:flex">
               <span class="text-sm font-semibold">{@mirror_name}</span>
-              <span class="text-[11px] uppercase tracking-wide text-base-content/50">read-only mirror</span>
+              <span class="text-[11px] uppercase tracking-wide text-base-content/50">
+                mirror of {@mirror_host || "the demo snapshot"}
+              </span>
             </span>
           </.link>
 
@@ -252,7 +256,21 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span class="font-medium text-base-content/80">{@mirror_name}</span>
             <span aria-hidden="true">·</span>
-            <span>Source: {source_label(@mirror_source)}</span>
+            <span :if={@mirror_url}>
+              Original:
+              <a
+                href={@mirror_url}
+                class="font-medium text-primary hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {@mirror_host}<.icon
+                  name="hero-arrow-top-right-on-square"
+                  class="ml-0.5 inline size-3"
+                />
+              </a>
+            </span>
+            <span :if={is_nil(@mirror_url)}>Source: {source_label(@mirror_source)}</span>
             <span aria-hidden="true">·</span>
             <span :if={@last_sync_run}>
               Last sync {Time.ago(@last_sync_run.finished_at || @last_sync_run.started_at)}
@@ -282,6 +300,12 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
       :demo -> "bundled demo snapshot (not a Confluence site)"
       :live -> "Confluence REST API"
     end
+  end
+
+  defp brand_initial(name) do
+    name
+    |> String.first()
+    |> String.upcase()
   end
 
   attr :flash, :map, required: true

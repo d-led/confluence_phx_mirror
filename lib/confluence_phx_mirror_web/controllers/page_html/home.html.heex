@@ -4,26 +4,37 @@
   spaces={@spaces |> Enum.map(&elem(&1, 0))}
   last_sync_run={@last_sync_run}
   mirror_name={@mirror_name}
+  mirror_url={@mirror_url}
+  mirror_host={@mirror_host}
   mirror_source={@mirror_source}
   page_title={@page_title}
   sidebar?={false}
 >
-  <section class="overflow-hidden rounded-2xl border border-base-300/70 bg-gradient-to-br from-primary/10 via-base-100 to-secondary/10 p-6 sm:p-10">
-    <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary">
-      {@mirror_name}
-    </p>
-    <h1 class="mt-2 max-w-2xl text-balance text-3xl font-semibold leading-tight sm:text-4xl">
-      A fast, read-only mirror of Confluence — searchable, linkable, always available.
-    </h1>
-    <p class="mt-3 max-w-2xl text-sm leading-relaxed text-base-content/65">
-      Every page keeps Confluence's own macro rendering, cross-links are rewritten
-      to stay inside the mirror, attachments are served locally, and search runs on
-      Postgres full-text indexes across titles, bodies, labels, authors and
-      attachment names.
-    </p>
+  <section class="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-base-300/70 pb-4">
+    <div class="min-w-0">
+      <h1 class="text-2xl font-semibold tracking-tight">{@mirror_name}</h1>
+      <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/55">
+        <a
+          :if={@mirror_url}
+          href={@mirror_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+        >
+          <.icon name="hero-arrow-top-right-on-square" class="size-3.5" /> {@mirror_host}
+        </a>
+        <span class="text-base-content/40">·</span>
+        <span>
+          {@stats.spaces} spaces · {@stats.pages} pages · {@stats.attachments} attachments
+          · synced {if @last_sync_run,
+            do: Time.ago(@last_sync_run.finished_at || @last_sync_run.started_at),
+            else: "never"}
+        </span>
+      </p>
+    </div>
 
-    <form action={~p"/search"} method="get" class="mt-6 flex max-w-2xl flex-col gap-2 sm:flex-row">
-      <label class="input flex flex-1 items-center gap-2 rounded-lg border-base-300 bg-base-100">
+    <form action={~p"/search"} method="get" class="flex w-full max-w-md gap-2">
+      <label class="input input-sm flex flex-1 items-center gap-2 rounded-lg border-base-300 bg-base-200/50">
         <.icon name="hero-magnifying-glass" class="size-4 opacity-50" />
         <input
           type="search"
@@ -31,44 +42,10 @@
           aria-label="Search the mirror"
           class="grow bg-transparent outline-none placeholder:text-base-content/40"
           placeholder="Search pages, decisions, people…"
-          autofocus
         />
       </label>
-      <button type="submit" class="btn btn-primary">Search mirror</button>
+      <button type="submit" class="btn btn-primary btn-sm">Search</button>
     </form>
-
-    <div class="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-base-content/50">
-      <span>Examples:</span>
-      <a href="/search?q=architecture" class="badge badge-ghost badge-sm">architecture</a>
-      <a href="/search?q=rate+limit" class="badge badge-ghost badge-sm">rate limit</a>
-      <a href="/search?q=%22rate+limit%22+NOT+roadmap" class="badge badge-ghost badge-sm">
-        "rate limit" NOT roadmap
-      </a>
-      <a href="/search?type=blogpost" class="badge badge-ghost badge-sm">blog posts</a>
-    </div>
-  </section>
-
-  <section class="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-    <div class="rounded-xl border border-base-300/70 bg-base-100 p-4">
-      <p class="text-[11px] uppercase tracking-wider text-base-content/45">Spaces</p>
-      <p class="mt-1 text-2xl font-semibold tabular-nums">{@stats.spaces}</p>
-    </div>
-    <div class="rounded-xl border border-base-300/70 bg-base-100 p-4">
-      <p class="text-[11px] uppercase tracking-wider text-base-content/45">Pages</p>
-      <p class="mt-1 text-2xl font-semibold tabular-nums">{@stats.pages}</p>
-    </div>
-    <div class="rounded-xl border border-base-300/70 bg-base-100 p-4">
-      <p class="text-[11px] uppercase tracking-wider text-base-content/45">Attachments</p>
-      <p class="mt-1 text-2xl font-semibold tabular-nums">{@stats.attachments}</p>
-    </div>
-    <div class="rounded-xl border border-base-300/70 bg-base-100 p-4">
-      <p class="text-[11px] uppercase tracking-wider text-base-content/45">Last sync</p>
-      <p class="mt-1 truncate text-sm font-semibold">
-        {if @last_sync_run,
-          do: Time.ago(@last_sync_run.finished_at || @last_sync_run.started_at),
-          else: "never"}
-      </p>
-    </div>
   </section>
 
   <section class="mt-10">

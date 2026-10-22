@@ -41,6 +41,9 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   def kind, do: :live
 
   @impl true
+  def web_url, do: web_base()
+
+  @impl true
   def spaces(_opts) do
     with {:ok, results} <-
            paginate_json("/space", %{"limit" => 100, "expand" => "description.plain,homepage"}) do
@@ -590,20 +593,40 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   defp public_url(nil), do: nil
 
+  # Confluence's `_links.webui` are paths below the wiki root (`/spaces/ENG`),
+  # while Cloud serves that wiki under `/wiki`. A path that already carries the
+  # context path is left alone so it is never prefixed twice.
   defp public_url(path) when is_binary(path) do
-    base = (config()[:base_url] || "") |> String.trim_trailing("/")
-
     cond do
       String.starts_with?(path, ["http://", "https://"]) -> path
-      String.starts_with?(path, "/wiki") -> origin(base) <> path
-      base == "" -> path
-      true -> base <> path
+      origin() == "" -> path
+      String.starts_with?(path, context_path()) -> origin() <> path
+      true -> web_base() <> path
     end
   end
 
-  defp origin(url) do
-    uri = URI.parse(url)
-    %{uri | path: nil, query: nil, fragment: nil} |> URI.to_string() |> String.trim_trailing("/")
+  defp web_base, do: origin() <> context_path()
+
+  defp origin do
+    config()[:base_url]
+    |> to_string()
+    |> String.trim_trailing("/")
+    |> String.replace_suffix("/rest/api", "")
+    |> String.replace_suffix("/wiki", "")
+  end
+
+  defp context_path do
+    base =
+      config()[:base_url]
+      |> to_string()
+      |> String.trim_trailing("/")
+      |> String.replace_suffix("/rest/api", "")
+
+    cond do
+      String.ends_with?(base, "/wiki") -> "/wiki"
+      String.contains?(base, ".atlassian.net") -> "/wiki"
+      true -> ""
+    end
   end
 
   defp format_cql_time(%DateTime{} = time) do

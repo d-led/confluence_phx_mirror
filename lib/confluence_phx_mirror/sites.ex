@@ -24,7 +24,14 @@ defmodule ConfluencePhxMirror.Sites do
   @demo_key "demo"
   @max_key_length 40
 
-  @type t :: %{key: String.t(), base_url: String.t() | nil, source: module(), kind: :demo | :live}
+  @type t :: %{
+          key: String.t(),
+          name: String.t(),
+          url: String.t() | nil,
+          base_url: String.t() | nil,
+          source: module(),
+          kind: :demo | :live
+        }
 
   @doc "The site this instance is configured for."
   @spec current() :: t()
@@ -33,11 +40,59 @@ defmodule ConfluencePhxMirror.Sites do
 
     %{
       key: key(),
+      name: name_for(Source.kind(source), base_url(source)),
+      url: web_url(source),
       base_url: base_url(source),
       source: source,
       kind: Source.kind(source)
     }
   end
+
+  @doc """
+  The name the mirror goes by: the site's own, not the word "Confluence".
+
+  `https://dled.atlassian.net` is the mirror of `dled`, so a reader can tell
+  from the title bar whose wiki they are looking at. The bundled snapshot has no
+  site, so it keeps the neutral name.
+  """
+  @spec name() :: String.t()
+  def name, do: current().name
+
+  @doc """
+  The address of the original site, e.g. `https://dled.atlassian.net/wiki`.
+
+  `nil` for the bundled demo snapshot, which has no upstream.
+  """
+  @spec url() :: String.t() | nil
+  def url, do: current().url
+
+  @doc "The site's host, for labels: `dled.atlassian.net`."
+  @spec host() :: String.t() | nil
+  def host, do: host(base_url(Source.source()))
+
+  defp name_for(:demo, _base_url), do: "Confluence Mirror"
+
+  defp name_for(:live, base_url) do
+    case host(base_url) do
+      nil -> "Confluence Mirror"
+      host -> host |> String.split(".") |> hd()
+    end
+  end
+
+  defp web_url(source) do
+    if Code.ensure_loaded?(source) and function_exported?(source, :web_url, 0),
+      do: source.web_url(),
+      else: nil
+  end
+
+  defp host(base_url) when is_binary(base_url) do
+    case URI.parse(base_url) do
+      %URI{host: host} when is_binary(host) and host != "" -> host
+      _no_host -> nil
+    end
+  end
+
+  defp host(_base_url), do: nil
 
   @doc "The active site's key."
   @spec key() :: String.t()

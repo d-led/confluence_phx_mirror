@@ -82,7 +82,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
       assert page.labels == ["architecture"]
       assert page.body.storage == "<p>storage body</p>"
       assert page.body.export_view == "<p>export body</p>"
-      assert page.url == "#{@base_url}/spaces/ENG/pages/1002/Architecture+Overview"
+      assert page.url == "#{@base_url}/wiki/spaces/ENG/pages/1002/Architecture+Overview"
       assert page.created_at == ~U[2026-10-01 09:00:00.000Z]
       assert page.updated_at == ~U[2026-10-02 10:00:00.000Z]
 
@@ -243,7 +243,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
       assert space.key == "ENG"
       assert space.description == "How we build."
       assert space.homepage_id == 1000
-      assert space.url == "#{@base_url}/spaces/ENG"
+      assert space.url == "#{@base_url}/wiki/spaces/ENG"
     end
 
     test "reads the read restrictions of a page" do
@@ -388,6 +388,37 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
 
       attachment = %{download_url: "/wiki/download/attachments/1002/gone.svg"}
       assert {:error, {:http, 404}} = HttpSource.attachment_data(attachment, [])
+    end
+
+    test "follows the redirect Cloud puts in front of the media API" do
+      stub(fn
+        %Plug.Conn{request_path: "/wiki/download/attachments/1002/diagram.svg"} = conn ->
+          conn
+          |> Plug.Conn.put_resp_header(
+            "location",
+            "https://api.media.atlassian.com/file/abc/download"
+          )
+          |> Plug.Conn.resp(302, "")
+
+        %Plug.Conn{request_path: "/file/abc/download"} = conn ->
+          Plug.Conn.resp(conn, 200, "<svg/>")
+      end)
+
+      attachment = %{download_url: "/wiki/download/attachments/1002/diagram.svg"}
+      assert {:ok, "<svg/>"} = HttpSource.attachment_data(attachment, [])
+    end
+
+    test "refuses to follow a redirect off the allowed hosts" do
+      stub(fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header("location", "https://evil.example/steal")
+        |> Plug.Conn.resp(302, "")
+      end)
+
+      attachment = %{download_url: "/wiki/download/attachments/1002/diagram.svg"}
+
+      assert {:error, {:redirect_not_allowed, ["https://evil.example/steal"]}} =
+               HttpSource.attachment_data(attachment, [])
     end
   end
 end

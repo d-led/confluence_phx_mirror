@@ -76,6 +76,15 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   @callback name() :: String.t()
 
   @doc """
+  The address of the site's wiki root, when it has one.
+
+  This is the URL a reader opens to see the original site rather than its
+  mirror, so every screen that says where the content came from can link to it.
+  A bundled snapshot has no upstream and returns `nil`.
+  """
+  @callback web_url() :: String.t() | nil
+
+  @doc """
   Where the content really comes from.
 
   `:demo` is the bundled sample snapshot that ships with the mirror; `:live` is
@@ -147,7 +156,11 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   @callback group_members(group_name :: String.t(), keyword()) ::
               {:ok, [group_member()]} | {:error, term()}
 
-  @optional_callbacks changed_since: 2, restrictions: 2, space_permissions: 2, group_members: 2
+  @optional_callbacks changed_since: 2,
+                      restrictions: 2,
+                      space_permissions: 2,
+                      group_members: 2,
+                      web_url: 0
 
   @doc "The configured source module."
   def source do

@@ -21,6 +21,9 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
   def kind, do: :demo
 
   @impl true
+  def web_url, do: nil
+
+  @impl true
   def spaces(_opts), do: {:ok, DemoContent.spaces()}
 
   @impl true

@@ -11,11 +11,11 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
   test "GET / renders the mirror home with spaces and freshness", %{conn: conn} do
     html = conn |> get(~p"/") |> html_response(200)
 
-    assert html =~ "read-only mirror"
+    assert html =~ "mirror of the demo snapshot"
     assert html =~ "Engineering Handbook"
     assert html =~ "Product Hub"
-    assert html =~ "Search mirror"
-    assert html =~ "Last sync"
+    assert html =~ "Search the mirror"
+    assert html =~ "Freshness"
   end
 
   test "a deep page collapses its breadcrumb into an ellipsis dropdown", %{conn: conn} do
