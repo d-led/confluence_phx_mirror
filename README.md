@@ -6,7 +6,7 @@ LiveView 1.2, Ecto/Postgres and Elixir 1.20.
 It keeps Confluence's own `export_view` rendering (so macros look right),
 rewrites internal links so mirrored pages cross-link each other, serves
 attachments from a path-based blob store, indexes everything with Postgres
-full-text search behind a CQL subset, and keeps an audit trail of every sync,
+full-text search behind a CQL subset, and keeps an audit log of every sync,
 webhook and account change.
 
 ```
@@ -77,4 +77,14 @@ Uploads and write-back, page history and templates. The mirror is read-only and
 serves Confluence's rendering. The remaining edges — flat comments, space
 permissions on Cloud, unfiltered API search, S3 as an interface only — are in
 [known limitations](docs/design-notes.md#known-limitations).
+
+## License
+
+Mozilla Public License 2.0 — the full text is in [LICENSE](LICENSE), and
+`mix.exs` declares `MPL-2.0` to Hex and tooling.
+
+MPL is file-scoped copyleft: if you distribute a modified version of a file,
+that file has to stay under the MPL, while the rest of your system may be under
+other terms. Running the mirror as a service is not distribution. Contributions
+are accepted under the same licence.
 

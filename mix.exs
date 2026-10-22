@@ -10,8 +10,16 @@ defmodule ConfluencePhxMirror.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
+      package: package(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader]
+    ]
+  end
+
+  defp package do
+    [
+      licenses: ["MPL-2.0"],
+      description: "A read-only, searchable mirror of a Confluence site."
     ]
   end
 
