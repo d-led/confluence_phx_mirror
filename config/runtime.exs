@@ -322,7 +322,7 @@ if config_env() == :prod do
     # than failing; the queue knobs in config/config.exs decide when the pool
     # starts pushing back.
     timeout: String.to_integer(System.get_env("POOL_TIMEOUT_MS") || "15000"),
-    socket_options: maybe_ipv6,
+    socket_options: maybe_ipv6
 
   Logger.info("database pool",
     pool_size: pool_size,
