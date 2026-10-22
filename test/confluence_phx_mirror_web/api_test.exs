@@ -103,6 +103,19 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       assert body["stats"]["pages"] == 40
       assert body["lastSync"]["status"] == "succeeded"
     end
+
+    test "answers a page from its space and Confluence id", %{conn: conn} do
+      body = conn |> get(~p"/api/v1/page-by-path?space=ENG&id=1002") |> json_response(200)
+
+      assert body["title"] == "Architecture Overview"
+      assert body["space"]["key"] == "ENG"
+    end
+
+    test "says so when no page has that path", %{conn: conn} do
+      body = conn |> get(~p"/api/v1/page-by-path?space=ENG&id=999999") |> json_response(404)
+
+      assert body["message"] == "Page is not mirrored."
+    end
   end
 
   describe "Confluence-compatible routes" do

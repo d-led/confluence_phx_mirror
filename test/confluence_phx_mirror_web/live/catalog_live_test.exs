@@ -16,34 +16,34 @@ defmodule ConfluencePhxMirrorWeb.CatalogLiveTest do
 
   describe "the space directory" do
     test "lists the spaces and narrows as the reader types", %{conn: conn} do
-      space_fixture(%{key: "ENG", name: "Engineering Handbook"})
-      space_fixture(%{key: "PROD", name: "Product Hub"})
+      handbook = space_fixture(%{name: "Engineering Handbook"})
+      product = space_fixture(%{name: "Product Hub"})
 
       {:ok, view, _html} = live(conn, ~p"/spaces")
 
-      assert has_element?(view, "#catalog-results a[href='/spaces/ENG']")
-      assert has_element?(view, "#catalog-results a[href='/spaces/PROD']")
+      assert has_element?(view, "#catalog-results a[href='/spaces/#{handbook.key}']")
+      assert has_element?(view, "#catalog-results a[href='/spaces/#{product.key}']")
 
       filter(view, "engineering")
 
-      assert has_element?(view, "#catalog-results a[href='/spaces/ENG']")
-      refute has_element?(view, "#catalog-results a[href='/spaces/PROD']")
+      assert has_element?(view, "#catalog-results a[href='/spaces/#{handbook.key}']")
+      refute has_element?(view, "#catalog-results a[href='/spaces/#{product.key}']")
     end
 
     test "needs every word the reader types", %{conn: conn} do
-      space_fixture(%{key: "ENG", name: "Engineering Handbook"})
-      space_fixture(%{key: "PROD", name: "Product Hub"})
+      space_fixture(%{name: "Engineering Handbook"})
+      space_fixture(%{name: "Product Hub"})
 
       {:ok, view, _html} = live(conn, ~p"/spaces")
 
       filter(view, "engineering product")
 
-      refute has_element?(view, "#catalog-results a[href='/spaces/ENG']")
+      refute has_element?(view, "#catalog-results", "Engineering Handbook")
       assert has_element?(view, "#catalog-empty", "Nothing matches")
     end
 
     test "puts the filter in the URL, so a narrowed directory can be shared", %{conn: conn} do
-      space_fixture(%{key: "PROD", name: "Product Hub"})
+      space_fixture(%{name: "Product Hub"})
 
       {:ok, view, _html} = live(conn, ~p"/spaces")
 
@@ -53,16 +53,16 @@ defmodule ConfluencePhxMirrorWeb.CatalogLiveTest do
     end
 
     test "clears the filter again", %{conn: conn} do
-      space_fixture(%{key: "ENG", name: "Engineering Handbook"})
-      space_fixture(%{key: "PROD", name: "Product Hub"})
+      handbook = space_fixture(%{name: "Engineering Handbook"})
+      space_fixture(%{name: "Product Hub"})
 
       {:ok, view, _html} = live(conn, ~p"/spaces?q=prod")
 
-      refute has_element?(view, "#catalog-results a[href='/spaces/ENG']")
+      refute has_element?(view, "#catalog-results a[href='/spaces/#{handbook.key}']")
 
       view |> element("button[aria-label='Clear filter']") |> render_click()
 
-      assert has_element?(view, "#catalog-results a[href='/spaces/ENG']")
+      assert has_element?(view, "#catalog-results a[href='/spaces/#{handbook.key}']")
     end
 
     test "reads one page at a time and says how many matches are on screen", %{conn: conn} do
@@ -88,15 +88,15 @@ defmodule ConfluencePhxMirrorWeb.CatalogLiveTest do
 
   describe "a space's pages" do
     test "filters pages by title and keeps the section tabs", %{conn: conn} do
-      space = space_fixture(%{key: "ENG", name: "Engineering Handbook"})
+      space = space_fixture(%{name: "Engineering Handbook"})
       page_fixture(space, %{title: "Architecture Overview"})
       page_fixture(space, %{title: "Deprecated Setup", status: "archived"})
 
-      {:ok, view, _html} = live(conn, ~p"/spaces/ENG/pages")
+      {:ok, view, _html} = live(conn, ~p"/spaces/#{space.key}/pages")
 
       assert has_element?(
                view,
-               "nav[aria-label='Space sections'] a[href='/spaces/ENG/attachments']"
+               "nav[aria-label='Space sections'] a[href='/spaces/#{space.key}/attachments']"
              )
 
       assert has_element?(view, "#catalog-results", "Deprecated Setup")
@@ -111,15 +111,15 @@ defmodule ConfluencePhxMirrorWeb.CatalogLiveTest do
 
   describe "a space's blog" do
     test "lists the posts of that space only", %{conn: conn} do
-      product = space_fixture(%{key: "PROD", name: "Product Hub"})
+      product = space_fixture(%{name: "Product Hub"})
       page_fixture(product, %{title: "Release 2.0", type: "blogpost", slug: "release-2-0"})
-      space_fixture(%{key: "ENG", name: "Engineering Handbook"})
+      other = space_fixture(%{name: "Engineering Handbook"})
 
-      {:ok, view, _html} = live(conn, ~p"/spaces/PROD/blog")
+      {:ok, view, _html} = live(conn, ~p"/spaces/#{product.key}/blog")
 
       assert has_element?(view, "#catalog-results", "Release 2.0")
 
-      {:ok, view, _html} = live(conn, ~p"/spaces/ENG/blog")
+      {:ok, view, _html} = live(conn, ~p"/spaces/#{other.key}/blog")
 
       refute has_element?(view, "#catalog-results", "Release 2.0")
     end
@@ -127,10 +127,10 @@ defmodule ConfluencePhxMirrorWeb.CatalogLiveTest do
 
   describe "a space's attachments" do
     test "filters files by name", %{conn: conn} do
-      space = space_fixture(%{key: "ENG", name: "Engineering Handbook"})
+      space = space_fixture(%{name: "Engineering Handbook"})
       attachment_fixture(page_fixture(space), %{filename: "architecture.csv"})
 
-      {:ok, view, _html} = live(conn, ~p"/spaces/ENG/attachments")
+      {:ok, view, _html} = live(conn, ~p"/spaces/#{space.key}/attachments")
 
       assert has_element?(view, "#catalog-results", "architecture.csv")
 

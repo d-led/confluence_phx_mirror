@@ -11,23 +11,23 @@ defmodule ConfluencePhxMirrorWeb.ShellTest do
 
   describe "the space navigation" do
     test "is a sidebar the reader can collapse, with a button that says so", %{conn: conn} do
-      space_fixture(%{key: "ENG", name: "Engineering Handbook"})
+      space = space_fixture(%{name: "Engineering Handbook"})
 
       {:ok, view, _html} = live(conn, ~p"/spaces")
 
       assert has_element?(view, "button[data-sidebar-toggle][aria-controls='mirror-sidebar']")
-      assert has_element?(view, "#mirror-sidebar a[href='/spaces/ENG']")
+      assert has_element?(view, "#mirror-sidebar a[href='/spaces/#{space.key}']")
     end
 
     test "shows the page tree inside a space", %{conn: conn} do
-      space = space_fixture(%{key: "ENG", name: "Engineering Handbook"})
+      space = space_fixture(%{name: "Engineering Handbook"})
       page = page_fixture(space, %{title: "Architecture Overview"})
 
-      {:ok, view, _html} = live(conn, ~p"/spaces/ENG/pages")
+      {:ok, view, _html} = live(conn, ~p"/spaces/#{space.key}/pages")
 
       assert has_element?(
                view,
-               "#mirror-sidebar a[href='/spaces/ENG/pages/#{page.confluence_id}/#{page.slug}']"
+               "#mirror-sidebar a[href='/spaces/#{space.key}/pages/#{page.confluence_id}/#{page.slug}']"
              )
     end
   end

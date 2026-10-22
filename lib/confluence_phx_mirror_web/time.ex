@@ -21,10 +21,17 @@ defmodule ConfluencePhxMirrorWeb.Time do
   defp magnitude(seconds) when seconds < 36 * 3600, do: "a day"
   defp magnitude(seconds) when seconds < 26 * 86_400, do: "#{round(seconds / 86_400)} days"
 
-  defp magnitude(seconds) when seconds < 320 * 86_400,
-    do: "#{round(seconds / (30 * 86_400))} months"
+  defp magnitude(seconds) when seconds < 320 * 86_400 do
+    months(round(seconds / (30 * 86_400)))
+  end
 
-  defp magnitude(seconds), do: "#{round(seconds / (365 * 86_400))} years"
+  defp magnitude(seconds), do: years(round(seconds / (365 * 86_400)))
+
+  defp months(1), do: "a month"
+  defp months(count), do: "#{count} months"
+
+  defp years(1), do: "a year"
+  defp years(count), do: "#{count} years"
 
   @doc "Calendar date, e.g. `21 Oct 2026`."
   def date(nil), do: "unknown"

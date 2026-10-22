@@ -150,7 +150,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       <div :if={@new_token} class="mt-5 rounded-xl border border-success/40 bg-success/10 p-4">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <p class="text-xs font-semibold text-success">New API token for {@new_token.user}</p>
+            <p class="text-xs font-semibold text-success">New token for {@new_token.user}</p>
             <code class="mt-2 block select-all break-all rounded-lg bg-base-100 px-3 py-2 font-mono text-xs">
               {@new_token.token}
             </code>

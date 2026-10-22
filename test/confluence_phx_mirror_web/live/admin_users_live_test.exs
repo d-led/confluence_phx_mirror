@@ -1,5 +1,5 @@
 defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
   import ConfluencePhxMirror.Fixtures
@@ -43,8 +43,21 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
       |> element("#new-token-#{reader.id}")
       |> render_submit(%{"user_id" => reader.id, "name" => "deck"})
 
-    assert html =~ "New API token for token.reader@example.com"
+    assert html =~ "New token for token.reader@example.com"
     assert [%{name: "deck"}] = Accounts.list_api_tokens(reader)
+  end
+
+  test "a token without a name is refused", %{conn: conn} do
+    reader = user_fixture(%{email: "blank.reader@example.com"})
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    html =
+      view
+      |> element("#new-token-#{reader.id}")
+      |> render_submit(%{"user_id" => reader.id, "name" => "  "})
+
+    assert html =~ "Could not create token"
+    assert Accounts.list_api_tokens(reader) == []
   end
 
   test "dismissing the new token hides it again", %{conn: conn} do
@@ -71,5 +84,73 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
 
     assert html =~ "Token revoked."
     assert Accounts.list_api_tokens(reader) == []
+  end
+
+  test "revoking a token that is already gone says so", %{conn: conn} do
+    reader = user_fixture(%{email: "gone.reader@example.com"})
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    html =
+      render_submit(view, "revoke_token", %{
+        "user_id" => to_string(reader.id),
+        "token_id" => "0"
+      })
+
+    assert html =~ "Token not found."
+  end
+
+  test "an admin grants extra groups by hand", %{conn: conn} do
+    reader = user_fixture(%{email: "groups.reader@example.com"})
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    html =
+      render_submit(view, "update_groups", %{
+        "user_id" => to_string(reader.id),
+        "groups" => "incident-responders, on-call"
+      })
+
+    assert html =~ "Groups updated."
+    assert Accounts.get_user(reader.id).groups == ["incident-responders", "on-call"]
+  end
+
+  test "an admin issues a service token and sees it exactly once", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    html =
+      view
+      |> element("#create-service-token")
+      |> render_submit(%{"name" => "confluence-webhooks", "scope" => "webhook"})
+
+    assert html =~ "Service token created"
+    assert html =~ "New token for service: confluence-webhooks"
+    assert [%{name: "confluence-webhooks", scope: "webhook"}] = Accounts.list_service_tokens()
+  end
+
+  test "an admin revokes a service token", %{conn: conn} do
+    {:ok, _plain, token} = Accounts.create_service_token("old", "webhook", {:system, "test"})
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    html = render_submit(view, "revoke_service_token", %{"token_id" => to_string(token.id)})
+
+    assert html =~ "Service token revoked."
+    assert Accounts.list_service_tokens() == []
+  end
+
+  test "revoking a service token that is already gone says so", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    html = render_submit(view, "revoke_service_token", %{"token_id" => "0"})
+
+    assert html =~ "Service token not found."
+  end
+
+  test "a protected administrator stays an administrator even if the event arrives", %{
+    conn: conn
+  } do
+    admin = Accounts.ensure_admin!()
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    assert change_role(view, admin, "member") =~ "Could not update the role."
+    assert Accounts.get_user(admin.id).role == "admin"
   end
 end
