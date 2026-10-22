@@ -33,6 +33,10 @@ defmodule ConfluencePhxMirrorWeb.Router do
   end
 
   pipeline :attachments do
+    # Attachment bytes are content: the page decides who may read them, so this
+    # pipeline needs the reader's identity as much as the HTML pipeline does.
+    plug :fetch_session
+    plug Plugs.FetchCurrentUser
     plug Plugs.ReaderRateLimit, scope: :attachments
   end
 

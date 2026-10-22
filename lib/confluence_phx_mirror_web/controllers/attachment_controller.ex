@@ -32,8 +32,9 @@ defmodule ConfluencePhxMirrorWeb.AttachmentController do
          {:ok, path} <- blob_path(attachment) do
       conn
       |> put_resp_header("content-type", attachment.media_type || "application/octet-stream")
-      |> put_resp_header("cache-control", "public, max-age=300")
+      |> put_resp_header("cache-control", "private, max-age=300")
       |> put_resp_header("x-content-type-options", "nosniff")
+      |> put_resp_header("content-security-policy", attachment_csp())
       |> maybe_etag(attachment)
       |> put_resp_header("content-disposition", disposition(attachment, params))
       |> send_file(200, path)
@@ -92,6 +93,12 @@ defmodule ConfluencePhxMirrorWeb.AttachmentController do
     String.starts_with?(media_type || "", "image/") or media_type == "application/pdf" or
       String.starts_with?(media_type || "", "text/")
   end
+
+  # An attachment is upstream content served from the mirror's own origin, so a
+  # text/html or image/svg+xml file must not be able to run script there. The
+  # policy forbids script and base-uri only: images, PDFs and plain text keep
+  # rendering exactly as before.
+  defp attachment_csp, do: "script-src 'none'; base-uri 'none'"
 
   defp escape_filename(filename) do
     filename
