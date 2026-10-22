@@ -17,7 +17,7 @@
       <div data-presence-topic={ConfluencePhxMirrorWeb.Presence.topic(@page.confluence_id)}>
         <p class="flex items-baseline gap-1.5">
           <span data-presence-count class="text-2xl font-semibold tabular-nums">{@readers}</span>
-          <span class="text-xs text-base-content/55">reading this page</span>
+          <span class="text-xs text-base-content/70">reading this page</span>
         </p>
         <ul data-presence-list class="mt-2 space-y-1 text-xs text-base-content/60"></ul>
       </div>
@@ -62,7 +62,7 @@
         <% end %>
         <div class="mt-3 border-t border-base-300/60 pt-2">
           <%= if @space_subscribed? do %>
-            <p class="text-[11px] text-base-content/50">Watching the whole space.</p>
+            <p class="text-[11px] text-base-content/70">Watching the whole space.</p>
           <% else %>
             <form action={~p"/subscriptions"} method="post">
               <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
@@ -87,7 +87,7 @@
     </.rail_section>
 
     <.rail_section title="Outgoing links" icon="hero-arrow-top-right-on-square">
-      <p :if={@outgoing_links == []} class="text-xs text-base-content/50">No links.</p>
+      <p :if={@outgoing_links == []} class="text-xs text-base-content/70">No links.</p>
       <ul :if={@outgoing_links != []} class="space-y-1.5">
         <li :for={link <- Enum.take(@outgoing_links, 12)} class="truncate text-xs">
           <a
@@ -98,7 +98,7 @@
           >
             {link.label || link.href}
           </a>
-          <span class="ml-1 text-[10px] uppercase tracking-wide text-base-content/35">
+          <span class="ml-1 text-[10px] uppercase tracking-wide text-base-content/70">
             {link.kind}
           </span>
         </li>
@@ -112,7 +112,7 @@
       >
         Download this page as Markdown
       </a>
-      <p class="mt-1 text-[11px] text-base-content/45">
+      <p class="mt-1 text-[11px] text-base-content/70">
         Metadata is included as front matter; the whole space is available as a ZIP from the
         space overview.
       </p>
@@ -137,7 +137,7 @@
 
     <section :if={@children != []} class="mt-10 border-t border-base-300/70 pt-6">
       <h2 class="mb-3 flex items-center gap-2 text-sm font-semibold">
-        <.icon name="hero-rectangle-stack" class="size-4 text-base-content/50" /> Child pages
+        <.icon name="hero-rectangle-stack" class="size-4 text-base-content/70" /> Child pages
         <span class="badge badge-ghost badge-sm">{length(@children)}</span>
       </h2>
       <ul class="grid gap-2 sm:grid-cols-2">
@@ -152,7 +152,7 @@
             }
             class="group flex items-center gap-2 rounded-lg border border-base-300/70 bg-base-100 px-3 py-2 text-sm transition hover:border-primary/40 hover:bg-base-200/40"
           >
-            <.icon name="hero-document-text" class="size-4 shrink-0 text-base-content/40" />
+            <.icon name="hero-document-text" class="size-4 shrink-0 text-base-content/70" />
             <span class="truncate group-hover:text-primary">{child.title}</span>
           </.link>
         </li>
