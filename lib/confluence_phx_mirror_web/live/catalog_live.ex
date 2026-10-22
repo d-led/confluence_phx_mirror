@@ -257,8 +257,9 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
   defp sort_of("updated"), do: "updated"
   defp sort_of(_sort), do: "title"
 
-  defp order(:title), do: :title
-  defp order(:updated), do: :recent
+  # The catalog speaks URL words ("updated"); `Catalog` speaks order atoms.
+  defp order("updated"), do: :recent
+  defp order(_title), do: :title
 
   defp offset(value) when is_binary(value) do
     case Integer.parse(value) do
