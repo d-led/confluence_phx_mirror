@@ -189,6 +189,40 @@ platforms without `posix_fadvise()`.
 dropped from queue` in the logs. If `pg_stat_activity` shows long queries
 instead, the fix is the query, not the pool.
 
+**What a reader costs in RAM.** Two different shapes, and this application is
+the cheap one. Reader pages — home, space, page, blog, search results, people —
+are ordinary controller renders: no socket, no process per visitor, memory held
+only while the response is assembled and released afterwards. The admin console,
+the sync log and the advanced search panel are LiveViews, and every open page
+holds a `PageChannel` process for the reader-count widget, so a browser tab does
+keep a few tens of kilobytes on the server — but not the content.
+
+Measured on a dev node (`MIX_ENV=dev`, 8 cores) with 400 concurrent requests
+against one page at ~870 rps:
+
+| state | VM RSS |
+| --- | --- |
+| idle | 224 MB |
+| 400 requests in flight | ~290–324 MB, then back to ~220 MB when the burst ends |
+
+That is roughly **190 KB per request in flight**, transient. Sizing from it:
+
+```
+replica RAM ≈ baseline (200–250 MB) + peak concurrent requests × 0.2 MB + shared_buffers
+```
+
+Concurrent *readers* are not concurrent *requests*: a reader clicks every second
+or two, and this application serves 400 simultaneous in-flight requests at
+~870 rps, so 2000 readers at human pace do not produce 2000 requests in flight.
+RAM was never the constraint in the load runs above — CPU and per-request work
+were — and 2 GB of `shared_buffers` for a mirror whose whole corpus is a few
+megabytes is already generous.
+
+If you do grow the LiveView side (the sync log is the candidate), keep its
+memory flat: streams for long lists (the log is a 400-entry ring, not an
+assign), `temporary_assigns` for results that only need one render, and no
+Ecto structs with loaded associations in a socket's assigns.
+
 ## Attached resources
 
 * **Postgres** (`DATABASE_URL`) — content, links, search vectors, restrictions,

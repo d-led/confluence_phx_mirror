@@ -56,6 +56,12 @@ summed per process class, 8 cores): the application's BEAM held ~270%, Postgres
 ~42%, the load generator ~17%. The database is not the busy component, and
 neither is the connection count: the lever is work per request.
 
+**Throughput does not grow with concurrency.** A 60-second burst of 400 VUs on a
+single page endpoints served **869 rps at 458 ms average**; the 2000-VU runs
+above, on the same server and pool, served 373–407 rps. Past a few hundred
+simultaneous requests the queue inside one replica is the limit, so 2000
+readers are better served by several replicas than by a bigger pool.
+
 The `nav2000` row is slower than the mixed row, which is not a fair comparison:
 the two ran at different times on a shared laptop with another test suite
 running. It exists to separate browsing from searching when both are measured
