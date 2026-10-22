@@ -138,6 +138,26 @@ export default function (data) {
 }
 
 // The standard navigation path: land, browse a space, open pages. No search.
+//
+// Each VU remembers the etags it has seen and asks for the page again with
+// `If-None-Match`, which is what a browser returning to a page does: the mirror
+// answers `304` and skips the render entirely.
+const etags = {};
+
+function conditionalGet(url, name) {
+  const headers = etags[url] ? { "If-None-Match": etags[url] } : {};
+  const response = http.get(url, { headers });
+  const ok = check(response, { [`${name} is 200 or 304`]: (r) => r.status === 200 || r.status === 304 });
+  failureRate.add(!ok);
+  pageLoads.add(response.timings.duration);
+
+  if (response.status === 200) {
+    etags[url] = response.headers["Etag"] || response.headers["etag"];
+  }
+
+  return ok;
+}
+
 function navigate(data) {
   const roll = Math.random();
   const key = pick(data.spaces);
@@ -145,16 +165,16 @@ function navigate(data) {
 
   if (roll < 0.2 || pages.length === 0) {
     group("home", () => {
-      record(pageLoads, http.get(`${BASE_URL}/`), "home");
+      conditionalGet(`${BASE_URL}/`, "home");
     });
   } else if (roll < 0.55) {
     group("space", () => {
-      record(pageLoads, http.get(`${BASE_URL}/spaces/${key}`), `space ${key}`);
+      conditionalGet(`${BASE_URL}/spaces/${key}`, `space ${key}`);
     });
   } else {
     const page = pick(pages);
     group("page", () => {
-      record(pageLoads, http.get(`${BASE_URL}/spaces/${key}/pages/${page.id}`), "page");
+      conditionalGet(`${BASE_URL}/spaces/${key}/pages/${page.id}`, "page");
     });
   }
 

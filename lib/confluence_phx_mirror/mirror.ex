@@ -924,13 +924,19 @@ defmodule ConfluencePhxMirror.Mirror do
   defp limit_rows(query, limit), do: limit(query, ^limit)
 
   def stats do
-    %{
-      spaces: Repo.aggregate(Space, :count),
-      pages: Repo.one(from p in Page, where: is_nil(p.deleted_at), select: count(p.id)),
-      attachments: Repo.aggregate(Attachment, :count),
-      comments: Repo.aggregate(Comment, :count),
-      labels: Repo.aggregate(Label, :count)
-    }
+    # One statement: five aggregates, five subqueries. Asking the repo five
+    # times cost five round trips on every home page view.
+    Repo.one(
+      from(s in Space,
+        select: %{
+          spaces: count(s.id),
+          pages: fragment("(SELECT count(*) FROM pages WHERE deleted_at IS NULL)"),
+          attachments: fragment("(SELECT count(*) FROM attachments)"),
+          comments: fragment("(SELECT count(*) FROM comments)"),
+          labels: fragment("(SELECT count(*) FROM labels)")
+        }
+      )
+    )
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)

@@ -111,6 +111,21 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert redirected_to(conn) == ~p"/spaces/PROD/blog/2001/release-2-0"
   end
 
+  test "a page names its version in an etag and answers 304 to a repeat", %{conn: conn} do
+    conn = get(conn, ~p"/spaces/ENG/pages/1002/architecture-overview")
+    assert [etag] = get_resp_header(conn, "etag")
+    assert get_resp_header(conn, "cache-control") == ["public, max-age=0, must-revalidate"]
+
+    again =
+      conn
+      |> recycle()
+      |> put_req_header("if-none-match", etag)
+      |> get(~p"/spaces/ENG/pages/1002/architecture-overview")
+
+    assert again.status == 304
+    assert again.resp_body == ""
+  end
+
   test "a page is not served from the blog URL", %{conn: conn} do
     body = conn |> get(~p"/spaces/ENG/blog/1002/architecture-overview") |> html_response(404)
     assert body =~ "That blog post is not mirrored"

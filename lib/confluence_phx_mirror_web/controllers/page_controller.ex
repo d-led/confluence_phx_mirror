@@ -115,6 +115,37 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   # mirrored; rendering it raw is the whole point of the mirror.
   # sobelow_skip ["XSS.Raw"]
   defp render_page(conn, page, kind \\ :page) do
+    etag = page_etag(page, kind)
+    conn = conn |> put_reader_cache(etag)
+
+    if requested_etag?(conn, etag) do
+      send_resp(conn, 304, "")
+    else
+      do_render_page(conn, page, kind)
+    end
+  end
+
+  # A mirrored page only changes when the sync rewrites it, so a reader who
+  # already has it can be answered with an empty 304 instead of a re-render.
+  defp page_etag(page, kind) do
+    ~s("#{page.confluence_id}-#{page.version_number}-#{kind}-#{DateTime.to_unix(page.updated_at)}")
+  end
+
+  defp put_reader_cache(conn, etag) do
+    conn
+    |> put_resp_header("etag", etag)
+    |> put_resp_header("cache-control", "public, max-age=0, must-revalidate")
+  end
+
+  defp requested_etag?(conn, etag) do
+    conn
+    |> get_req_header("if-none-match")
+    |> Enum.flat_map(&String.split(&1, ","))
+    |> Enum.map(&String.trim/1)
+    |> Enum.any?(&(&1 == etag or &1 == "*"))
+  end
+
+  defp do_render_page(conn, page, kind) do
     space = page.space
     user = conn.assigns[:current_user]
 
@@ -174,12 +205,12 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   # The home rail is the same list as the space switcher, so it asks the same
   # question; a space the reader may not open is not advertised here either.
   defp readable_spaces(conn) do
-    scope = scope(conn)
+    allowed = conn |> scope() |> Authorization.readable_spaces() |> MapSet.new(& &1.id)
 
     Enum.filter(Mirror.spaces_with_counts(), fn {space, _count} ->
-      Authorization.can_read_space?(scope, space)
+      MapSet.member?(allowed, space.id)
     end)
   end
 
-  defp visible(conn, pages), do: Enum.filter(pages, &readable?(conn, &1))
+  defp visible(conn, pages), do: Authorization.readable_pages(scope(conn), pages)
 end

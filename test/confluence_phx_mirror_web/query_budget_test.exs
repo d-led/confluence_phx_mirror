@@ -21,13 +21,13 @@ defmodule ConfluencePhxMirrorWeb.QueryBudgetTest do
   test "the home page loads its content in a bounded number of queries", %{conn: conn} do
     queries = count_queries(fn -> get(conn, ~p"/") end)
 
-    assert queries <= 15, "home page issued #{queries} queries"
+    assert queries <= 12, "home page issued #{queries} queries"
   end
 
   test "a space overview does not query per page", %{conn: conn} do
     queries = count_queries(fn -> get(conn, ~p"/spaces/ENG") end)
 
-    assert queries <= 14, "space overview issued #{queries} queries"
+    assert queries <= 8, "space overview issued #{queries} queries"
   end
 
   test "deep page rendering stays bounded", %{conn: conn} do
