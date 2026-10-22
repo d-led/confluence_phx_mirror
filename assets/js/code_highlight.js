@@ -89,10 +89,20 @@ const brushes = {
 
 const brushPattern = /brush:\s*([^;]+)/i
 
-function languageOf(pre) {
+// The brush arrives in one of two shapes: older exports put it in
+// `data-syntaxhighlighter-params` (`brush: javascript; gutter: false`), Cloud
+// puts it in the macro header as plain text (`<b>javascript</b>`) and drops the
+// attribute entirely.
+function brushOf(pre) {
   const params = pre.getAttribute("data-syntaxhighlighter-params") || ""
-  const brush = params.match(brushPattern)?.[1].trim().toLowerCase()
-  return brush ? brushes[brush] : undefined
+  const fromParams = params.match(brushPattern)?.[1]
+  const header = pre.closest(".code.panel")?.querySelector(".codeHeader")?.textContent
+
+  return (fromParams || header || "").trim().toLowerCase()
+}
+
+function languageOf(pre) {
+  return brushes[brushOf(pre)]
 }
 
 /**

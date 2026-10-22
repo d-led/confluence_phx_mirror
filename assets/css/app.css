@@ -229,6 +229,29 @@
   border-radius: 0.5rem;
 }
 
+/* Confluence wraps every attachment in a span that carries the alignment, so
+   the wrapper — not the image — is what has to move. */
+.confluence-content .confluence-embedded-file-wrapper {
+  max-width: 100%;
+}
+
+.confluence-content .image-center-wrapper {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.confluence-content .image-left-wrapper {
+  float: left;
+  margin: 0.25rem 1rem 0.5rem 0;
+}
+
+.confluence-content .image-right-wrapper {
+  float: right;
+  margin: 0.25rem 0 0.5rem 1rem;
+}
+
 .confluence-content kbd {
   border: 1px solid var(--color-base-300);
   border-bottom-width: 2px;
@@ -266,6 +289,10 @@
    dark text. Code blocks are also ``.panel`` in export_view but must follow the
    active theme instead, hence the :not(.code). */
 .confluence-content .panel:not(.code) {
+  border-style: solid;
+  /* The export sets `border-width` inline; preflight would otherwise paint it
+     in currentColor, which is a hard navy outline around a pastel panel. */
+  border-color: color-mix(in oklab, currentColor 14%, transparent);
   border-radius: 0.6rem;
   margin: 1rem 0;
   padding: 0.15rem 0.95rem;
@@ -643,14 +670,14 @@
 
 /* Columns -------------------------------------------------------------- */
 
+/* Confluence names its layout macros by shape (`three-equal`, `two-left-sidebar`…).
+   Without a rule per shape every column stacks and a three-column page reads as
+   one very long strip, so each shape gets the grid Confluence would draw. */
 .confluence-content .contentLayout2 .columnLayout {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   margin: 1rem 0;
-}
-
-.confluence-content .contentLayout2 .columnLayout.two-equal {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .confluence-content .contentLayout2 .cell {
@@ -658,6 +685,29 @@
   border-radius: 0.6rem;
   padding: 0.75rem 0.9rem;
   background: var(--color-base-100);
+  min-width: 0;
+}
+
+@media (min-width: 48rem) {
+  .confluence-content .contentLayout2 .columnLayout.two-equal {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .confluence-content .contentLayout2 .columnLayout.three-equal {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .confluence-content .contentLayout2 .columnLayout.two-left-sidebar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  }
+
+  .confluence-content .contentLayout2 .columnLayout.two-right-sidebar {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+
+  .confluence-content .contentLayout2 .columnLayout.three-with-sidebars {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+  }
 }
 
 .confluence-content details {
