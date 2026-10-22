@@ -82,13 +82,13 @@ when a sync pulls a newer snapshot.
 Everything you need to operate the mirror as a product lives under `/admin`:
 
 * `/admin` – freshness, sync runs (counters, errors, `running` → `succeeded` /
-  `partial` / `failed`), the audit trail, webhook deliveries (valid and
+  `partial` / `failed`), the audit log, webhook deliveries (valid and
   rejected) and manual syncs.
 * `/admin/users` – accounts, roles, mirrored groups and API tokens.
 * `/health` – database check, content counters and last sync; no auth, so it
   can back a probe ([operations.md](operations.md)).
 
-Two tables back the audit trail and are worth knowing when you query them
+Two tables back the audit log and are worth knowing when you query them
 directly:
 
 * `audit_events` – append-only: `sync.started/finished/failed`, `page.*`,

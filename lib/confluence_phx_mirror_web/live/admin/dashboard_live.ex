@@ -1,7 +1,10 @@
 defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   @moduledoc """
-  Operator dashboard: freshness, sync runs, audit trail and webhook deliveries,
+  Operator dashboard: freshness, sync runs, recent activity and webhook deliveries,
   plus the actions an operator needs during a demo or an incident.
+
+  The activity list here is a pointer, not the log itself: `/admin/audit` holds
+  the full, filterable audit log with every event's details.
   """
 
   use ConfluencePhxMirrorWeb, :live_view
@@ -38,13 +41,25 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
   @impl true
   def handle_event("snapshot", _params, socket) do
-    %{} |> SnapshotWorker.new() |> Oban.insert()
+    %{"trigger" => requested_by(socket)} |> SnapshotWorker.new() |> Oban.insert()
     {:noreply, put_flash(socket, :info, "Snapshot queued. Runs appear below within seconds.")}
   end
 
   def handle_event("sync_space", %{"key" => key}, socket) do
-    %{"space_key" => key} |> SpaceWorker.new() |> Oban.insert()
+    %{"space_key" => key, "trigger" => requested_by(socket)}
+    |> SpaceWorker.new()
+    |> Oban.insert()
+
     {:noreply, put_flash(socket, :info, "Space #{key} queued for refresh.")}
+  end
+
+  # The audit log answers "who asked for this?" for every run, so a manual one
+  # carries the address of the admin who pressed the button.
+  defp requested_by(socket) do
+    case socket.assigns[:current_user] do
+      nil -> "the admin dashboard"
+      user -> "the admin dashboard, by #{user.email}"
+    end
   end
 
   defp load(socket) do
@@ -76,6 +91,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       spaces={@spaces}
       last_sync_run={@last_sync_run}
       mirror_name={@mirror_name}
+      mirror_url={@mirror_url}
+      mirror_host={@mirror_host}
       mirror_source={@mirror_source}
       page_title="Admin"
       sidebar?={false}
@@ -84,11 +101,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
         <div>
           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Operations</p>
           <h1 class="mt-1 text-3xl font-semibold">Mirror dashboard</h1>
-          <p class="mt-1 text-sm text-base-content/60">
-            Source: <span class="font-medium">{source_name(@mirror_source)}</span>
+          <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/60">
+            <span class="uppercase tracking-[0.14em] text-base-content/40">Mirroring</span>
+            <a
+              :if={@mirror_url}
+              href={@mirror_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+            >
+              <.icon name="hero-arrow-top-right-on-square" class="size-3.5" /> {@mirror_host}
+            </a>
+            <span :if={is_nil(@mirror_url)} class="text-sm font-medium">{source_name(@mirror_source)}</span>
+          </p>
+          <p class="mt-1 text-xs text-base-content/50">
+            <a href={~p"/admin/audit"} class="link link-primary">Audit log</a>
             · <a href={~p"/admin/users"} class="link link-primary">Users &amp; tokens</a>
             · <a href="/dev/dashboard" class="link link-primary">LiveDashboard</a>
-            · <a href="/dev/mailbox" class="link link-primary">Mailbox</a>
           </p>
           <p
             :if={Source.demo?(@mirror_source)}
@@ -175,21 +204,28 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       </.section>
 
       <div class="mt-8 grid gap-6 xl:grid-cols-2">
-        <.section title="Audit trail" class="mt-0">
-          <.data_table id="audit-events" rows={@audit}>
-            <:head>
-              <th>When</th><th>Actor</th><th>Action</th><th>Entity</th>
-            </:head>
-            <:row :let={event}>
-              <td class="whitespace-nowrap" title={Time.datetime(event.inserted_at)}>
+        <.section title="Latest activity" class="mt-0">
+          <:actions>
+            <.link navigate={~p"/admin/audit"} class="link link-primary text-xs">
+              Open the audit log →
+            </.link>
+          </:actions>
+          <ul class="divide-y divide-base-300/60">
+            <li :for={event <- @audit} class="flex items-baseline gap-3 py-2 text-xs">
+              <span class="w-20 shrink-0 text-[11px] text-base-content/45">
                 {Time.ago(event.inserted_at)}
-              </td>
-              <td class="max-w-[9rem] truncate">{event.actor_label || event.actor_type}</td>
-              <td class="font-mono text-[11px]">{event.action}</td>
-              <td class="text-[11px] text-base-content/55">{event.entity_type} #{event.entity_id}</td>
-            </:row>
-            <:empty>No audit events.</:empty>
-          </.data_table>
+              </span>
+              <span class="min-w-0 flex-1 truncate">
+                <span class="font-mono text-[11px] uppercase tracking-wide text-base-content/45">
+                  {event.action}
+                </span>
+                <span class="ml-2 text-base-content/70">{event.actor_label || event.actor_type}</span>
+              </span>
+            </li>
+            <li :if={@audit == []} class="py-2 text-xs text-base-content/50">
+              Nothing has happened yet.
+            </li>
+          </ul>
         </.section>
 
         <.section title="Webhook deliveries" class="mt-0">

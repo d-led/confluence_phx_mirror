@@ -26,7 +26,7 @@ defmodule ConfluencePhxMirror.Sync.Scheduler do
   @impl true
   def handle_info(:snapshot, %{interval: interval} = state) do
     if interval > 0 do
-      %{}
+      %{"trigger" => "the #{humanise(interval)} schedule"}
       |> SnapshotWorker.new()
       |> Oban.insert()
       |> case do
@@ -44,6 +44,13 @@ defmodule ConfluencePhxMirror.Sync.Scheduler do
     do: Process.send_after(self(), :snapshot, interval * 1000)
 
   defp schedule(_interval), do: :ok
+
+  # The audit log names the schedule in words: "the hourly schedule" is what an
+  # operator would say, and it reads better than a number of seconds.
+  defp humanise(3600), do: "hourly"
+  defp humanise(86_400), do: "daily"
+  defp humanise(seconds) when rem(seconds, 60) == 0, do: "#{div(seconds, 60)}-minute"
+  defp humanise(seconds), do: "#{seconds}-second"
 
   defp interval_seconds do
     Application.get_env(:confluence_phx_mirror, Source.source(), [])

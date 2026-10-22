@@ -72,7 +72,7 @@ what `mix setup` and the `test` alias use.
 ## Attached resources
 
 * **Postgres** (`DATABASE_URL`) — content, links, search vectors, restrictions,
-  accounts, the audit trail and Oban jobs. The `sync` and `notifications` queues
+  accounts, the audit log and Oban jobs. The `sync` and `notifications` queues
   run inside the same release, and Oban coordinates them through Postgres, so
   running several instances is safe.
 * **SMTP** — `SMTP_RELAY` plus credentials; sends are retried per notification,
@@ -94,7 +94,7 @@ Two things must be backed up together:
 
 * `/health` — database check, content counters, last sync. No auth, so it can
   back a probe.
-* `/admin` — freshness, sync runs, audit trail, webhook deliveries, manual
+* `/admin` — freshness, sync runs, audit log, webhook deliveries, manual
   syncs; see the [admin reference](site-admin-guide.md#the-admin-dashboard).
 * Logs go to stdout through Elixir's console logger.
 

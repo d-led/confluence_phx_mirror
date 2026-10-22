@@ -69,17 +69,30 @@ defmodule ConfluencePhxMirror.Accounts.User do
 
   @doc "Audit entry for a newly created reader account."
   def audit_event_created(%__MODULE__{} = user) do
-    Entry.new("user.created", "user", user.id, %{email: user.email, role: user.role})
+    Entry.new("user.created", "user", user.id, %{
+      email: user.email,
+      role: user.role,
+      display_name: user.display_name,
+      groups: Enum.join(user.groups || [], ", ")
+    })
   end
 
   @doc "Audit entry for an account moving between admin and member."
-  def audit_event_role_changed(%__MODULE__{} = user) do
-    Entry.new("user.role_changed", "user", user.id, %{role: user.role})
+  def audit_event_role_changed(%__MODULE__{} = user, previous_role) do
+    Entry.new("user.role_changed", "user", user.id, %{
+      email: user.email,
+      from: previous_role,
+      to: user.role
+    })
   end
 
-  @doc "Audit entry for the mirrored groups an account belongs to."
-  def audit_event_groups_changed(%__MODULE__{} = user) do
-    Entry.new("user.groups_changed", "user", user.id, %{groups: user.groups})
+  @doc "Audit entry for the groups an account belongs to."
+  def audit_event_groups_changed(%__MODULE__{} = user, previous_groups) do
+    Entry.new("user.groups_changed", "user", user.id, %{
+      email: user.email,
+      from: Enum.join(previous_groups || [], ", "),
+      to: Enum.join(user.groups || [], ", ")
+    })
   end
 
   @doc "Audit entry for a magic link being sent."
@@ -89,11 +102,11 @@ defmodule ConfluencePhxMirror.Accounts.User do
 
   @doc "Audit entry for a magic link being used."
   def audit_event_signed_in(%__MODULE__{} = user) do
-    Entry.new("user.signed_in", "user", user.id, %{method: "magic_link"})
+    Entry.new("user.signed_in", "user", user.id, %{email: user.email, method: "magic_link"})
   end
 
   @doc "Audit entry for an account signing out."
   def audit_event_signed_out(%__MODULE__{} = user) do
-    Entry.new("user.signed_out", "user", user.id)
+    Entry.new("user.signed_out", "user", user.id, %{email: user.email})
   end
 end

@@ -6,30 +6,28 @@ defmodule ConfluencePhxMirror.AuditTest do
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Audit.Event
-  alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.SyncRun
 
   describe "logging a domain entry" do
-    test "records the page the entry describes" do
-      demo_snapshot!()
-      page = Mirror.get_page!(1002)
+    test "records the entity the entry describes" do
+      user = %User{id: 7, email: "jane@acme.com", groups: ["ops"]}
 
-      event = Audit.log(Audit.system_actor(), Mirror.Page.audit_event_updated(page, page.space))
+      event = Audit.log(Audit.system_actor(), User.audit_event_groups_changed(user, ["member"]))
 
-      assert event.action == "page.updated"
-      assert event.entity_type == "page"
-      assert event.entity_id == "1002"
+      assert event.action == "user.groups_changed"
+      assert event.entity_type == "user"
+      assert event.entity_id == "7"
       assert event.actor_type == "system"
-      assert event.metadata["space"] == "ENG"
-      assert event.metadata["title"] == "Architecture Overview"
-      assert event.metadata["version"] == page.version_number
+      assert event.metadata["email"] == "jane@acme.com"
+      assert event.metadata["from"] == "member"
+      assert event.metadata["to"] == "ops"
     end
 
     test "keeps the actor that made the change" do
       user = user_fixture(%{email: "ops@example.com"})
 
-      event = Audit.log({:user, user}, User.audit_event_role_changed(user))
+      event = Audit.log({:user, user}, User.audit_event_role_changed(user, "member"))
 
       assert event.actor_type == "user"
       assert event.actor_label == "ops@example.com"
@@ -42,6 +40,23 @@ defmodule ConfluencePhxMirror.AuditTest do
       event = Audit.log(Audit.system_actor(), SyncRun.audit_event_started(run, :snapshot, "demo"))
 
       assert %{"mode" => "snapshot", "source" => "demo"} == Repo.get!(Event, event.id).metadata
+    end
+
+    test "a finished run keeps its counters as nested metadata" do
+      run = %SyncRun{
+        id: 43,
+        mode: "snapshot",
+        status: "succeeded",
+        stats: %{"pages" => 43, "attachments" => 15, "errors" => []}
+      }
+
+      event = Audit.log(Audit.system_actor(), SyncRun.audit_event_finished(run))
+
+      assert Repo.get!(Event, event.id).metadata == %{
+               "mode" => "snapshot",
+               "status" => "succeeded",
+               "stats" => %{"pages" => 43, "attachments" => 15, "errors" => []}
+             }
     end
 
     test "lists events newest first" do

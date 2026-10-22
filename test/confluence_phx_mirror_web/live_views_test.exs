@@ -70,12 +70,13 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
     assert html =~ "No results"
   end
 
-  test "admin dashboard shows freshness, runs and audit", %{conn: conn} do
-    {:ok, _view, html} = live(conn, ~p"/admin")
+  test "admin dashboard shows freshness, runs and the way to the audit log", %{conn: conn} do
+    {:ok, view, html} = live(conn, ~p"/admin")
 
     assert html =~ "Mirror dashboard"
     assert html =~ "Sync runs"
-    assert html =~ "Audit trail"
+    assert html =~ "Latest activity"
+    assert has_element?(view, "a[href='/admin/audit']")
     assert html =~ "40"
   end
 

@@ -89,11 +89,13 @@ defmodule ConfluencePhxMirror.Accounts do
   their administration: demoting them would remove the only way back in.
   """
   def change_role(%User{} = user, role, actor) do
+    previous = user.role
+
     if role != "admin" and Admins.protected?(user) do
       {:error, :protected_admin}
     else
       with {:ok, user} <- user |> User.changeset(%{role: role}) |> Repo.update() do
-        Audit.log(actor, User.audit_event_role_changed(user))
+        Audit.log(actor, User.audit_event_role_changed(user, previous))
         {:ok, user}
       end
     end
@@ -106,6 +108,8 @@ defmodule ConfluencePhxMirror.Accounts do
   groups, administration.
   """
   def update_groups(%User{} = user, groups, actor) when is_list(groups) do
+    previous = user.groups || []
+
     groups =
       groups
       |> Enum.map(&(&1 |> to_string() |> String.trim() |> String.downcase()))
@@ -113,7 +117,7 @@ defmodule ConfluencePhxMirror.Accounts do
       |> Enum.uniq()
 
     with {:ok, user} <- user |> User.identity_changeset(%{groups: groups}) |> Repo.update() do
-      Audit.log(actor, User.audit_event_groups_changed(user))
+      Audit.log(actor, User.audit_event_groups_changed(user, previous))
       {:ok, user}
     end
   end

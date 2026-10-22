@@ -19,6 +19,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
     }
 
     plug Plugs.FetchCurrentUser
+    plug Plugs.ProxyAuth
     plug Plugs.AutoAdmin
     plug Plugs.Theme
     plug Plugs.SiteContext
@@ -79,7 +80,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
       pipe_through :browser
 
       # Catalogs share one LiveView: one debounced filter box, one URL shape
-      # (`?q=…&offset=…`), one pager. Filtering and paging happen in the
+      # (`?q=…&offset=…`), one "load more". Filtering and paging happen in the
       # database, so the pages stay usable with thousands of entries.
       live "/spaces", CatalogLive, :spaces
       live "/spaces/:key/pages", CatalogLive, :pages
@@ -98,6 +99,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
 
       live "/", DashboardLive, :index
       live "/users", UsersLive, :index
+      live "/audit", AuditLive, :index
     end
   end
 
@@ -175,7 +177,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/", HealthController, :show
   end
 
-  # Enable LiveDashboard and Swoosh mailbox preview in development
+  # Enable LiveDashboard in development
   if Application.compile_env(:confluence_phx_mirror, :dev_routes) do
     import Phoenix.LiveDashboard.Router
 
@@ -183,7 +185,6 @@ defmodule ConfluencePhxMirrorWeb.Router do
       pipe_through :browser
 
       live_dashboard "/dashboard", metrics: ConfluencePhxMirrorWeb.Telemetry
-      forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
 end

@@ -15,6 +15,7 @@ defmodule ConfluencePhxMirror.Sync do
   """
 
   import Ecto.Query
+  require Logger
 
   alias ConfluencePhxMirror.Accounts.Admins
   alias ConfluencePhxMirror.Audit
@@ -43,28 +44,58 @@ defmodule ConfluencePhxMirror.Sync do
     * `:space_key` – required for `:space`
     * `:since` – for `:incremental`, defaults to one sync interval ago
     * `:actor` – audit actor, defaults to the system
+    * `:trigger` – why the run happened, in words: "the hourly schedule",
+      "the admin dashboard, by jane@acme.com"
     * `:source` – upstream source module, defaults to the configured one
   """
   @spec run(mode(), keyword()) :: report()
   def run(mode, opts \\ []) do
     source = Keyword.get(opts, :source, Source.source())
     actor = Keyword.get(opts, :actor, {:system, "sync"})
+    trigger = Keyword.get(opts, :trigger)
     # One mirror holds one site's content; never let a sync write across sites.
     Sites.verify!()
-    run = start_run(source, mode, actor)
+    run = start_run(source, mode, actor, trigger)
+
+    Logger.info("sync started",
+      sync_run_id: run.id,
+      mode: mode_to_string(mode),
+      source: source_label(source),
+      trigger: trigger
+    )
 
     try do
       {stats, errors} = do_run(mode, source, opts)
-      finish_run(run, stats, errors, actor)
+      finish_run(run, stats, errors, actor, trigger)
     rescue
       error ->
-        fail_run(run, Exception.message(error))
+        fail_run(run, Exception.message(error), trigger)
+
+        Logger.error("sync failed",
+          sync_run_id: run.id,
+          mode: mode_to_string(mode),
+          source: source_label(source),
+          reason: Exception.message(error)
+        )
+
         reraise error, __STACKTRACE__
     catch
       kind, reason ->
-        fail_run(run, Exception.format(kind, reason, __STACKTRACE__))
+        fail_run(run, Exception.format(kind, reason, __STACKTRACE__), trigger)
+
+        Logger.error("sync failed",
+          sync_run_id: run.id,
+          mode: mode_to_string(mode),
+          source: source_label(source),
+          reason: Exception.format(kind, reason, __STACKTRACE__)
+        )
+
         :erlang.raise(kind, reason, __STACKTRACE__)
     end
+  end
+
+  defp source_label(source) do
+    if function_exported?(source, :name, 0), do: source.name(), else: inspect(source)
   end
 
   # ---------------------------------------------------------------------------
@@ -578,7 +609,7 @@ defmodule ConfluencePhxMirror.Sync do
 
   # Attachments deleted in Confluence must disappear from the mirror too; the
   # blob is removed first so a failed delete leaves a row pointing at nothing
-  # (visible in the audit log) instead of an orphaned file.
+  # instead of an orphaned file.
   defp prune_attachments(page, kept_confluence_ids) do
     stale =
       Repo.all(
@@ -590,7 +621,11 @@ defmodule ConfluencePhxMirror.Sync do
       if attachment.blob_key, do: Store.delete(attachment.blob_key)
       {:ok, _} = Repo.delete(attachment)
 
-      Audit.log(Audit.system_actor(), Attachment.audit_event_deleted(attachment, page))
+      Logger.info("attachment pruned",
+        attachment: attachment.confluence_id,
+        page: page.confluence_id,
+        filename: attachment.filename
+      )
     end)
 
     []
@@ -626,9 +661,10 @@ defmodule ConfluencePhxMirror.Sync do
       |> Repo.insert_or_update()
       |> case do
         {:ok, attachment} ->
-          Audit.log(
-            Audit.system_actor(),
-            Attachment.audit_event_mirrored(attachment, page)
+          Logger.debug("attachment mirrored",
+            attachment: confluence_id,
+            page: page.confluence_id,
+            filename: dto.filename
           )
 
           {:ok, attachment}
@@ -718,14 +754,15 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp audit_change(:unchanged, _page, _space, _dto), do: :ok
 
+  # One line per changed page: the audit log keeps the run, the console keeps the
+  # detail an operator would grep for when a single page looks wrong.
   defp audit_change(change, page, space, _dto) do
-    entry =
-      case change do
-        :created -> Page.audit_event_created(page, space)
-        :updated -> Page.audit_event_updated(page, space)
-      end
-
-    Audit.log(Audit.system_actor(), entry)
+    Logger.debug("page mirrored",
+      change: change,
+      page: page.confluence_id,
+      space: space.key,
+      version: page.version_number
+    )
   end
 
   defp merge_stats(left, right) do
@@ -736,7 +773,7 @@ defmodule ConfluencePhxMirror.Sync do
   # Sync run bookkeeping
   # ---------------------------------------------------------------------------
 
-  defp start_run(source, mode, actor) do
+  defp start_run(source, mode, actor, trigger) do
     {:ok, run} =
       %SyncRun{}
       |> SyncRun.changeset(%{
@@ -750,13 +787,16 @@ defmodule ConfluencePhxMirror.Sync do
 
     Audit.log(
       actor,
-      SyncRun.audit_event_started(run, mode, source.name())
+      SyncRun.audit_event_started(run, mode, source.name(),
+        site: Sites.url(),
+        trigger: trigger
+      )
     )
 
     run
   end
 
-  defp finish_run(run, stats, errors, actor) do
+  defp finish_run(run, stats, errors, actor, trigger) do
     status = if errors == [], do: "succeeded", else: "partial"
 
     stats = Map.put(stats, "errors", normalize_errors(errors))
@@ -771,17 +811,28 @@ defmodule ConfluencePhxMirror.Sync do
       })
       |> Repo.update()
 
-    Audit.log(actor, SyncRun.audit_event_finished(run))
+    Audit.log(actor, SyncRun.audit_event_finished(run, trigger: trigger))
+
+    Logger.info("sync finished",
+      sync_run_id: run.id,
+      mode: run.mode,
+      source: run.source,
+      status: status,
+      pages: stats["pages"] || 0,
+      attachments: stats["attachments"] || 0,
+      errors: length(errors)
+    )
+
     {:ok, run}
   end
 
-  defp fail_run(run, message) do
+  defp fail_run(run, message, trigger) do
     {:ok, run} =
       run
       |> SyncRun.changeset(%{status: "failed", finished_at: now(), error: message})
       |> Repo.update()
 
-    Audit.log(Audit.system_actor(), SyncRun.audit_event_failed(run, message))
+    Audit.log(Audit.system_actor(), SyncRun.audit_event_failed(run, message, trigger: trigger))
   end
 
   defp normalize_errors(errors) do

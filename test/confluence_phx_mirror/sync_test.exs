@@ -42,7 +42,7 @@ defmodule ConfluencePhxMirror.SyncTest do
     test "stores attachment bytes outside Postgres under a readable key" do
       demo_snapshot!()
 
-      attachment = Repo.get_by!(Attachment, confluence_id: 9001)
+      attachment = Repo.get_by!(Attachment, confluence_id: "9001")
 
       assert attachment.blob_key ==
                "spaces/ENG/pages/1002/attachments/9001/diagram.svg"
@@ -85,7 +85,7 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert reply.body_export =~ "Contractors"
     end
 
-    test "audits the run and every created page" do
+    test "audits the run, not every page it mirrors" do
       {:ok, run} = Sync.run(:snapshot)
 
       assert Repo.exists?(
@@ -94,10 +94,12 @@ defmodule ConfluencePhxMirror.SyncTest do
              )
 
       assert Repo.exists?(
-               from e in Event, where: e.action == "page.created" and e.entity_id == "1002"
+               from e in Event,
+                 where: e.action == "sync.finished" and e.entity_id == ^to_string(run.id)
              )
 
-      assert Repo.exists?(from e in Event, where: e.action == "attachment.mirrored")
+      refute Repo.exists?(from e in Event, where: e.action == "page.created")
+      refute Repo.exists?(from e in Event, where: e.action == "attachment.mirrored")
     end
   end
 
@@ -133,11 +135,7 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert after_sync.version_message == EditedSource.edit_note()
       assert after_sync.body_export =~ "Edited in Confluence"
       assert after_sync.body_text =~ "Edited in Confluence"
-
-      assert Repo.exists?(
-               from e in Event,
-                 where: e.action == "page.updated" and e.entity_id == "1002"
-             )
+      assert run.stats["pages"] == 1
     end
 
     test "returns an error when the page does not exist" do

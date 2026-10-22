@@ -11,8 +11,10 @@ defmodule ConfluencePhxMirror.Sync.SnapshotWorker do
   alias ConfluencePhxMirror.Sync
 
   @impl true
-  def perform(_job) do
-    case Sync.run(:snapshot, actor: {:system, "snapshot-worker"}) do
+  def perform(%Oban.Job{args: args}) do
+    trigger = args["trigger"] || "the sync schedule"
+
+    case Sync.run(:snapshot, actor: {:system, "snapshot-worker"}, trigger: trigger) do
       {:ok, %{status: "failed"} = run} -> {:error, run.error}
       {:ok, _run} -> :ok
     end

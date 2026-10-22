@@ -41,18 +41,50 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
     DateTime.diff(finished_at, started_at, :millisecond)
   end
 
-  @doc "Audit entry for a run that just started."
-  def audit_event_started(%__MODULE__{} = run, mode, source_name) do
-    Entry.new("sync.started", "sync_run", run.id, %{mode: mode, source: source_name})
+  @doc """
+  Audit entry for a run that just started.
+
+  `site` is the address a reader would open to see the original, `trigger` the
+  reason the run happened ("the hourly schedule", "the admin dashboard, by
+  jane@acme.com"). Both are what an operator asks first: where, and who.
+  """
+  def audit_event_started(%__MODULE__{} = run, mode, source_name, opts \\ []) do
+    Entry.new(
+      "sync.started",
+      "sync_run",
+      run.id,
+      metadata(mode: mode, source: source_name, site: opts[:site], trigger: opts[:trigger])
+    )
   end
 
   @doc "Audit entry for a run that finished, successfully or partially."
-  def audit_event_finished(%__MODULE__{} = run) do
-    Entry.new("sync.finished", "sync_run", run.id, %{status: run.status, stats: run.stats})
+  def audit_event_finished(%__MODULE__{} = run, opts \\ []) do
+    Entry.new(
+      "sync.finished",
+      "sync_run",
+      run.id,
+      metadata(
+        mode: run.mode,
+        status: run.status,
+        stats: run.stats,
+        trigger: opts[:trigger]
+      )
+    )
   end
 
   @doc "Audit entry for a run that could not even list its spaces."
-  def audit_event_failed(%__MODULE__{} = run, message) do
-    Entry.new("sync.failed", "sync_run", run.id, %{error: message})
+  def audit_event_failed(%__MODULE__{} = run, message, opts \\ []) do
+    Entry.new(
+      "sync.failed",
+      "sync_run",
+      run.id,
+      metadata(error: message, mode: run.mode, trigger: opts[:trigger])
+    )
+  end
+
+  # An entry only carries the facts it has: a run started by nobody in
+  # particular has no trigger, and an empty key in the log would read as "none".
+  defp metadata(pairs) do
+    for {key, value} <- pairs, not is_nil(value), into: %{}, do: {key, value}
   end
 end

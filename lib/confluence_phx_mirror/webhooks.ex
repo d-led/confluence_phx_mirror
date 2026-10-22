@@ -165,7 +165,9 @@ defmodule ConfluencePhxMirror.Webhooks do
   end
 
   defp enqueue_page(delivery, id, event) do
-    case %{"confluence_id" => id} |> PageWorker.new() |> Oban.insert() do
+    args = %{"confluence_id" => id, "trigger" => "the #{event} webhook"}
+
+    case args |> PageWorker.new() |> Oban.insert() do
       {:ok, job} ->
         Audit.log(
           actor(delivery),
@@ -194,7 +196,9 @@ defmodule ConfluencePhxMirror.Webhooks do
         {:ok, Repo.get!(Delivery, delivery.id)}
 
       key ->
-        case %{"space_key" => key} |> SpaceWorker.new() |> Oban.insert() do
+        args = %{"space_key" => key, "trigger" => "the #{event} webhook"}
+
+        case args |> SpaceWorker.new() |> Oban.insert() do
           {:ok, job} ->
             Audit.log(
               actor(delivery),

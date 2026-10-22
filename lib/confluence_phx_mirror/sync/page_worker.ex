@@ -11,10 +11,15 @@ defmodule ConfluencePhxMirror.Sync.PageWorker do
   alias ConfluencePhxMirror.Sync
 
   @impl true
-  def perform(%Oban.Job{args: %{"confluence_id" => id}}) do
+  def perform(%Oban.Job{args: %{"confluence_id" => id} = args}) do
     confluence_id = to_integer(id)
+    trigger = args["trigger"] || "a webhook"
 
-    case Sync.run(:page, confluence_id: confluence_id, actor: {:system, "page-worker"}) do
+    case Sync.run(:page,
+           confluence_id: confluence_id,
+           actor: {:system, "page-worker"},
+           trigger: trigger
+         ) do
       {:ok, %{status: "failed"} = run} -> {:error, run.error}
       {:ok, _run} -> :ok
     end

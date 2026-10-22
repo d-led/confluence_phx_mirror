@@ -6,8 +6,14 @@ defmodule ConfluencePhxMirror.Sync.SpaceWorker do
   alias ConfluencePhxMirror.Sync
 
   @impl true
-  def perform(%Oban.Job{args: %{"space_key" => space_key}}) do
-    case Sync.run(:space, space_key: space_key, actor: {:system, "space-worker"}) do
+  def perform(%Oban.Job{args: %{"space_key" => space_key} = args}) do
+    trigger = args["trigger"] || "a webhook"
+
+    case Sync.run(:space,
+           space_key: space_key,
+           actor: {:system, "space-worker"},
+           trigger: trigger
+         ) do
       {:ok, %{status: "failed"} = run} -> {:error, run.error}
       {:ok, _run} -> :ok
     end

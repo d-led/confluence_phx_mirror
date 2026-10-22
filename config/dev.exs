@@ -94,7 +94,11 @@ config :confluence_phx_mirror, ConfluencePhxMirror.Mailer,
   retries: 1
 
 # Do not include metadata nor timestamps in development logs
-config :logger, :default_formatter, format: "[$level] $message\n"
+config :logger, :default_formatter, format: "$time $metadata[$level] $message\n"
+
+# The admin screens show what happened; the console keeps the structured log.
+# SQL at debug level is far too chatty to be useful in development.
+config :logger, level: :info
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.

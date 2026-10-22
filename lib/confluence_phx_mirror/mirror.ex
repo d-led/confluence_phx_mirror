@@ -414,7 +414,7 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc """
   Marks pages of `space` that Confluence no longer returns as deleted.
 
-  Rows are kept for the audit trail; queries filter on `deleted_at`.
+  Rows are kept for the audit log; queries filter on `deleted_at`.
   """
   def mark_missing_deleted(space, seen_confluence_ids) do
     query =

@@ -36,7 +36,7 @@ defmodule Mix.Tasks.Confluence.Sync do
 
     Mix.shell().info("Syncing (#{mode}) from #{inspect(Source.source())}…")
 
-    case Sync.run(mode, sync_opts) do
+    case Sync.run(mode, sync_opts ++ [trigger: "mix confluence.sync"]) do
       {:ok, run} ->
         print_summary(run)
         if run.status == "failed", do: exit({:shutdown, 1})
