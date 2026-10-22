@@ -44,7 +44,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
         <div class="relative min-w-0 flex-1 sm:max-w-xs">
           <.icon
             name="hero-magnifying-glass"
-            class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-base-content/40"
+            class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-base-content/70"
           />
           <.input
             field={@form[:q]}
@@ -59,7 +59,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
             :if={@q != ""}
             type="button"
             phx-click="clear"
-            class="absolute right-1 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded text-base-content/40 transition hover:bg-base-200 hover:text-base-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 sm:size-7"
+            class="absolute right-1 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded text-base-content/70 transition hover:bg-base-200 hover:text-base-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 sm:size-7"
             aria-label="Clear filter"
           >
             <.icon name="hero-x-mark" class="size-4" />
@@ -69,7 +69,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
           id="catalog-count"
           role="status"
           aria-live="polite"
-          class="text-xs tabular-nums text-base-content/50"
+          class="text-xs tabular-nums text-base-content/70"
         >
           {@count}{if @more?, do: "+"} {if @count == 1, do: @singular, else: @plural}
         </p>
@@ -82,6 +82,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
   attr :kind, :atom, required: true
   attr :items, :list, required: true
   attr :space, :any, default: nil
+  attr :sort, :string, default: "title"
 
   def catalog_body(%{kind: :spaces} = assigns) do
     ~H"""
@@ -112,7 +113,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
             <span class="block truncate text-sm font-semibold group-hover:text-primary">
               {author.name}
             </span>
-            <span class="block text-[11px] text-base-content/45">
+            <span class="block text-[11px] text-base-content/70">
               {author.pages} {if author.pages == 1, do: "item", else: "items"} · updated {Time.ago(
                 author.updated_at
               )}
@@ -132,7 +133,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
         href={~p"/labels/#{label.name}"}
         class="group inline-flex items-center gap-2 rounded-lg border border-base-300/70 bg-base-100 px-3 py-2 text-sm transition hover:border-primary/40 hover:bg-base-200/40"
       >
-        <.icon name="hero-tag" class="size-3.5 text-base-content/40" />
+        <.icon name="hero-tag" class="size-3.5 text-base-content/70" />
         <span class="font-medium group-hover:text-primary">{label.name}</span>
         <span class="badge badge-ghost badge-xs tabular-nums">{label.pages}</span>
       </a>
@@ -152,7 +153,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
             >
               {post.title}
             </.link>
-            <span class="text-[11px] uppercase tracking-wide text-base-content/40">
+            <span class="text-[11px] uppercase tracking-wide text-base-content/70">
               {Time.date(post.external_updated_at)}
             </span>
           </div>
@@ -161,7 +162,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
           </p>
           <%!-- `relative` keeps the label links clickable above the card-wide overlay. --%>
           <div class="relative z-10 mt-2 flex flex-wrap items-center gap-2">
-            <span class="text-[11px] text-base-content/45">by {post.author_name}</span>
+            <span class="text-[11px] text-base-content/70">by {post.author_name}</span>
             <.label_chips labels={post.labels} />
           </div>
         </article>
@@ -176,12 +177,38 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
       <table class="table table-sm w-full">
         <caption class="sr-only">Pages in {@space.name}</caption>
         <thead>
-          <tr class="text-[11px] uppercase tracking-wide text-base-content/45">
-            <th scope="col" class="font-medium">Title</th>
+          <tr class="text-[11px] uppercase tracking-wide text-base-content/70">
+            <th scope="col" class="font-medium" aria-sort={aria_sort(@sort, "title")}>
+              <button
+                type="button"
+                id="sort-title"
+                phx-click="sort"
+                phx-value-sort="title"
+                class={[
+                  "inline-flex min-h-11 items-center gap-1 sm:min-h-0",
+                  sort_tone(@sort == "title")
+                ]}
+              >
+                Title <.icon name={sort_icon(@sort, "title")} class="size-3" />
+              </button>
+            </th>
             <th scope="col" class="hidden font-medium md:table-cell">Kind</th>
             <th scope="col" class="hidden font-medium sm:table-cell">Status</th>
             <th scope="col" class="hidden font-medium lg:table-cell">Author</th>
-            <th scope="col" class="text-right font-medium">Updated</th>
+            <th scope="col" class="text-right font-medium" aria-sort={aria_sort(@sort, "updated")}>
+              <button
+                type="button"
+                id="sort-updated"
+                phx-click="sort"
+                phx-value-sort="updated"
+                class={[
+                  "inline-flex min-h-11 items-center gap-1 sm:min-h-0",
+                  sort_tone(@sort == "updated")
+                ]}
+              >
+                Updated <.icon name={sort_icon(@sort, "updated")} class="size-3" />
+              </button>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -189,11 +216,11 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
             <td class="max-w-[28rem]">
               <.link
                 navigate={URLs.content_path(@space.key, page)}
-                class="flex min-h-8 items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                class="flex min-h-11 items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 sm:min-h-8"
               >
                 <.icon
                   name={if page.type == "blogpost", do: "hero-newspaper", else: "hero-document-text"}
-                  class="size-3.5 shrink-0 text-base-content/40"
+                  class="size-3.5 shrink-0 text-base-content/70"
                 />
                 <span class="truncate font-medium">{page.title}</span>
               </.link>
@@ -211,7 +238,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
             </td>
             <td class="hidden text-xs text-base-content/60 lg:table-cell">{page.author_name}</td>
             <td
-              class="whitespace-nowrap text-right text-xs text-base-content/55"
+              class="whitespace-nowrap text-right text-xs text-base-content/70"
               title={Time.datetime(page.external_updated_at)}
             >
               {Time.ago(page.external_updated_at)}
@@ -229,7 +256,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
       <table class="table table-sm w-full">
         <caption class="sr-only">Attachments in {@space.name}</caption>
         <thead>
-          <tr class="text-[11px] uppercase tracking-wide text-base-content/45">
+          <tr class="text-[11px] uppercase tracking-wide text-base-content/70">
             <th scope="col" class="font-medium">File</th>
             <th scope="col" class="hidden font-medium md:table-cell">Page</th>
             <th scope="col" class="hidden text-right font-medium sm:table-cell">Size</th>
@@ -251,7 +278,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
                 }
                 class="flex min-h-8 items-center gap-2 rounded font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
               >
-                <.icon name="hero-paper-clip" class="size-3.5 shrink-0 text-base-content/40" />
+                <.icon name="hero-paper-clip" class="size-3.5 shrink-0 text-base-content/70" />
                 <span class="truncate">{attachment.filename}</span>
               </a>
             </td>
@@ -263,13 +290,13 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
                 {attachment.page.title}
               </.link>
             </td>
-            <td class="hidden whitespace-nowrap text-right text-xs tabular-nums text-base-content/55 sm:table-cell">
+            <td class="hidden whitespace-nowrap text-right text-xs tabular-nums text-base-content/70 sm:table-cell">
               {Attachment.human_size(attachment.byte_size)}
             </td>
-            <td class="hidden text-right text-xs tabular-nums text-base-content/55 lg:table-cell">
+            <td class="hidden text-right text-xs tabular-nums text-base-content/70 lg:table-cell">
               v{attachment.version_number}
             </td>
-            <td class="whitespace-nowrap text-right text-xs text-base-content/55">
+            <td class="whitespace-nowrap text-right text-xs text-base-content/70">
               {Time.ago(attachment.external_updated_at)}
             </td>
           </tr>
@@ -289,28 +316,33 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
   """
   attr :more?, :boolean, default: false
   attr :previous?, :boolean, default: false
+  attr :offset, :integer, default: 0
+  attr :count, :integer, default: 0
 
   def catalog_pager(assigns) do
     ~H"""
     <div
       :if={@more? or @previous?}
-      class="mt-8 flex items-center justify-center gap-2 border-t border-base-300/60 pt-4"
+      class="mt-8 flex flex-wrap items-center justify-center gap-2 border-t border-base-300/60 pt-4"
     >
       <button
         :if={@previous?}
         type="button"
         id="catalog-previous"
         phx-click="previous"
-        class="btn btn-sm btn-ghost gap-2"
+        class="btn btn-sm btn-ghost min-h-11 gap-2 sm:min-h-8"
       >
         <.icon name="hero-arrow-left" class="size-4" /> Previous page
       </button>
+      <p class="w-full text-center text-[11px] tabular-nums text-base-content/70 sm:w-auto">
+        Showing {@offset + 1}–{@offset + @count}{if @more?, do: " of more"}
+      </p>
       <button
         :if={@more?}
         type="button"
         id="catalog-more"
         phx-click="more"
-        class="btn btn-sm btn-ghost gap-2"
+        class="btn btn-sm btn-ghost min-h-11 gap-2 sm:min-h-8"
       >
         Next page <.icon name="hero-arrow-right" class="size-4" />
       </button>
@@ -331,4 +363,15 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
 
   defp content_kind("blogpost"), do: "Blog post"
   defp content_kind(_type), do: "Page"
+
+  defp aria_sort("updated", "updated"), do: "descending"
+  defp aria_sort(column, column), do: "ascending"
+  defp aria_sort(_current, _column), do: "none"
+
+  defp sort_icon("updated", "updated"), do: "hero-chevron-down"
+  defp sort_icon(column, column), do: "hero-chevron-up"
+  defp sort_icon(_current, _column), do: "hero-arrows-up-down"
+
+  defp sort_tone(true), do: "text-base-content"
+  defp sort_tone(false), do: "text-base-content/70 hover:text-base-content"
 end

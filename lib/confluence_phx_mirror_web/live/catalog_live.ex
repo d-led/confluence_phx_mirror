@@ -37,6 +37,8 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    copy = copy(socket.assigns.live_action, nil, "")
+
     {:ok,
      assign(socket,
        kind: socket.assigns.live_action,
@@ -48,7 +50,9 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
        tree: [],
        breadcrumbs: [],
        form: to_form(%{"q" => ""}, as: :filter),
-       copy: copy(socket.assigns.live_action, nil, ""),
+       copy: copy,
+       page_title: copy.page_title,
+       sort: "title",
        debounce: @debounce
      )}
   end
@@ -61,9 +65,12 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
       {:ok, space} ->
         q = filter_text(params["q"])
         offset = offset(params["offset"])
+        sort = sort_of(params["sort"])
 
         %{items: items, more?: more?} =
-          entries(kind, socket, space, q: q, offset: offset, limit: @page_size)
+          entries(kind, socket, space, q: q, offset: offset, limit: @page_size, sort: sort)
+
+        copy = copy(kind, space, q)
 
         {:noreply,
          assign(socket,
@@ -74,7 +81,9 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
            more?: more?,
            tree: tree(space),
            breadcrumbs: breadcrumbs(space),
-           copy: copy(kind, space, q),
+           copy: copy,
+           page_title: copy.page_title,
+           sort: sort,
            form: to_form(%{"q" => q}, as: :filter)
          )}
 
@@ -94,6 +103,13 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
 
   def handle_event("more", _params, socket) do
     {:noreply, show(socket, socket.assigns.q, socket.assigns.offset + @page_size)}
+  end
+
+  def handle_event("sort", %{"sort" => sort}, socket) do
+    {:noreply,
+     socket
+     |> assign(:sort, sort_of(sort))
+     |> show(socket.assigns.q, 0)}
   end
 
   def handle_event("previous", _params, socket) do
@@ -144,8 +160,19 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
       />
 
       <.catalog_empty :if={@items == []} empty={@copy.empty} />
-      <.catalog_body :if={@items != []} kind={@kind} items={@items} space={@space} />
-      <.catalog_pager more?={@more?} previous?={@offset > 0} />
+      <.catalog_body
+        :if={@items != []}
+        kind={@kind}
+        items={@items}
+        space={@space}
+        sort={@sort}
+      />
+      <.catalog_pager
+        more?={@more?}
+        previous?={@offset > 0}
+        offset={@offset}
+        count={length(@items)}
+      />
     </Layouts.app>
     """
   end
@@ -170,10 +197,17 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
   defp entries(:spaces, socket, _space, opts), do: Catalog.spaces(scope(socket), opts)
   defp entries(:people, _socket, _space, opts), do: Catalog.people(opts)
   defp entries(:labels, _socket, _space, opts), do: Catalog.labels(opts)
-  defp entries(:pages, _socket, space, opts), do: Catalog.contents(space, opts)
+
+  defp entries(:pages, _socket, space, opts) do
+    Catalog.contents(space, Keyword.update!(opts, :sort, &order/1))
+  end
 
   defp entries(:blog, _socket, space, opts),
-    do: Catalog.contents(space, Keyword.merge([type: "blogpost", sort: :recent], opts))
+    do:
+      Catalog.contents(
+        space,
+        Keyword.merge([type: "blogpost", sort: :recent], Keyword.delete(opts, :sort))
+      )
 
   defp entries(:attachments, _socket, space, opts), do: Catalog.attachments(space, opts)
 
@@ -193,7 +227,11 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
 
   defp catalog_path(socket, q, offset) do
     params =
-      [{"q", q}, {"offset", if(offset > 0, do: Integer.to_string(offset))}]
+      [
+        {"q", q},
+        {"offset", if(offset > 0, do: Integer.to_string(offset))},
+        {"sort", if(socket.assigns.sort == "updated", do: "updated")}
+      ]
       |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
 
     case params do
@@ -215,6 +253,12 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
 
   defp filter_text(nil), do: ""
   defp filter_text(value), do: value |> to_string() |> String.trim()
+
+  defp sort_of("updated"), do: "updated"
+  defp sort_of(_sort), do: "title"
+
+  defp order(:title), do: :title
+  defp order(:updated), do: :recent
 
   defp offset(value) when is_binary(value) do
     case Integer.parse(value) do
@@ -241,7 +285,12 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
       placeholder: "Filter by name, key or description",
       singular: "space",
       plural: "spaces",
-      empty: empty(q, "No spaces mirrored yet", "Run mix confluence.sync to fill the mirror.")
+      empty:
+        empty(
+          q,
+          "No spaces mirrored yet",
+          "An administrator can fill the mirror by running a sync."
+        )
     }
   end
 
