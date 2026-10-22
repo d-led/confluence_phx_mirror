@@ -107,6 +107,25 @@ defmodule ConfluencePhxMirrorWeb.CatalogLiveTest do
       assert has_element?(view, "#catalog-results", "Deprecated Setup")
       refute has_element?(view, "#catalog-results", "Architecture Overview")
     end
+
+    test "sorts by recency when the URL asks for it, and back to title on request",
+         %{conn: conn} do
+      space = space_fixture(%{name: "Engineering Handbook"})
+      page_fixture(space, %{title: "Alpha"})
+      page_fixture(space, %{title: "Zulu"})
+
+      {:ok, view, _html} = live(conn, ~p"/spaces/#{space.key}/pages?sort=updated")
+
+      assert has_element?(view, "th[aria-sort='descending'] button#sort-updated")
+      assert has_element?(view, "th[aria-sort='none'] button#sort-title")
+      assert has_element?(view, "#catalog-results", "Zulu")
+
+      view |> element("#sort-title") |> render_click()
+
+      assert_patch(view, ~p"/spaces/#{space.key}/pages")
+      assert has_element?(view, "th[aria-sort='ascending'] button#sort-title")
+      assert has_element?(view, "#catalog-results", "Alpha")
+    end
   end
 
   describe "a space's blog" do
