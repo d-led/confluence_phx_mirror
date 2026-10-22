@@ -309,6 +309,27 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
 
       assert Enum.any?(insider["results"], &(&1["id"] == Demo.restricted_page()))
     end
+
+    test "label counts cover only pages the reader may open", %{conn: conn} do
+      outsider =
+        conn |> as_reader(user_fixture()) |> get(~p"/api/v1/labels") |> json_response(200)
+
+      counts = Map.new(outsider["results"], &{&1["name"], &1["pageCount"]})
+
+      refute Map.has_key?(counts, Demo.restricted_page_label())
+      assert counts[Demo.shared_label()] == 1
+
+      insider =
+        build_conn()
+        |> as_reader(reader_in_group(Demo.page_readers()))
+        |> get(~p"/api/v1/labels")
+        |> json_response(200)
+
+      insider_counts = Map.new(insider["results"], &{&1["name"], &1["pageCount"]})
+
+      assert insider_counts[Demo.restricted_page_label()] == 1
+      assert insider_counts[Demo.shared_label()] == 2
+    end
   end
 
   defp group_only_space do

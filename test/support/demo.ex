@@ -18,6 +18,14 @@ defmodule ConfluencePhxMirror.Demo do
   @restricted_page_title "Macros Gallery"
   @page_readers "confluence-users"
 
+  # A label only the restricted page carries: nothing about it may show up in a
+  # catalogue a reader outside the group browses.
+  @restricted_page_label "macros"
+
+  # A label the restricted page shares with one open page, so a count can be
+  # asserted to include exactly the half the reader may open.
+  @shared_label "demo"
+
   # A diagram attached to the open page: the bytes exist, so a download can be
   # asserted end to end.
   @open_page_attachment "9001"
@@ -50,6 +58,12 @@ defmodule ConfluencePhxMirror.Demo do
 
   @doc "The group that may read the restricted page."
   def page_readers, do: @page_readers
+
+  @doc "A label only the restricted page carries."
+  def restricted_page_label, do: @restricted_page_label
+
+  @doc "A label the restricted page shares with one open page."
+  def shared_label, do: @shared_label
 
   @doc "Attachment on the open page, with bytes behind it."
   def open_page_attachment, do: @open_page_attachment

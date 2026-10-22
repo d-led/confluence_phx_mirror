@@ -23,6 +23,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   import ConfluencePhxMirrorWeb.MirrorComponents
 
   alias ConfluencePhxMirror.Authorization
+  alias ConfluencePhxMirror.Catalog
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.Search
 
@@ -43,7 +44,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   @impl true
   def mount(_params, _session, socket) do
     spaces = Mirror.list_spaces()
-    labels = Mirror.list_labels()
+    labels = Catalog.label_counts(socket.assigns.current_scope)
 
     {:ok,
      assign(socket,
@@ -575,7 +576,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             </h2>
             <div class="flex flex-wrap gap-1.5">
               <a
-                :for={{label, count} <- Enum.take(@label_catalog, 12)}
+                :for={%{name: label, pages: count} <- Enum.take(@label_catalog, 12)}
                 href={~p"/labels/#{label}"}
                 class="badge badge-outline badge-sm"
               >
@@ -704,7 +705,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             class="h-11 w-28 rounded-full border border-dashed border-base-300 bg-base-100 px-3 text-xs placeholder:text-base-content/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50 sm:h-10 sm:w-36 [&::-webkit-calendar-picker-indicator]:hidden"
           />
           <datalist id="label-suggestions">
-            <option :for={{name, _count} <- @label_catalog} value={name} />
+            <option :for={%{name: name} <- @label_catalog} value={name} />
           </datalist>
         </form>
       </div>

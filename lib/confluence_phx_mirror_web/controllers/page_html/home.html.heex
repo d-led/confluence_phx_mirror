@@ -137,7 +137,7 @@
       <.rail_section title="Labels" icon="hero-tag">
         <div class="flex flex-wrap gap-1.5">
           <a
-            :for={{label, _count} <- Enum.take(@labels, 14)}
+            :for={%{name: label} <- Enum.take(@labels, 14)}
             href={~p"/labels/#{label}"}
             class="badge badge-outline badge-sm border-base-300 normal-case hover:border-primary hover:text-primary"
           >

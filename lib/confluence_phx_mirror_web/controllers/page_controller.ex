@@ -11,6 +11,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Authorization
+  alias ConfluencePhxMirror.Catalog
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Notifications
@@ -23,7 +24,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       page_title: "Home",
       spaces: readable_spaces(conn),
       recent_pages: visible(conn, Mirror.recent_pages(8)),
-      labels: Mirror.list_labels(),
+      labels: Catalog.label_counts(scope(conn)),
       stats: Mirror.stats(),
       last_webhook: List.first(Webhooks.recent(1))
     )

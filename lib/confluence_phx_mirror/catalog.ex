@@ -105,11 +105,12 @@ defmodule ConfluencePhxMirror.Catalog do
 
   @doc """
   A page of the people directory: the authors of mirrored content, with how much
-  each of them wrote.
+  readable content each of them wrote.
   """
-  @spec people(keyword()) :: page()
-  def people(opts \\ []) do
+  @spec people(Scope.t(), keyword()) :: page()
+  def people(%Scope{} = scope, opts \\ []) do
     from(p in Page,
+      as: :page,
       where: is_nil(p.deleted_at) and not is_nil(p.author_name),
       group_by: [p.author_name, p.author_account_id],
       select: %{
@@ -119,6 +120,7 @@ defmodule ConfluencePhxMirror.Catalog do
         updated_at: max(p.external_updated_at)
       }
     )
+    |> Authorization.restrict_pages(scope)
     |> matching(opts[:q], &author_contains/2)
     |> order_by([p], asc: p.author_name)
     |> page(opts)
@@ -129,20 +131,41 @@ defmodule ConfluencePhxMirror.Catalog do
   end
 
   @doc """
-  A page of the label index: every label in the mirror and how many pages carry
-  it.
+  A page of the label index: every label carried by a page the reader may open,
+  and how many such pages carry it.
+
+  The count is the reader's count. A label that only appears on a restricted
+  page does not appear here at all, and one that appears on both counts only
+  the half the reader can open — the index would otherwise answer questions
+  about content the reader never gets to see.
   """
-  @spec labels(keyword()) :: page()
-  def labels(opts \\ []) do
+  @spec labels(Scope.t(), keyword()) :: page()
+  def labels(%Scope{} = scope, opts \\ []) do
+    scope
+    |> label_count_query()
+    |> matching(opts[:q], &label_contains/2)
+    |> order_by([l], asc: l.name)
+    |> page(opts)
+  end
+
+  @doc "Every label with its readable page count, for a caller that shows all of them."
+  @spec label_counts(Scope.t()) :: [%{name: String.t(), pages: non_neg_integer()}]
+  def label_counts(%Scope{} = scope) do
+    scope
+    |> label_count_query()
+    |> order_by([l], asc: l.name)
+    |> Repo.all()
+  end
+
+  defp label_count_query(scope) do
     from(l in Label,
       join: p in assoc(l, :pages),
+      as: :page,
       where: is_nil(p.deleted_at),
       group_by: l.id,
       select: %{name: l.name, pages: count(p.id)}
     )
-    |> matching(opts[:q], &label_contains/2)
-    |> order_by([l], asc: l.name)
-    |> page(opts)
+    |> Authorization.restrict_pages(scope)
   end
 
   defp label_contains(query, pattern) do

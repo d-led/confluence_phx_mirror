@@ -195,8 +195,8 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
   end
 
   defp entries(:spaces, socket, _space, opts), do: Catalog.spaces(scope(socket), opts)
-  defp entries(:people, _socket, _space, opts), do: Catalog.people(opts)
-  defp entries(:labels, _socket, _space, opts), do: Catalog.labels(opts)
+  defp entries(:people, socket, _space, opts), do: Catalog.people(scope(socket), opts)
+  defp entries(:labels, socket, _space, opts), do: Catalog.labels(scope(socket), opts)
 
   defp entries(:pages, socket, space, opts) do
     space

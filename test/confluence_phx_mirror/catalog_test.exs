@@ -122,7 +122,7 @@ defmodule ConfluencePhxMirror.CatalogTest do
       page_fixture(space, %{author_name: "Jane Doe"})
       page_fixture(space, %{author_name: "Sam Rivera"})
 
-      assert [%{name: "Jane Doe", pages: 2}] = Catalog.people(q: "jane").items
+      assert [%{name: "Jane Doe", pages: 2}] = Catalog.people(reader(), q: "jane").items
     end
 
     test "needs every word the reader typed to appear" do
@@ -130,7 +130,18 @@ defmodule ConfluencePhxMirror.CatalogTest do
       page_fixture(space, %{author_name: "Jane Doe"})
       page_fixture(space, %{author_name: "Sam Rivera"})
 
-      assert Catalog.people(q: "jane rivera").items == []
+      assert Catalog.people(reader(), q: "jane rivera").items == []
+    end
+
+    test "counts only what the reader may open" do
+      space = space_fixture()
+      page_fixture(space, %{author_name: "Jane Doe"})
+      restricted_page(space, %{author_name: "Jane Doe"})
+
+      assert [%{name: "Jane Doe", pages: 1}] = Catalog.people(reader()).items
+      assert [%{name: "Jane Doe", pages: 1}] = Catalog.people(outsider()).items
+      assert [%{name: "Jane Doe", pages: 2}] = Catalog.people(insider()).items
+      assert [%{name: "Jane Doe", pages: 2}] = Catalog.people(admin()).items
     end
   end
 
@@ -140,7 +151,26 @@ defmodule ConfluencePhxMirror.CatalogTest do
       label_fixture(page_fixture(space), ["release", "announcement"])
       label_fixture(page_fixture(space), ["release"])
 
-      assert [%{name: "release", pages: 2}] = Catalog.labels(q: "release").items
+      assert [%{name: "release", pages: 2}] = Catalog.labels(reader(), q: "release").items
+    end
+
+    test "counts only what the reader may open" do
+      space = space_fixture()
+      label_fixture(page_fixture(space), ["release", "shared"])
+      label_fixture(restricted_page(space), ["release", "internal"])
+
+      assert labels(reader()) == %{"release" => 1, "shared" => 1}
+      assert labels(outsider()) == %{"release" => 1, "shared" => 1}
+
+      assert labels(insider()) == %{"internal" => 1, "release" => 2, "shared" => 1}
+      assert labels(admin()) == %{"internal" => 1, "release" => 2, "shared" => 1}
+    end
+
+    test "a label only on restricted pages does not appear at all" do
+      space = space_fixture()
+      label_fixture(restricted_page(space), ["internal"])
+
+      assert Catalog.labels(reader()).items == []
     end
   end
 
@@ -222,9 +252,23 @@ defmodule ConfluencePhxMirror.CatalogTest do
   defp titles(%{items: items}), do: Enum.map(items, & &1.title)
   defp filenames(%{items: items}), do: Enum.map(items, & &1.filename)
 
+  defp labels(scope), do: Map.new(Catalog.label_counts(scope), &{&1.name, &1.pages})
+
   defp label_fixture(page, names), do: Mirror.replace_labels(page, names)
 
   defp open_space, do: space_fixture(%{name: "Open space"})
+
+  # A page only `insider/0` may open: it is restricted to the `engineers` group.
+  defp restricted_page(space, attrs \\ %{}) do
+    page = page_fixture(space, attrs)
+
+    {:ok, _} =
+      Mirror.replace_page_restrictions(page, [
+        %{operation: "read", subject_type: "group", subject_key: "engineers"}
+      ])
+
+    page
+  end
 
   defp private_space do
     space = space_fixture(%{name: "Private space"})
@@ -247,4 +291,8 @@ defmodule ConfluencePhxMirror.CatalogTest do
   defp anonymous, do: Scope.for_user(nil)
 
   defp admin, do: Scope.for_user(user_fixture(%{email: "admin@example.com", role: "admin"}))
+
+  defp outsider, do: reader("outsider@example.com")
+
+  defp insider, do: reader("insider@example.com", ["engineers"])
 end

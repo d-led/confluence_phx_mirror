@@ -95,6 +95,62 @@ defmodule ConfluencePhxMirror.Authorization do
     )
   end
 
+  @doc """
+  Narrows a `Page` query — built with `as: :page` — to the pages the reader may
+  open, applying both levels of the rule inside the statement.
+
+  A catalogue that counts rather than lists (`Catalog.labels/2` asks how many
+  pages carry a label) needs the answer to be about pages the reader could
+  actually read, and it needs it without loading them.
+  """
+  @spec restrict_pages(Ecto.Queryable.t(), Scope.t()) :: Ecto.Queryable.t()
+  def restrict_pages(query, %Scope{} = scope) do
+    if Scope.admin?(scope) do
+      query
+    else
+      where(
+        query,
+        [p],
+        (not exists(page_space_permissions()) or exists(page_space_permissions_for(scope))) and
+          (not exists(page_read_restrictions()) or exists(page_read_restrictions_for(scope)))
+      )
+    end
+  end
+
+  defp page_space_permissions do
+    from(sp in SpacePermission,
+      where: sp.operation == "read" and sp.space_id == parent_as(:page).space_id,
+      select: 1
+    )
+  end
+
+  defp page_space_permissions_for(scope) do
+    subjects = permitted_subjects(scope)
+
+    from(sp in SpacePermission,
+      where: sp.operation == "read" and sp.space_id == parent_as(:page).space_id,
+      where: ^subjects,
+      select: 1
+    )
+  end
+
+  defp page_read_restrictions do
+    from(r in PageRestriction,
+      where: r.operation == "read" and r.page_id == parent_as(:page).id,
+      select: 1
+    )
+  end
+
+  defp page_read_restrictions_for(scope) do
+    subjects = permitted_subjects(scope)
+
+    from(r in PageRestriction,
+      where: r.operation == "read" and r.page_id == parent_as(:page).id,
+      where: ^subjects,
+      select: 1
+    )
+  end
+
   # Everyone may match an anonymous permission; the rest depend on who is
   # asking. The first clause is unconditional, so the fold always has a seed.
   defp permitted_subjects(%Scope{} = scope) do

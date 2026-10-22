@@ -649,18 +649,6 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
-  @doc "Labels with page counts, used by the label browser."
-  def list_labels do
-    from(l in Label,
-      join: p in assoc(l, :pages),
-      where: is_nil(p.deleted_at),
-      group_by: l.id,
-      order_by: [asc: l.name],
-      select: {l.name, count(p.id)}
-    )
-    |> Repo.all()
-  end
-
   def recent_pages(limit \\ 10) do
     from(p in Page,
       where: is_nil(p.deleted_at),
