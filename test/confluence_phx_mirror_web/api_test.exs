@@ -4,7 +4,13 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Mirror
+
+  # A group the demo snapshot never grants to anybody.
+  @unlisted_group "eng-readers"
+  # A word only the restricted page carries, for the search cases.
+  @restricted_page_term "macros"
 
   setup do
     demo_snapshot!()
@@ -220,21 +226,35 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       reader = user_fixture()
 
       assert %{"error" => "not_found"} =
-               conn |> as_reader(reader) |> get(~p"/api/v1/pages/1003") |> json_response(404)
+               conn
+               |> as_reader(reader)
+               |> get(~p"/api/v1/pages/#{Demo.restricted_page()}")
+               |> json_response(404)
     end
 
     test "a reader in the restricting group reads it", %{conn: conn} do
-      reader = reader_in_group("confluence-users")
+      reader = reader_in_group(Demo.page_readers())
 
-      page = conn |> as_reader(reader) |> get(~p"/api/v1/pages/1003") |> json_response(200)
-      assert page["id"] == "1003"
+      page =
+        conn
+        |> as_reader(reader)
+        |> get(~p"/api/v1/pages/#{Demo.restricted_page()}")
+        |> json_response(200)
+
+      assert page["id"] == Demo.restricted_page()
+      assert page["title"] == Demo.restricted_page_title()
     end
 
     test "an open page stays readable to everyone", %{conn: conn} do
       reader = user_fixture()
 
-      page = conn |> as_reader(reader) |> get(~p"/api/v1/pages/1002") |> json_response(200)
-      assert page["id"] == "1002"
+      page =
+        conn
+        |> as_reader(reader)
+        |> get(~p"/api/v1/pages/#{Demo.open_page()}")
+        |> json_response(200)
+
+      assert page["id"] == Demo.open_page()
     end
 
     test "the space listing only shows spaces the reader may see", %{conn: conn} do
@@ -247,7 +267,7 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
 
       insider =
         build_conn()
-        |> as_reader(reader_in_group("eng-readers"))
+        |> as_reader(reader_in_group(@unlisted_group))
         |> get(~p"/api/v1/spaces")
         |> json_response(200)
 
@@ -261,33 +281,33 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
         |> get(~p"/wiki/rest/api/content?limit=100")
         |> json_response(200)
 
-      refute Enum.any?(outsider["results"], &(&1["id"] == "1003"))
+      refute Enum.any?(outsider["results"], &(&1["id"] == Demo.restricted_page()))
 
       insider =
         build_conn()
-        |> as_reader(reader_in_group("confluence-users"))
+        |> as_reader(reader_in_group(Demo.page_readers()))
         |> get(~p"/wiki/rest/api/content?limit=100")
         |> json_response(200)
 
-      assert Enum.any?(insider["results"], &(&1["id"] == "1003"))
+      assert Enum.any?(insider["results"], &(&1["id"] == Demo.restricted_page()))
     end
 
     test "search only returns pages the reader may open", %{conn: conn} do
       outsider =
         conn
         |> as_reader(user_fixture())
-        |> get(~p"/api/v1/search?q=macros")
+        |> get(~p"/api/v1/search?q=#{@restricted_page_term}")
         |> json_response(200)
 
-      refute Enum.any?(outsider["results"], &(&1["id"] == "1003"))
+      refute Enum.any?(outsider["results"], &(&1["id"] == Demo.restricted_page()))
 
       insider =
         build_conn()
-        |> as_reader(reader_in_group("confluence-users"))
-        |> get(~p"/api/v1/search?q=macros")
+        |> as_reader(reader_in_group(Demo.page_readers()))
+        |> get(~p"/api/v1/search?q=#{@restricted_page_term}")
         |> json_response(200)
 
-      assert Enum.any?(insider["results"], &(&1["id"] == "1003"))
+      assert Enum.any?(insider["results"], &(&1["id"] == Demo.restricted_page()))
     end
   end
 
@@ -297,7 +317,7 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
 
     {:ok, _} =
       Mirror.replace_space_permissions(space, [
-        %{subject_type: "group", subject_key: "eng-readers"}
+        %{subject_type: "group", subject_key: @unlisted_group}
       ])
 
     space

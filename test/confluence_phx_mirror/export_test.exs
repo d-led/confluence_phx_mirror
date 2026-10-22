@@ -5,6 +5,7 @@ defmodule ConfluencePhxMirror.ExportTest do
 
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Mirror
 
@@ -104,7 +105,7 @@ defmodule ConfluencePhxMirror.ExportTest do
         |> Enum.to_list()
         |> entry_names()
 
-      refute Enum.any?(names, &String.contains?(&1, "Macros Gallery"))
+      refute Enum.any?(names, &String.contains?(&1, Demo.restricted_page_title()))
     end
 
     test "keeps every page for an administrator" do
@@ -115,7 +116,7 @@ defmodule ConfluencePhxMirror.ExportTest do
         |> Enum.to_list()
         |> entry_names()
 
-      assert Enum.any?(names, &String.contains?(&1, "Macros Gallery"))
+      assert Enum.any?(names, &String.contains?(&1, Demo.restricted_page_title()))
     end
   end
 
