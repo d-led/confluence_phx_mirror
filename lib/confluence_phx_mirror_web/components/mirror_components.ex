@@ -22,7 +22,8 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   attr :current, :string, default: nil
 
   def breadcrumbs(assigns) do
-    {head, middle, parent} = split_trail(assigns.items)
+    items = trail(assigns.items, assigns.current)
+    {head, middle, parent} = split_trail(items)
 
     assigns =
       assign(assigns,
@@ -66,7 +67,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
             >
               …
             </summary>
-            <ul class="menu dropdown-content z-50 mt-2 w-64 rounded-box border border-base-300 bg-base-100 p-2 text-xs shadow-xl">
+            <ul class="menu dropdown-content z-50 mt-2 w-64 rounded-box border border-base-300 bg-base-100 p-2 text-xs shadow-lg">
               <li :for={item <- @middle}>
                 <.link navigate={item.path} class="truncate">{item.title}</.link>
               </li>
@@ -107,6 +108,16 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     """
   end
 
+  # A space's home page carries the space's title, and a sub-page can repeat an
+  # ancestor's name; either way the reader would see the same word twice in one
+  # trail. Keep the first occurrence and drop the current title entirely.
+  defp trail(items, current) do
+    Enum.reduce(items, [], fn item, acc ->
+      repeated? = item.title == current or Enum.any?(acc, &(&1.title == item.title))
+      if repeated?, do: acc, else: acc ++ [item]
+    end)
+  end
+
   # Root stays first, the immediate parent stays next to the current page, and
   # everything between is what can be collapsed.
   defp split_trail([]), do: {nil, [], nil}
@@ -137,6 +148,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
         <.link
           navigate={URLs.content_path(@space_key, node.page)}
           aria-current={@current && @current.id == node.page.id && "page"}
+          title={node.page.title}
           class={[
             "flex min-h-9 items-center gap-2 rounded-md py-1.5 pr-2 text-[13px]",
             @current && @current.id == node.page.id && "bg-primary/10 font-semibold text-primary"
@@ -157,8 +169,8 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
         />
       </li>
     </ul>
-    <p :if={@nodes == [] and @depth == 0} class="px-2 py-3 text-xs text-base-content/50">
-      No pages yet — run a sync.
+    <p :if={@nodes == [] and @depth == 0} class="px-2 py-3 text-xs text-base-content/70">
+      No pages in this space yet.
     </p>
     """
   end
@@ -244,7 +256,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   def rail_section(assigns) do
     ~H"""
     <section class={["rounded-xl border border-base-300/70 bg-base-100/60 p-4", @class]}>
-      <h2 class="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-base-content/50">
+      <h2 class="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-base-content/70">
         <.icon name={@icon} class="size-3.5" /> {@title}
       </h2>
       {render_slot(@inner_block)}
@@ -257,7 +269,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
 
   def attachment_list(assigns) do
     ~H"""
-    <div :if={@attachments == []} class="text-xs text-base-content/50">No attachments.</div>
+    <div :if={@attachments == []} class="text-xs text-base-content/70">No attachments.</div>
     <ul :if={@attachments != []} class="space-y-2">
       <li :for={attachment <- @attachments} class="group flex items-center gap-2">
         <span class="grid size-7 shrink-0 place-items-center rounded-md bg-base-200 text-base-content/60">
@@ -278,7 +290,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
         >
           {attachment.filename}
         </a>
-        <span class="shrink-0 text-[10px] tabular-nums text-base-content/40">
+        <span class="shrink-0 text-[10px] tabular-nums text-base-content/70">
           {ConfluencePhxMirror.Mirror.Attachment.human_size(attachment.byte_size)}
         </span>
       </li>
@@ -301,7 +313,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
 
   def page_list(assigns) do
     ~H"""
-    <p :if={@pages == []} class="text-xs text-base-content/50">{@empty}</p>
+    <p :if={@pages == []} class="text-xs text-base-content/70">{@empty}</p>
     <ul :if={@pages != []} class="space-y-2">
       <li :for={page <- @pages}>
         <.link
@@ -310,11 +322,11 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
         >
           <.icon
             name={if page.type == "blogpost", do: "hero-newspaper", else: "hero-document-text"}
-            class="mt-0.5 size-3.5 shrink-0 text-base-content/40"
+            class="mt-0.5 size-3.5 shrink-0 text-base-content/70"
           />
           <span class="min-w-0">
             <span class="block truncate text-xs font-medium group-hover:text-primary">{page.title}</span>
-            <span class="block text-[10px] text-base-content/40">
+            <span class="block text-[10px] text-base-content/70">
               {page.space.key} · {Time.ago(page.external_updated_at)}
             </span>
           </span>
@@ -339,10 +351,10 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     ~H"""
     <section id="comments" class="mt-10 border-t border-base-300/70 pt-6">
       <h2 class="mb-4 flex items-center gap-2 text-sm font-semibold">
-        <.icon name="hero-chat-bubble-left-right" class="size-4 text-base-content/50" /> Comments
+        <.icon name="hero-chat-bubble-left-right" class="size-4 text-base-content/70" /> Comments
         <span class="badge badge-ghost badge-sm">{length(@comments)}</span>
       </h2>
-      <p :if={@comments == []} class="text-sm text-base-content/50">
+      <p :if={@comments == []} class="text-sm text-base-content/70">
         No comments on the original page.
       </p>
       <div class="space-y-5">
@@ -354,7 +366,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
             <div class="flex flex-wrap items-baseline gap-2">
               <span class="text-sm font-medium">{comment.author_name || "Anonymous"}</span>
               <span
-                class="text-[11px] text-base-content/40"
+                class="text-[11px] text-base-content/70"
                 title={Time.datetime(comment.external_created_at)}
               >
                 {Time.ago(comment.external_created_at)}
@@ -373,7 +385,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-baseline gap-2">
                   <span class="text-xs font-medium">{reply.author_name}</span>
-                  <span class="text-[10px] text-base-content/40">{Time.ago(reply.external_created_at)}</span>
+                  <span class="text-[10px] text-base-content/70">{Time.ago(reply.external_created_at)}</span>
                 </div>
                 <div class="confluence-content mt-1 text-sm">
                   {Phoenix.HTML.raw(reply.body_export || "")}
@@ -411,11 +423,11 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   def empty_state(assigns) do
     ~H"""
     <div class="rounded-xl border border-dashed border-base-300 bg-base-200/30 px-6 py-12 text-center">
-      <div class="mx-auto grid size-11 place-items-center rounded-full bg-base-200 text-base-content/50">
+      <div class="mx-auto grid size-11 place-items-center rounded-full bg-base-200 text-base-content/70">
         <.icon name={@icon} class="size-5" />
       </div>
       <h2 class="mt-3 text-sm font-semibold">{@title}</h2>
-      <p :if={@body} class="mx-auto mt-1 max-w-md text-xs text-base-content/55">{@body}</p>
+      <p :if={@body} class="mx-auto mt-1 max-w-md text-xs text-base-content/70">{@body}</p>
       {render_slot(@inner_block)}
     </div>
     """
@@ -430,31 +442,20 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
       data-hit
       class="group relative rounded-xl border border-base-300/70 bg-base-100 p-4 transition hover:border-primary/40 hover:shadow-sm"
     >
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <.link
-            navigate={
-              URLs.page_path(@result.space.key, @result.page.confluence_id, @result.page.slug)
-            }
-            data-hit-link
-            class="block min-w-0 text-base font-semibold text-base-content after:absolute after:inset-0 after:content-[''] group-hover:text-primary"
-          >
-            <span class="block truncate">{highlight(@result.page.title, @terms)}</span>
-          </.link>
-          <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-base-content/50">
-            <span class="badge badge-ghost badge-xs">{@result.space.key}</span>
-            <span>{@result.page.space.name}</span>
-            <span aria-hidden="true">·</span>
-            <span>Updated {Time.ago(@result.page.external_updated_at)}</span>
-          </div>
-        </div>
-        <span
-          :if={@result.rank > 0}
-          class="shrink-0 rounded-md bg-base-200 px-1.5 py-0.5 text-[10px] tabular-nums text-base-content/50"
-          title="Postgres relevance rank"
+      <div class="min-w-0">
+        <.link
+          navigate={URLs.page_path(@result.space.key, @result.page.confluence_id, @result.page.slug)}
+          data-hit-link
+          class="block min-w-0 text-base font-semibold text-base-content after:absolute after:inset-0 after:content-[''] group-hover:text-primary"
         >
-          {Float.round(@result.rank * 1.0, 2)}
-        </span>
+          <span class="block truncate">{highlight(@result.page.title, @terms)}</span>
+        </.link>
+        <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-base-content/70">
+          <span class="badge badge-ghost badge-xs">{@result.space.key}</span>
+          <span>{@result.page.space.name}</span>
+          <span aria-hidden="true">·</span>
+          <span>Updated {Time.ago(@result.page.external_updated_at)}</span>
+        </div>
       </div>
       <p class="mt-2 line-clamp-2 text-xs leading-relaxed text-base-content/65">
         {highlight(@result.snippet, @terms)}
@@ -546,23 +547,23 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     >
       <div class="flex items-center justify-between gap-2">
         <span class="badge badge-ghost badge-sm">{@space.key}</span>
-        <span class="text-[11px] tabular-nums text-base-content/45">
+        <span class="text-[11px] tabular-nums text-base-content/70">
           {@count} {if @count == 1, do: "page", else: "pages"}
         </span>
       </div>
       <span class="mt-2 text-sm font-semibold group-hover:text-primary">{@space.name}</span>
-      <span class="mt-0.5 line-clamp-2 text-xs text-base-content/55">
+      <span class="mt-0.5 line-clamp-2 text-xs text-base-content/70">
         {@space.description || "No description."}
       </span>
       <span
         :if={@blog_posts not in [nil, 0]}
-        class="mt-2 text-[11px] tabular-nums text-base-content/45"
+        class="mt-2 text-[11px] tabular-nums text-base-content/70"
       >
         {@blog_posts} {if @blog_posts == 1, do: "blog post", else: "blog posts"}
       </span>
       <span
         :if={@updated_at}
-        class="mt-auto pt-3 text-[10px] uppercase tracking-wide text-base-content/35"
+        class="mt-auto pt-3 text-[10px] uppercase tracking-wide text-base-content/70"
       >
         Updated {Time.ago(@updated_at)}
       </span>
@@ -576,7 +577,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   def kv(assigns) do
     ~H"""
     <div class="flex items-baseline justify-between gap-3 border-b border-base-300/50 py-1.5 last:border-0">
-      <dt class="text-[11px] uppercase tracking-wide text-base-content/45">{@label}</dt>
+      <dt class="text-[11px] uppercase tracking-wide text-base-content/70">{@label}</dt>
       <dd class="min-w-0 truncate text-right text-xs font-medium">{@value}</dd>
     </div>
     """

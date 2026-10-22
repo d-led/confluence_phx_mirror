@@ -30,6 +30,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   attr :breadcrumbs, :list, default: []
   attr :sidebar?, :boolean, default: true
   attr :rail?, :boolean, default: false
+  attr :search?, :boolean, default: true, doc: "render the header search field"
   attr :search_query, :string, default: ""
   attr :page_title, :string, default: nil
 
@@ -85,13 +86,18 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             </span>
             <span class="hidden flex-col leading-tight sm:flex">
               <span class="text-sm font-semibold">{@mirror_name}</span>
-              <span class="text-[11px] uppercase tracking-wide text-base-content/50">
+              <span class="text-[11px] uppercase tracking-wide text-base-content/70">
                 mirror of {@mirror_host || "the demo snapshot"}
               </span>
             </span>
           </.link>
 
-          <form action={~p"/search"} method="get" class="ml-1 hidden min-w-0 flex-1 md:block">
+          <form
+            :if={@search?}
+            action={~p"/search"}
+            method="get"
+            class="ml-1 hidden min-w-0 flex-1 md:block"
+          >
             <label class="input input-sm flex w-full items-center gap-2 rounded-lg border-base-300 bg-base-200/60">
               <.icon name="hero-magnifying-glass" class="size-4 shrink-0 opacity-50" />
               <input
@@ -99,14 +105,19 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                 name="q"
                 value={@search_query}
                 placeholder="Search pages, decisions, people…"
-                class="grow bg-transparent outline-none placeholder:text-base-content/40"
+                class="grow bg-transparent outline-none placeholder:text-base-content/70"
                 autocomplete="off"
               />
             </label>
           </form>
 
           <div class="ml-auto flex items-center gap-1">
-            <.link navigate={~p"/search"} class="btn btn-ghost btn-sm md:hidden" aria-label="Search">
+            <.link
+              :if={@search?}
+              navigate={~p"/search"}
+              class="btn btn-ghost btn-sm md:hidden"
+              aria-label="Search"
+            >
               <.icon name="hero-magnifying-glass" class="size-4" />
             </.link>
 
@@ -115,7 +126,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                 <.icon name="hero-rectangle-stack" class="size-4" />
                 <span class="hidden lg:inline">Spaces</span>
               </summary>
-              <ul class="menu dropdown-content z-50 mt-2 w-60 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
+              <ul class="menu dropdown-content z-50 mt-2 w-60 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
                 <li :for={space <- @spaces}>
                   <.link
                     navigate={~p"/spaces/#{space.key}"}
@@ -159,10 +170,10 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                     {initials(@current_user.display_name || @current_user.email)}
                   </span>
                 </summary>
-                <ul class="menu dropdown-content z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
+                <ul class="menu dropdown-content z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
                   <li class="menu-title truncate">{@current_user.email}</li>
                   <li>
-                    <span class="text-xs uppercase tracking-wide text-base-content/50">{@current_user.role}</span>
+                    <span class="text-xs uppercase tracking-wide text-base-content/70">{@current_user.role}</span>
                   </li>
                   <li :if={@current_admin?}>
                     <.link navigate={~p"/admin"}><.icon name="hero-cog-6-tooth" class="size-4" />
@@ -207,14 +218,14 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
           id="mirror-sidebar"
           tabindex="-1"
           aria-label={if @space, do: "Pages in #{@space.name}", else: "Mirrored spaces"}
-          class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] -translate-x-full overflow-y-auto overscroll-contain border-r border-base-300/60 bg-base-100 shadow-xl transition-transform duration-200 focus:outline-none motion-reduce:transition-none data-[open]:translate-x-0 lg:static lg:z-auto lg:w-72 lg:max-w-none lg:translate-x-0 lg:bg-base-200/25 lg:shadow-none lg:data-[collapsed]:hidden"
+          class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] -translate-x-full overflow-y-auto overscroll-contain border-r border-base-300/60 bg-base-100 shadow-lg transition-transform duration-200 focus:outline-none motion-reduce:transition-none data-[open]:translate-x-0 lg:static lg:z-auto lg:w-72 lg:max-w-none lg:translate-x-0 lg:bg-base-200/25 lg:shadow-none lg:data-[collapsed]:hidden"
         >
           <div class="p-4 lg:sticky lg:top-[57px] lg:max-h-[calc(100vh-57px)] lg:overflow-y-auto">
             <%= if @space do %>
               <div class="mb-3 flex items-center justify-between gap-2">
                 <.link
                   navigate={~p"/spaces/#{@space.key}"}
-                  class="truncate text-xs font-semibold uppercase tracking-wider text-base-content/50 hover:text-primary"
+                  class="truncate text-xs font-semibold uppercase tracking-wider text-base-content/70 hover:text-primary"
                 >
                   {@space.name}
                 </.link>
@@ -222,7 +233,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
               </div>
               <.page_tree nodes={@tree} space_key={@space.key} current={@current_page} />
             <% else %>
-              <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-base-content/50">
+              <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-base-content/70">
                 Spaces
               </p>
               <ul class="menu menu-sm gap-1 p-0">
@@ -351,7 +362,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
       <summary class="btn btn-ghost btn-sm" aria-label="Theme">
         <.icon name="hero-swatch" class="size-4" />
       </summary>
-      <ul class="menu dropdown-content z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
+      <ul class="menu dropdown-content z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
         <li :for={skin <- Skins.all()}>
           <a href={~p"/theme/#{skin.name}"}>
             <.icon name={skin.icon} class="size-4" /> {skin.label}

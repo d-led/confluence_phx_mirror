@@ -35,6 +35,25 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
     assert Enum.any?(results, &(&1.snippet =~ "rate limit"))
   end
 
+  describe "snippets" do
+    test "open on a word boundary when the match sits deep in the text" do
+      page = %ConfluencePhxMirror.Mirror.Page{
+        body_text: String.duplicate("filler ", 40) <> "networking lives here"
+      }
+
+      snippet = Search.snippet(page, ["networking"])
+
+      assert snippet =~ "networking lives here"
+      assert String.starts_with?(snippet, "… filler")
+    end
+
+    test "start at the beginning when the match is already at the top" do
+      page = %ConfluencePhxMirror.Mirror.Page{body_text: "networking lives here"}
+
+      assert Search.snippet(page, ["networking"]) == "networking lives here"
+    end
+  end
+
   test "title search is case insensitive for equality" do
     assert titles(~s(title = "release 2.0")) == ["Release 2.0"]
   end

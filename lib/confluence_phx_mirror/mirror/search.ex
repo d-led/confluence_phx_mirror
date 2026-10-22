@@ -425,23 +425,43 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   def snippet(%Page{body_text: nil}, _terms), do: ""
   def snippet(%Page{body_text: ""}, _terms), do: ""
 
-  def snippet(%Page{body_text: text}, terms) do
+  # The snippet opens on a word boundary: a cut inside a word reads as corrupt
+  # text ("ry platform service has a runbook"), so the window starts after the
+  # next space and says, with an ellipsis, that it started mid-sentence.
+  @snippet_lead 80
+  @snippet_length 240
+
+  def snippet(%Page{body_text: text}, terms) when is_binary(text) do
+    case first_match(text, terms) do
+      nil -> text |> String.slice(0, @snippet_length) |> String.trim()
+      start -> text |> window(start) |> String.trim()
+    end
+  end
+
+  def snippet(%Page{}, _terms), do: ""
+
+  defp window(text, start) do
+    from = max(start - @snippet_lead, 0)
+    slice = String.slice(text, from, @snippet_length)
+
+    if from == 0 do
+      slice
+    else
+      case :binary.match(slice, " ") do
+        {offset, 1} -> "… " <> String.slice(slice, offset + 1, byte_size(slice))
+        :nomatch -> slice
+      end
+    end
+  end
+
+  defp first_match(text, terms) do
     downcased = String.downcase(text)
 
-    position =
-      Enum.find_value(terms, fn term ->
-        case :binary.match(downcased, String.downcase(term)) do
-          {start, _length} -> start
-          :nomatch -> nil
-        end
-      end)
-
-    snippet =
-      case position do
-        nil -> String.slice(text, 0, 220)
-        start -> String.slice(text, max(start - 80, 0), 240)
+    Enum.find_value(terms, fn term ->
+      case :binary.match(downcased, String.downcase(term)) do
+        {start, _length} -> start
+        :nomatch -> nil
       end
-
-    String.trim(snippet)
+    end)
   end
 end

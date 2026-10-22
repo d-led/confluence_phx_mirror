@@ -65,8 +65,8 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
        terms: [],
        error: nil,
        searched?: false,
-       elapsed_ms: nil,
        chips: [],
+       page_title: "Search",
        spaces: spaces,
        authors: Mirror.authors(),
        label_catalog: labels,
@@ -82,15 +82,12 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   @impl true
   def handle_params(params, _uri, socket) do
     filters = take_filters(params)
-    started = System.monotonic_time(:microsecond)
 
     {results, terms, error} =
       case Search.structured(filters, limit: page_size(), sort: sort_of(filters["sort"])) do
         {:ok, results, terms} -> {results, terms, nil}
         {:error, message} -> {[], [], message}
       end
-
-    elapsed = Float.round((System.monotonic_time(:microsecond) - started) / 1000, 1)
 
     {:noreply,
      assign(socket,
@@ -112,7 +109,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
        terms: terms,
        error: error,
        searched?: Enum.any?(filters, fn {_key, value} -> value != "" end),
-       elapsed_ms: elapsed,
+       page_title: search_title(filters),
        chips: chips(filters),
        form: to_form(Map.merge(empty_params(), filters), as: :search)
      )}
@@ -260,6 +257,14 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     Enum.any?(~w(phrase any none spaces creator from to sort), &(filters[&1] != ""))
   end
 
+  defp result_count([]), do: "No results"
+  defp result_count([_one]), do: "1 result"
+  defp result_count(results), do: "#{length(results)} results"
+
+  defp search_title(%{"q" => ""}), do: "Search"
+  defp search_title(%{"q" => q}), do: "Search · #{q}"
+  defp search_title(_filters), do: "Search"
+
   defp sort_of("newest"), do: :newest
   defp sort_of("oldest"), do: :oldest
   defp sort_of(_sort), do: :relevance
@@ -395,7 +400,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
       mirror_name={@mirror_name}
       mirror_source={@mirror_source}
       search_query={@q}
-      page_title={if @searched?, do: "Search · #{@q}", else: "Search"}
+      page_title={@page_title}
       sidebar?={false}
     >
       <div class="mx-auto max-w-3xl">
@@ -406,8 +411,8 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           phx-submit="search"
           class="mt-2 sm:mt-6"
         >
-          <div class="flex items-center gap-2 rounded-full border border-base-300 bg-base-100 px-4 py-2 shadow-sm transition focus-within:border-primary/50 focus-within:shadow-md">
-            <.icon name="hero-magnifying-glass" class="size-5 shrink-0 text-base-content/40" />
+          <div class="flex items-center gap-2 rounded-full border border-base-300 bg-base-100 px-4 py-2 shadow-sm transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/50">
+            <.icon name="hero-magnifying-glass" class="size-5 shrink-0 text-base-content/70" />
             <.input
               field={@form[:q]}
               type="search"
@@ -416,18 +421,23 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
               autocomplete="off"
               autofocus
               phx-debounce={@debounce}
-              class="w-full border-0 bg-transparent p-1 text-base focus:outline-none focus:ring-0"
+              class="min-h-11 w-full border-0 bg-transparent p-1 text-base focus:outline-none sm:min-h-0"
             />
             <button
               :if={@searched?}
               type="button"
               phx-click="clear"
-              class="btn btn-ghost btn-sm rounded-full"
+              class="btn btn-ghost btn-sm min-h-11 rounded-full sm:min-h-8"
               aria-label="Clear search"
             >
               <.icon name="hero-x-mark" class="size-4" />
             </button>
-            <button type="submit" class="btn btn-primary btn-sm rounded-full px-4">Search</button>
+            <button
+              type="submit"
+              class="btn btn-primary btn-sm min-h-11 rounded-full px-4 sm:min-h-8"
+            >
+              Search
+            </button>
           </div>
         </.form>
 
@@ -459,7 +469,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             {if @advanced?, do: "Hide advanced search", else: "Advanced search"}
           </button>
 
-          <label class="flex items-center gap-1.5 text-[11px] text-base-content/50">
+          <label class="flex items-center gap-1.5 text-[11px] text-base-content/70">
             <span>Sort</span>
             <select
               id="sort-filter"
@@ -491,7 +501,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
         />
 
         <div class="mt-3 flex flex-wrap items-center gap-1.5">
-          <span :if={@chips == [] and @labels == ""} class="text-[11px] text-base-content/40">
+          <span :if={@chips == [] and @labels == ""} class="text-[11px] text-base-content/70">
             <span class="font-medium">Tip:</span> filters combine with your words.
           </span>
           <a
@@ -505,7 +515,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           <a
             :if={length(@chips) + length(label_values(@labels)) > 1}
             href={~p"/search"}
-            class="ml-1 text-[11px] text-base-content/45 hover:text-primary"
+            class="ml-1 text-[11px] text-base-content/70 hover:text-primary"
           >
             Clear all
           </a>
@@ -516,14 +526,9 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           <span>{@error}</span>
         </div>
 
-        <div :if={@searched? and is_nil(@error)} class="mt-6 flex items-baseline justify-between">
-          <p class="text-xs text-base-content/50">
-            {length(@results)} result(s)
-          </p>
-          <p :if={@elapsed_ms} class="text-[10px] tabular-nums text-base-content/35">
-            {@elapsed_ms} ms
-          </p>
-        </div>
+        <p :if={@searched? and is_nil(@error)} class="mt-6 text-xs text-base-content/70">
+          {result_count(@results)}
+        </p>
 
         <div :if={@results != []} class="mt-2 space-y-4">
           <.search_hit :for={result <- @results} result={result} terms={@terms} />
@@ -538,7 +543,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
         <%= if not @searched? do %>
           <section class="mt-10">
-            <h2 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-base-content/40">
+            <h2 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-base-content/70">
               Recently updated
             </h2>
             <div class="grid gap-2 sm:grid-cols-2">
@@ -553,15 +558,15 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
                 }
                 class="group flex items-center gap-2 rounded-lg border border-base-300/60 bg-base-100 px-3 py-2 transition hover:border-primary/40 hover:bg-base-200/40"
               >
-                <.icon name="hero-document-text" class="size-4 shrink-0 text-base-content/35" />
+                <.icon name="hero-document-text" class="size-4 shrink-0 text-base-content/70" />
                 <span class="min-w-0 flex-1 truncate text-sm group-hover:text-primary">{page.title}</span>
-                <span class="shrink-0 text-[10px] text-base-content/35">{page.space.key}</span>
+                <span class="shrink-0 text-[10px] text-base-content/70">{page.space.key}</span>
               </.link>
             </div>
           </section>
 
           <section :if={@label_catalog != []} class="mt-8">
-            <h2 class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-base-content/40">
+            <h2 class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-base-content/70">
               Browse by label
             </h2>
             <div class="flex flex-wrap gap-1.5">
@@ -570,7 +575,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
                 href={~p"/labels/#{label}"}
                 class="badge badge-outline badge-sm"
               >
-                {label} <span class="ml-0.5 text-base-content/40">{count}</span>
+                {label} <span class="ml-0.5 text-base-content/70">{count}</span>
               </a>
             </div>
           </section>
@@ -596,13 +601,13 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
       <details class="dropdown">
         <summary
           id="space-filter"
-          class="btn btn-sm h-10 min-h-10 gap-1.5 rounded-full border-base-300 bg-base-100 px-3 font-normal"
+          class="btn btn-sm h-11 min-h-11 gap-1.5 rounded-full border-base-300 bg-base-100 px-3 font-normal"
         >
-          <.icon name="hero-rectangle-stack" class="size-4 text-base-content/45" />
+          <.icon name="hero-rectangle-stack" class="size-4 text-base-content/70" />
           <span class="max-w-40 truncate">{space_label(@space, @spaces)}</span>
           <.icon name="hero-chevron-down" class="size-3 opacity-45" />
         </summary>
-        <ul class="menu dropdown-content z-50 mt-1 max-h-80 w-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1 shadow-xl">
+        <ul class="menu dropdown-content z-50 mt-1 max-h-80 w-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
           <li>
             <button
               type="button"
@@ -635,7 +640,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           phx-value-value={value}
           aria-pressed={value in label_values(@types)}
           class={[
-            "btn btn-sm h-10 min-h-10 rounded-full border-base-300 px-3.5 font-normal",
+            "btn btn-sm h-11 min-h-11 rounded-full border-base-300 px-3.5 font-normal",
             value in label_values(@types) && "border-primary bg-primary/10 text-primary"
           ]}
         >
@@ -646,13 +651,13 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
       <details class="dropdown">
         <summary
           id="updated-filter"
-          class="btn btn-sm h-10 min-h-10 gap-1.5 rounded-full border-base-300 bg-base-100 px-3 font-normal"
+          class="btn btn-sm h-11 min-h-11 gap-1.5 rounded-full border-base-300 bg-base-100 px-3 font-normal"
         >
-          <.icon name="hero-clock" class="size-4 text-base-content/45" />
+          <.icon name="hero-clock" class="size-4 text-base-content/70" />
           {updated_label(@updated)}
           <.icon name="hero-chevron-down" class="size-3 opacity-45" />
         </summary>
-        <ul class="menu dropdown-content z-50 mt-1 w-52 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl">
+        <ul class="menu dropdown-content z-50 mt-1 w-52 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
           <li :for={{value, label} <- @window_options}>
             <button
               type="button"
@@ -692,7 +697,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             placeholder="+ label"
             autocomplete="off"
             phx-debounce="150"
-            class="h-10 w-28 rounded-full border border-dashed border-base-300 bg-base-100 px-3 text-xs placeholder:text-base-content/40 focus:border-primary/50 focus:outline-none sm:w-36 [&::-webkit-calendar-picker-indicator]:hidden"
+            class="h-11 w-28 rounded-full border border-dashed border-base-300 bg-base-100 px-3 text-xs placeholder:text-base-content/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50 sm:h-10 sm:w-36 [&::-webkit-calendar-picker-indicator]:hidden"
           />
           <datalist id="label-suggestions">
             <option :for={{name, _count} <- @label_catalog} value={name} />
@@ -773,9 +778,9 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
                 class="checkbox checkbox-xs checkbox-primary"
               />
               <span class="min-w-0 flex-1 truncate">{space.name}</span>
-              <span class="text-[10px] text-base-content/40">{space.key}</span>
+              <span class="text-[10px] text-base-content/70">{space.key}</span>
             </label>
-            <p :if={@spaces == []} class="px-1.5 py-1 text-xs text-base-content/50">
+            <p :if={@spaces == []} class="px-1.5 py-1 text-xs text-base-content/70">
               Nothing mirrored yet.
             </p>
           </div>
@@ -830,7 +835,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
                 aria-label="Modified after"
                 class="input input-sm w-36 rounded-lg border-base-300 bg-base-100"
               />
-              <span class="text-xs text-base-content/40">to</span>
+              <span class="text-xs text-base-content/70">to</span>
               <input
                 type="date"
                 name="search[to]"
@@ -843,7 +848,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
         </div>
       </div>
 
-      <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-base-content/45">
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-base-content/70">
         <p>
           Words in <span class="font-medium">Any</span>
           widen the search; <span class="font-medium">None</span>
