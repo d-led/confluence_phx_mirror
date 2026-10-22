@@ -125,7 +125,10 @@ config :confluence_phx_mirror,
              keys -> keys |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
            end,
          sync_interval_seconds:
-           String.to_integer(System.get_env("CM_SYNC_INTERVAL_SECONDS", "3600"))
+           String.to_integer(System.get_env("CM_SYNC_INTERVAL_SECONDS", "3600")),
+         # Pages that changed are detailed (attachments, comments) this many at a
+         # time; the request rate limit still paces the actual calls.
+         sync_concurrency: String.to_integer(System.get_env("CM_SYNC_CONCURRENCY", "4"))
        )
 
 if blob_root = System.get_env("MIRROR_BLOB_ROOT") do

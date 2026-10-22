@@ -33,8 +33,16 @@ Configuration is read at boot; a running development server does **not** reload
 | `CM_HTTP_RETRIES` | `3` | attempts per Confluence request |
 | `CM_HTTP_PAGE_SIZE` | `50` | content page size when paginating |
 | `CM_HTTP_RETRY_BACKOFF_MS` | `250` | first retry delay (doubles per attempt) |
-| `CM_SYNC_INTERVAL_SECONDS` | `3600` | scheduled snapshot (`0` disables) |
+| `CM_SYNC_INTERVAL_SECONDS` | `3600` | scheduled pull (`0` disables) |
 | `CM_SYNC_LOOKBACK_SECONDS` | `3600` | minimum window for an incremental pull |
+| `CM_SYNC_CONCURRENCY` | `4` | changed pages detailed at once |
+
+Scheduled pulls are incremental: they ask Confluence only for content that
+changed since the last run, and pages whose version is unchanged are skipped
+without being re-rendered or asked for their attachments and comments. A full
+re-read is available on demand ("Re-read everything" on the dashboard, or
+`mix confluence.sync --mode snapshot`); expect it to cost one request per page
+when the site is large.
 
 `CM_SOURCE` is explicit when set (`demo`, or `http` — `live` is accepted as an
 alias). Left unset, a configured `CM_CONFLUENCE_SITE` selects the real REST
