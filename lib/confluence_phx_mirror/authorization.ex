@@ -22,7 +22,8 @@ defmodule ConfluencePhxMirror.Authorization do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Mirror.SpacePermission
+  alias ConfluencePhxMirror.Mirror.{Space, SpacePermission}
+  alias ConfluencePhxMirror.Repo
 
   import Ecto.Query
 
@@ -39,9 +40,17 @@ defmodule ConfluencePhxMirror.Authorization do
       (space_allows?(scope, page.space_id) and page_allows?(scope, page.confluence_id))
   end
 
-  @doc "The subset of `spaces` the reader may see."
-  def visible_spaces(%Scope{} = scope, spaces) when is_list(spaces) do
-    Enum.filter(spaces, &can_read_space?(scope, &1))
+  @doc """
+  Every space the reader may see, by name.
+
+  This is what the shell lists in its space switcher, so it has to agree with
+  the directories — and it is one query, not one per space.
+  """
+  @spec readable_spaces(Scope.t()) :: [Space.t()]
+  def readable_spaces(%Scope{} = scope) do
+    from(s in Space, as: :space, order_by: [asc: s.name])
+    |> restrict_spaces(scope)
+    |> Repo.all()
   end
 
   @doc """

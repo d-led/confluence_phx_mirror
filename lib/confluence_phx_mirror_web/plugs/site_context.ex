@@ -19,7 +19,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.SiteContext do
 
     conn
     |> assign(:mirror_name, Keyword.get(mirror, :name, "Confluence Mirror"))
-    |> assign(:spaces, Authorization.visible_spaces(scope, Mirror.list_spaces()))
+    |> assign(:spaces, Authorization.readable_spaces(scope))
     |> assign(:last_sync_run, Mirror.last_successful_sync_run())
     |> assign(:mirror_source, ConfluencePhxMirror.Confluence.Source.source())
   end

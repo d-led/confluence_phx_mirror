@@ -8,6 +8,7 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
 
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
 
   def on_mount(:default, _params, session, socket) do
@@ -52,7 +53,7 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
     mirror = Application.get_env(:confluence_phx_mirror, :mirror, [])
 
     assign(socket,
-      spaces: Mirror.list_spaces(),
+      spaces: Authorization.readable_spaces(socket.assigns.current_scope),
       last_sync_run: Mirror.last_successful_sync_run(),
       mirror_name: Keyword.get(mirror, :name, "Confluence Mirror"),
       mirror_source: ConfluencePhxMirror.Confluence.Source.source()
