@@ -152,6 +152,10 @@ hand, not by the suite. Keep both trees in the alias: `crap` takes one path, and
 Mix refuses to run the same task twice in one invocation, which is why the two
 runs go through `cmd`.
 
+The report ranks three ways because they answer different questions: the
+per-function list says what to fix, the per-file list says where a file's worst
+spot is, and the per-tree line says whether a whole layer needs attention.
+
 ## License
 
 The code is under the Mozilla Public License 2.0 ([LICENSE](../LICENSE), and

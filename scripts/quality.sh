@@ -124,6 +124,27 @@ if [[ -n $ranked ]]; then
   printf '%s\n' "$ranked" | sed 's/^/  /'
 fi
 
+per_file=$(awk -F'[[:space:]]*\\|[[:space:]]*' '
+  NF == 7 && $6 ~ /[0-9]/ && $6 + 0 > 0 {
+    file = $1
+    score = $6 + 0
+    if (score > worst[file]) {
+      worst[file] = score
+      function_of[file] = $3
+      why[file] = "(complexity " $4 ", coverage " $5 ")"
+    }
+  }
+  END {
+    for (file in worst)
+      printf "%7.2f  %s  %s %s\n", worst[file], file, function_of[file], why[file]
+  }
+' "$report" | sort -rn | first_lines "$top")
+
+if [[ -n $per_file ]]; then
+  echo "worst per file — score, file, its worst function:"
+  printf '%s\n' "$per_file" | sed 's/^/  /'
+fi
+
 per_tree=$(awk -F'[[:space:]]*\\|[[:space:]]*' '
   NF == 7 && $6 ~ /[0-9]/ {
     split($1, parts, "/")
