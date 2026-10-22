@@ -63,6 +63,15 @@ credentials never silently mirrors fixtures.
 | `CM_PROXY_AUTH` | `false` | trust the reverse proxy's identity header |
 | `CM_PROXY_AUTH_HEADER` | `x-forwarded-email` | header carrying the reader's e-mail |
 | `CM_PROXY_AUTH_NAME_HEADER` | `x-forwarded-user` | header carrying the display name |
+| `MIRROR_ALLOW_UNSAFE_IDENTITY` | `false` | acknowledge the three switches above in a production release |
+
+`MIRROR_AUTO_ADMIN`, `MIRROR_SELF_SIGNUP` and `CM_PROXY_AUTH` each hand out an
+identity without a sign-in, so they belong to development and to the demo. A
+production release that mirrors a real site **refuses to start** with any of
+them on: the mistake and the intention look identical from the outside, and the
+difference is who can read the mirror. Running the bundled demo in a release is
+still allowed without a flag (`CM_SOURCE=demo`); anything else needs
+`MIRROR_ALLOW_UNSAFE_IDENTITY=1`.
 
 `CM_PROXY_AUTH` is only safe when the app cannot be reached except through the
 proxy.
