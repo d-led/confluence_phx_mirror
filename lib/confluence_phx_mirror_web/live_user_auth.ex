@@ -20,7 +20,7 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
     socket = assign_scope(socket, session)
 
     if Scope.admin?(socket.assigns.current_scope) do
-      {:cont, attach_site_context(socket)}
+      {:cont, socket |> attach_site_context() |> recheck_authority()}
     else
       message =
         if Scope.signed_in?(socket.assigns.current_scope),
@@ -59,5 +59,29 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
       mirror_host: Sites.host(),
       mirror_source: ConfluencePhxMirror.Confluence.Source.source()
     )
+  end
+
+  # Administration is a property of the account, not of the socket it opened. An
+  # admin screen can stay open for hours, so every action re-reads who is asking:
+  # an administrator who still is one carries on undisturbed, and one demoted or
+  # deleted meanwhile loses the page on the next click instead of keeping it.
+  defp recheck_authority(socket) do
+    attach_hook(socket, :admin_authority, :handle_event, fn _event, _params, socket ->
+      scope = refreshed_scope(socket)
+
+      if Scope.admin?(scope) do
+        {:cont, assign(socket, :current_scope, scope)}
+      else
+        {:halt,
+         socket
+         |> put_flash(:error, "Administrator access required.")
+         |> redirect(to: "/")}
+      end
+    end)
+  end
+
+  defp refreshed_scope(socket) do
+    %{id: id} = socket.assigns.current_user
+    Scope.for_user(Accounts.get_user(id))
   end
 end
