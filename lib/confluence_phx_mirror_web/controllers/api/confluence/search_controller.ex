@@ -9,6 +9,7 @@ defmodule ConfluencePhxMirrorWeb.Api.Confluence.SearchController do
 
   use ConfluencePhxMirrorWeb, :controller
 
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror.Search
   alias ConfluencePhxMirrorWeb.Api.V1.Presenter
 
@@ -21,6 +22,8 @@ defmodule ConfluencePhxMirrorWeb.Api.Confluence.SearchController do
 
       case Search.search(cql, start: start, limit: limit) do
         {:ok, results} ->
+          results = Authorization.readable_results(conn.assigns.current_scope, results)
+
           items =
             Enum.map(results, fn result ->
               result.page

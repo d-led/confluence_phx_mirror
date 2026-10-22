@@ -12,6 +12,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.SearchController do
 
   use ConfluencePhxMirrorWeb, :controller
 
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror.Search
   alias ConfluencePhxMirror.Mirror.Search.Filters
   alias ConfluencePhxMirrorWeb.Api.V1.Presenter
@@ -32,6 +33,8 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.SearchController do
 
       case Search.structured(filters, start: start, limit: limit) do
         {:ok, results, _terms} ->
+          results = Authorization.readable_results(conn.assigns.current_scope, results)
+
           items =
             Enum.map(results, fn result ->
               result.page

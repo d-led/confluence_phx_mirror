@@ -151,6 +151,24 @@ defmodule ConfluencePhxMirror.Authorization do
     end
   end
 
+  @doc """
+  Narrows search results (`%{page: page, snippet: _, rank: _}`) to the pages the
+  reader may see.
+
+  Search itself stays free of the permission model: it answers "what matches",
+  and the caller asks this question once about the whole result set.
+  """
+  @spec readable_results(Scope.t(), [map()]) :: [map()]
+  def readable_results(%Scope{} = scope, results) do
+    if Scope.admin?(scope) do
+      results
+    else
+      readable = readable_pages(scope, Enum.map(results, & &1.page))
+      ids = MapSet.new(readable, & &1.id)
+      Enum.filter(results, &MapSet.member?(ids, &1.page.id))
+    end
+  end
+
   defp visible?(scope, page, spaces, restrictions) do
     allows?(scope, Map.get(spaces, page.space_id, [])) and
       allows?(scope, Map.get(restrictions, page.id, []))

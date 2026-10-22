@@ -22,6 +22,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
   import ConfluencePhxMirrorWeb.MirrorComponents
 
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.Search
 
@@ -85,8 +86,11 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
     {results, terms, error} =
       case Search.structured(filters, limit: page_size(), sort: sort_of(filters["sort"])) do
-        {:ok, results, terms} -> {results, terms, nil}
-        {:error, message} -> {[], [], message}
+        {:ok, results, terms} ->
+          {Authorization.readable_results(socket.assigns.current_scope, results), terms, nil}
+
+        {:error, message} ->
+          {[], [], message}
       end
 
     {:noreply,

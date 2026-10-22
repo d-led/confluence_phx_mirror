@@ -253,6 +253,24 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
 
       assert Enum.any?(insider["results"], &(&1["key"] == space.key))
     end
+
+    test "search only returns pages the reader may open", %{conn: conn} do
+      outsider =
+        conn
+        |> as_reader(user_fixture())
+        |> get(~p"/api/v1/search?q=macros")
+        |> json_response(200)
+
+      refute Enum.any?(outsider["results"], &(&1["id"] == "1003"))
+
+      insider =
+        build_conn()
+        |> as_reader(reader_in_group("confluence-users"))
+        |> get(~p"/api/v1/search?q=macros")
+        |> json_response(200)
+
+      assert Enum.any?(insider["results"], &(&1["id"] == "1003"))
+    end
   end
 
   defp group_only_space do
