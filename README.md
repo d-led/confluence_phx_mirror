@@ -6,11 +6,11 @@ LiveView 1.2, Ecto/Postgres and Elixir 1.20.
 It keeps Confluence's own `export_view` rendering (so macros look right),
 rewrites internal links so mirrored pages cross-link each other, serves
 attachments from a path-based blob store, indexes everything with Postgres
-full-text search behind a CQL subset, and keeps an audit log of every sync,
-webhook and account change.
+full-text search behind a CQL subset, and keeps two logs: an audit log of
+decisions and a live log of what each sync is doing.
 
 ```
-Confluence ──REST──▶ Sync (rate-limited, audited) ──▶ Postgres (content, links, FTS)
+Confluence ──REST──▶ Sync (incremental, rate-limited, audited) ──▶ Postgres (content, links, FTS)
                                     │
                                     ├──▶ blob store (attachments, outside the repo)
                                     ├──▶ mail notifications (smtp4dev in dev)
@@ -20,19 +20,33 @@ Confluence ──REST──▶ Sync (rate-limited, audited) ──▶ Postgres (
 ## What it does
 
 * **Keeps Confluence's own rendering** — pages are stored as sanitised
-  `export_view`, so macros look right without re-implementing them.
+  `export_view`, so macros look right without re-implementing them; browser-only
+  macros are resolved from the mirror's own data or reported as unavailable
+  rather than faked.
+* **Says whose wiki it is** — the mirror takes the site's name and links every
+  page back to the original, so a reader never wonders which Confluence they
+  are reading.
+* **Pulls only what changed** — scheduled and manual syncs are incremental, and
+  a page whose Confluence version is unchanged is not re-rendered or asked for
+  its attachments and comments. A snapshot of the live demo site costs about two
+  seconds.
 * **Stable, Confluence-shaped URLs** — content is keyed by `confluence_id` and
   version, slugs redirect, spaces have home/overview/pages/blog/attachments
   tabs.
 * **Mirrored permissions** — page restrictions and (when the source can supply
   them) space permissions are replayed for readers; a hidden page is a `404`.
 * **Search that stays in Postgres** — a CQL subset plus structured filters over
-  GIN-indexed `tsvector`, arrays and trigrams, exposed in the reader UI and over
-  REST.
+  GIN-indexed `tsvector`, arrays and trigrams, with an advanced panel (exact
+  phrase, exclusions, contributor, spaces, date range, sort) in the reader UI and
+  a REST API beside it.
 * **Attachments in a blob store** — path-based keys, atomic writes, never in
   Postgres or `priv/static`.
-* **Nothing silently lost** — every sync is an audited run that can end
-  `partial` with per-page errors instead of pretending to succeed.
+* **Two logs, for two questions** — the audit log answers "who changed what"
+  (accounts, tokens, syncs with their counters and trigger); `/admin/sync-log`
+  streams the per-page detail while a sync runs, and the console gets both.
+* **Nothing silently lost** — a failing page does not abort a run; it is
+  collected, reported, and the run ends `partial` instead of pretending to
+  succeed.
 * **Read-only by design** — no uploads, no write-back, no page history.
 
 ## Documentation
@@ -56,6 +70,7 @@ mix phx.server
 
 * Mirror: <http://localhost:4000>
 * Admin dashboard: <http://localhost:4000/admin>
+* Audit log: <http://localhost:4000/admin/audit> · live sync log: <http://localhost:4000/admin/sync-log>
 * Mail sink (smtp4dev): <http://localhost:3001>
 * Adminer: <http://localhost:8092>
 * LiveDashboard: <http://localhost:4000/dev/dashboard>

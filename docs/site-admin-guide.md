@@ -50,13 +50,14 @@ The REST client:
 * is limited by `CM_REQUESTS_PER_SECOND` / `CM_BURST` (token bucket), retries
   `429`/`5xx` with backoff, and never follows redirects;
 * only ever talks to the configured host (`SafeURL`), with response size caps;
-* supports `CM_SYNC_INTERVAL_SECONDS` for scheduled snapshot pulls.
+* details changed pages `CM_SYNC_CONCURRENCY` at a time, and supports
+  `CM_SYNC_INTERVAL_SECONDS` for scheduled pulls (incremental by default).
 
 ## Pulling content
 
 ```bash
-mix confluence.sync                              # full snapshot
-mix confluence.sync --mode incremental           # since the last run
+mix confluence.sync                              # incremental pull
+mix confluence.sync --mode snapshot              # full re-read of every page
 mix confluence.sync --mode space --space ENG     # one space
 mix confluence.webhook --page 1002 --event page_updated
 ```
@@ -82,19 +83,28 @@ when a sync pulls a newer snapshot.
 Everything you need to operate the mirror as a product lives under `/admin`:
 
 * `/admin` – freshness, sync runs (counters, errors, `running` → `succeeded` /
-  `partial` / `failed`), the audit log, webhook deliveries (valid and
-  rejected) and manual syncs.
+  `partial` / `failed`), webhook deliveries (valid and rejected), manual syncs
+  and "Re-read everything" for a full pull.
+* `/admin/audit` – the audit log: decisions and changes (accounts, tokens,
+  subscriptions, webhooks) and one entry per sync with its counters and what
+  triggered it.
+* `/admin/sync-log` – the live log: every page and file a sync touches, held in
+  memory while the run is fresh, with level and text filters.
 * `/admin/users` – accounts, roles, mirrored groups and API tokens.
 * `/health` – database check, content counters and last sync; no auth, so it
   can back a probe ([operations.md](operations.md)).
 
-Two tables back the audit log and are worth knowing when you query them
-directly:
+Scheduled and manual syncs are **incremental**: the mirror asks Confluence only
+for content that changed, and a page whose version is unchanged is not
+re-rendered or asked for its attachments and comments. The run's stats say how
+much that saved (`unchanged` pages, `attachments_downloaded`).
 
-* `audit_events` – append-only: `sync.started/finished/failed`, `page.*`,
-  `attachment.*`, `user.*`, `api_token.*`, `subscription.*`, `webhook.*`.
-* `sync_runs.stats` – pages, attachments, comments, links, notifications,
-  deletions and per-page errors.
+Two tables back the logs and are worth knowing when you query them directly:
+
+* `audit_events` – append-only: `sync.started/finished/failed`, `user.*`,
+  `api_token.*`, `subscription.*`, `webhook.*`, `pages.deleted`.
+* `sync_runs.stats` – pages seen and changed, attachments downloaded, comments,
+  links, notifications, deletions and per-page errors.
 
 A run that ends `partial` is not a failure: something was skipped and the run's
 errors say what. A run that ends `failed` means the source itself was

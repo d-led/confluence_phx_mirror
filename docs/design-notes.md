@@ -71,6 +71,72 @@ labels), resolve-macros-in-the-browser needs a client, and write-back/re-caching
 pipelines need write access we deliberately do not have. Resolving from the
 mirrored data at sync time is the read-only equivalent.
 
+## Dynamic content: the next macros to resolve
+
+Two families are already handled (resolved, or an honest notice). The rest fall
+into three buckets, and only the first is a mirroring problem:
+
+| Macro | Data it needs | Where it comes from |
+| --- | --- | --- |
+| `toc` | the page's own headings | the rendered body (ids already exist) |
+| `children`, `pagetree` | the page tree | `pages.parent_id`, `ancestors` |
+| `recently-updated`, `blog-posts` | page metadata | `external_updated_at`, `type` |
+| `attachments` | the page's files | `attachments` + blob store |
+| `excerpt`, `excerpt-include`, `include` | another page's body | `pages.body_export` |
+| `contributors` | authors and versions | `author_name` (one author today) |
+| `tasks-report` | inline tasks | inline tasks in `body_export` |
+| `jira`, `jiraissues`, `jirachart` | issue data | needs Jira credentials: out of scope |
+| `livesearch`, `gadget`, `widget` | a client, or a third-party app | impossible statically |
+| Forge/Connect app macros | the app | a placeholder is the honest answer |
+
+The order to implement them is by value per line: `toc` and `children` first (a
+page tree is what a reader navigates by), then `include`/`excerpt-include`
+(pages that build other pages), then `recently-updated`. Each is a resolver in
+`Sync.DynamicContent` keyed by `data-macro`, so they follow the same idempotent
+expansion the two existing ones use and need no new plumbing.
+
+## Space and site customisation
+
+Confluence lets a site and a space look different; a mirror that ignores this
+looks like a different product:
+
+* **Space icon** — `space.icon` from the REST API, an attachment in the space's
+  own storage. The mirror already downloads attachments, so the icon can be
+  mirrored like any other file and shown in the space header and the space
+  picker. Not implemented yet.
+* **Space homepage and description** — already mirrored (`homepage_id`,
+  description in the space header).
+* **Page cover image** — a page property (`cover-picture`) pointing at an
+  attachment; rendered as a banner above the title. Not implemented yet.
+* **Announcement banner** — site-level, and not exposed by the public REST API
+  for a read-only integration; a mirror cannot show what it cannot fetch.
+
+Deliberately not mirrored: custom themes and layouts (they only make sense with
+the client-side editor), user-generated CSS.
+
+## Identity: one person, several sign-in addresses
+
+The mirror can pre-create accounts from what a sync sees (page bylines and
+group membership), but one person may arrive with several addresses — a Google
+account one day, a GitHub account the next. Confluence itself models this as an
+account id with one or more verified e-mail addresses.
+
+The plan, when it is built:
+
+* `users` keeps the identity (display name, role, groups, Confluence account
+  id); a new `user_emails` table holds `email`, `user_id`, `source`, `verified_at`.
+  The existing `users.email` becomes the primary address.
+* Sign-in looks the address up across `user_emails`, so any verified address
+  signs you into the same identity.
+* Linking: a signed-in reader may add another address, which receives a magic
+  link; confirming it attaches the address to their identity. An address that
+  already belongs to another account is refused, never merged silently.
+* Pre-created accounts (from bylines or group membership) are placeholders with
+  no address confirmed yet; the first successful sign-in confirms the address
+  that was used.
+
+Until then, one address per account, as `users.email` is unique today.
+
 ## Known limitations
 
 * Comments are read-only and rendered flat (one reply level styled).
