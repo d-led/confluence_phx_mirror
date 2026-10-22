@@ -17,7 +17,9 @@ Configuration is read at boot; a running development server does **not** reload
 | `PORT` | `4000` | HTTP listen port |
 | `PHX_SERVER` | – | set to `true` to make a release serve HTTP |
 | `PHX_HOST` | `example.com` | external host for absolute URLs and secure cookies |
-| `POOL_SIZE` | `10` | database connection pool |
+| `POOL_SIZE` | `20` | connections per pool (see [sizing](operations.md#sizing-the-connection-pool)) |
+| `POOL_COUNT` | `1` | pools per replica (each has its own queue) |
+| `POOL_TIMEOUT_MS` | `15000` | how long a request waits for a connection |
 | `ECTO_IPV6` | – | `true` makes the repo use `:inet6` |
 | `DNS_CLUSTER_QUERY` | – | DNS-based clustering |
 

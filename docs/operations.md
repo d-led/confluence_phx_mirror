@@ -69,6 +69,60 @@ bin/confluence_phx_mirror eval "ConfluencePhxMirror.Release.migrate_manual"
 Development and test apply both directories (`mix ecto.migrate_all`), which is
 what `mix setup` and the `test` alias use.
 
+## Sizing the connection pool
+
+The pool is DBConnection's (`Ecto.Adapters.Postgres` → Postgrex →
+`DBConnection.ConnectionPool`). Four numbers decide it, and they interact:
+
+| Setting | Env | Default | What it decides |
+| --- | --- | --- | --- |
+| `pool_size` | `POOL_SIZE` | 20 | connections in one pool |
+| `pool_count` | `POOL_COUNT` | 1 | pools per replica, each with its own queue |
+| `queue_target` / `queue_interval` | — | 200 ms / 2 s | when the pool starts pushing back |
+| `timeout` | `POOL_TIMEOUT_MS` | 15 s | how long a request waits for a connection |
+
+**The rule.** A replica opens `POOL_COUNT × POOL_SIZE` connections, so the whole
+deployment is `replicas × POOL_COUNT × POOL_SIZE`, and that sum has to fit
+Postgres' `max_connections` with room for migrations, Oban's own use of the same
+pool and an operator's `psql`:
+
+```
+max_connections ≥ replicas × POOL_COUNT × POOL_SIZE + 10
+```
+
+**Sizing from readers, not from hope.** A page view costs about 15 queries
+(measured — `test/confluence_phx_mirror_web/query_budget_test.exs` pins the
+number per screen). At ~2 ms per query, one connection serves roughly ten page
+views per second, so:
+
+| concurrent readers | busy page views/s | connections needed |
+| --- | --- | --- |
+| 200 | ~50 | 10–20 |
+| 2 000 | ~500 | 60–100 |
+
+Those are steady-state figures; a burst waits in the queue rather than failing,
+which is what the queue knobs are for. The sync competes with readers for the
+same pool, and it details pages `CM_SYNC_CONCURRENCY` at a time
+(`attachments` + `comments` calls, each a few queries), so leave headroom for
+`CM_SYNC_CONCURRENCY + 2` connections during a run.
+
+**Why not "just make it huge".** Every connection is a Postgres process with its
+own memory and its own share of `max_connections`; past a few hundred, context
+switching costs more than the parallelism gains. Add replicas before you push
+one pool past ~100, and check the numbers with the load tests rather than by
+feel:
+
+```bash
+MIX_ENV=prod PHX_SERVER=true POOL_SIZE=40 CM_SYNC_CONCURRENCY=4 \
+  PORT=4000 bin/confluence_phx_mirror start
+scripts/load-test.sh 200 2000      # different host from the mirror, ideally
+```
+
+**What a too-small pool looks like.** p95 climbing into seconds while CPU and
+`pg_stat_activity` show short queries, plus `DBConnection.ConnectionError …
+dropped from queue` in the logs. If `pg_stat_activity` shows long queries
+instead, the fix is the query, not the pool.
+
 ## Attached resources
 
 * **Postgres** (`DATABASE_URL`) — content, links, search vectors, restrictions,

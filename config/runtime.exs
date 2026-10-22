@@ -305,13 +305,30 @@ if config_env() == :prod do
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+  pool_size = String.to_integer(System.get_env("POOL_SIZE") || "20")
+  pool_count = String.to_integer(System.get_env("POOL_COUNT") || "1")
+
   config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
     # ssl: true,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "20"),
-    # For machines with several cores, consider starting multiple pools of `pool_size`
-    # pool_count: 4,
-    socket_options: maybe_ipv6
+    # Connections this replica opens: pool_count × pool_size. The deployment's
+    # total is replicas × that, and it has to fit Postgres' max_connections —
+    # see "Sizing the connection pool" in docs/operations.md.
+    pool_size: pool_size,
+    # One pool per batch of schedulers spreads contention on machines with many
+    # cores (each pool has its own queue); leave at 1 unless measured otherwise.
+    pool_count: pool_count,
+    # Checkout timeout, in milliseconds. A reader waits for a connection rather
+    # than failing; the queue knobs in config/config.exs decide when the pool
+    # starts pushing back.
+    timeout: String.to_integer(System.get_env("POOL_TIMEOUT_MS") || "15000"),
+    socket_options: maybe_ipv6,
+
+  Logger.info("database pool",
+    pool_size: pool_size,
+    pool_count: pool_count,
+    connections: pool_size * pool_count
+  )
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
