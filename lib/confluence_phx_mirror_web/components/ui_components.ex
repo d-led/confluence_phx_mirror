@@ -25,7 +25,7 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
       >
         <h2
           :if={@title}
-          class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-base-content/50"
+          class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-base-content/70"
         >
           <.icon :if={@icon} name={@icon} class="size-3.5" /> {@title}
         </h2>
@@ -45,11 +45,11 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
   def stat_card(assigns) do
     ~H"""
     <div class="rounded-xl border border-base-300/70 bg-base-100 p-4">
-      <p class="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-base-content/45">
+      <p class="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-base-content/70">
         <.icon :if={@icon} name={@icon} class="size-3.5" /> {@label}
       </p>
       <p class="mt-1 text-2xl font-semibold tabular-nums">{@value}</p>
-      <p :if={@hint} class="mt-0.5 text-[11px] text-base-content/45">{@hint}</p>
+      <p :if={@hint} class="mt-0.5 text-[11px] text-base-content/70">{@hint}</p>
     </div>
     """
   end
@@ -67,13 +67,13 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
     <section class={@class}>
       <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-base-content/50">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-base-content/70">
             {@title}
           </h2>
-          <p :if={@subtitle} class="mt-1 text-xs text-base-content/55">{@subtitle}</p>
+          <p :if={@subtitle} class="mt-1 text-xs text-base-content/70">{@subtitle}</p>
           <div
             :if={@meta != []}
-            class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-base-content/45"
+            class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-base-content/70"
           >
             {render_slot(@meta)}
           </div>
@@ -110,7 +110,7 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
         <tbody>
           <tr :for={row <- @rows} class="hover:bg-base-200/40">{render_slot(@row, row)}</tr>
           <tr :if={@rows == []}>
-            <td colspan="99" class="py-8 text-center text-xs text-base-content/50">
+            <td colspan="99" class="py-8 text-center text-xs text-base-content/70">
               {render_slot(@empty)}
             </td>
           </tr>

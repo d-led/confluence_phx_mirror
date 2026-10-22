@@ -26,15 +26,15 @@
           <span class="flex items-center gap-2 text-sm font-semibold group-hover:text-primary">
             <.icon
               name={if page.type == "blogpost", do: "hero-newspaper", else: "hero-document-text"}
-              class="size-4 shrink-0 text-base-content/40"
+              class="size-4 shrink-0 text-base-content/70"
             />
             <span class="truncate">{page.title}</span>
           </span>
-          <span class="mt-1 block truncate text-xs text-base-content/50">
+          <span class="mt-1 block truncate text-xs text-base-content/70">
             {page.space.name} · {page.author_name}
           </span>
         </span>
-        <span class="whitespace-nowrap text-[11px] uppercase tracking-wide text-base-content/40">
+        <span class="whitespace-nowrap text-[11px] uppercase tracking-wide text-base-content/70">
           {ConfluencePhxMirrorWeb.Time.ago(page.external_updated_at)}
         </span>
       </.link>

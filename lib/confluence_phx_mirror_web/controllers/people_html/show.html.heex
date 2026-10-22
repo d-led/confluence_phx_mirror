@@ -15,14 +15,14 @@
     </span>
     <div>
       <h1 class="text-2xl font-semibold leading-tight">{@author.name}</h1>
-      <p class="mt-1 text-xs text-base-content/50">
+      <p class="mt-1 text-xs text-base-content/70">
         {@author.pages} items · last change {Time.ago(@author.updated_at)}
       </p>
     </div>
   </header>
 
   <section class="mt-6">
-    <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-base-content/50">
+    <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-base-content/70">
       Authored content
     </h2>
     <.page_list pages={@pages} empty="Nothing authored by this person." />
