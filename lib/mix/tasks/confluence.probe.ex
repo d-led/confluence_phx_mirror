@@ -47,15 +47,37 @@ defmodule Mix.Tasks.Confluence.Probe do
 
       {:error, {:forbidden, body}} ->
         Mix.shell().error("Confluence refused the call (HTTP 403) for the configured account.")
-
-        Mix.shell().error(
-          "Either the e-mail/token pair is wrong or the account cannot use Confluence on that site. Confluence said: #{body}"
-        )
-
+        Mix.shell().error("Confluence said: #{body}")
+        Mix.shell().error(access_hint())
         exit({:shutdown, 1})
 
       {:error, reason} ->
         Mix.raise("Probe failed: #{inspect(reason)}")
     end
+  end
+
+  # A 403 from Confluence means the caller reached the site but was refused by
+  # it; there are only three ways to get there, so name all three.
+  defp access_hint do
+    """
+
+    Confluence knows the site but refuses this caller. Check, in this order:
+
+      1. the account can open #{site_url()}/wiki in a browser at all;
+      2. the token belongs to that same account (id.atlassian.com -> Security ->
+         API tokens lists them per account);
+      3. the account holds a Confluence seat on that site, and the
+         organisation allows API tokens for Confluence
+         (admin.atlassian.com -> Policies).
+
+    An e-mail that does not exist on the site is refused exactly like one
+    without a Confluence seat, so a wrong CM_ATL_EMAIL looks identical.
+    """
+  end
+
+  defp site_url do
+    :confluence_phx_mirror
+    |> Application.get_env(HttpSource, [])
+    |> Keyword.get(:base_url, "https://<site>.atlassian.net")
   end
 end
