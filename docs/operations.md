@@ -75,6 +75,14 @@ what `mix setup` and the `test` alias use.
   accounts, the audit log and Oban jobs. The `sync` and `notifications` queues
   run inside the same release, and Oban coordinates them through Postgres, so
   running several instances is safe.
+
+  Size the pool for the readers you expect: `POOL_SIZE` (default 20) is **per
+  replica**, so the deployment's total is `replicas × POOL_SIZE` and that is the
+  number Postgres has to accept (`max_connections`). A page view costs around
+  15 queries, so a pool of 10 saturates at roughly a hundred concurrent readers
+  — measured with `k6-load-tests/` (p95 114 ms until the pool runs out, then 10 s
+  in queue time). Raise `POOL_SIZE` before adding replicas, and check the pool
+  also covers the sync's own detail work (`CM_SYNC_CONCURRENCY`).
 * **SMTP** — `SMTP_RELAY` plus credentials; sends are retried per notification,
   so a mailer outage never blocks a sync.
 * **Blob root** (`MIRROR_BLOB_ROOT`, default `var/mirror`) — attachment bytes.

@@ -202,6 +202,13 @@ if rate_limit =
     ]
 end
 
+# Behind a reverse proxy every reader shares the proxy's address, so the reader
+# rate limit would throttle the whole site at once. Trust `X-Forwarded-For` when
+# the mirror only accepts traffic from that proxy.
+if System.get_env("CM_TRUST_PROXY_HEADERS", "false") in ~w(1 true yes) do
+  config :confluence_phx_mirror, trust_proxy_headers: true
+end
+
 # CM_WEBHOOK_TOKENS="confluence=s3cret,backup=other-secret" authenticates
 # webhook deliveries with a fixed token instead of an HMAC signature. The token
 # only works on the webhook route.
@@ -301,7 +308,7 @@ if config_env() == :prod do
   config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
     # ssl: true,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "20"),
     # For machines with several cores, consider starting multiple pools of `pool_size`
     # pool_count: 4,
     socket_options: maybe_ipv6

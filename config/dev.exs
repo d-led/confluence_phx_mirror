@@ -8,7 +8,9 @@ config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
   database: "confluence_phx_mirror_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+  # Sized for load testing and uploads; a pod owns its pool, so the deployment
+  # total is replicas × POOL_SIZE.
+  pool_size: String.to_integer(System.get_env("POOL_SIZE") || "20")
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
