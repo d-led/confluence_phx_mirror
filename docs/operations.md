@@ -28,7 +28,7 @@ environment below is a supported deployment.
 | --- | --- |
 | Required | `DATABASE_URL`, `SECRET_KEY_BASE` |
 | Web server | `PHX_SERVER=true` (the release serves HTTP only when set), `PORT` (default `4000`), `PHX_HOST` (absolute URLs and secure cookies) |
-| Database pool | `POOL_SIZE` (default `10`), `ECTO_IPV6` (`true` → `:inet6`) |
+| Database pool | `POOL_SIZE` (default `20`), `POOL_COUNT` (default `1`), `POOL_TIMEOUT_MS` (default `15000`), `ECTO_IPV6` (`true` → `:inet6`) |
 | Clustering | `DNS_CLUSTER_QUERY` |
 | Confluence sync | `CM_*` — see [configuration.md](configuration.md) |
 | Mail | `SMTP_RELAY`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS`, `SMTP_AUTH` |
@@ -88,6 +88,13 @@ pool and an operator's `psql`:
 
 ```
 max_connections ≥ replicas × POOL_COUNT × POOL_SIZE + 10
+```
+
+Each replica states what it opened as it boots, so the multiplication above is
+checked against reality rather than against the values you meant to set:
+
+```
+[info] database pool: 20 connections (1 × 20)
 ```
 
 **Sizing from readers, not from hope.** A page view costs about 15 queries

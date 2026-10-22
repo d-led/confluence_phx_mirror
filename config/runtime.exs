@@ -324,12 +324,6 @@ if config_env() == :prod do
     timeout: String.to_integer(System.get_env("POOL_TIMEOUT_MS") || "15000"),
     socket_options: maybe_ipv6
 
-  Logger.info("database pool",
-    pool_size: pool_size,
-    pool_count: pool_count,
-    connections: pool_size * pool_count
-  )
-
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
   # want to use a different value for prod and you most likely don't want
