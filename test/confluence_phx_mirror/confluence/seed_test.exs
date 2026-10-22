@@ -113,9 +113,9 @@ defmodule ConfluencePhxMirror.Confluence.SeedTest do
         end
       end)
 
-      assert {:ok, created} = Seed.run("ENG")
+      assert {:ok, notes} = Seed.run("ENG")
 
-      assert Enum.all?(created, &(&1.action == :create))
+      assert notes |> Enum.map(& &1.action) |> Enum.uniq() |> Enum.sort() == [:create, :extras]
       assert_received {:request, "POST", @content_path}
       assert_received {:request, "POST", "/wiki/rest/api/content/1/label"}
     end
@@ -123,9 +123,10 @@ defmodule ConfluencePhxMirror.Confluence.SeedTest do
     test "a second run creates nothing" do
       stub(fn conn -> seeded_site(conn) end)
 
-      assert {:ok, second_run} = Seed.run("ENG")
+      assert {:ok, notes} = Seed.run("ENG")
 
-      assert Enum.all?(second_run, &(&1.action == :exists))
+      refute Enum.any?(notes, &(&1.action == :create))
+      assert Enum.any?(notes, &(&1.action == :exists))
     end
   end
 

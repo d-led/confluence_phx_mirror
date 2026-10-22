@@ -55,7 +55,7 @@ defmodule ConfluencePhxMirror.Fixtures do
 
   @doc "A file attached to a mirrored page."
   def attachment_fixture(%Page{} = page, attrs \\ %{}) do
-    id = Map.get(attrs, :confluence_id) || System.unique_integer([:positive])
+    id = Map.get(attrs, :confluence_id) || to_string(System.unique_integer([:positive]))
 
     defaults = %{confluence_id: id, page_id: page.id, filename: "file-#{id}.txt", byte_size: 1024}
 

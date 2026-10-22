@@ -27,7 +27,6 @@ defmodule ConfluencePhxMirrorWeb.AttachmentController do
         } = params
       ) do
     with {page_id, ""} <- Integer.parse(page_id),
-         {attachment_id, ""} <- Integer.parse(attachment_id),
          :ok <- authorize(conn, space_key, page_id),
          {:ok, attachment} <- fetch_attachment(space_key, page_id, attachment_id, filename),
          {:ok, path} <- blob_path(attachment) do
