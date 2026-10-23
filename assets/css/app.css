@@ -104,7 +104,7 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* ---------------------------------------------------------------------------
-   "mirror" skin: an Atlassian-inspired light theme.
+   "mirror" skin: a Confluence-inspired light theme.
    Select it from the theme picker; it is just another daisyUI theme.
    --------------------------------------------------------------------------- */
 @plugin "daisyui/packages/bundle/daisyui-theme" {
@@ -147,7 +147,7 @@
 
    daisyUI dims table headers and field labels to 60% of the ink, which is
    3.99:1 on white — under AA for the 12–14px text they carry. 80% keeps the
-   hierarchy and clears AA in both variants of the Atlassian Cloud skin.
+   hierarchy and clears AA in both variants of the Fresh blue skin.
    --------------------------------------------------------------------------- */
 :where(.table) thead th,
 :where(.label) {

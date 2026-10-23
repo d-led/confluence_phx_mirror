@@ -181,8 +181,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             class="btn btn-outline btn-sm gap-1.5"
             title="The skin every reader gets; readers keep their own choice when this is cleared"
           >
-            <.icon name="hero-swatch" class="size-4" />
-            Site skin: {site_skin_label(@site_skin)}
+            <.icon name="hero-swatch" class="size-4" /> Site skin: {site_skin_label(@site_skin)}
           </button>
         </:actions>
       </.admin_header>
@@ -202,10 +201,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
           <form id="site-skin-form" phx-submit="save_site_skin" class="mt-4 space-y-2">
             <label class="flex items-start gap-2 text-sm">
-              <input type="radio" name="name" value="" checked={is_nil(@site_skin)} class="radio radio-sm" />
+              <input
+                type="radio"
+                name="name"
+                value=""
+                checked={is_nil(@site_skin)}
+                class="radio radio-sm"
+              />
               <span>
-                Readers choose
-                <span class="block text-xs text-base-content/70">no site skin</span>
+                Readers choose <span class="block text-xs text-base-content/70">no site skin</span>
               </span>
             </label>
             <label :for={skin <- @skins} class="flex items-start gap-2 text-sm">

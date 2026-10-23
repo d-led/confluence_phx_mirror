@@ -87,7 +87,8 @@ can move between them without going back to a hub:
 * `/admin` (**live**, refreshes every 5 s) – the overview: freshness, sync runs
   (counters, errors, `running` → `succeeded` / `partial` / `failed`), recent
   activity and recently updated pages, plus the manual sync actions and
-  "Re-read everything" for a full pull.
+  "Re-read everything" for a full pull. Its **Site skin** button opens the
+  dialog that pins a skin for every reader (or hands the choice back).
 * `/admin/sync-log` (**live**) – the live log: every page, file and call to
   Confluence a sync touches — status, size, latency, retries and the waits the
   client-side rate limiter imposed — plus a summary line when the run ends
@@ -196,39 +197,46 @@ unfiltered index — see [Known limitations](design-notes.md#known-limitations).
 
 Readers pick a skin in the header; the choice is a cookie, so the first paint is
 already correct and no JavaScript is involved. Four skins ship as daisyUI
-themes: `system` (follows the OS), `light`, `mirror` (Atlassian-inspired) and
-`dark`. A fifth, `atlassian-cloud`, ships as a skin pack and is the default.
+themes: `system` (follows the OS), `light`, `mirror` (Confluence-inspired) and
+`dark`. A fifth, `fresh-blue`, ships as a skin pack and is the default.
 
-Out of the box the mirror wears the Atlassian Cloud skin — the reader's
-`/theme/…` choice, once made, wins over it. A deployment that wants a single look
-for everybody pins a site skin instead, and the picker goes away.
+Out of the box the mirror wears the Fresh blue skin — the reader's
+`/theme/…` choice, once made, wins over it. An administrator can pin one skin
+for everybody instead from the admin area; the picker then goes away.
 
 ### The default skin
 
-`atlassian-cloud` ships as the default: a reader who has not picked a theme gets
+`fresh-blue` ships as the default: a reader who has not picked a theme gets
 it, and the header picker still offers the built-in skins and any skin the site
 declares.
 
 ```elixir
-# config/config.exs, or CM_DEFAULT_SKIN=atlassian-cloud in a release
-config :confluence_phx_mirror, default_skin: "atlassian-cloud"
+# config/config.exs, or CM_DEFAULT_SKIN=fresh-blue in a release
+config :confluence_phx_mirror, default_skin: "fresh-blue"
 ```
 
 ### One skin for the whole site
 
-A whole skin is a deployment decision, not a reader preference. Pin it and every
-reader gets it — the cookie is ignored and the header picker disappears:
+A whole skin is a deployment decision, not a reader preference: every reader
+gets it, the cookie is ignored and the header picker disappears. The
+administrator sets it at runtime — **Admin → Overview → Site skin** opens a
+dialog that lists the skins and "readers choose"; saving either pins a skin or
+hands the choice back. The change is audited (`settings.site_skin`) and survives
+a restart.
+
+`CM_SITE_SKIN` (or `config :confluence_phx_mirror, :site_skin`) still seeds the
+same decision for deployments that want it without a manual step:
 
 ```elixir
-# config/runtime.exs, or CM_SITE_SKIN=atlassian-cloud in a release
-config :confluence_phx_mirror, :site_skin, "atlassian-cloud"
+# config/runtime.exs, or CM_SITE_SKIN=fresh-blue in a release
+config :confluence_phx_mirror, :site_skin, "fresh-blue"
 ```
 
-A site skin is not set by default; leaving it unset is what keeps the picker.
-`atlassian-cloud` is Atlassian's Cloud palette as one skin with two variants: the
-light tokens by default and the Cloud dark tokens when the
-reader's OS prefers dark, so the whole site follows the OS the way the `system`
-skin does. A name the site does not offer stops the release at boot rather than
+The seeded value applies until an administrator saves another one; clearing the
+dialog falls back to it. `fresh-blue` is a blue-and-slate palette with two
+variants: the light colours by default and the dark ones when the reader's OS
+prefers dark, so the whole site follows the OS the way the `system` skin does.
+A seeded name the site does not offer stops the release at boot rather than
 quietly serving the default theme.
 
 ### A skin declared in config
@@ -291,7 +299,7 @@ end
 
 Pack skins take the same keys and are validated the same way; a pack cannot
 shadow a built-in skin, and a config skin wins when both declare the same name.
-`ConfluencePhxMirrorWeb.Skins.AtlassianCloud` is the reference pack — start
+`ConfluencePhxMirrorWeb.Skins.FreshBlue` is the reference pack — start
 there when writing your own.
 
 For anything a palette cannot express — fonts, spacing, component tweaks — edit

@@ -45,8 +45,8 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
       assert builtins == ~w(system light mirror dark)
     end
 
-    test "ships the Atlassian Cloud pack" do
-      assert %{label: "Atlassian Cloud"} = Skins.get("atlassian-cloud")
+    test "ships the Fresh blue pack" do
+      assert %{label: "Fresh blue"} = Skins.get("fresh-blue")
     end
 
     test "appends site skins and reports them in the picker" do
@@ -162,13 +162,13 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
       names = Enum.map(Skins.reader_skins(), & &1.name)
 
       assert "acme" in names
-      assert "atlassian-cloud" in names
+      assert "fresh-blue" in names
       refute "whole" in names
       assert Skins.valid?("whole")
     end
 
     test "is empty when the site pins one skin for everyone" do
-      with_site_skin("atlassian-cloud")
+      with_site_skin("fresh-blue")
 
       assert Skins.reader_skins() == []
     end
@@ -235,8 +235,8 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
 
   describe "validate!/0" do
     test "accepts skins the site offers" do
-      with_site_skin("atlassian-cloud")
-      with_default_skin("atlassian-cloud")
+      with_site_skin("fresh-blue")
+      with_default_skin("fresh-blue")
 
       assert :ok = Skins.validate!()
     end

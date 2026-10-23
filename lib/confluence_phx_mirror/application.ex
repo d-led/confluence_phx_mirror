@@ -33,7 +33,17 @@ defmodule ConfluencePhxMirror.Application do
 
     opts = [strategy: :one_for_one, name: ConfluencePhxMirror.Supervisor]
     log_pool_size()
-    Supervisor.start_link(children, opts)
+
+    case Supervisor.start_link(children, opts) do
+      {:ok, pid} ->
+        # Settings an administrator changed are read from the table once, so
+        # the per-request theme lookup never queries the database.
+        ConfluencePhxMirror.Settings.load()
+        {:ok, pid}
+
+      error ->
+        error
+    end
   end
 
   @impl true

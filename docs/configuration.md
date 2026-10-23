@@ -145,7 +145,7 @@ window (and a `Retry-After` header); API clients get JSON.
 
 ## Skins
 
-Built-in skins are `system`, `light`, `mirror` and `dark`; `atlassian-cloud`
+Built-in skins are `system`, `light`, `mirror` and `dark`; `fresh-blue`
 ships as the default and readers switch skins in the header. A deployment can pin
 one skin for everybody instead, which hides the picker. Site skins are config,
 not CSS: `config :confluence_phx_mirror, :skins, [...]` with `name`, `label`,
@@ -156,8 +156,8 @@ and the `assets/css/author.css` escape hatch are in
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CM_DEFAULT_SKIN` | `atlassian-cloud` | the skin a reader sees before picking one; the picker still offers the rest |
-| `CM_SITE_SKIN` | – | pins one skin for the whole site; readers get no picker. A name the site does not offer stops the release at boot |
+| `CM_DEFAULT_SKIN` | `fresh-blue` | the skin a reader sees before picking one; the picker still offers the rest |
+| `CM_SITE_SKIN` | – | seeds the site skin: one skin for the whole site, readers get no picker. An administrator can change or clear it at runtime from **Admin → Site skin**; a seeded name the site does not offer stops the release at boot |
 
 ## Development defaults
 
@@ -165,7 +165,7 @@ and the `assets/css/author.css` escape hatch are in
 
 * `CM_SOURCE=demo` (no Confluence credentials needed),
 * `MIRROR_AUTO_ADMIN` on, so no sign-in is required,
-* `atlassian-cloud` as the default skin, with the reader picker available,
+* `fresh-blue` as the default skin, with the reader picker available,
 * Postgres on `localhost:5432` and smtp4dev on `localhost:2525` — services that
   the repository's `docker compose` file happens to provide for local work.
 

@@ -42,6 +42,11 @@ invariants below are the ones specific to the mirror.
   `prefers-color-scheme` override; `selectable: false` keeps a skin out of the
   reader picker so it is only usable as `:site_skin`. Deeper overrides go in
   `assets/css/author.css`.
+* **Settings an admin changes live in one table.** `settings` (key/value) holds
+  the site skin; `ConfluencePhxMirror.Settings` loads it into `:persistent_term`
+  at boot, so the per-request theme lookup never queries, and every write is
+  audited. The environment seeds the same decision (`CM_SITE_SKIN`) and applies
+  again once the stored value is cleared.
 * **JS dependencies are real dependencies**: `assets/package.json`, `npm ci`
   wired into `assets.build` / `assets.deploy`. Syntax highlighting uses the
   highlight.js grammar chosen from Confluence's `brush:` attribute.

@@ -39,13 +39,13 @@ config :confluence_phx_mirror, Oban,
 config :confluence_phx_mirror, :source, ConfluencePhxMirror.Confluence.DemoSource
 
 # Extra skins beyond the built-ins ship as standalone packs: modules
-# implementing `ConfluencePhxMirrorWeb.Skins.Pack`. `AtlassianCloud` is the
+# implementing `ConfluencePhxMirrorWeb.Skins.Pack`. `FreshBlue` is the
 # reference extension and the mirror's default skin.
-config :confluence_phx_mirror, :skin_packs, [ConfluencePhxMirrorWeb.Skins.AtlassianCloud]
+config :confluence_phx_mirror, :skin_packs, [ConfluencePhxMirrorWeb.Skins.FreshBlue]
 
 # Every reader may choose a skin from the header; a reader who has not chosen
 # gets this one. Change it with `CM_DEFAULT_SKIN`.
-config :confluence_phx_mirror, default_skin: "atlassian-cloud"
+config :confluence_phx_mirror, default_skin: "fresh-blue"
 
 # A deployment that wants one look for everybody pins it instead — a site skin
 # wins over the reader's cookie and the picker disappears. Unset here on

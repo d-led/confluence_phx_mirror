@@ -12,7 +12,7 @@ defmodule ConfluencePhxMirrorWeb.Skins do
     * `config :confluence_phx_mirror, :skins` — maps for this deployment;
     * `config :confluence_phx_mirror, :skin_packs` — modules implementing
       `ConfluencePhxMirrorWeb.Skins.Pack`, the way a skin ships as a
-      standalone extension (see `ConfluencePhxMirrorWeb.Skins.AtlassianCloud`).
+      standalone extension (see `ConfluencePhxMirrorWeb.Skins.FreshBlue`).
 
   A declaration looks like this:
 
@@ -51,8 +51,8 @@ defmodule ConfluencePhxMirrorWeb.Skins do
   the whole site is `site_skin`, and `default_skin` is what a reader sees before
   they pick anything:
 
-      config :confluence_phx_mirror, default_skin: "atlassian-cloud"
-      config :confluence_phx_mirror, :site_skin, "atlassian-cloud"
+      config :confluence_phx_mirror, default_skin: "fresh-blue"
+      config :confluence_phx_mirror, :site_skin, "fresh-blue"
 
   Anything the palette cannot express (fonts, component tweaks) goes in
   `assets/css/author.css`, which is loaded after the main stylesheet.
@@ -129,10 +129,19 @@ defmodule ConfluencePhxMirrorWeb.Skins do
 
   @doc """
   The skin this deployment applies to every reader, or `nil` when readers
-  choose their own. Set with `config :confluence_phx_mirror, :site_skin`.
+  choose their own.
+
+  An administrator sets it at runtime from the admin area (stored in the
+  `settings` table, loaded at boot). `config :confluence_phx_mirror, :site_skin`
+  or `CM_SITE_SKIN` seeds it for deployments that want it without a manual step;
+  it takes over again when the stored value is cleared.
   """
   @spec site_skin() :: String.t() | nil
   def site_skin do
+    ConfluencePhxMirror.Settings.site_skin() || configured_site_skin()
+  end
+
+  defp configured_site_skin do
     case Application.get_env(:confluence_phx_mirror, :site_skin) do
       "" -> nil
       name when is_binary(name) -> name
@@ -169,14 +178,12 @@ defmodule ConfluencePhxMirrorWeb.Skins do
   defp check!(_key, nil), do: :ok
 
   defp check!(key, name) do
-    cond do
-      valid?(name) ->
-        :ok
-
-      true ->
-        raise ArgumentError,
-              "#{key} #{inspect(name)} is not a skin this site offers; " <>
-                "available: #{Enum.join(names(), ", ")}"
+    if valid?(name) do
+      :ok
+    else
+      raise ArgumentError,
+            "#{key} #{inspect(name)} is not a skin this site offers; " <>
+              "available: #{Enum.join(names(), ", ")}"
     end
   end
 

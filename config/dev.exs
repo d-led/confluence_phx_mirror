@@ -109,7 +109,7 @@ config :phoenix, :stacktrace_depth, 20
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
 
-# Development runs with the shipped defaults: `atlassian-cloud` as the default
+# Development runs with the shipped defaults: `fresh-blue` as the default
 # skin, and the reader theme picker in the header. Set `site_skin` to pin one
 # skin for the whole site (which hides the picker) — see
 # docs/site-admin-guide.md#skins for declaring a site's own skin.

@@ -22,7 +22,7 @@ defmodule ConfluencePhxMirrorWeb.Skins.Pack do
   same way — see `ConfluencePhxMirrorWeb.Skins`. A pack cannot shadow a built-in
   skin, and config declared skins win over a pack's skin of the same name.
 
-  `ConfluencePhxMirrorWeb.Skins.AtlassianCloud` is the reference pack.
+  `ConfluencePhxMirrorWeb.Skins.FreshBlue` is the reference pack.
   """
 
   alias ConfluencePhxMirrorWeb.Skins

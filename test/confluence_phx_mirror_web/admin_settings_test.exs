@@ -21,7 +21,7 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
 
     assert html =~ "Settings"
     assert html =~ "Site skin"
-    assert html =~ "atlassian-cloud"
+    assert html =~ "fresh-blue"
     assert html =~ "CM_SITE_SKIN"
     assert html =~ "Signed in as"
   end

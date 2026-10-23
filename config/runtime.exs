@@ -234,7 +234,7 @@ end
 
 # CM_DEFAULT_SKIN is the skin a reader sees before they pick one; the header
 # picker still offers the rest. CM_SITE_SKIN(mirror): pins one skin for the whole
-# site — "atlassian-cloud" ships with the mirror — and readers get no picker.
+# site — "fresh-blue" ships with the mirror — and readers get no picker.
 # Unset, readers choose (see docs/site-admin-guide.md#skins). A misspelt name
 # stops the release at boot.
 if skin = System.get_env("CM_DEFAULT_SKIN") do
