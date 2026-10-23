@@ -72,8 +72,9 @@ scripts/tooling/fill-confluence.sh --cleanup
 The script works in chunks because the tool checkpoints per *phase*: a crash
 during the page phase otherwise loses every page that run made. It passes
 `--content-only` because pages are unlimited text while the free plan's 2 GB is
-file storage — attachments are what would cross it — and its prefixes share six
-characters, so one `--cleanup` removes the whole run.
+file storage — attachments are what would cross it. The chunk number is part of
+the six-character space key (the generator truncates the prefix), so
+`--cleanup` walks the chunk prefixes and removes each one.
 
 Budget it as an unattended job: **~1.2 pages a second**, the same at concurrency
 5 and at 10 — the ceiling is the API, not the client — so 100 000 pages is a day,

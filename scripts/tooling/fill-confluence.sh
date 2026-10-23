@@ -26,15 +26,22 @@
 # without bound (a 100 000-page plan at the default multipliers is ~410 000
 # attachment objects). `--with-attachments` exists, and it will not fit.
 #
-# Cleanup: every space key starts with the first six characters of the prefix,
-# so one command removes every chunk. Prefixes are uppercased for that reason.
+# Cleanup: the generator truncates a prefix to six characters for the space
+# key ("PERFLOAD1" becomes PERFLO1, PERFLO2, …), so a chunk number has to sit
+# inside those six characters or every chunk collides with the first one. The
+# chunk prefix is therefore a base of at most four characters plus a two-digit
+# chunk number, and cleanup runs once per chunk prefix.
+#
+# Keep the base to four characters: "LOAD" + 01 gives LOAD01, the space key is
+# LOAD011, LOAD012, … and chunk 02 gets LOAD021 onwards.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
 OUT_DIR="${OUT_DIR:-var/confluence-fill}"
-PREFIX="${PREFIX:-LOADTEST}"
+PREFIX="${PREFIX:-LOAD}"
+MAX_CHUNKS=99
 PAGES_PER_CHUNK="${PAGES_PER_CHUNK:-2000}"
 SPACES_PER_CHUNK="${SPACES_PER_CHUNK:-3}"
 CONCURRENCY="${CONCURRENCY:-10}"
@@ -88,8 +95,22 @@ run_generator() {
 }
 
 if [ "$mode" = cleanup ]; then
-  echo "Deleting every space whose key starts with ${PREFIX:0:6} (permanent, no trash)."
-  run_generator --cleanup --yes
+  # Prefer the chunks this machine actually ran; fall back to the whole range so
+  # a run whose logs are gone can still be removed.
+  chunk_prefixes=""
+  for log in "$OUT_DIR"/"$PREFIX"[0-9][0-9].log; do
+    [ -e "$log" ] || continue
+    chunk_prefixes="$chunk_prefixes $(basename "$log" .log)"
+  done
+  if [ -z "$chunk_prefixes" ]; then
+    chunk_prefixes=$(for i in $(seq 1 "$MAX_CHUNKS"); do printf '%s%02d\n' "$PREFIX" "$i"; done)
+  fi
+
+  echo "Deleting generated spaces, one chunk prefix at a time (permanent, no trash)."
+  for chunk_prefix in $chunk_prefixes; do
+    run_generator --cleanup --prefix "$chunk_prefix" --yes 2>&1 |
+      sed -n "s/.*Deleted \\([0-9]*\\/[0-9]*\\) space.*/$chunk_prefix: \\1/p"
+  done
   exit
 fi
 
@@ -108,14 +129,27 @@ total_count=$(python3 -c "print(round($pages / $PAGE_SHARE))")
 chunk_count=$(python3 -c "print(round($PAGES_PER_CHUNK / $PAGE_SHARE))")
 chunks=$(( (pages + PAGES_PER_CHUNK - 1) / PAGES_PER_CHUNK ))
 
+if [ "$chunks" -gt "$MAX_CHUNKS" ]; then
+  echo "$pages pages needs $chunks chunks; the prefix scheme stops at $MAX_CHUNKS." >&2
+  echo "Raise PAGES_PER_CHUNK (each chunk is a separate ~half-hour run)." >&2
+  exit 1
+fi
+
+if [ "${#PREFIX}" -gt 4 ]; then
+  echo "PREFIX=$PREFIX is longer than four characters; the space key keeps only" >&2
+  echo "six and the chunk number needs the last two. Use e.g. PREFIX=LOAD." >&2
+  exit 1
+fi
+
 echo "Plan: $pages pages in $chunks chunk(s) of $PAGES_PER_CHUNK, --count $total_count"
 echo "      generator: $generator"
-echo "      writing under $OUT_DIR, prefix ${PREFIX}1 … ${PREFIX}${chunks}"
+echo "      writing under $OUT_DIR"
+echo "      space keys ${PREFIX}011 … ${PREFIX}${chunks}1 (chunk prefix + space number)"
 echo
 
 # What the tool itself intends to create, before it creates anything.
 run_generator --count "$total_count" --spaces "$(( SPACES_PER_CHUNK * chunks ))" \
-  "${content_only[@]}" --dry-run | sed -n 's/.*INFO -   /  planned /p'
+  "${content_only[@]}" --dry-run 2>&1 | sed -n 's/.*INFO -   /  planned /p'
 
 if [ "$dry_run" -eq 1 ]; then
   printf '\n--dry-run: nothing written.\n'
@@ -125,7 +159,7 @@ fi
 mkdir -p "$OUT_DIR"
 
 for i in $(seq 1 "$chunks"); do
-  chunk_prefix="${PREFIX}${i}"
+  chunk_prefix=$(printf '%s%02d' "$PREFIX" "$i")
   log="$OUT_DIR/${chunk_prefix}.log"
 
   if grep -q "Generation complete" "$log" 2>/dev/null; then
