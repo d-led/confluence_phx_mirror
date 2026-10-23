@@ -65,9 +65,14 @@
       title="Nothing mirrored yet"
       body="No content has been copied from Confluence so far. The About page explains what this mirror is and who runs it."
     />
-    <div :if={@spaces != []} class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <.space_card :for={{space, count} <- @spaces} space={space} count={count} />
-    </div>
+    <ul
+      :if={@spaces != []}
+      class="divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
+    >
+      <li :for={{space, count} <- @spaces}>
+        <.space_card space={space} count={count} />
+      </li>
+    </ul>
     <p :if={@space_total > length(@spaces)} class="mt-3 text-xs text-base-content/70">
       Showing {length(@spaces)} of {@space_total} spaces.
       <a href={~p"/spaces"} class="font-medium text-primary hover:underline">
@@ -127,7 +132,7 @@
             ] || 0} pages
           </p>
           <p class="text-[11px] text-base-content/70">
-            {Time.datetime(@last_sync_run.finished_at)}
+            <.local_time at={@last_sync_run.finished_at} />
           </p>
         </div>
         <p :if={is_nil(@last_sync_run)} class="text-xs text-base-content/70">No sync yet.</p>

@@ -213,18 +213,15 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
         <.icon name="hero-user-circle" class="size-3.5" />
         {(@page.author_name || "Unknown author") |> to_string()}
       </span>
-      <span
-        class="inline-flex items-center gap-1"
-        title={Time.datetime(@page.external_updated_at)}
-      >
+      <.local_time at={@page.external_updated_at} class="inline-flex items-center gap-1">
         <.icon name="hero-clock" class="size-3.5" /> Updated {Time.ago(@page.external_updated_at)}
-      </span>
+      </.local_time>
       <span class="inline-flex items-center gap-1">
         <.icon name="hero-code-bracket" class="size-3.5" /> v{@page.version_number}
       </span>
-      <span class="inline-flex items-center gap-1" title={Time.datetime(@page.synced_at)}>
+      <.local_time at={@page.synced_at} class="inline-flex items-center gap-1">
         <.icon name="hero-arrow-path" class="size-3.5" /> Synced {Time.ago(@page.synced_at)}
-      </span>
+      </.local_time>
       <a
         :if={@page.external_url}
         href={@page.external_url}
@@ -425,12 +422,12 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-baseline gap-2">
               <span class="text-sm font-medium">{comment.author_name || "Anonymous"}</span>
-              <span
+              <.local_time
+                at={comment.external_created_at}
                 class="text-[11px] text-base-content/70"
-                title={Time.datetime(comment.external_created_at)}
               >
                 {Time.ago(comment.external_created_at)}
-              </span>
+              </.local_time>
             </div>
             <div class="confluence-content mt-1 text-sm">
               {Phoenix.HTML.raw(comment.body_export || "")}
@@ -445,7 +442,12 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-baseline gap-2">
                   <span class="text-xs font-medium">{reply.author_name}</span>
-                  <span class="text-[10px] text-base-content/70">{Time.ago(reply.external_created_at)}</span>
+                  <.local_time
+                    at={reply.external_created_at}
+                    class="text-[10px] text-base-content/70"
+                  >
+                    {Time.ago(reply.external_created_at)}
+                  </.local_time>
                 </div>
                 <div class="confluence-content mt-1 text-sm">
                   {Phoenix.HTML.raw(reply.body_export || "")}
@@ -603,42 +605,56 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     ~H"""
     <.link
       navigate={~p"/spaces/#{@space.key}"}
-      class="group flex h-full flex-col rounded-xl border border-base-300/70 bg-base-100 p-4 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 motion-reduce:hover:translate-y-0"
+      class="group flex min-h-14 items-center gap-3 px-4 py-3 transition hover:bg-base-200/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-inset"
     >
-      <div class="flex items-center justify-between gap-2">
-        <span class="badge badge-ghost badge-sm">{@space.key}</span>
-        <span class="text-[11px] tabular-nums text-base-content/70">
-          {@count} {if @count == 1, do: "page", else: "pages"}
+      <span class="grid size-9 shrink-0 place-items-center rounded-md bg-base-200 text-[11px] font-semibold uppercase tracking-wide text-base-content/70">
+        {@space.key}
+      </span>
+      <span class="min-w-0 flex-1">
+        <span class="block truncate text-sm font-semibold group-hover:text-primary">
+          {@space.name}
         </span>
-      </div>
-      <span class="mt-2 text-sm font-semibold group-hover:text-primary">{@space.name}</span>
-      <span class="mt-0.5 line-clamp-2 text-xs text-base-content/70">
-        {@space.description || "No description."}
+        <span class="mt-0.5 block truncate text-xs text-base-content/70">
+          {@space.description || "No description."}
+        </span>
       </span>
-      <span
-        :if={@blog_posts not in [nil, 0]}
-        class="mt-2 text-[11px] tabular-nums text-base-content/70"
-      >
-        {@blog_posts} {if @blog_posts == 1, do: "blog post", else: "blog posts"}
+      <span class="hidden shrink-0 text-right text-[11px] tabular-nums text-base-content/70 sm:block">
+        {space_meta(@count, @blog_posts, @updated_at)}
       </span>
-      <span
-        :if={@updated_at}
-        class="mt-auto pt-3 text-[10px] uppercase tracking-wide text-base-content/70"
-      >
-        Updated {Time.ago(@updated_at)}
+      <span class="shrink-0 text-[11px] tabular-nums text-base-content/70 sm:hidden">
+        {@count}
       </span>
+      <.icon name="hero-chevron-right" class="size-4 shrink-0 opacity-40" />
     </.link>
     """
   end
 
+  # What a space row says about itself, in one line: how much is in it, and when
+  # it last moved.
+  defp space_meta(count, blog_posts, updated_at) do
+    [
+      plural(count, "page", "pages"),
+      blog_posts not in [nil, 0] && plural(blog_posts, "blog post", "blog posts"),
+      updated_at && "updated " <> Time.ago(updated_at)
+    ]
+    |> Enum.reject(&(&1 in [nil, false]))
+    |> Enum.join(" · ")
+  end
+
+  defp plural(1, one, _many), do: "1 " <> one
+  defp plural(count, _one, many), do: "#{count} " <> many
+
   attr :label, :string, required: true
-  attr :value, :any, required: true
+  attr :value, :any, default: nil, doc: "plain text; reach for the slot when it needs markup"
+  slot :inner_block
 
   def kv(assigns) do
     ~H"""
     <div class="flex items-baseline justify-between gap-3 border-b border-base-300/50 py-1.5 last:border-0">
       <dt class="text-[11px] uppercase tracking-wide text-base-content/70">{@label}</dt>
-      <dd class="min-w-0 truncate text-right text-xs font-medium">{@value}</dd>
+      <dd class="min-w-0 truncate text-right text-xs font-medium">
+        {if @inner_block == [], do: @value, else: render_slot(@inner_block)}
+      </dd>
     </div>
     """
   end

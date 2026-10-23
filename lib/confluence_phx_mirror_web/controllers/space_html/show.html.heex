@@ -63,26 +63,31 @@
         <p :if={@root_pages == []} class="text-sm text-base-content/70">
           This space has no pages yet.
         </p>
-        <ul :if={@root_pages != []} class="grid gap-3 sm:grid-cols-2">
+        <ul
+          :if={@root_pages != []}
+          class="divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
+        >
           <li :for={page <- @root_pages}>
             <.link
               navigate={URLs.content_path(@space.key, page)}
-              class="group flex h-full flex-col rounded-xl border border-base-300/70 bg-base-100 p-4 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+              class="group flex min-h-14 items-center gap-3 px-4 py-3 transition hover:bg-base-200/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-inset"
             >
-              <span class="flex items-center gap-2 text-sm font-semibold group-hover:text-primary">
-                <.icon
-                  name={
-                    if page.type == "blogpost", do: "hero-newspaper", else: "hero-document-text"
-                  }
-                  class="size-4 text-base-content/70"
-                />
-                <span class="truncate">{page.title}</span>
+              <.icon
+                name={
+                  if page.type == "blogpost", do: "hero-newspaper", else: "hero-document-text"
+                }
+                class="size-4 shrink-0 text-base-content/70"
+              />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm font-semibold group-hover:text-primary">
+                  {page.title}
+                </span>
+                <span class="mt-0.5 block truncate text-xs text-base-content/70">
+                  {String.slice(page.body_text || "No text.", 0, 120)}
+                </span>
               </span>
-              <span class="mt-1 line-clamp-2 text-xs text-base-content/70">
-                {String.slice(page.body_text || "", 0, 180)}
-              </span>
-              <span class="mt-3 text-[10px] uppercase tracking-wide text-base-content/70">
-                Updated {Time.ago(page.external_updated_at)}
+              <span class="shrink-0 text-[11px] text-base-content/70">
+                {Time.ago(page.external_updated_at)}
               </span>
             </.link>
           </li>
@@ -127,7 +132,7 @@
             >
               {post.title}
               <span class="mt-0.5 block text-[11px] text-base-content/70">
-                {Time.date(post.external_updated_at)} · {post.author_name}
+                <.local_time at={post.external_updated_at} format={:date} /> · {post.author_name}
               </span>
             </.link>
           </li>

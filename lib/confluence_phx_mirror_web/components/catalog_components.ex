@@ -86,25 +86,34 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
 
   def catalog_body(%{kind: :spaces} = assigns) do
     ~H"""
-    <div id="catalog-results" class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <.space_card
-        :for={row <- @items}
-        space={row.space}
-        count={row.pages}
-        blog_posts={row.blog_posts}
-        updated_at={row.updated_at}
-      />
-    </div>
+    <%!-- Rows, not tiles: a three-column grid leaves each card ~300px, which
+    is where a description stops being readable. --%>
+    <ul
+      id="catalog-results"
+      class="mt-6 divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
+    >
+      <li :for={row <- @items}>
+        <.space_card
+          space={row.space}
+          count={row.pages}
+          blog_posts={row.blog_posts}
+          updated_at={row.updated_at}
+        />
+      </li>
+    </ul>
     """
   end
 
   def catalog_body(%{kind: :people} = assigns) do
     ~H"""
-    <ul id="catalog-results" class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <ul
+      id="catalog-results"
+      class="mt-6 divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
+    >
       <li :for={author <- @items}>
         <.link
           navigate={URLs.person_path(author.account_id)}
-          class="group flex items-center gap-3 rounded-xl border border-base-300/70 bg-base-100 p-4 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 motion-reduce:hover:translate-y-0"
+          class="group flex min-h-14 items-center gap-3 px-4 py-3 transition hover:bg-base-200/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-inset"
         >
           <span class="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
             {initials(author.name)}
@@ -154,7 +163,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
               {post.title}
             </.link>
             <span class="text-[11px] uppercase tracking-wide text-base-content/70">
-              {Time.date(post.external_updated_at)}
+              <.local_time at={post.external_updated_at} format={:date} />
             </span>
           </div>
           <p class="mt-1 line-clamp-2 text-sm leading-relaxed text-base-content/70">
@@ -173,7 +182,41 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
 
   def catalog_body(%{kind: :pages} = assigns) do
     ~H"""
-    <div id="catalog-results" class="-mx-4 mt-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+    <%!-- A phone gets the record, not a table with three of five columns
+    hidden: title, what it is, who wrote it, when it moved. --%>
+    <ul id="catalog-results" class="mt-4 divide-y divide-base-300/60 sm:hidden">
+      <li :for={page <- @items}>
+        <.link
+          navigate={URLs.content_path(@space.key, page)}
+          class="flex min-h-14 items-center gap-3 py-2"
+        >
+          <.icon
+            name={if page.type == "blogpost", do: "hero-newspaper", else: "hero-document-text"}
+            class="size-4 shrink-0 text-base-content/70"
+          />
+          <span class="min-w-0 flex-1">
+            <span class="block truncate font-medium">{page.title}</span>
+            <span class="mt-0.5 block text-xs text-base-content/70">
+              {content_kind(page.type)} · {page.status}
+              <%= if page.author_name do %>
+                · {page.author_name}
+              <% end %>
+            </span>
+          </span>
+          <span class="shrink-0 text-[11px] text-base-content/70">
+            {Time.ago(page.external_updated_at)}
+          </span>
+        </.link>
+      </li>
+      <li :if={@items == []} class="py-6 text-center text-xs text-base-content/70">
+        No pages match.
+      </li>
+    </ul>
+
+    <div
+      id="catalog-results-table"
+      class="mt-4 hidden overflow-x-auto sm:block sm:mx-0 sm:px-0"
+    >
       <table class="table table-sm w-full">
         <caption class="sr-only">Pages in {@space.name}</caption>
         <thead>
@@ -237,11 +280,10 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
               </span>
             </td>
             <td class="hidden text-xs text-base-content/70 lg:table-cell">{page.author_name}</td>
-            <td
-              class="whitespace-nowrap text-right text-xs text-base-content/70"
-              title={Time.datetime(page.external_updated_at)}
-            >
-              {Time.ago(page.external_updated_at)}
+            <td class="whitespace-nowrap text-right text-xs text-base-content/70">
+              <.local_time at={page.external_updated_at}>
+                {Time.ago(page.external_updated_at)}
+              </.local_time>
             </td>
           </tr>
         </tbody>
@@ -252,7 +294,40 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
 
   def catalog_body(%{kind: :attachments} = assigns) do
     ~H"""
-    <div id="catalog-results" class="-mx-4 mt-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+    <ul id="catalog-results" class="mt-4 divide-y divide-base-300/60 sm:hidden">
+      <li :for={attachment <- @items}>
+        <a
+          href={
+            URLs.attachment_path(
+              @space.key,
+              attachment.page.confluence_id,
+              attachment.confluence_id,
+              attachment.filename
+            )
+          }
+          class="flex min-h-14 items-center gap-3 py-2"
+        >
+          <.icon name="hero-paper-clip" class="size-4 shrink-0 text-base-content/70" />
+          <span class="min-w-0 flex-1">
+            <span class="block truncate font-medium">{attachment.filename}</span>
+            <span class="mt-0.5 block truncate text-xs text-base-content/70">
+              {attachment.page.title} · {Attachment.human_size(attachment.byte_size)} · v{attachment.version_number}
+            </span>
+          </span>
+          <span class="shrink-0 text-[11px] text-base-content/70">
+            {Time.ago(attachment.external_updated_at)}
+          </span>
+        </a>
+      </li>
+      <li :if={@items == []} class="py-6 text-center text-xs text-base-content/70">
+        No attachments match.
+      </li>
+    </ul>
+
+    <div
+      id="catalog-results-table"
+      class="mt-4 hidden overflow-x-auto sm:block sm:mx-0 sm:px-0"
+    >
       <table class="table table-sm w-full">
         <caption class="sr-only">Attachments in {@space.name}</caption>
         <thead>
