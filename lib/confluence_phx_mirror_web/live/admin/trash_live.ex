@@ -14,7 +14,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
   import ConfluencePhxMirrorWeb.AdminComponents
 
   alias ConfluencePhxMirror.Trash
-  alias ConfluencePhxMirrorWeb.Time
 
   # A site that lost a space can have thousands of pages in the trash; the page
   # shows the newest and "Empty the trash" takes them all.
@@ -150,7 +149,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
                 <td class="font-mono text-xs">{space.key}</td>
                 <td class="max-w-64 truncate">{space.name}</td>
                 <td class="text-right tabular-nums">{pages}</td>
-                <td class="text-xs text-base-content/70">{Time.datetime(space.deleted_at)}</td>
+                <td class="text-xs text-base-content/70">
+                  <.local_time at={space.deleted_at} />
+                </td>
                 <td class="text-right">
                   <button
                     type="button"
@@ -189,7 +190,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
                 <td class="max-w-96 truncate">{page.title}</td>
                 <td class="font-mono text-xs">{space.key}</td>
                 <td class="text-xs">{page.type}</td>
-                <td class="text-xs text-base-content/70">{Time.datetime(page.deleted_at)}</td>
+                <td class="text-xs text-base-content/70">
+                  <.local_time at={page.deleted_at} />
+                </td>
                 <td class="text-right">
                   <button
                     type="button"

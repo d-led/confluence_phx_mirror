@@ -188,8 +188,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             <th>Errors</th>
           </:head>
           <:row :let={run}>
-            <td class="whitespace-nowrap text-xs" title={Time.datetime(run.started_at)}>
-              {Time.ago(run.started_at)}
+            <td class="whitespace-nowrap text-xs">
+              <.local_time at={run.started_at}>{Time.ago(run.started_at)}</.local_time>
             </td>
             <td class="text-xs">{run.mode}</td>
             <td><span class={["badge badge-sm", status_class(run.status)]}>{run.status}</span></td>

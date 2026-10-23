@@ -34,6 +34,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLiveTest do
     assert html =~ "GONE"
     assert html =~ "Gone Space"
 
+    # When it was trashed goes to the browser as an instant, for the reader's
+    # clock; printing Time.datetime/1 here would leave a UTC string on screen.
+    assert has_element?(view, "#space-GONE time[data-local-time]")
+
     html = view |> element("#space-GONE button", "Delete for good") |> render_click()
 
     assert html =~ "GONE purged with 1 pages"

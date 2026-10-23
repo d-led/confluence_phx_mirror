@@ -80,6 +80,10 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
     assert html =~ "Latest activity"
     assert has_element?(view, "a[href='/admin/audit']")
     assert html =~ "40"
+
+    # A run's start reaches the browser as an instant to put on the reader's
+    # clock, not as a UTC string in a tooltip.
+    assert has_element?(view, "#sync-runs time[data-local-title]")
   end
 
   test "users page lists the assumed admin and creates tokens", %{conn: conn} do
