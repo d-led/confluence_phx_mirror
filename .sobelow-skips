@@ -2,3 +2,6 @@ XSS.Raw: XSS,lib/confluence_phx_mirror_web/components/layouts/root.html.heex:14,
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/error_html/404.html.heex:10,156654E
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/error_html/429.html.heex:10,67A0DFF
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/page_html/show.html.heex:143,4E071CA
+Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/confluence_phx_mirror/build_info.ex:112,62944
+Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/build_info.ex:151,2A1A70
+Traversal.FileModule: Directory Traversal in `File.write!`,lib/confluence_phx_mirror/build_info.ex:114,80D4C9
