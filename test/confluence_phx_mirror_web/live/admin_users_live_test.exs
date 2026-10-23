@@ -179,6 +179,20 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
       refute has_element?(view, "#disabled-here-#{reader.id}")
     end
 
+    test "the button reads which flag it manages, not who blocks access", %{conn: conn} do
+      reader = user_fixture(%{email: "two.flags@example.com"})
+      Accounts.reconcile_site_disabled("557058:two.flags", "two.flags@example.com", true)
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      assert view |> element("#toggle-#{reader.id}") |> render() =~ "Switch off here"
+
+      view |> element("#disable-form-#{reader.id}") |> render_submit()
+
+      assert view |> element("#toggle-#{reader.id}") |> render() =~ "Switch on here"
+      assert has_element?(view, "#disabled-here-#{reader.id}")
+      assert has_element?(view, "#disabled-on-site-#{reader.id}")
+    end
+
     test "the filter narrows the list as the administrator types", %{conn: conn} do
       user_fixture(%{email: "needle@example.com"})
       user_fixture(%{email: "haystack@example.com"})

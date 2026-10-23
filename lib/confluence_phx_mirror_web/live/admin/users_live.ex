@@ -303,12 +303,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                   ]}
                   data-confirm={
                     if User.disabled_here?(user),
-                      do: "Let #{user.email} read the mirror again?",
+                      do: "Let #{user.email} read the mirror again? Confluence is not changed.",
                       else:
-                        "Disable #{user.email} here? They lose access immediately; Confluence is not changed."
+                        "Switch #{user.email} off here? They lose access immediately; Confluence is not changed."
                   }
                 >
-                  {if User.disabled_here?(user), do: "Enable", else: "Disable"}
+                  {if User.disabled_here?(user), do: "Switch on here", else: "Switch off here"}
                 </button>
               </form>
             </div>
