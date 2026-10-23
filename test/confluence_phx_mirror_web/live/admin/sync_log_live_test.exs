@@ -8,11 +8,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
 
+  alias ConfluencePhxMirror.Confluence.Traffic
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.Log
 
   setup %{conn: conn} do
     Log.clear()
+    Traffic.reset()
     ops = user_fixture(%{email: "ops@example.com", role: "admin"})
 
     {:ok, conn: Plug.Test.init_test_session(conn, %{"user_id" => ops.id})}
@@ -76,6 +78,45 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
 
     assert html =~ "page created: Architecture Overview"
     assert html =~ "finished a snapshot sync"
+  end
+
+  test "a call to Confluence is a line with its status and its latency", %{conn: conn} do
+    Log.add(:debug, "GET /wiki/rest/api/content?spaceKey=ENG 200 42 ms",
+      kind: :http,
+      method: "GET",
+      status: 200,
+      ms: 42,
+      attempt: 2,
+      waited: 180
+    )
+
+    {:ok, _view, html} = live(conn, ~p"/admin/sync-log")
+
+    assert html =~ "GET /wiki/rest/api/content?spaceKey=ENG 200 42 ms"
+    # What the message already says is not repeated in the details.
+    refute html =~ "status=200"
+    assert html =~ "attempt=2"
+    assert html =~ "waited=180"
+  end
+
+  test "the page adds up what the run's calls have cost so far", %{conn: conn} do
+    Traffic.request(200, 40, 1_024)
+
+    {:ok, _view, html} = live(conn, ~p"/admin/sync-log")
+
+    assert html =~ "1 call · 1.0 KB · avg 40 ms"
+  end
+
+  test "the run's summary line carries the answers the site gave", %{conn: conn} do
+    Log.add(:info, "http: 3 calls · 512 B · avg 12 ms",
+      kind: :http_summary,
+      answers: "200×3"
+    )
+
+    {:ok, _view, html} = live(conn, ~p"/admin/sync-log")
+
+    assert html =~ "http: 3 calls"
+    assert html =~ "answers=200×3"
   end
 
   defp entry(level, message) do

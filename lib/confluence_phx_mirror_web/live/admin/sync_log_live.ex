@@ -5,7 +5,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   This is the counterpart of the audit log. The audit log answers "who changed
   what" long after the fact; this page answers "what is the sync doing right now
   and why is this page wrong?" — so it shows the chatty detail on purpose, and
-  says nothing that has to survive a restart.
+  says nothing that has to survive a restart. Every call to Confluence is one of
+  those lines, and the run ends with what all of them cost.
 
   Lines arrive over PubSub as the sync writes them, and the page seeds itself
   with whatever the log still holds, so opening it mid-run is useful. Following
@@ -14,6 +15,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
 
   use ConfluencePhxMirrorWeb, :live_view
 
+  alias ConfluencePhxMirror.Confluence.Traffic
   alias ConfluencePhxMirror.Sync.Log
   alias ConfluencePhxMirrorWeb.Time
 
@@ -41,6 +43,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
        paused?: false,
        level_options: @level_options,
        counts: count(entries),
+       traffic: Traffic.summary(),
        page_title: "Sync log"
      )}
   end
@@ -85,11 +88,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
     do: {:noreply, socket}
 
   def handle_info({:sync_log, entry}, socket) do
-    entries = Enum.take(socket.assigns.entries ++ [entry], -400)
+    entries = Enum.take(socket.assigns.entries ++ [entry], -Log.limit())
 
     socket =
       socket
-      |> assign(entries: entries, counts: count(entries))
+      |> assign(entries: entries, counts: count(entries), traffic: Traffic.summary())
       |> assign(:visible, filter_entries(entries, socket.assigns.level, socket.assigns.query))
       |> push_event("sync-log:new", %{count: length(socket.assigns.visible)})
 
@@ -120,12 +123,24 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   defp level_badge(:warn), do: {"warn", "text-warning"}
   defp level_badge(:error), do: {"error", "text-error"}
 
-  defp details(entry) do
-    entry.details
+  # A call's line already says the method, the path, the status and the
+  # latency; only the facts that do not fit (the attempt, the wait) are added.
+  defp details(%{kind: :http} = entry),
+    do: details(entry.details, [:kind, :method, :url, :status, :ms, :bytes])
+
+  defp details(entry), do: details(entry.details, [])
+
+  defp details(details, hidden) do
+    details
+    |> Map.drop(hidden)
     |> Enum.reject(fn {_key, value} -> is_nil(value) or value == "" end)
     |> Enum.sort_by(&elem(&1, 0))
-    |> Enum.map_join(" ", fn {key, value} -> "#{key}=#{value}" end)
+    |> Enum.map_join(" ", fn {key, value} -> "#{key}=#{detail_value(value)}" end)
   end
+
+  defp detail_value(value) when is_binary(value), do: value
+  defp detail_value(value) when is_number(value) or is_atom(value), do: to_string(value)
+  defp detail_value(value), do: inspect(value)
 
   @impl true
   def render(assigns) do
@@ -149,7 +164,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
           </p>
           <h1 class="mt-1 text-2xl font-semibold">Sync log</h1>
           <p class="mt-1 text-sm text-base-content/70">
-            What the sync is doing, line by line — kept in memory, not in the audit log.
+            Every page, file and Confluence call, line by line — kept in memory, not in the audit log.
           </p>
         </div>
         <div class="flex items-center gap-2">
@@ -218,13 +233,22 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
         <span>{length(@visible)} shown</span>
       </p>
 
+      <p
+        :if={@traffic.requests > 0}
+        id="sync-log-traffic"
+        class="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-base-content/70"
+      >
+        <span class="font-semibold text-base-content/80">Confluence</span>
+        <span>{Traffic.describe(@traffic)}</span>
+      </p>
+
       <div
         id="sync-log"
         phx-hook=".Follow"
         class="mt-2 max-h-[70vh] overflow-y-auto rounded-xl border border-base-300/70 bg-base-100 font-mono text-[11px]"
       >
         <p class="hidden only:block px-4 py-10 text-center font-sans text-sm text-base-content/70">
-          Nothing yet. Lines appear here as soon as a sync starts.
+          Nothing yet. Lines appear here as soon as a sync starts, including every call it makes.
         </p>
         <div
           :for={entry <- @visible}
