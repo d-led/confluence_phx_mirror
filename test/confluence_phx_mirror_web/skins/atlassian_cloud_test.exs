@@ -7,11 +7,12 @@ defmodule ConfluencePhxMirrorWeb.Skins.AtlassianCloudTest do
     %{skin: Skins.get("atlassian-cloud")}
   end
 
-  test "is a whole-site skin, not one more choice for readers", %{skin: skin} do
+  test "is the default choice, and one more skin in the picker", %{skin: skin} do
     assert skin.label == "Atlassian Cloud"
     assert skin.custom?
     refute skin.builtin?
-    refute skin.selectable?
+    assert skin.selectable?
+    assert Skins.default_skin() == "atlassian-cloud"
   end
 
   test "paints the light variant by default", %{skin: skin} do

@@ -48,8 +48,10 @@ defmodule ConfluencePhxMirrorWeb.Skins do
 
   `selectable: false` keeps a skin out of the reader's picker: it is a *whole
   skin*, chosen by the deployment rather than by each reader. Pinning one for
-  the whole site is `site_skin`:
+  the whole site is `site_skin`, and `default_skin` is what a reader sees before
+  they pick anything:
 
+      config :confluence_phx_mirror, default_skin: "atlassian-cloud"
       config :confluence_phx_mirror, :site_skin, "atlassian-cloud"
 
   Anything the palette cannot express (fonts, component tweaks) goes in
@@ -139,25 +141,41 @@ defmodule ConfluencePhxMirrorWeb.Skins do
   end
 
   @doc """
-  Fails fast when `:site_skin` names a skin this site does not offer.
+  The skin a reader sees before they pick one. `system` when the configured
+  default is not a skin this site offers.
+
+  This is not a site skin: the reader's cookie still wins, and the picker still
+  offers every selectable skin.
+  """
+  @spec default_skin() :: String.t()
+  def default_skin do
+    name = Application.get_env(:confluence_phx_mirror, :default_skin, "system")
+    if valid?(name), do: name, else: "system"
+  end
+
+  @doc """
+  Fails fast when `:site_skin` or `:default_skin` names a skin this site does
+  not offer.
 
   Called once at boot: a typo should stop the release, not quietly serve the
-  default theme until someone notices.
+  wrong theme until someone notices.
   """
-  @spec validate_site_skin!() :: :ok
-  def validate_site_skin! do
-    name = site_skin()
+  @spec validate!() :: :ok
+  def validate! do
+    check!(:site_skin, site_skin())
+    check!(:default_skin, Application.get_env(:confluence_phx_mirror, :default_skin))
+  end
 
+  defp check!(_key, nil), do: :ok
+
+  defp check!(key, name) do
     cond do
-      is_nil(name) ->
-        :ok
-
       valid?(name) ->
         :ok
 
       true ->
         raise ArgumentError,
-              "site_skin #{inspect(name)} is not a skin this site offers; " <>
+              "#{key} #{inspect(name)} is not a skin this site offers; " <>
                 "available: #{Enum.join(names(), ", ")}"
     end
   end

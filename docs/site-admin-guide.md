@@ -183,12 +183,24 @@ unfiltered index — see [Known limitations](design-notes.md#known-limitations).
 ## Skins
 
 Readers pick a skin in the header; the choice is a cookie, so the first paint is
-already correct and no JavaScript is involved. Four skins ship with the mirror:
-`system` (follows the OS), `light`, `mirror` (Atlassian-inspired) and `dark`.
+already correct and no JavaScript is involved. Four skins ship as daisyUI
+themes: `system` (follows the OS), `light`, `mirror` (Atlassian-inspired) and
+`dark`. A fifth, `atlassian-cloud`, ships as a skin pack and is the default.
 
-Out of the box the mirror wears one skin for the whole site — the Atlassian
-Cloud one — so readers see a single look and no picker. Both are a config line
-away: pin another skin, or clear `site_skin` to hand the choice back to readers.
+Out of the box the mirror wears the Atlassian Cloud skin — the reader's
+`/theme/…` choice, once made, wins over it. A deployment that wants a single look
+for everybody pins a site skin instead, and the picker goes away.
+
+### The default skin
+
+`atlassian-cloud` ships as the default: a reader who has not picked a theme gets
+it, and the header picker still offers the built-in skins and any skin the site
+declares.
+
+```elixir
+# config/config.exs, or CM_DEFAULT_SKIN=atlassian-cloud in a release
+config :confluence_phx_mirror, default_skin: "atlassian-cloud"
+```
 
 ### One skin for the whole site
 
@@ -196,14 +208,13 @@ A whole skin is a deployment decision, not a reader preference. Pin it and every
 reader gets it — the cookie is ignored and the header picker disappears:
 
 ```elixir
-# config/config.exs ships this line; config/runtime.exs can override it, or a
-# release can set CM_SITE_SKIN=atlassian-cloud
+# config/runtime.exs, or CM_SITE_SKIN=atlassian-cloud in a release
 config :confluence_phx_mirror, :site_skin, "atlassian-cloud"
 ```
 
-Set `CM_SITE_SKIN` to another skin name to change it, or to an empty value to let
-readers choose again. `atlassian-cloud` is Atlassian's Cloud palette as one skin
-with two variants: the light tokens by default and the Cloud dark tokens when the
+A site skin is not set by default; leaving it unset is what keeps the picker.
+`atlassian-cloud` is Atlassian's Cloud palette as one skin with two variants: the
+light tokens by default and the Cloud dark tokens when the
 reader's OS prefers dark, so the whole site follows the OS the way the `system`
 skin does. A name the site does not offer stops the release at boot rather than
 quietly serving the default theme.
@@ -277,9 +288,8 @@ to `[data-theme="acme"]` so they only affect that skin. A brand-new *built-in*
 skin (shipped in the compiled CSS) is a `@plugin "daisyui/packages/bundle/daisyui-theme"`
 block in `assets/css/app.css`, next to `light`, `mirror` and `dark`.
 
-`config/dev.exs` leaves the shipped site skin in place; set `site_skin: nil`
-there to develop against the reader picker. The full declaration example above
-is the shape a site's own skin takes.
+`config/dev.exs` leaves both defaults alone, so development shows what a reader
+sees. The full declaration example above is the shape a site's own skin takes.
 
 ## Notifications
 

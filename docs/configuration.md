@@ -145,17 +145,19 @@ window (and a `Retry-After` header); API clients get JSON.
 
 ## Skins
 
-Built-in skins are `system`, `light`, `mirror` and `dark`; the mirror ships with
-`atlassian-cloud` pinned as the site skin, so every reader gets that one look and
-no picker. Site skins are config, not CSS: `config :confluence_phx_mirror, :skins,
-[...]` with `name`, `label`, `icon`, `scheme`, `colors`, `dark_colors` and
-`radius`; packs add skins as standalone modules (`:skin_packs`). The full
-example, the supported colour keys and the `assets/css/author.css` escape hatch
-are in [site-admin-guide.md](site-admin-guide.md#skins).
+Built-in skins are `system`, `light`, `mirror` and `dark`; `atlassian-cloud`
+ships as the default and readers switch skins in the header. A deployment can pin
+one skin for everybody instead, which hides the picker. Site skins are config,
+not CSS: `config :confluence_phx_mirror, :skins, [...]` with `name`, `label`,
+`icon`, `scheme`, `colors`, `dark_colors` and `radius`; packs add skins as
+standalone modules (`:skin_packs`). The full example, the supported colour keys
+and the `assets/css/author.css` escape hatch are in
+[site-admin-guide.md](site-admin-guide.md#skins).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CM_SITE_SKIN` | `atlassian-cloud` | pins one skin for the whole site; readers get no picker. Set it to an empty value to let readers choose. A name the site does not offer stops the release at boot |
+| `CM_DEFAULT_SKIN` | `atlassian-cloud` | the skin a reader sees before picking one; the picker still offers the rest |
+| `CM_SITE_SKIN` | – | pins one skin for the whole site; readers get no picker. A name the site does not offer stops the release at boot |
 
 ## Development defaults
 
@@ -163,8 +165,7 @@ are in [site-admin-guide.md](site-admin-guide.md#skins).
 
 * `CM_SOURCE=demo` (no Confluence credentials needed),
 * `MIRROR_AUTO_ADMIN` on, so no sign-in is required,
-* the shipped `atlassian-cloud` site skin, so the reader picker stays hidden
-  (`site_skin: nil` in `config/dev.exs` brings the picker back),
+* `atlassian-cloud` as the default skin, with the reader picker available,
 * Postgres on `localhost:5432` and smtp4dev on `localhost:2525` — services that
   the repository's `docker compose` file happens to provide for local work.
 

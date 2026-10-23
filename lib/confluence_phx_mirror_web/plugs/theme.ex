@@ -27,6 +27,6 @@ defmodule ConfluencePhxMirrorWeb.Plugs.Theme do
 
   defp reader_skin(conn) do
     theme = conn.cookies["mirror_theme"]
-    if Skins.valid?(theme), do: theme, else: "system"
+    if Skins.valid?(theme), do: theme, else: Skins.default_skin()
   end
 end

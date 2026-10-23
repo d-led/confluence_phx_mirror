@@ -15,6 +15,7 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
   defp with_skins(skins), do: put_config(:skins, skins)
   defp with_skin_packs(packs), do: put_config(:skin_packs, packs)
   defp with_site_skin(name), do: put_config(:site_skin, name)
+  defp with_default_skin(name), do: put_config(:default_skin, name)
 
   defp put_config(key, value) do
     previous = Application.fetch_env(:confluence_phx_mirror, key)
@@ -161,8 +162,8 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
       names = Enum.map(Skins.reader_skins(), & &1.name)
 
       assert "acme" in names
+      assert "atlassian-cloud" in names
       refute "whole" in names
-      refute "atlassian-cloud" in names
       assert Skins.valid?("whole")
     end
 
@@ -170,6 +171,39 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
       with_site_skin("atlassian-cloud")
 
       assert Skins.reader_skins() == []
+    end
+  end
+
+  describe "the default skin" do
+    test "is what a reader gets before they choose one", %{conn: conn} do
+      with_site_skin(nil)
+      with_skins([@acme])
+      with_default_skin("acme")
+
+      html = conn |> get(~p"/") |> html_response(200)
+
+      assert html =~ ~s(data-theme="acme")
+      assert html =~ ~s(href="/theme/dark")
+    end
+
+    test "loses to the reader's own choice", %{conn: conn} do
+      with_site_skin(nil)
+      with_skins([@acme])
+      with_default_skin("acme")
+
+      html =
+        conn
+        |> Plug.Test.put_req_cookie("mirror_theme", "dark")
+        |> get(~p"/")
+        |> html_response(200)
+
+      assert html =~ ~s(data-theme="dark")
+    end
+
+    test "falls back to system when it is not a skin this site offers" do
+      with_default_skin("no-such-skin")
+
+      assert Skins.default_skin() == "system"
     end
   end
 
@@ -199,25 +233,35 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
     end
   end
 
-  describe "validate_site_skin!/0" do
-    test "accepts a skin the site offers" do
+  describe "validate!/0" do
+    test "accepts skins the site offers" do
       with_site_skin("atlassian-cloud")
+      with_default_skin("atlassian-cloud")
 
-      assert :ok = Skins.validate_site_skin!()
+      assert :ok = Skins.validate!()
     end
 
     test "stops the release on a typo" do
       with_site_skin("atlasean-cloud")
 
-      assert_raise ArgumentError, ~r/is not a skin this site offers/, fn ->
-        Skins.validate_site_skin!()
+      assert_raise ArgumentError, ~r/site_skin .* is not a skin this site offers/, fn ->
+        Skins.validate!()
+      end
+    end
+
+    test "stops the release on a misspelt default" do
+      with_default_skin("atlasean-cloud")
+
+      assert_raise ArgumentError, ~r/default_skin .* is not a skin this site offers/, fn ->
+        Skins.validate!()
       end
     end
 
     test "is a no-op when readers choose" do
       with_site_skin(nil)
+      with_default_skin(nil)
 
-      assert :ok = Skins.validate_site_skin!()
+      assert :ok = Skins.validate!()
     end
   end
 

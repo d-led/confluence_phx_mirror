@@ -40,14 +40,16 @@ config :confluence_phx_mirror, :source, ConfluencePhxMirror.Confluence.DemoSourc
 
 # Extra skins beyond the built-ins ship as standalone packs: modules
 # implementing `ConfluencePhxMirrorWeb.Skins.Pack`. `AtlassianCloud` is the
-# reference extension and the mirror's whole-site skin.
+# reference extension and the mirror's default skin.
 config :confluence_phx_mirror, :skin_packs, [ConfluencePhxMirrorWeb.Skins.AtlassianCloud]
 
-# One look for every reader. A site skin wins over the reader's cookie and the
-# theme picker is not shown; `atlassian-cloud` follows the OS for its light and
-# dark variants. Point `CM_SITE_SKIN` at another skin to change it, or set it to
-# an empty value to hand the choice back to readers (docs/site-admin-guide.md).
-config :confluence_phx_mirror, site_skin: "atlassian-cloud"
+# Every reader may choose a skin from the header; a reader who has not chosen
+# gets this one. Change it with `CM_DEFAULT_SKIN`.
+config :confluence_phx_mirror, default_skin: "atlassian-cloud"
+
+# A deployment that wants one look for everybody pins it instead — a site skin
+# wins over the reader's cookie and the picker disappears. Unset here on
+# purpose; docs/site-admin-guide.md#skins shows how to set it.
 
 config :confluence_phx_mirror,
   mirror: [name: "Confluence Mirror", tagline: "Read-only, always available"],

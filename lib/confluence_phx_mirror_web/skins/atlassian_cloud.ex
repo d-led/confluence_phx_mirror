@@ -4,13 +4,18 @@ defmodule ConfluencePhxMirrorWeb.Skins.AtlassianCloud do
   dark depending on what the reader's OS prefers.
 
   This is the mirror's reference `ConfluencePhxMirrorWeb.Skins.Pack` and the
-  shipped example of a *whole skin*. Apply it to the whole site with:
+  shipped example of a skin with two variants. It is the default choice for a
+  reader who has not picked one:
+
+      config :confluence_phx_mirror, default_skin: "atlassian-cloud"
+
+  or `CM_DEFAULT_SKIN=atlassian-cloud` in a release; readers can still switch to
+  any other skin from the header picker. A deployment that wants one look for
+  everybody pins it as the site skin instead:
 
       config :confluence_phx_mirror, :site_skin, "atlassian-cloud"
 
-  or `CM_SITE_SKIN=atlassian-cloud` in a release. It stays out of the reader's
-  picker (`selectable: false`), because a site skin is a deployment decision,
-  not a preference.
+  which hides the picker.
 
   The colours are Atlassian's Cloud design tokens mapped onto daisyUI's
   variables: `base-100` is the card surface, `base-200` the canvas behind it,
@@ -75,7 +80,6 @@ defmodule ConfluencePhxMirrorWeb.Skins.AtlassianCloud do
         name: "atlassian-cloud",
         label: "Atlassian Cloud",
         icon: "hero-building-office-2",
-        selectable: false,
         scheme: :light,
         colors: @light,
         dark_colors: @dark,
