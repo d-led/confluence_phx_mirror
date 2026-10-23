@@ -22,6 +22,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.Presenter do
       "status" => "current",
       "description" => %{"plain" => %{"value" => space.description}},
       "homepage" => homepage(space),
+      "icon" => icon(space),
       "_links" => %{
         "webui" => URLs.space_path(space.key),
         "self" => Endpoint.url() <> "/api/v1/spaces/#{space.key}",
@@ -29,6 +30,14 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.Presenter do
       },
       "mirror" => %{"syncedAt" => Time.iso(space.synced_at), "source" => space.external_url}
     }
+  end
+
+  # Confluence hands out a path below the wiki root; the mirror serves the bytes
+  # from its own blob store under the same relative shape.
+  defp icon(%{icon_blob_key: nil}), do: nil
+
+  defp icon(space) do
+    %{"path" => URLs.space_icon_path(space.key), "width" => 48, "height" => 48}
   end
 
   defp homepage(%{homepage_confluence_id: nil}), do: nil

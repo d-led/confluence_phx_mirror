@@ -27,6 +27,34 @@ defmodule ConfluencePhxMirror.Blobs.Key do
   end
 
   @doc """
+  Key for a space icon:
+
+      spaces/ENG/icon.png
+
+  Confluence's icon paths carry no file extension, so the extension comes from
+  the media type the site answered with. One icon per space: a new upload
+  replaces the bytes under the same key.
+  """
+  def space_icon(space_key, media_type) do
+    Path.join([
+      "spaces",
+      sanitise_segment(space_key, "SPACE"),
+      "icon" <> icon_extension(media_type)
+    ])
+  end
+
+  defp icon_extension(media_type) do
+    case media_type |> to_string() |> String.split(";") |> hd() |> String.trim() do
+      "image/png" -> ".png"
+      "image/jpeg" -> ".jpg"
+      "image/gif" -> ".gif"
+      "image/webp" -> ".webp"
+      "image/svg+xml" -> ".svg"
+      _ -> ".bin"
+    end
+  end
+
+  @doc """
   Makes a filename safe for a blob key while keeping it recognisable.
 
   `../etc/passwd` becomes `etc-passwd`; the original filename stays in the

@@ -14,6 +14,9 @@ defmodule ConfluencePhxMirror.Mirror.URLs do
   @doc "Path of a mirrored space."
   def space_path(space_key), do: "/spaces/#{encode_segment(space_key)}"
 
+  @doc "The space's icon, served from the blob store."
+  def space_icon_path(space_key), do: space_path(space_key) <> "/icon"
+
   @doc "Space overview: the catalog view of one space."
   def space_overview_path(space_key), do: space_path(space_key) <> "/overview"
 

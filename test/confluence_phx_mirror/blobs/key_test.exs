@@ -15,6 +15,17 @@ defmodule ConfluencePhxMirror.Blobs.KeyTest do
     end
   end
 
+  describe "space_icon/2" do
+    test "takes the extension from the media type, because the path has none" do
+      assert Key.space_icon("ENG", "image/png") == "spaces/ENG/icon.png"
+      assert Key.space_icon("a b", "image/jpeg; charset=binary") == "spaces/a-b/icon.jpg"
+    end
+
+    test "an unknown media type still gets a safe key" do
+      assert Key.space_icon("ENG", "application/octet-stream") == "spaces/ENG/icon.bin"
+    end
+  end
+
   describe "sanitise_filename/1" do
     test "strips directory traversal and separators" do
       assert Key.sanitise_filename("../../etc/passwd") == "passwd"

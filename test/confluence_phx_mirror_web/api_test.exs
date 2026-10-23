@@ -26,6 +26,23 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       assert eng["pageCount"] == 37
     end
 
+    test "a space carries its icon the way Confluence names it", %{conn: conn} do
+      {:ok, _} =
+        Mirror.upsert_space(%{
+          key: "ENG",
+          name: "Engineering Handbook",
+          icon_blob_key: "spaces/ENG/icon.png",
+          icon_media_type: "image/png"
+        })
+
+      eng = conn |> get(~p"/api/v1/spaces/ENG") |> json_response(200)
+
+      assert eng["icon"] == %{"path" => "/spaces/ENG/icon", "width" => 48, "height" => 48}
+
+      no_icon = conn |> get(~p"/api/v1/spaces/PROD") |> json_response(200)
+      assert no_icon["icon"] == nil
+    end
+
     test "returns a page with both bodies and labels", %{conn: conn} do
       page = conn |> get(~p"/api/v1/pages/1002") |> json_response(200)
 

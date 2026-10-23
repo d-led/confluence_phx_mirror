@@ -32,7 +32,11 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   ## Space DTO
 
       %{key: "ENG", name: "Engineering", type: "global", description: "...",
-        homepage_id: 1000, url: "https://site.atlassian.net/wiki/spaces/ENG"}
+        homepage_id: 1000, url: "https://site.atlassian.net/wiki/spaces/ENG",
+        icon: %{path: "/download/attachments/1/ENG-default"} | nil}
+
+  `icon.path` is the space's icon as Confluence addresses it; the sync asks for
+  the bytes with `space_icon/2`. A source without icons leaves the key out.
 
   ## Attachment DTO
 
@@ -156,9 +160,19 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   @callback group_members(group_name :: String.t(), keyword()) ::
               {:ok, [group_member()]} | {:error, term()}
 
+  @doc """
+  Bytes of one space icon, with the media type the site answered with.
+
+  Confluence's icon paths carry no file extension, so the mirror cannot infer
+  the type from the path. Sources without icons leave the callback out.
+  """
+  @callback space_icon(icon :: %{path: String.t()}, keyword()) ::
+              {:ok, %{body: binary(), media_type: String.t()}} | {:error, term()}
+
   @optional_callbacks changed_since: 2,
                       restrictions: 2,
                       space_permissions: 2,
+                      space_icon: 2,
                       group_members: 2,
                       web_url: 0
 

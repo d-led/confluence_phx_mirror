@@ -6,7 +6,14 @@ defmodule ConfluencePhxMirror.SyncTest do
 
   alias ConfluencePhxMirror.Audit.Event
   alias ConfluencePhxMirror.Blobs.Store
-  alias ConfluencePhxMirror.Confluence.{EditedSource, EmptyListingSource, TrafficSource}
+
+  alias ConfluencePhxMirror.Confluence.{
+    EditedSource,
+    EmptyListingSource,
+    SpaceIconSource,
+    TrafficSource
+  }
+
   alias ConfluencePhxMirror.Confluence.Traffic
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Link, Page, Space}
@@ -102,6 +109,56 @@ defmodule ConfluencePhxMirror.SyncTest do
 
       refute Repo.exists?(from e in Event, where: e.action == "page.created")
       refute Repo.exists?(from e in Event, where: e.action == "attachment.mirrored")
+    end
+  end
+
+  describe "space icons" do
+    test "mirrors the icon bytes into the blob store" do
+      assert {:ok, run} = Sync.run(:snapshot, source: SpaceIconSource)
+      assert run.status == "succeeded"
+
+      space = Repo.get_by!(Space, key: "ENG")
+
+      assert space.icon_path == "/download/attachments/eng/icon"
+      assert space.icon_blob_key == "spaces/ENG/icon.svg"
+      assert space.icon_media_type == "image/svg+xml"
+
+      assert {:ok, bytes} = Store.read(space.icon_blob_key)
+      assert bytes == SpaceIconSource.icon_bytes(space.icon_path)
+      assert space.icon_sha256 == Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+    end
+
+    test "an icon that has not moved upstream is not fetched again" do
+      assert {:ok, _run} = Sync.run(:snapshot, source: SpaceIconSource)
+      assert_received {:space_icon, _path}
+      assert_received {:space_icon, _path}
+
+      assert {:ok, _run} = Sync.run(:snapshot, source: SpaceIconSource)
+
+      refute_received {:space_icon, _path}
+    end
+
+    test "an icon the site will not serve is reported, and the rest of the sync lands" do
+      SpaceIconSource.fail_with({:http, 404})
+
+      assert {:ok, run} = Sync.run(:snapshot, source: SpaceIconSource)
+
+      assert run.status == "partial"
+      assert run.stats["pages"] == 40
+      assert run.error =~ "icon"
+      assert run.stats["errors"] != []
+    end
+
+    test "an icon that disappeared upstream takes its bytes with it" do
+      assert {:ok, _run} = Sync.run(:snapshot, source: SpaceIconSource)
+      blob_key = Repo.get_by!(Space, key: "ENG").icon_blob_key
+      assert Store.exists?(blob_key)
+
+      # The demo snapshot lists the same spaces, but carries no icons.
+      assert {:ok, _run} = Sync.run(:snapshot, source: EditedSource)
+
+      assert Repo.get_by!(Space, key: "ENG").icon_blob_key == nil
+      refute Store.exists?(blob_key)
     end
   end
 

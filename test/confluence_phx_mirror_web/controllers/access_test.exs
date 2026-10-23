@@ -4,7 +4,9 @@ defmodule ConfluencePhxMirrorWeb.AccessTest do
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
 
+  alias ConfluencePhxMirror.Blobs.{Key, Store}
   alias ConfluencePhxMirror.Demo
+  alias ConfluencePhxMirror.Mirror
 
   setup do
     demo_snapshot!()
@@ -27,6 +29,21 @@ defmodule ConfluencePhxMirrorWeb.AccessTest do
 
     body = conn |> get(~p"/spaces") |> html_response(200)
     refute body =~ "Product Hub"
+  end
+
+  test "a restricted space's icon is not served either", %{conn: conn} do
+    blob_key = Key.space_icon("PROD", "image/svg+xml")
+    {:ok, ^blob_key} = Store.put(blob_key, "<svg/>")
+
+    {:ok, _space} =
+      Mirror.upsert_space(%{
+        key: "PROD",
+        name: "Product Hub",
+        icon_blob_key: blob_key,
+        icon_media_type: "image/svg+xml"
+      })
+
+    assert conn |> get(~p"/spaces/PROD/icon") |> response(404) == "This space has no icon."
   end
 
   test "an open page is still served to anonymous readers", %{conn: conn} do

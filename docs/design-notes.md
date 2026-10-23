@@ -181,6 +181,11 @@ every match, inherent to `ts_rank_cd`.
   synced. Backlinks and outgoing links are computed live from the link table, so
   they never go stale, but link *text* baked into a body does — until that page
   is synced again.
+* Space icons are mirrored from the download link Confluence publishes (translated
+  into the REST attachment link, which is the one that accepts an API token). A
+  personal space's icon is the owner's avatar and Confluence redirects it to
+  gravatar, outside the hosts the client may download from, so such a space keeps
+  the key tile.
 * `include`-family macros are forwarded from `export_view` without an audience
   check (see the dynamic-content section above).
 * Live macros that need an Atlassian session (Jira issue detail, user hover

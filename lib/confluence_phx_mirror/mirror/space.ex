@@ -3,7 +3,9 @@ defmodule ConfluencePhxMirror.Mirror.Space do
   A mirrored Confluence space.
 
   `key` is the Confluence space key; `homepage_confluence_id` points at the
-  page that acts as the space home in the mirror.
+  page that acts as the space home in the mirror. `icon_*` describe the space
+  icon Confluence shows beside the space name: its upstream path (which carries
+  the version), and the mirrored bytes in the blob store.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -19,6 +21,10 @@ defmodule ConfluencePhxMirror.Mirror.Space do
     field :description, :string
     field :homepage_confluence_id, :integer
     field :external_url, :string
+    field :icon_path, :string
+    field :icon_blob_key, :string
+    field :icon_media_type, :string
+    field :icon_sha256, :string
     field :synced_at, :utc_datetime
 
     has_many :pages, ConfluencePhxMirror.Mirror.Page
@@ -27,7 +33,18 @@ defmodule ConfluencePhxMirror.Mirror.Space do
   end
 
   @required_fields [:key, :name]
-  @optional_fields [:type, :description, :homepage_confluence_id, :external_url, :synced_at]
+
+  @optional_fields [
+    :type,
+    :description,
+    :homepage_confluence_id,
+    :external_url,
+    :icon_path,
+    :icon_blob_key,
+    :icon_media_type,
+    :icon_sha256,
+    :synced_at
+  ]
 
   @doc "A space key as the mirror stores it: Confluence keys are case-insensitive."
   def normalise_key(key) when is_binary(key), do: String.upcase(key)

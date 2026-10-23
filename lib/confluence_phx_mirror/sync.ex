@@ -114,7 +114,7 @@ defmodule ConfluencePhxMirror.Sync do
     case source.spaces(opts) do
       {:ok, space_dtos} ->
         {space_dtos, skipped} = importable_spaces(space_dtos)
-        spaces = upsert_spaces(space_dtos)
+        {spaces, icon_errors} = upsert_spaces(source, space_dtos)
         {spaces, permission_errors} = sync_space_permissions(source, spaces)
 
         {entries, counts, errors, deleted} = sync_pages_of(spaces, source, opts)
@@ -133,7 +133,7 @@ defmodule ConfluencePhxMirror.Sync do
           })
           |> Map.merge(page_counts(counts))
 
-        {stats, errors ++ permission_errors ++ detail_errors ++ group_errors}
+        {stats, errors ++ icon_errors ++ permission_errors ++ detail_errors ++ group_errors}
 
       {:error, reason} ->
         raise_source_error(:spaces, nil, reason)
@@ -143,7 +143,7 @@ defmodule ConfluencePhxMirror.Sync do
   defp do_run(:space, source, opts) do
     space_key = Keyword.fetch!(opts, :space_key)
 
-    with {:ok, space} <- ensure_space(source, space_key, opts) do
+    with {:ok, space, icon_errors} <- ensure_space(source, space_key, opts) do
       {_spaces, permission_errors} = sync_space_permissions(source, [space])
       {entries, counts, errors, deleted} = sync_pages_of([space], source, opts)
       resolve_trees([space])
@@ -156,7 +156,7 @@ defmodule ConfluencePhxMirror.Sync do
         Map.merge(stats, %{"spaces" => 1, "deleted" => deleted, "group_members" => members})
         |> Map.merge(page_counts(counts))
 
-      {stats, errors ++ permission_errors ++ detail_errors ++ group_errors}
+      {stats, errors ++ icon_errors ++ permission_errors ++ detail_errors ++ group_errors}
     end
   end
 
@@ -165,7 +165,7 @@ defmodule ConfluencePhxMirror.Sync do
     previous = Page |> Repo.get_by(confluence_id: confluence_id) |> light()
 
     with {:ok, dto} <- source.page(confluence_id, opts),
-         {:ok, space} <- ensure_space(source, dto.space_key, opts),
+         {:ok, space, icon_errors} <- ensure_space(source, dto.space_key, opts),
          {:ok, entry} <- upsert_page_record(space, dto, previous, force: true) do
       resolve_trees([space])
       index = Mirror.page_index()
@@ -180,7 +180,7 @@ defmodule ConfluencePhxMirror.Sync do
          "changed" => if(entry.change == :updated, do: 1, else: 0),
          "unchanged" => if(entry.change == :unchanged, do: 1, else: 0),
          "group_members" => members
-       }), errors ++ permission_errors ++ group_errors}
+       }), errors ++ icon_errors ++ permission_errors ++ group_errors}
     else
       {:error, reason} -> raise_source_error(:page, confluence_id, reason)
     end
@@ -191,7 +191,7 @@ defmodule ConfluencePhxMirror.Sync do
 
     case source.changed_since(since, opts) do
       {:ok, dtos} ->
-        spaces = ensure_spaces_for(source, dtos, opts)
+        {spaces, icon_errors} = ensure_spaces_for(source, dtos, opts)
         {spaces, permission_errors} = sync_space_permissions(source, spaces)
         {entries, counts, errors} = upsert_entries(dtos, spaces)
         resolve_trees(spaces)
@@ -203,7 +203,7 @@ defmodule ConfluencePhxMirror.Sync do
           Map.merge(stats, %{"spaces" => length(spaces), "group_members" => members})
           |> Map.merge(page_counts(counts))
 
-        {stats, errors ++ permission_errors ++ detail_errors ++ group_errors}
+        {stats, errors ++ icon_errors ++ permission_errors ++ detail_errors ++ group_errors}
 
       {:error, :not_supported} ->
         do_run(:snapshot, source, opts)
@@ -240,11 +240,28 @@ defmodule ConfluencePhxMirror.Sync do
   # Spaces and pages
   # ---------------------------------------------------------------------------
 
-  defp upsert_spaces(space_dtos) do
-    Enum.map(space_dtos, fn dto ->
-      {:ok, space} = Mirror.upsert_space(space_attrs(dto))
-      space
+  defp upsert_spaces(source, space_dtos) do
+    Enum.map_reduce(space_dtos, [], fn dto, errors ->
+      {space, icon_errors} = upsert_space(source, dto)
+      {space, errors ++ icon_errors}
     end)
+  end
+
+  defp upsert_space(source, dto) do
+    previous_icon = previous_icon_path(dto.key)
+    {:ok, space} = Mirror.upsert_space(space_attrs(dto))
+
+    case mirror_space_icon(source, space, previous_icon) do
+      {:ok, space} -> {space, []}
+      {:error, reason} -> {space, [error("space", space.key, {:icon, reason})]}
+    end
+  end
+
+  defp previous_icon_path(key) do
+    case Mirror.get_space_by_key(key) do
+      nil -> nil
+      space -> space.icon_path
+    end
   end
 
   defp space_attrs(dto) do
@@ -255,16 +272,81 @@ defmodule ConfluencePhxMirror.Sync do
       description: dto[:description],
       homepage_confluence_id: dto[:homepage_id],
       external_url: dto[:url],
+      icon_path: get_in(dto, [:icon, :path]),
       synced_at: now()
     }
   end
+
+  # The icon is content like an attachment: the bytes live in the blob store and
+  # the row says where. Confluence versions the upstream path, so an unchanged
+  # path whose blob is on disk means there is nothing to fetch. An icon that went
+  # away upstream takes its bytes with it.
+  defp mirror_space_icon(source, space, previous_path) do
+    cond do
+      is_nil(space.icon_path) -> forget_space_icon(space)
+      not function_exported?(source, :space_icon, 2) -> {:ok, space}
+      space.icon_path == previous_path and blob_present?(space.icon_blob_key) -> {:ok, space}
+      true -> fetch_space_icon(source, space)
+    end
+  end
+
+  defp forget_space_icon(%Space{icon_blob_key: nil} = space), do: {:ok, space}
+
+  defp forget_space_icon(space) do
+    Store.delete(space.icon_blob_key)
+
+    case update_space_icon(space, %{icon_blob_key: nil, icon_media_type: nil, icon_sha256: nil}) do
+      {:ok, space} ->
+        Log.add(:debug, "space icon gone upstream: #{space.key}", space: space.key)
+        {:ok, space}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  defp fetch_space_icon(source, space) do
+    with {:ok, %{body: bytes, media_type: media_type}} <-
+           source.space_icon(%{path: space.icon_path}, []),
+         key = Key.space_icon(space.key, media_type),
+         {:ok, _key} <- Store.put(key, bytes) do
+      # A changed media type changes the extension, and with it the key.
+      if space.icon_blob_key && space.icon_blob_key != key, do: Store.delete(space.icon_blob_key)
+
+      attrs = %{
+        icon_blob_key: key,
+        icon_media_type: media_type,
+        icon_sha256: :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
+      }
+
+      case update_space_icon(space, attrs) do
+        {:ok, space} ->
+          Log.add(:debug, "space icon mirrored: #{space.key}", space: space.key)
+          {:ok, space}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
+    end
+  end
+
+  defp update_space_icon(space, attrs), do: space |> Space.changeset(attrs) |> Repo.update()
+
+  defp blob_present?(nil), do: false
+  defp blob_present?(key), do: Store.exists?(key)
 
   defp ensure_space(source, space_key, opts) do
     case source.spaces(opts) do
       {:ok, space_dtos} ->
         case Enum.find(space_dtos, &(&1.key == space_key)) do
-          nil -> Mirror.upsert_space(%{key: space_key, name: space_key, type: "global"})
-          dto -> Mirror.upsert_space(space_attrs(dto))
+          nil ->
+            with {:ok, space} <-
+                   Mirror.upsert_space(%{key: space_key, name: space_key, type: "global"}),
+                 do: {:ok, space, []}
+
+          dto ->
+            {space, icon_errors} = upsert_space(source, dto)
+            {:ok, space, icon_errors}
         end
 
       {:error, reason} ->
@@ -343,12 +425,15 @@ defmodule ConfluencePhxMirror.Sync do
   defp ensure_spaces_for(source, dtos, opts) do
     keys = dtos |> Enum.map(& &1.space_key) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
-    Enum.flat_map(keys, fn key ->
-      case ensure_space(source, key, opts) do
-        {:ok, space} -> [space]
-        {:error, _} -> []
-      end
-    end)
+    {spaces, errors} =
+      Enum.reduce(keys, {[], []}, fn key, {spaces, errors} ->
+        case ensure_space(source, key, opts) do
+          {:ok, space, icon_errors} -> {[space | spaces], errors ++ icon_errors}
+          {:error, _} -> {spaces, errors}
+        end
+      end)
+
+    {Enum.reverse(spaces), errors}
   end
 
   defp sync_pages_of(spaces, source, opts) do

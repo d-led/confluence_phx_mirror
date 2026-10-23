@@ -137,6 +137,14 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/:space_key/:page_id/:attachment_id/:filename", AttachmentController, :show
   end
 
+  # Space icons are content too, and a directory of a thousand spaces would
+  # otherwise spend its HTML rate-limit budget on pictures.
+  scope "/spaces", ConfluencePhxMirrorWeb do
+    pipe_through :attachments
+
+    get "/:key/icon", SpaceController, :icon
+  end
+
   # ---------------------------------------------------------------------------
   # Read-only API, Confluence-inspired
   # ---------------------------------------------------------------------------

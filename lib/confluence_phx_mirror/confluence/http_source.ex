@@ -51,7 +51,10 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   @impl true
   def spaces(_opts) do
     with {:ok, results} <-
-           paginate_json("/space", %{"limit" => 100, "expand" => "description.plain,homepage"}) do
+           paginate_json("/space", %{
+             "limit" => 100,
+             "expand" => "description.plain,homepage,icon"
+           }) do
       {:ok, Enum.map(results, &parse_space/1)}
     end
   end
@@ -113,6 +116,36 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   @impl true
+  def space_icon(%{path: path}, _opts) when is_binary(path) do
+    with {:ok, url} <- icon_url(path) do
+      download_image(url)
+    end
+  end
+
+  # An uploaded space icon is an attachment of a hidden content record, and the
+  # web path Confluence publishes (`/download/attachments/…`) only answers a
+  # browser session — an API token gets a 401 there. The REST attachment link is
+  # the one that accepts the token, so the published path is translated into it.
+  # Anything else (a personal space's `/aa-avatar/…`) is fetched as published.
+  defp icon_url(path) do
+    case Regex.run(~r{^/download/attachments/(\d+)/([^?]+)}, path) do
+      [_, content_id, filename] -> rest_attachment_url(content_id, filename)
+      _other -> download_url(path)
+    end
+  end
+
+  defp rest_attachment_url(content_id, filename) do
+    path = "/content/#{content_id}/child/attachment"
+
+    with {:ok, body} <- request_json(path, %{"filename" => URI.decode(filename)}) do
+      case get_in(body, ["results", Access.at(0), "_links", "download"]) do
+        download when is_binary(download) -> download_url(download)
+        _missing -> {:error, :icon_not_found}
+      end
+    end
+  end
+
+  @impl true
   def space_permissions(_space_key, _opts), do: {:error, :not_supported}
 
   @impl true
@@ -134,18 +167,40 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   # Attachment bytes live behind a redirect on Confluence Cloud (the media API),
   # so the download is followed by hand: every hop has to stay on the site or on
   # an explicitly allowed Atlassian host.
-  defp download(url, attempt \\ 1) do
+  defp download(url), do: fetch_bytes(url, & &1.body)
+
+  # A space icon needs its media type too: Confluence's icon path has no file
+  # extension, so the answer's `content-type` is the only place it is said.
+  defp download_image(url) do
+    fetch_bytes(url, fn response ->
+      %{body: response.body, media_type: media_type(response)}
+    end)
+  end
+
+  defp fetch_bytes(url, shape, attempt \\ 1) do
     with {:ok, response} <- request(:get, url, []) do
       cond do
         response.status in 200..299 ->
-          {:ok, response.body}
+          {:ok, shape.(response)}
 
         response.status in [301, 302, 303, 307, 308] and attempt < 4 ->
-          with {:ok, next} <- redirect_target(response, url), do: download(next, attempt + 1)
+          with {:ok, next} <- redirect_target(response, url),
+               do: fetch_bytes(next, shape, attempt + 1)
 
         true ->
           {:error, {:http, response.status}}
       end
+    end
+  end
+
+  defp media_type(response) do
+    response.headers
+    |> Map.get("content-type", [])
+    |> List.wrap()
+    |> List.first()
+    |> case do
+      nil -> "application/octet-stream"
+      value -> value |> String.split(";") |> hd() |> String.trim()
     end
   end
 
@@ -242,9 +297,15 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       type: content["type"] || "global",
       description: get_in(content, ["description", "plain", "value"]),
       homepage_id: parse_id(get_in(content, ["homepage", "id"])),
+      icon: parse_icon(content["icon"]),
       url: public_url(content["_links"]["webui"])
     }
   end
+
+  # The icon is a relative path below the wiki root; personal spaces use the
+  # owner's avatar there. A space without an icon answers null.
+  defp parse_icon(%{"path" => path}) when is_binary(path), do: %{path: path}
+  defp parse_icon(_missing), do: nil
 
   @doc false
   def parse_restrictions(body) do

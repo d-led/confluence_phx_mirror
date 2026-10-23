@@ -53,6 +53,16 @@ The REST client:
 * details changed pages `CM_SYNC_CONCURRENCY` at a time, and supports
   `CM_SYNC_INTERVAL_SECONDS` for scheduled pulls (incremental by default).
 
+Each space also brings its **icon**: the uploaded image is downloaded into the
+blob store (like an attachment) and served at `/spaces/:key/icon`, so the space
+directory and the space page look like Confluence's. Confluence's published icon
+path only answers a browser session, so the client translates it into the REST
+attachment link that accepts the API token. A space on Confluence's *default*
+icon has no image to fetch and is drawn with its key instead. A personal space's
+icon is the owner's avatar, which Confluence redirects to gravatar — not one of
+the hosts the client may download from — so personal spaces keep the key tile
+(they are skipped by default anyway).
+
 ## Pulling content
 
 ```bash

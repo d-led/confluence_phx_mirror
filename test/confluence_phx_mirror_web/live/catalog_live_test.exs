@@ -42,6 +42,23 @@ defmodule ConfluencePhxMirrorWeb.CatalogLiveTest do
       assert has_element?(view, "#catalog-empty", "Nothing matches")
     end
 
+    test "shows the icon the sync mirrored, and the key when there is none", %{conn: conn} do
+      with_icon =
+        space_fixture(%{name: "Engineering Handbook", icon_blob_key: "spaces/ENG/icon.png"})
+
+      without_icon = space_fixture(%{name: "Product Hub"})
+
+      {:ok, view, _html} = live(conn, ~p"/spaces")
+
+      assert has_element?(view, "#catalog-results img[src='/spaces/#{with_icon.key}/icon']")
+
+      assert has_element?(
+               view,
+               "#catalog-results a[href='/spaces/#{without_icon.key}']",
+               without_icon.key
+             )
+    end
+
     test "puts the filter in the URL, so a narrowed directory can be shared", %{conn: conn} do
       space_fixture(%{name: "Product Hub"})
 

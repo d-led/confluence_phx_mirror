@@ -4,8 +4,8 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
 
   The space directory and the per-space catalogs (pages, blog, attachments) are
   `ConfluencePhxMirrorWeb.CatalogLive` because they are filtered and paged;
-  what stays here is the overview and the redirect from a space link to the
-  space home page, which is what readers expect from a space link.
+  what stays here is the overview, the space icon and the redirect from a space
+  link to the space home page, which is what readers expect from a space link.
 
   `/spaces/:key` redirects to the space home page when Confluence has one (that
   is what readers expect from a space link); the overview lives at
@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
 
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Authorization
+  alias ConfluencePhxMirror.Blobs.LocalStore
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirrorWeb.NotFound
@@ -37,6 +38,55 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
   def overview(conn, %{"key" => key}) do
     with_space(conn, key, &render_overview/2)
   end
+
+  @doc """
+  Serves the space icon from the blob store.
+
+  The icon says which space a row is about, so it is content: a reader who may
+  not read the space does not get its picture either. Both answers are the same
+  404 — an image is not a page, and a picture would tell a reader the space
+  exists.
+  """
+  # The path comes from Blobs.Store, whose keys are sanitised segments under the
+  # blob root; space_controller_test covers the traversal attempt.
+  # sobelow_skip ["Traversal.SendFile"]
+  def icon(conn, %{"key" => key}) do
+    with {:ok, space} <- readable_space(conn, key),
+         {:ok, path} <- icon_path(space) do
+      conn
+      |> put_resp_header("content-type", space.icon_media_type || "application/octet-stream")
+      |> put_resp_header("cache-control", "private, max-age=86400")
+      |> put_resp_header("x-content-type-options", "nosniff")
+      |> put_resp_header("content-security-policy", "default-src 'none'")
+      |> put_space_etag(space)
+      |> send_file(200, path)
+    else
+      _missing ->
+        conn |> put_resp_content_type("text/plain") |> send_resp(404, "This space has no icon.")
+    end
+  end
+
+  defp readable_space(conn, key) do
+    with {:ok, space} <- Mirror.find_space(key),
+         true <- Authorization.can_read_space?(scope(conn), space) do
+      {:ok, space}
+    end
+  end
+
+  defp icon_path(%{icon_blob_key: nil}), do: {:error, :no_icon}
+
+  defp icon_path(%{icon_blob_key: blob_key}) do
+    path = LocalStore.absolute_path(blob_key)
+    if File.regular?(path), do: {:ok, path}, else: {:error, :missing_blob}
+  rescue
+    ArgumentError -> {:error, :invalid_key}
+  end
+
+  defp put_space_etag(conn, %{icon_sha256: sha}) when is_binary(sha) do
+    put_resp_header(conn, "etag", ~s("#{sha}"))
+  end
+
+  defp put_space_etag(conn, _space), do: conn
 
   defp render_overview(conn, space) do
     render(conn, :show,

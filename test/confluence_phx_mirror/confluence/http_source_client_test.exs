@@ -265,6 +265,42 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
       assert space.url == "#{@base_url}/wiki/spaces/ENG"
     end
 
+    test "maps the space icon Confluence shows beside the name" do
+      stub(fn conn ->
+        assert conn.query_params["expand"] =~ "icon"
+
+        Req.Test.json(conn, %{
+          "results" => [
+            %{
+              "key" => "MFS",
+              "name" => "My first space",
+              "icon" => %{
+                "path" => "/download/attachments/1/MFS-default",
+                "width" => 48,
+                "height" => 48,
+                "isDefault" => false
+              },
+              "_links" => %{"webui" => "/spaces/MFS"}
+            }
+          ]
+        })
+      end)
+
+      assert {:ok, [space]} = HttpSource.spaces([])
+      assert space.icon == %{path: "/download/attachments/1/MFS-default"}
+    end
+
+    test "a space that has no icon says so" do
+      stub(fn conn ->
+        Req.Test.json(conn, %{
+          "results" => [%{"key" => "ENG", "name" => "Engineering", "icon" => nil}]
+        })
+      end)
+
+      assert {:ok, [space]} = HttpSource.spaces([])
+      assert space.icon == nil
+    end
+
     test "reads the read restrictions of a page" do
       stub(fn conn ->
         assert conn.request_path == "/wiki/rest/api/content/1002/restriction/byOperation/read"
@@ -388,6 +424,65 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
       stub(fn conn -> Req.Test.transport_error(conn, :econnrefused) end)
 
       assert {:error, {:transport, _reason}} = HttpSource.pages("ENG", [])
+    end
+  end
+
+  describe "space_icon/2" do
+    # Confluence's web icon path answers a browser session, not an API token, so
+    # the client asks for the REST attachment link and downloads that instead.
+    test "translates the web icon path into the REST link that accepts a token" do
+      stub(fn
+        %Plug.Conn{request_path: "/wiki/rest/api/content/1/child/attachment"} = conn ->
+          assert conn.query_params["filename"] == "MFS-default"
+
+          Req.Test.json(conn, %{
+            "results" => [
+              %{"_links" => %{"download" => "/rest/api/content/1/child/attachment/att9/download"}}
+            ]
+          })
+
+        %Plug.Conn{request_path: "/wiki/rest/api/content/1/child/attachment/att9/download"} = conn ->
+          conn
+          |> Plug.Conn.put_resp_header("content-type", "image/png; charset=binary")
+          |> Plug.Conn.resp(200, "png-bytes")
+      end)
+
+      assert {:ok, %{body: "png-bytes", media_type: "image/png"}} =
+               HttpSource.space_icon(%{path: "/download/attachments/1/MFS-default?version=2"}, [])
+    end
+
+    test "a personal space's icon is the owner's avatar, fetched as published" do
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/aa-avatar/557058:12861f68"
+        Plug.Conn.resp(conn, 200, "avatar-bytes")
+      end)
+
+      assert {:ok, %{body: "avatar-bytes"}} =
+               HttpSource.space_icon(%{path: "/aa-avatar/557058:12861f68"}, [])
+    end
+
+    test "reports an icon the space no longer carries" do
+      stub(fn conn -> Req.Test.json(conn, %{"results" => []}) end)
+
+      assert {:error, :icon_not_found} =
+               HttpSource.space_icon(%{path: "/download/attachments/1/gone"}, [])
+    end
+
+    test "reports a download the site will not serve" do
+      stub(fn
+        %Plug.Conn{request_path: "/wiki/rest/api/content/1/child/attachment"} = conn ->
+          Req.Test.json(conn, %{
+            "results" => [
+              %{"_links" => %{"download" => "/rest/api/content/1/child/attachment/att9/download"}}
+            ]
+          })
+
+        %Plug.Conn{} = conn ->
+          Plug.Conn.resp(conn, 404, "gone")
+      end)
+
+      assert {:error, {:http, 404}} =
+               HttpSource.space_icon(%{path: "/download/attachments/1/gone"}, [])
     end
   end
 
