@@ -6,8 +6,9 @@ defmodule ConfluencePhxMirrorWeb.Presence do
   is reading it. Every reader also joins the site topic (`site`), so the footer
   can say how many people have the mirror open.
 
-  A reader is identified by their account when signed in and by their socket
-  otherwise, so one person with two tabs open is one reader.
+  A reader is keyed by their account when signed in — two tabs are one person —
+  and by their connection otherwise, since nothing else tells anonymous readers
+  apart.
   """
 
   use Phoenix.Presence,

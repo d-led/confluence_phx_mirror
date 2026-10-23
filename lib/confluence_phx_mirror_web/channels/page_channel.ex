@@ -2,8 +2,9 @@ defmodule ConfluencePhxMirrorWeb.PageChannel do
   @moduledoc """
   Joins readers to `page:<confluence_id>` and tracks them with Presence.
 
-  Anonymous readers are tracked per socket; signed-in readers are tracked per
-  user id, so opening the same page in two tabs does not inflate the count.
+  A reader is keyed by their account, so two tabs are one reader; an anonymous
+  reader is keyed by their connection, the only thing there is to tell them
+  apart.
   """
 
   use Phoenix.Channel
