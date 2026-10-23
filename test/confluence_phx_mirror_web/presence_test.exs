@@ -35,7 +35,7 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
     {:ok, _run} = ConfluencePhxMirror.Sync.run(:snapshot)
     page = Mirror.get_page!(1002)
 
-    socket = socket(UserSocket, nil, %{})
+    socket = socket(UserSocket, nil, %{reader_key: "reader:1"})
 
     {:ok, _reply, _socket} =
       subscribe_and_join(socket, PageChannel, Presence.topic(page.confluence_id))
@@ -50,7 +50,7 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
     {:ok, _run} = ConfluencePhxMirror.Sync.run(:snapshot)
     page = Mirror.get_page!(Demo.restricted_page())
 
-    socket = socket(UserSocket, nil, %{})
+    socket = socket(UserSocket, nil, %{reader_key: "reader:1"})
 
     assert {:error, %{reason: "page_not_found"}} =
              subscribe_and_join(socket, PageChannel, Presence.topic(page.confluence_id))
@@ -68,7 +68,7 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
   test "a reader with two tabs is one person reading the page" do
     {:ok, _run} = ConfluencePhxMirror.Sync.run(:snapshot)
     page = Mirror.get_page!(1002)
-    tab = socket(UserSocket, "user:1", %{user_id: 1, user_name: "jane"})
+    tab = socket(UserSocket, "user:1", %{reader_key: "user:1", user_id: 1, user_name: "jane"})
 
     {:ok, _reply, _tab} = subscribe_and_join(tab, PageChannel, Presence.topic(page.confluence_id))
     {:ok, _reply, _tab} = subscribe_and_join(tab, PageChannel, Presence.topic(page.confluence_id))
@@ -81,7 +81,7 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
   end
 
   test "joining the site channel puts the reader online, once per person" do
-    tab = socket(UserSocket, "user:1", %{user_id: 1, user_name: "jane"})
+    tab = socket(UserSocket, "user:1", %{reader_key: "user:1", user_id: 1, user_name: "jane"})
 
     {:ok, _reply, _tab} = subscribe_and_join(tab, SiteChannel, "site")
     {:ok, _reply, _tab} = subscribe_and_join(tab, SiteChannel, "site")
@@ -90,10 +90,20 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
     assert Presence.online_count() == 1
   end
 
+  test "two anonymous readers are two people online" do
+    {:ok, first} = connect(UserSocket, %{}, connect_info: %{session: %{}})
+    {:ok, second} = connect(UserSocket, %{}, connect_info: %{session: %{}})
+
+    {:ok, _reply, _first} = subscribe_and_join(first, SiteChannel, "site")
+    {:ok, _reply, _second} = subscribe_and_join(second, SiteChannel, "site")
+
+    assert Presence.online_count() == 2
+  end
+
   # The footer shows a number, so the site topic carries no names: a reader's
   # name is only published on the page they are reading, to its readers.
   test "the site topic never publishes a reader's name" do
-    tab = socket(UserSocket, "user:1", %{user_id: 1, user_name: "jane"})
+    tab = socket(UserSocket, "user:1", %{reader_key: "user:1", user_id: 1, user_name: "jane"})
 
     {:ok, _reply, _channel} = subscribe_and_join(tab, SiteChannel, "site")
 

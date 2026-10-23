@@ -28,17 +28,6 @@ defmodule ConfluencePhxMirrorWeb.Presence do
   @doc "Number of readers with the mirror open."
   def online_count, do: @site_topic |> reader_count()
 
-  @doc """
-  The key a reader is tracked under: their account, or their socket when they
-  are anonymous.
-  """
-  def reader_key(socket) do
-    case socket.assigns[:user_id] do
-      nil -> socket.id
-      user_id -> "user:#{user_id}"
-    end
-  end
-
   # Presence keeps one entry per key with one meta per tab; a count asks how
   # many people, so it counts the entries, not the metas.
   defp reader_count(topic), do: topic |> list() |> map_size()

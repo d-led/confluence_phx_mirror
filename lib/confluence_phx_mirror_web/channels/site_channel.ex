@@ -18,7 +18,7 @@ defmodule ConfluencePhxMirrorWeb.SiteChannel do
 
   @impl true
   def handle_info(:after_join, socket) do
-    {:ok, _} = Presence.track(socket, Presence.reader_key(socket), %{})
+    {:ok, _} = Presence.track(socket, socket.assigns.reader_key, %{})
     push(socket, "presence_state", Presence.list(socket.topic))
     {:noreply, socket}
   end
