@@ -147,6 +147,33 @@ defmodule ConfluencePhxMirror.WebhooksTest do
       assert {:ok, delivery} = deliver("user_created", 0)
       assert delivery.status == "ignored"
     end
+
+    test "a page id that is not a whole number is ignored, not chased" do
+      assert {:ok, delivery} =
+               deliver_payload(%{"event" => "page_updated", "page" => %{"id" => "1002abc"}})
+
+      assert delivery.status == "ignored"
+      refute_enqueued(worker: PageWorker)
+    end
+
+    test "a page id of zero or less is ignored" do
+      assert {:ok, delivery} =
+               deliver_payload(%{"event" => "page_updated", "page" => %{"id" => "-7"}})
+
+      assert delivery.status == "ignored"
+      refute_enqueued(worker: PageWorker)
+    end
+
+    test "a space key that is not a key is ignored" do
+      assert {:ok, delivery} =
+               deliver_payload(%{
+                 "event" => "space_updated",
+                 "space" => %{"key" => "../../rest/api/user"}
+               })
+
+      assert delivery.status == "ignored"
+      refute_enqueued(worker: SpaceWorker)
+    end
   end
 
   describe "when signatures are required" do

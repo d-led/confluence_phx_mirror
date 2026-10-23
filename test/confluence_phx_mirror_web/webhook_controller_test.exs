@@ -64,6 +64,19 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
     assert_enqueued(worker: PageWorker, args: %{"confluence_id" => 1002})
   end
 
+  test "refuses a body larger than a delivery should be", %{conn: conn} do
+    body = JSON.encode!(%{"event" => "page_updated", "page" => %{"id" => "1002"}})
+    body = body <> String.duplicate(" ", 1_048_576)
+
+    conn =
+      conn
+      |> put_req_header("content-type", "application/json")
+      |> post(~p"/webhooks/confluence", body)
+
+    assert json_response(conn, 413)["error"] == "payload_too_large"
+    assert Repo.aggregate(Delivery, :count) == 0
+  end
+
   describe "when signatures are required" do
     setup do
       previous = Application.get_env(:confluence_phx_mirror, :webhooks)

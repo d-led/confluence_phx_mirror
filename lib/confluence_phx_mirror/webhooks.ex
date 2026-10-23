@@ -147,20 +147,30 @@ defmodule ConfluencePhxMirror.Webhooks do
     Enum.find_value(candidates, &normalise_id/1)
   end
 
-  @doc "Space key affected by a space webhook payload."
+  @doc "Space key affected by a space webhook payload, or nil when it is not one."
   def space_key(payload) do
-    get_in(payload, ["space", "key"]) || payload["spaceKey"]
+    case get_in(payload, ["space", "key"]) || payload["spaceKey"] do
+      key when is_binary(key) and byte_size(key) <= 255 ->
+        if Regex.match?(~r/\A[A-Za-z0-9][A-Za-z0-9_-]*\z/, key), do: key
+
+      _other ->
+        nil
+    end
   end
 
-  defp normalise_id(nil), do: nil
-  defp normalise_id(id) when is_integer(id), do: id
+  # A page id is a whole number and nothing else: `"1002abc"` is not a page, and
+  # `0` or a negative is not one either. Anything the mirror cannot recognise is
+  # ignored rather than passed to a worker that would fail five times over it.
+  defp normalise_id(id) when is_integer(id) and id > 0, do: id
 
   defp normalise_id(id) when is_binary(id) do
     case Integer.parse(id) do
-      {number, _rest} -> number
-      :error -> nil
+      {number, ""} when number > 0 -> number
+      _other -> nil
     end
   end
+
+  defp normalise_id(_id), do: nil
 
   defp actor(delivery), do: {:webhook, delivery.id}
 

@@ -1,12 +1,28 @@
 defmodule ConfluencePhxMirrorWeb.WebhookController do
-  @moduledoc "Receives Confluence webhook deliveries."
+  @moduledoc """
+  Receives Confluence webhook deliveries.
+
+  The route is metered before it gets here, so a flood never reaches this code;
+  a body larger than a delivery should be is refused before it is stored.
+  """
 
   use ConfluencePhxMirrorWeb, :controller
 
   alias ConfluencePhxMirror.Webhooks
 
+  # A delivery describes one page; a megabyte leaves room for a large body twice
+  # over and keeps an open intake from parking arbitrary data in the table.
+  @max_body_bytes 1_048_576
+
   def create(conn, params) do
     raw_body = conn.assigns[:raw_body] || ""
+
+    if byte_size(raw_body) > @max_body_bytes,
+      do: too_large(conn),
+      else: receive_delivery(conn, params, raw_body)
+  end
+
+  defp receive_delivery(conn, params, raw_body) do
     token_authenticated = conn.assigns[:webhook_token_valid] == true
 
     case Webhooks.receive(params, raw_body, conn.req_headers,
@@ -26,5 +42,11 @@ defmodule ConfluencePhxMirrorWeb.WebhookController do
       {:error, reason} ->
         conn |> put_status(400) |> json(%{error: inspect(reason)})
     end
+  end
+
+  defp too_large(conn) do
+    conn
+    |> put_status(413)
+    |> json(%{error: "payload_too_large", max_bytes: @max_body_bytes})
   end
 end

@@ -94,16 +94,16 @@ proxy.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CM_WEBHOOK_SECRET` | – | enables signed webhooks; without it the route answers `503` |
-| `CM_WEBHOOK_REQUIRE_SIGNATURE` | `true` | `false` answers `401` instead of `503` when no secret is set — it does not admit unsigned deliveries |
+| `CM_WEBHOOK_SECRET` | – | the secret Confluence signs with; without it no signature can be checked |
+| `CM_WEBHOOK_REQUIRE_SIGNATURE` | `false` | `true` refuses deliveries that present no valid signature or token (and answers `503` when no secret is configured). An administrator can override this on `/admin/webhooks` at runtime |
 | `CM_WEBHOOK_TOKENS` | – | `receiver=token,…` route-scoped webhook tokens |
-| `CM_WEBHOOK_RATE_LIMIT_PER_MINUTE` | `60` | per-client cap on the intake, always on (see [operations.md](operations.md#rate-limiting)) |
+| `CM_WEBHOOK_RATE_LIMIT_PER_MINUTE` | `60` | per-client cap on the intake, always on (see [operations.md](operations.md#rate-limiting)); an administrator can override it at runtime |
 
-A delivery is stored and audited before its signature is verified, so the route
-is metered whatever the reader limits say. There is no mode that accepts an
-unsigned delivery: without a valid signature or a token the answer is `401`.
-Who may call it, and what a delivery does, are in the
-[site admin guide](site-admin-guide.md#webhooks).
+Unsigned deliveries are accepted by default, and `/admin/webhooks` says so in a
+banner until an administrator requires signatures — there or through the
+variable. A delivery is stored and audited before its signature is verified, so
+the route is metered whatever the reader limits say. Who may call it, and what a
+delivery does, are in the [site admin guide](site-admin-guide.md#webhooks).
 
 ## Search
 

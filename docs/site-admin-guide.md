@@ -345,7 +345,10 @@ Set `MIRROR_MAIL_FROM` and the Swoosh mailer settings for production.
   (`CM_ADMIN_GROUPS`, default `confluence-admins`) or seeded e-mails
   (`CM_ADMINS`). Seeded addresses can always request a sign-in link, even with
   self sign-up closed, so a fresh deployment has a way in.
-* API tokens: admin → *Users & tokens*; shown once, stored as SHA-256 hashes.
+* API tokens: admin → *Users & tokens*; shown once, stored as an Argon2id digest
+  (never the token). Raising the hashing policy does not invalidate issued
+  tokens — each one is rewritten the next time it is used. See
+  [api.md](api.md#authentication) for the client side.
   See [api.md](api.md) for how clients present them.
 * Behind an OAuth2/SSO proxy: `CM_PROXY_AUTH=true` trusts the identity header
   the proxy sets (`CM_PROXY_AUTH_HEADER`, default `x-forwarded-email`;
@@ -383,7 +386,7 @@ or the one space — that changed.
 The signature covers the exact bytes Confluence sent, so do not put a proxy in
 front of the endpoint that rewrites or re-encodes the body.
 
-### Three ways in, and no fourth
+### Three ways in — and what happens to a fourth
 
 | Sender | Presents | Configured by |
 | --- | --- | --- |
@@ -391,13 +394,40 @@ front of the endpoint that rewrites or re-encodes the body.
 | A sender that cannot compute an HMAC | a fixed token in `X-Webhook-Token`, `Authorization: Bearer` or `?token=` | `CM_WEBHOOK_TOKENS="confluence=s3cret"` |
 | Anything you automate | a service token with the `webhook` scope (*Users & tokens*) | the admin UI, revocable per token |
 
-There is **no** mode that accepts an unsigned delivery: a request presenting
-neither a valid signature nor a token is answered `401 invalid_signature` and
-recorded as rejected. When no `CM_WEBHOOK_SECRET` is set at all the answer is
-`503 webhook_secret_not_configured` instead, so "not set up" stays
-distinguishable from "wrong secret". `CM_WEBHOOK_REQUIRE_SIGNATURE=false` only
-turns that `503` into a `401` for callers without a token; it does not admit
-anyone.
+A delivery with **neither** is unauthenticated. That is accepted by default — a
+mirror pointed at a Confluence site should work before anybody changes a
+setting — and `/admin/webhooks` shows a red banner for as long as it is accepted:
+whoever can reach `/webhooks/confluence` can make the mirror sync a page or mark
+one deleted. Every such delivery is still recorded, with `signature_valid =
+false`.
+
+The switch is on that page and takes effect on the next delivery, with no
+restart: *Require signatures* closes the intake; *Allow unsigned* opens it again.
+The deployment sets the default — `CM_WEBHOOK_REQUIRE_SIGNATURE=true` with
+`CM_WEBHOOK_SECRET` closes it from boot, and `false` (the shipped default) leaves
+it open. An administrator's choice overrides the variable until they hand it back
+with *Use the deployment setting*; either way the decision is audited.
+
+A signature that *is* presented always has to verify: a delivery that pretends to
+be authenticated and is not is refused (`401`), whatever the switch says. A
+token, by contrast, is enough on its own. If no `CM_WEBHOOK_SECRET` is configured
+and signatures are required, the answer is `503
+webhook_secret_not_configured` — so "not set up" stays distinguishable from
+"wrong secret".
+
+### What it will act on
+
+The intake reads a fixed shape and ignores everything else, because it may be
+answering an anonymous caller:
+
+| Field | Accepted | Otherwise |
+| --- | --- | --- |
+| `event` | a name in the list above | stored, `ignored` |
+| page id (page, blogpost, attachment container, comment container) | a whole positive number | stored, `ignored` |
+| space key | `[A-Za-z0-9][A-Za-z0-9_-]*`, at most 255 characters | stored, `ignored` |
+| body | at most 1 MiB | `413 payload_too_large`, nothing stored |
+
+"Ignored" deliveries keep their payload for inspection and spawn no work.
 
 Tokens are route-scoped: they are accepted on the webhook route and nowhere
 else — not by the API, not by the reader UI.
@@ -426,7 +456,9 @@ are written by whoever can reach the port. The cap is per client address
 (`conn.remote_ip`, never `X-Forwarded-For`), `CM_WEBHOOK_RATE_LIMIT_PER_MINUTE`
 (default 60), answered with `429` and `Retry-After` before anything is stored.
 Behind a reverse proxy every sender shares that one bucket — correct for a
-single Confluence sender, worth knowing if several sites post here.
+single Confluence sender, worth knowing if several sites post here. An
+administrator can move the cap on `/admin/webhooks` without a restart; the
+variable stays the default.
 
 ### What a delivery triggers
 
@@ -460,8 +492,9 @@ The page sync itself retries five times before the run reports the failure on
 | --- | --- |
 | `mix confluence.probe` → `401` | the e-mail/token pair is wrong |
 | `mix confluence.probe` → `403 caller cannot access Confluence` | that account has no Confluence product access on the site (common with Jira-only accounts) |
-| Webhook answers `503` | no `CM_WEBHOOK_SECRET` is configured; the delivery is recorded as rejected |
-| Webhook answers `401` | the signature did not verify, or no token was presented; the delivery is stored with `signature_valid = false` |
+| Webhook answers `503` | signatures are required but no `CM_WEBHOOK_SECRET` is configured; the delivery is recorded as rejected |
+| Webhook answers `401` | a signature was presented and did not verify, or a token is configured and the wrong one was sent |
+| Webhook answers `413` | the body is over 1 MiB — Confluence sends one page, not a bundle |
 | Webhook answers `429` | the intake cap was hit — 60 deliveries a minute from one address by default; see `/admin/settings` |
 | A sync ends `partial` | at least one page failed — read the run's errors on `/admin`; nothing was silently dropped |
 | A reader gets `404` for a page that exists in Confluence | a page restriction hides it from that reader; hidden resources are never confirmed with a `403` |
