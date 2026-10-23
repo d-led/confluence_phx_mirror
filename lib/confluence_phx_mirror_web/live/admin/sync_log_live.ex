@@ -12,6 +12,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   with whatever the log still holds, so opening it mid-run is useful. Following
   the tail is on by default and is a toggle: pressing it, or scrolling back to
   read, stops the page from pulling the reader down while the lines keep coming.
+
+  Each open page is its own watcher: it subscribes for itself and keeps its own
+  copy of the lines, its own filter and its own follow toggle, so two admins
+  watching the same sync see what each of them asked for. The filter is a live
+  filter over that copy — it decides what arrives from now on and re-reads the
+  lines already held when it changes; it never searches the log on the server.
+  Clearing is the one action that reaches past one page: it empties the shared
+  ring every page seeds itself from.
   """
 
   use ConfluencePhxMirrorWeb, :live_view
@@ -173,7 +181,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
               type="search"
               name="q"
               value={@query}
-              placeholder="Filter lines by page, file, space or reason…"
+              placeholder="Filter the lines as they arrive — page, file, space, reason…"
+              title="Applies to this page's lines as they arrive, and to the lines it already holds. It does not search the log on the server."
               class="grow bg-transparent outline-none"
               phx-debounce="200"
               autocomplete="off"
@@ -220,7 +229,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
         <span>{@counts.warn} warnings</span>
         <span>{@counts.error} errors</span>
         <span>·</span>
-        <span>{length(@visible)} shown</span>
+        <span>{length(@visible)} of {length(@entries)} shown</span>
       </p>
 
       <p

@@ -56,6 +56,31 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
     assert html =~ "page failed: Broken"
   end
 
+  test "a filter decides what arrives after it is set", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
+
+    view |> element("#sync-log-level") |> render_change(%{"level" => "warn"})
+
+    broadcast(entry(:info, "page created: Budget"))
+    refute render(view) =~ "page created: Budget"
+
+    broadcast(entry(:warn, "page failed: Broken"))
+    assert render(view) =~ "page failed: Broken"
+  end
+
+  test "two open pages filter for themselves", %{conn: conn} do
+    Log.add(:info, "page created: Budget")
+    Log.add(:warn, "page failed: Broken")
+
+    {:ok, mine, _html} = live(conn, ~p"/admin/sync-log")
+    {:ok, theirs, _html} = live(conn, ~p"/admin/sync-log")
+
+    mine |> element("#sync-log-level") |> render_change(%{"level" => "warn"})
+
+    refute render(mine) =~ "page created: Budget"
+    assert render(theirs) =~ "page created: Budget"
+  end
+
   test "the page follows new lines until the reader pauses it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
 
@@ -142,6 +167,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
 
     assert html =~ "http: 3 calls"
     assert html =~ "answers=200×3"
+  end
+
+  defp broadcast(entry) do
+    Phoenix.PubSub.broadcast(ConfluencePhxMirror.PubSub, Log.topic(), {:sync_log, entry})
   end
 
   defp entry(level, message) do
