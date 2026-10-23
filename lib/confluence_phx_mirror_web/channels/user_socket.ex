@@ -33,7 +33,9 @@ defmodule ConfluencePhxMirrorWeb.UserSocket do
   # or, when anonymous, this very connection, since nothing else tells
   # anonymous readers apart. `id/1` stays nil for them: there is no second
   # connection to identify them by.
-  defp reader_key(nil), do: "reader:" <> Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
+  defp reader_key(nil),
+    do: "reader:" <> Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
+
   defp reader_key(user), do: "user:#{user.id}"
 
   @impl true
