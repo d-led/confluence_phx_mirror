@@ -70,6 +70,11 @@ database:
   (`Authorization.readable_alongside/2`): a page restricted to a group may list
   open pages, and an open page may not name a restricted one. Where Confluence
   would show that title to some readers, the mirror shows it to none.
+* `include`, `excerpt` and `excerpt-include` are *not* resolved. The mirror
+  shows what `export_view` already carries for them and does not re-check who
+  may read the other page: the rule above governs listings the sync builds, not
+  bodies it forwards. If `export_view` has inlined another page's content, this
+  page hands it to every reader who may open this page.
 
 The alternatives from the Confluence world do not apply here: Confluence fires
 `page_updated` only for the page that was edited (not for pages that display its
@@ -172,7 +177,12 @@ every match, inherent to `ts_rank_cd`.
 * Comments are read-only and rendered flat (one reply level styled).
 * Confluence Cloud does not expose *space* permissions for reading, so they are
   mirrored only when a source can supply them; page restrictions are synced.
-* The JSON API and `/search` do not yet apply the permission policy.
+* A page's body carries the titles of the pages it links to at the moment it was
+  synced. Backlinks and outgoing links are computed live from the link table, so
+  they never go stale, but link *text* baked into a body does — until that page
+  is synced again.
+* `include`-family macros are forwarded from `export_view` without an audience
+  check (see the dynamic-content section above).
 * Live macros that need an Atlassian session (Jira issue detail, user hover
   cards) render as the link/placeholder Confluence puts in `export_view`.
 * S3 blob storage is an interface, not an implementation, in this PoC.

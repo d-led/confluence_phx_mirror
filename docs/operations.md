@@ -241,11 +241,16 @@ Two things must be backed up together:
 
 ## Rate limiting
 
-Two meters, in opposite directions:
+Three meters, in two directions:
 
 * **Readers → mirror** — budgets per address for HTML, API and attachments,
   answering `429` with `Retry-After` and `X-RateLimit-*`. The knobs and the
   proxy rule are in [configuration.md](configuration.md#reader-rate-limits).
+* **Confluence → mirror** — the webhook intake, always metered per client
+  address (`CM_WEBHOOK_RATE_LIMIT_PER_MINUTE`, default 60), because a delivery
+  is written and audited before its signature is checked. Unlike the reader
+  budgets this one cannot be switched off; see
+  [site-admin-guide.md](site-admin-guide.md#webhooks).
 * **Client → Confluence**: the token bucket that protects your Confluence site
   is a sync setting; see
   [site-admin-guide.md](site-admin-guide.md#the-client-is-conservative-on-purpose).

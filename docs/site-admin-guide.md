@@ -340,14 +340,51 @@ Set `MIRROR_MAIL_FROM` and the Swoosh mailer settings for production.
 
 ## Webhooks
 
-Confluence → `POST /webhooks/confluence` with an HMAC-SHA256 signature over the
-**raw** body (`X-Hub-Signature-256`). Every delivery is stored (valid or not)
-and audited; valid page events enqueue a page sync, removal events mark the page
-deleted immediately. Jobs for the same page are coalesced for a minute.
+A webhook is how the mirror hears about a change before the next scheduled pull:
+Confluence `POST`s to `/webhooks/confluence` and the mirror syncs the one page —
+or the one space — that changed.
 
-Senders that cannot sign a body can present a fixed token instead. Tokens are
-configured per receiver and are only accepted on the webhook route — they never
-open the API or the reader UI:
+### Setting it up
+
+1. Give the mirror a secret: `CM_WEBHOOK_SECRET`. Restart it; `/admin/webhooks`
+   stops warning that webhooks are not configured.
+2. In Confluence, add a webhook (Administration → *Webhooks*) pointing at
+   `https://<mirror-host>/webhooks/confluence`, with that same secret. Cloud
+   signs the **raw** request body with HMAC-SHA256; the mirror accepts
+   `X-Hub-Signature-256`, the legacy `X-Hub-Signature` and Atlassian's
+   `X-Atlassian-Webhook-Signature` (`sha256=` prefix optional).
+3. Subscribe to the events you care about — the mirror understands
+   `page_created`, `page_updated`, `page_removed`, `page_trashed`,
+   `page_deleted`, `page_restored`, `page_moved`, `blogpost_created`,
+   `blogpost_updated`, `blogpost_removed`, `attachment_created`,
+   `attachment_updated`, `attachment_deleted`, `attachment_trashed`,
+   `comment_created`, `comment_updated`, `comment_removed`, `comment_replied`,
+   `space_created`, `space_updated`. Anything else is stored and marked
+   `ignored`, never acted on.
+4. Watch `/admin/webhooks` (refreshes every 5 s): the last 50 deliveries with the
+   event, whether the signature verified, and what became of it.
+
+The signature covers the exact bytes Confluence sent, so do not put a proxy in
+front of the endpoint that rewrites or re-encodes the body.
+
+### Three ways in, and no fourth
+
+| Sender | Presents | Configured by |
+| --- | --- | --- |
+| Confluence Cloud | `X-Hub-Signature-256` HMAC over the raw body | `CM_WEBHOOK_SECRET` |
+| A sender that cannot compute an HMAC | a fixed token in `X-Webhook-Token`, `Authorization: Bearer` or `?token=` | `CM_WEBHOOK_TOKENS="confluence=s3cret"` |
+| Anything you automate | a service token with the `webhook` scope (*Users & tokens*) | the admin UI, revocable per token |
+
+There is **no** mode that accepts an unsigned delivery: a request presenting
+neither a valid signature nor a token is answered `401 invalid_signature` and
+recorded as rejected. When no `CM_WEBHOOK_SECRET` is set at all the answer is
+`503 webhook_secret_not_configured` instead, so "not set up" stays
+distinguishable from "wrong secret". `CM_WEBHOOK_REQUIRE_SIGNATURE=false` only
+turns that `503` into a `401` for callers without a token; it does not admit
+anyone.
+
+Tokens are route-scoped: they are accepted on the webhook route and nowhere
+else — not by the API, not by the reader UI.
 
 ```bash
 # CM_WEBHOOK_TOKENS="confluence=s3cret,backup=other-secret"
@@ -365,9 +402,41 @@ mix confluence.webhook --page 1002 --event page_updated
 mix confluence.webhook --page 1002 --event page_removed
 ```
 
-Without `CM_WEBHOOK_SECRET` the endpoint returns `503` and records the rejected
-delivery. `CM_WEBHOOK_REQUIRE_SIGNATURE` (default `true`) rejects unsigned
-deliveries.
+### Metering
+
+The intake is metered even when reader limits are switched off, because a
+delivery is stored — and audited — *before* its signature is checked: those rows
+are written by whoever can reach the port. The cap is per client address
+(`conn.remote_ip`, never `X-Forwarded-For`), `CM_WEBHOOK_RATE_LIMIT_PER_MINUTE`
+(default 60), answered with `429` and `Retry-After` before anything is stored.
+Behind a reverse proxy every sender shares that one bucket — correct for a
+single Confluence sender, worth knowing if several sites post here.
+
+### What a delivery triggers
+
+| Event | What happens |
+| --- | --- |
+| page, blog post, attachment or comment created/updated/restored/moved/replied | one **page** sync of the affected page |
+| page or blog post removed/trashed/deleted | the page is marked deleted immediately, no worker involved |
+| `space_created`, `space_updated` | one **space** sync |
+| anything else, or a payload naming no page | stored, marked `ignored`, audited |
+
+Jobs for the same page within 60 s are coalesced (Oban uniqueness on
+`confluence_id`), so a burst of edits costs one sync rather than one per event.
+
+A page sync re-fetches that page and nothing else, plus what hangs off it: the
+page body, its attachments, its comments and its own read restrictions — then
+the space's permissions and the site's group membership, because those decide
+what the new body may show. It then re-expands the macros on *every* page
+carrying a marker, since a label or a property on this page changes what those
+listings say (see [design notes](design-notes.md#dynamic-content-macros-the-browser-would-normally-run)).
+That is the mirror's answer to "what depends on this page": it re-derives the
+listings rather than tracking a dependency graph.
+
+A delivery is never replayed by the mirror — the payload is stored, so if a
+job failed you re-POST it (or run `mix confluence.sync --mode page --page 1002`).
+The page sync itself retries five times before the run reports the failure on
+`/admin`.
 
 ## Troubleshooting
 
@@ -376,6 +445,8 @@ deliveries.
 | `mix confluence.probe` → `401` | the e-mail/token pair is wrong |
 | `mix confluence.probe` → `403 caller cannot access Confluence` | that account has no Confluence product access on the site (common with Jira-only accounts) |
 | Webhook answers `503` | no `CM_WEBHOOK_SECRET` is configured; the delivery is recorded as rejected |
+| Webhook answers `401` | the signature did not verify, or no token was presented; the delivery is stored with `signature_valid = false` |
+| Webhook answers `429` | the intake cap was hit — 60 deliveries a minute from one address by default; see `/admin/settings` |
 | A sync ends `partial` | at least one page failed — read the run's errors on `/admin`; nothing was silently dropped |
 | A reader gets `404` for a page that exists in Confluence | a page restriction hides it from that reader; hidden resources are never confirmed with a `403` |
 

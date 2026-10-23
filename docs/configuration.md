@@ -94,9 +94,16 @@ proxy.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CM_WEBHOOK_SECRET` | – | enables signed webhooks |
-| `CM_WEBHOOK_REQUIRE_SIGNATURE` | `true` | reject deliveries without a valid signature |
+| `CM_WEBHOOK_SECRET` | – | enables signed webhooks; without it the route answers `503` |
+| `CM_WEBHOOK_REQUIRE_SIGNATURE` | `true` | `false` answers `401` instead of `503` when no secret is set — it does not admit unsigned deliveries |
 | `CM_WEBHOOK_TOKENS` | – | `receiver=token,…` route-scoped webhook tokens |
+| `CM_WEBHOOK_RATE_LIMIT_PER_MINUTE` | `60` | per-client cap on the intake, always on (see [operations.md](operations.md#rate-limiting)) |
+
+A delivery is stored and audited before its signature is verified, so the route
+is metered whatever the reader limits say. There is no mode that accepts an
+unsigned delivery: without a valid signature or a token the answer is `401`.
+Who may call it, and what a delivery does, are in the
+[site admin guide](site-admin-guide.md#webhooks).
 
 ## Search
 
