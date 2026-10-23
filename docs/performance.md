@@ -89,12 +89,12 @@ What Confluence charges is documented rather than secret: a **points-based
 hourly quota** — 65 000 points an hour in the default global pool, reset at the
 top of each UTC hour, a page read costing 2 — plus **burst limits per second**,
 enforced independently and not published as a number. The quota covers Forge,
-Connect and OAuth apps; **API-token traffic is explicitly excluded** from it and
-stays governed by the burst limits alone. Measured on a free site, 150 parallel
-reads — about 95 a second — drew no throttling and no `X-RateLimit-*` headers at
-all, so `CM_REQUESTS_PER_SECOND` is a politeness setting, not a ceiling. A `429`
-carries `Retry-After`, which the client waits out instead of racing it with its
-own backoff.
+Connect and OAuth apps, and the page adds that **API-token traffic is not
+affected by this change**: it stays governed by the burst limits alone. Measured
+on a free site, 150 parallel reads — about 95 a second — drew no throttling and
+no `X-RateLimit-*` headers at all, so `CM_REQUESTS_PER_SECOND` is a politeness
+setting, not a ceiling. A `429` carries `Retry-After`, which the client waits out
+instead of racing it with its own backoff.
 
 Two things that surprise a reader on real data: page URLs carry a slug, so
 `/spaces/KEY/pages/ID` answers 302 to the canonical URL — point a load generator

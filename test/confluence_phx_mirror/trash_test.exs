@@ -134,6 +134,31 @@ defmodule ConfluencePhxMirror.TrashTest do
       assert Mirror.get_space_by_key("ENG")
       assert Mirror.get_space_by_key("PROD")
     end
+
+    # A space with no pages moves no page row, so the cached totals have to
+    # notice the space itself.
+    test "the totals stop counting a space the moment it is trashed" do
+      doomed = space_fixture(%{key: "DOOMED"})
+      before = Mirror.stats()
+
+      assert Mirror.trash_space(doomed) == 0
+
+      assert %{spaces: spaces, pages: pages} = Mirror.stats()
+      assert spaces == before.spaces - 1
+      assert pages == before.pages
+    end
+
+    test "a trashed space takes its pages out of the totals" do
+      space = space_fixture(%{key: "FULL"})
+      page_fixture(space)
+      before = Mirror.stats()
+
+      assert Mirror.trash_space(space) == 1
+
+      assert %{spaces: spaces, pages: pages} = Mirror.stats()
+      assert spaces == before.spaces - 1
+      assert pages == before.pages - 1
+    end
   end
 
   describe "emptying the trash" do

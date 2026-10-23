@@ -1371,6 +1371,7 @@ defmodule ConfluencePhxMirror.Mirror do
     Counters.fetch(:stats, fn ->
       Repo.one(
         from(s in Space,
+          where: is_nil(s.deleted_at),
           select: %{
             spaces: count(s.id),
             pages: fragment("(SELECT count(*) FROM pages WHERE deleted_at IS NULL)"),

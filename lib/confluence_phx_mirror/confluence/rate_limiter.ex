@@ -2,10 +2,14 @@ defmodule ConfluencePhxMirror.Confluence.RateLimiter do
   @moduledoc """
   Site-wide, client-side rate limiter for requests to Confluence.
 
-  Confluence Cloud enforces its own API limits; hammering it during a full
-  snapshot gets the mirror throttled or banned. Every HTTP request the source
-  makes first calls `acquire/0`, which blocks until the token bucket has a free
-  token. The rate is configurable (`CM_REQUESTS_PER_SECOND`, `CM_BURST`).
+  Confluence Cloud enforces its own API limits: burst limits per second, answered
+  with `429` and a `Retry-After`, plus an hourly points quota that governs apps
+  rather than the API tokens this client uses. Sending faster than the burst
+  limit allows spends the retry budget on throttles instead of pages, so every
+  HTTP request the source makes first calls `acquire/0`, which blocks until the
+  token bucket has a free token. `CM_REQUESTS_PER_SECOND` and `CM_BURST` set the
+  pace; the published limits name no number, and a dedicated site has absorbed
+  ~95 requests a second, so the bucket is politeness rather than a ceiling.
 
   When the limiter is not running (demo source, tests) `acquire/0` is a no-op
   that reports a zero wait.
