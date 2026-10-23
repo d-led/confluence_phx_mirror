@@ -1,11 +1,16 @@
 # Local development services only: Postgres for the app, Adminer to look inside
 # it, smtp4dev as the mail sink. The application itself is deployed as a
-# release and needs none of this — see docs/operations.md.
+# release and needs none of this — see docs/deployment.md.
+#
+# Images are pinned rather than floating: Postgres 17 is the version CI runs and
+# the one the suite was written against, so bump it in .github/workflows/ci.yml
+# and here together. The other two are pinned to the release they were tried
+# with, and dabbling in a newer tag is then a deliberate act.
 
 services:
 
   postgres:
-    image: postgres
+    image: postgres:17
     ports:
       - 5432:5432
     environment:
@@ -17,9 +22,10 @@ services:
       - data-postgres:/var/lib/postgresql/data
 
   # http://localhost:8092/?pgsql=postgres&username=postgres&db=postgres&ns=public
+  # Multi-arch: no `platform:` override, so an Apple Silicon laptop runs it
+  # natively instead of emulating amd64.
   adminer:
-    image: adminer
-    platform: linux/amd64
+    image: adminer:6.1.2
     links:
       - postgres
     ports:
@@ -27,7 +33,7 @@ services:
 
   # SMTP sink for development. Web UI: http://localhost:3001
   smtp4dev:
-    image: rnwood/smtp4dev
+    image: rnwood/smtp4dev:3.15.0
     # restart: always
     ports:
       - 3001:80
