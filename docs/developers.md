@@ -29,20 +29,22 @@ ones specific to the mirror.
   hyphens because Postgres `simple` treats `roadmap.csv` as one lexeme.
 * **Blob root outside the repo.** `var/mirror` in development,
   `tmp/mirror_test` in test; never `priv/static`.
-* **Skins without rebuild for sites.** Built-ins are daisyUI
-  `@plugin ... daisyui-theme` blocks in `assets/css/app.css`; other skins are
-  declarations emitted per request by `Web.Skins` — from
+* **Theme is the site's, variant is the reader's.** `Web.Skins` owns both. The
+  theme (`default`, `fresh-blue`, …) is one for the whole site: built-ins are
+  daisyUI `@plugin ... daisyui-theme` blocks in `assets/css/app.css`, everything
+  else is a declaration emitted per request — from
   `config :confluence_phx_mirror, :skins` or from packs
   (`ConfluencePhxMirrorWeb.Skins.Pack` modules listed in `:skin_packs`, e.g.
-  `Skins.FreshBlue`). A declaration may carry `dark_colors`, emitted as a
-  `prefers-color-scheme` override; `selectable: false` keeps a skin out of the
-  reader picker so it is only usable as `:site_skin`. Deeper overrides go in
-  `assets/css/author.css`.
+  `Skins.FreshBlue`). A declaration may carry `dark_colors`, emitted under
+  `[data-scheme="dark"]` plus a `prefers-color-scheme` block. The variant
+  (`system`, `light`, `dark`) is the reader's cookie; it only selects a palette.
+  Both reach the document through `Skins.attributes/2`, splatted onto `<html>`
+  (`data-theme`, `data-scheme`). Deeper overrides go in `assets/css/author.css`.
 * **Settings an admin changes live in one table.** `settings` (key/value) holds
-  the site skin; `ConfluencePhxMirror.Settings` loads it into `:persistent_term`
-  at boot, so the per-request theme lookup never queries, and every write is
-  audited. The environment seeds the same decision (`CM_SITE_SKIN`) and applies
-  again once the stored value is cleared.
+  the theme; `ConfluencePhxMirror.Settings` loads it into `:persistent_term` at
+  boot, so the per-request theme lookup never queries, and every write is
+  audited. The environment seeds the same decision (`CM_THEME`) and applies again
+  once the stored value is cleared.
 * **JS dependencies are real dependencies**: `assets/package.json`, `npm ci`
   wired into `assets.build` / `assets.deploy`. Syntax highlighting uses the
   highlight.js grammar chosen from Confluence's `brush:` attribute.

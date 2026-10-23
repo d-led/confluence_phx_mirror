@@ -3,7 +3,7 @@
 This guide is for the mirror's site administrator: you run the mirror as a
 product. You point it at a Confluence site (or use the demo snapshot), keep the
 content current, decide who may read what, manage accounts and access, choose
-skins and wire up webhooks.
+the theme, and wire up webhooks.
 
 Deploying, upgrading and scaling the app itself is a separate job — see
 [operations.md](operations.md). Every setting is listed in
@@ -87,8 +87,7 @@ can move between them without going back to a hub:
 * `/admin` (**live**, refreshes every 5 s) – the overview: freshness, sync runs
   (counters, errors, `running` → `succeeded` / `partial` / `failed`), recent
   activity and recently updated pages, plus the manual sync actions and
-  "Re-read everything" for a full pull. Its **Site skin** button opens the
-  dialog that pins a skin for every reader (or hands the choice back).
+  "Re-read everything" for a full pull.
 * `/admin/sync-log` (**live**) – the live log: every page, file and call to
   Confluence a sync touches — status, size, latency, retries and the waits the
   client-side rate limiter imposed — plus a summary line when the run ends
@@ -101,12 +100,12 @@ can move between them without going back to a hub:
   tokens, subscriptions, webhooks) and one entry per sync with its counters and
   what triggered it.
 * `/admin/users` (**live**) – accounts, roles, mirrored groups and API tokens.
-* `/admin/settings` (**static**) – what the mirror booted with: source and sync
-  pacing, the skin and who may pick one, identity and administrators, webhook
-  and mail delivery, rate limits and the blob root. Each row names the
-  environment variable that changes it; secrets are shown as *configured*, never
-  printed. The page is deliberately not a LiveView — these values only change
-  with a restart.
+* `/admin/settings` (**live**) – the setup screen. The theme every reader wears
+  is a form here: pick one, save, and the whole site repaints. Below it the page
+  lists what the mirror booted with — source and sync pacing, identity and
+  administrators, webhook and mail delivery, rate limits and the blob root —
+  each row naming the environment variable that changes it, secrets shown as
+  *configured* never printed ([themes and variants](#themes-and-variants)).
 * `/health` – database check, content counters and last sync; no auth, so it
   can back a probe ([operations.md](operations.md)).
 
@@ -192,94 +191,90 @@ hidden resource is a `404`, never a `403`, so the mirror does not confirm what
 it withholds. The v1 JSON API and the `/search` LiveView still answer from the
 unfiltered index — see [Known limitations](design-notes.md#known-limitations).
 
-## Skins
+## Themes and variants
 
-Readers pick a skin in the header; the choice is a cookie, so the first paint is
-already correct and no JavaScript is involved. Four skins ship as daisyUI
-themes: `system` (follows the OS), `light`, `mirror` (Confluence-inspired) and
-`dark`. A fifth, `fresh-blue`, ships as a skin pack and is the default.
+Two decisions, kept apart:
 
-Out of the box the mirror wears the Fresh blue skin — the reader's
-`/theme/…` choice, once made, wins over it. An administrator can pin one skin
-for everybody instead from the admin area; the picker then goes away.
+* the **theme** is the brand — the palette pair behind every screen. One theme
+  is active for the whole site, and an administrator chooses it on
+  [`/admin/settings`](#the-admin-area).
+* the **variant** is each reader's own: `system`, `light` or `dark`, from the
+  menu in the header. `system` follows the OS. A variant never changes the
+  palette, it chooses which half of it paints — and it is a cookie
+  (`mirror_theme`), so the first paint is already right and no JavaScript is
+  involved.
 
-### The default skin
+Both end up as attributes on `<html>`: `data-theme` names the theme and
+`data-scheme` forces a palette for a theme that is not compiled in.
 
-`fresh-blue` ships as the default: a reader who has not picked a theme gets
-it, and the header picker still offers the built-in skins and any skin the site
-declares.
+Two themes ship:
 
-```elixir
-# config/config.exs, or CM_DEFAULT_SKIN=fresh-blue in a release
-config :confluence_phx_mirror, default_skin: "fresh-blue"
-```
+| theme | what it is |
+| --- | --- |
+| `default` | the warm light palette and the violet dark one, compiled into `assets/css/app.css` as daisyUI's `light` and `dark` themes |
+| `fresh-blue` | a blue-and-slate pair with small radii and flat surfaces, shipped as a skin pack and emitted per request |
 
-### One skin for the whole site
+`fresh-blue` is the theme the mirror wears out of the box.
 
-A whole skin is a deployment decision, not a reader preference: every reader
-gets it, the cookie is ignored and the header picker disappears. The
-administrator sets it at runtime — **Admin → Overview → Site skin** opens a
-dialog that lists the skins and "readers choose"; saving either pins a skin or
-hands the choice back. The change is audited (`settings.site_skin`) and survives
-a restart.
+### Choosing the theme
 
-`CM_SITE_SKIN` (or `config :confluence_phx_mirror, :site_skin`) still seeds the
+**Admin → Settings** lists the themes the site offers; pick one and save. The
+choice lives in the `settings` table, so it survives a restart and needs no file
+edit; the save is audited (`settings.theme`). Readers keep their variant: someone
+who chose `dark` stays on `dark` across a theme change, because every theme
+answers to the same three variant names.
+
+`CM_THEME` (or `config :confluence_phx_mirror, theme: "fresh-blue"`) seeds the
 same decision for deployments that want it without a manual step:
 
 ```elixir
-# config/runtime.exs, or CM_SITE_SKIN=fresh-blue in a release
-config :confluence_phx_mirror, :site_skin, "fresh-blue"
+# config/runtime.exs, or CM_THEME=fresh-blue in a release
+config :confluence_phx_mirror, :theme, "fresh-blue"
 ```
 
-The seeded value applies until an administrator saves another one; clearing the
-dialog falls back to it. `fresh-blue` is a blue-and-slate palette with two
-variants: the light colours by default and the dark ones when the reader's OS
-prefers dark, so the whole site follows the OS the way the `system` skin does.
-A seeded name the site does not offer stops the release at boot rather than
-quietly serving the default theme.
+The seed applies until an administrator saves a theme. A seeded name the site
+does not offer stops the release at boot rather than quietly serving the
+default theme.
 
-### A skin declared in config
+### A theme declared in config
 
-Site authors add their own skin in config — no CSS edit, no asset rebuild:
+Site authors add their own theme in config — no CSS edit, no asset rebuild:
 
 ```elixir
 # config/runtime.exs (or config/dev.exs)
 config :confluence_phx_mirror, :skins, [
   %{
-    name: "acme",                 # cookie-safe: a-z, 0-9 and dashes
-    label: "Acme",                # shown in the picker
-    icon: "hero-building-office", # any hero- icon
-    scheme: :light,               # :dark also switches native controls and code colours
-    colors: %{
+    name: "acme",                   # cookie-safe: a-z, 0-9 and dashes
+    label: "Acme",                  # shown in the admin's picker
+    note: "blue on white",          # one line under the label
+    colors: %{                      # the light palette
       base_100: "#ffffff", base_200: "#f2f6ff", base_300: "#d3deef",
       base_content: "#11213d",
       primary: "#0b5fff", primary_content: "#ffffff",
       secondary: "#3d5afe", accent: "#00a3bf"
+    },
+    dark_colors: %{                 # optional; a theme without one stays light
+      base_100: "#0d1117", base_content: "#e6edf5",
+      primary: "#4d9bff", primary_content: "#0d1117"
     },
     radius: %{box: "0.75rem", field: "0.375rem"}
   }
 ]
 ```
 
-The palette is emitted as a `[data-theme="acme"]` rule per request and every
-daisyUI component reads its colours from those variables, so buttons, panels
-and the Confluence content pick it up immediately. Supported keys are the
-daisyUI colour names (`base_*`, `primary`, `secondary`, `accent`, `neutral`,
-`info`, `success`, `warning`, `error`, each with `_content`), the three radii,
-plus `border`, `depth` and `noise`. Unknown keys and values that are not plain
-CSS values are ignored.
-
-Two more keys shape a skin:
-
-* **`dark_colors`** — add a second palette and the skin becomes two variants
-  under one name, following `prefers-color-scheme`. Radii, border and depth are
-  shared; only the colours change.
-* **`selectable: false`** — keep the skin out of the reader's picker. It can
-  then only be used as `:site_skin`, which is what a whole skin is for.
+The palette is emitted as `[data-theme="acme"]` rules per request — the light one
+as the base rule and the dark one under `[data-scheme="dark"]`, plus a
+`prefers-color-scheme` block for readers on `system`. Every daisyUI component
+reads its colours from those variables, so buttons, panels and the Confluence
+content pick it up immediately. Supported keys are the daisyUI colour names
+(`base_*`, `primary`, `secondary`, `accent`, `neutral`, `info`, `success`,
+`warning`, `error`, each with `_content`), the three radii, plus `border`,
+`depth` and `noise`. Unknown keys and values that are not plain CSS values are
+ignored.
 
 ### Skin packs: standalone extensions
 
-A skin that should ship as its own module — an internal package, a dependency,
+A theme that should ship as its own module — an internal package, a dependency,
 or a file dropped into `lib/` — is a *pack*: any module implementing
 `ConfluencePhxMirrorWeb.Skins.Pack`, listed under `:skin_packs`.
 
@@ -296,19 +291,20 @@ defmodule MyCompany.Skins do
 end
 ```
 
-Pack skins take the same keys and are validated the same way; a pack cannot
-shadow a built-in skin, and a config skin wins when both declare the same name.
-`ConfluencePhxMirrorWeb.Skins.FreshBlue` is the reference pack — start
+Pack themes take the same keys and are validated the same way; a pack cannot
+shadow a built-in theme, and a config theme wins when both declare the same
+name. `ConfluencePhxMirrorWeb.Skins.FreshBlue` is the reference pack — start
 there when writing your own.
 
 For anything a palette cannot express — fonts, spacing, component tweaks — edit
 `assets/css/author.css`, which is loaded after the main stylesheet. Scope rules
-to `[data-theme="acme"]` so they only affect that skin. A brand-new *built-in*
-skin (shipped in the compiled CSS) is a `@plugin "daisyui/packages/bundle/daisyui-theme"`
-block in `assets/css/app.css`, next to `light`, `mirror` and `dark`.
+to `[data-theme="acme"]` so they only affect that theme. A brand-new *built-in*
+theme (shipped in the compiled CSS) is a
+`@plugin "daisyui/packages/bundle/daisyui-theme"` block in `assets/css/app.css`,
+next to `light` and `dark`.
 
 `config/dev.exs` leaves both defaults alone, so development shows what a reader
-sees. The full declaration example above is the shape a site's own skin takes.
+sees — Fresh blue, with the variant menu in the header.
 
 ## Notifications
 

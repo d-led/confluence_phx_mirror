@@ -1,7 +1,7 @@
 # Configuration
 
 Everything the mirror reads from the environment, plus the one compile-free
-customisation point (skins). The app is configured only through the environment
+customisation point (themes). The app is configured only through the environment
 (12-factor); this file is the exhaustive list, so keep it honest: if a variable
 is read in `config/` or `lib/`, it belongs here.
 
@@ -143,21 +143,22 @@ readers are always limited by identity, proxy or not.
 A throttled browser request answers `429` with a page that names the retry
 window (and a `Retry-After` header); API clients get JSON.
 
-## Skins
+## Themes
 
-Built-in skins are `system`, `light`, `mirror` and `dark`; `fresh-blue`
-ships as the default and readers switch skins in the header. A deployment can pin
-one skin for everybody instead, which hides the picker. Site skins are config,
-not CSS: `config :confluence_phx_mirror, :skins, [...]` with `name`, `label`,
-`icon`, `scheme`, `colors`, `dark_colors` and `radius`; packs add skins as
-standalone modules (`:skin_packs`). The full example, the supported colour keys
-and the `assets/css/author.css` escape hatch are in
-[site-admin-guide.md](site-admin-guide.md#skins).
+Appearance is two decisions. The **theme** is the site's brand — one palette pair
+for the whole mirror — and only an administrator chooses it, on
+`/admin/settings`; the choice is stored in the `settings` table and seeded from
+config. The **variant** is the reader's own from the header (`system`, `light`,
+`dark`) and lives in a cookie. `default` and `fresh-blue` ship; a site adds its
+own with `config :confluence_phx_mirror, :skins, [...]` (`name`, `label`, `note`,
+`colors`, `dark_colors`, `radius`, `border`, `depth`, `noise`) or as a standalone
+pack under `:skin_packs`. The full example, the supported colour keys and the
+`assets/css/author.css` escape hatch are in
+[site-admin-guide.md](site-admin-guide.md#themes-and-variants).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CM_DEFAULT_SKIN` | `fresh-blue` | the skin a reader sees before picking one; the picker still offers the rest |
-| `CM_SITE_SKIN` | – | seeds the site skin: one skin for the whole site, readers get no picker. An administrator can change or clear it at runtime from **Admin → Site skin**; a seeded name the site does not offer stops the release at boot |
+| `CM_THEME` | `fresh-blue` | seeds the theme the whole site wears. An administrator changes it on **Admin → Settings**; readers only ever choose `system`, `light` or `dark`. A seeded name the site does not offer stops the release at boot |
 
 ## Development defaults
 
@@ -165,7 +166,7 @@ and the `assets/css/author.css` escape hatch are in
 
 * `CM_SOURCE=demo` (no Confluence credentials needed),
 * `MIRROR_AUTO_ADMIN` on, so no sign-in is required,
-* `fresh-blue` as the default skin, with the reader picker available,
+* `fresh-blue` as the theme, with the variant menu in the header,
 * Postgres on `localhost:5432` and smtp4dev on `localhost:2525` — services that
   the repository's `docker compose` file happens to provide for local work.
 

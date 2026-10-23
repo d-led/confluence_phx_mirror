@@ -59,7 +59,7 @@ Confluence ──REST──▶ Sync (incremental, rate-limited, audited) ──�
 
 | You are… | Read |
 | --- | --- |
-| the site administrator: syncing, accounts, permissions, webhooks, skins | [docs/site-admin-guide.md](docs/site-admin-guide.md) |
+| the site administrator: syncing, accounts, permissions, webhooks, themes | [docs/site-admin-guide.md](docs/site-admin-guide.md) |
 | deploying and operating it: build, env contract, migrations, monitoring, backups | [docs/operations.md](docs/operations.md) |
 | looking for a setting | [docs/configuration.md](docs/configuration.md) |
 | integrating: JSON API, Confluence-compatible REST, CQL | [docs/api.md](docs/api.md) |
