@@ -130,6 +130,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
           )
           |> load()
 
+        {:error, :protected_admin} ->
+          put_flash(socket, :error, "A seeded or bootstrap administrator cannot be banned.")
+
+        {:error, :last_admin} ->
+          put_flash(socket, :error, last_admin_message(user))
+
         {:error, _} ->
           put_flash(socket, :error, "Could not ban the account.")
       end
@@ -282,6 +288,21 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   # disabled before the guard existed is not stranded.
   defp can_toggle?(nil, _user), do: true
   defp can_toggle?(_guard, user), do: User.disabled_here?(user)
+
+  # Banning is a switch-off no sync undoes, so the accounts the switch-off
+  # protects are the accounts the Ban button must not be offered for. Lifting a
+  # ban stays available: it is the way back.
+  defp can_ban?(nil), do: true
+  defp can_ban?(_guard), do: false
+
+  # Why deleting is not offered for this account, or nil when it is.
+  defp delete_blocked(guard, %User{} = user) do
+    cond do
+      User.banned?(user) -> "A banned account cannot be deleted — lift the ban first"
+      guard == :last_admin -> guard_note(:last_admin)
+      true -> nil
+    end
+  end
 
   # The people Confluence's content names, marked when they have an account
   # here. The site lists no users: the content says who wrote it, and the sync
@@ -521,6 +542,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               >
                 <input type="hidden" name="user_id" value={user.id} />
                 <button
+                  :if={can_ban?(guard)}
                   type="submit"
                   id={"ban-#{user.id}"}
                   class="btn btn-warning btn-outline btn-sm min-h-11 sm:min-h-0"
@@ -530,8 +552,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                 >
                   Ban
                 </button>
+                <button
+                  :if={not can_ban?(guard)}
+                  type="button"
+                  id={"ban-locked-#{user.id}"}
+                  class="btn btn-sm btn-disabled min-h-11 gap-1 sm:min-h-0"
+                  title={"Banning is a switch-off no sync undoes — #{guard_note(guard)}"}
+                >
+                  <.icon name="hero-lock-closed" class="size-3.5" /> {guard_label(guard)}
+                </button>
               </form>
 
+              <% delete_note = delete_blocked(guard, user) %>
               <form phx-submit="delete_user" class="flex items-center gap-1.5">
                 <input type="hidden" name="user_id" value={user.id} />
                 <button
@@ -539,12 +571,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                   id={"delete-#{user.id}"}
                   class={[
                     "btn btn-sm min-h-11 sm:min-h-0",
-                    if(User.banned?(user), do: "btn-disabled", else: "btn-error btn-outline")
+                    if(delete_note, do: "btn-disabled", else: "btn-error btn-outline")
                   ]}
-                  disabled={User.banned?(user)}
-                  title={
-                    User.banned?(user) && "A banned account cannot be deleted — lift the ban first"
-                  }
+                  disabled={delete_note != nil}
+                  title={delete_note}
                   data-confirm={
                     "Delete #{user.email}, its tokens and its subscriptions? Confluence is not changed."
                   }

@@ -75,6 +75,22 @@ defmodule ConfluencePhxMirror.Accounts.ModerationTest do
     assert Accounts.get_user(admin.id)
   end
 
+  test "the last administrator cannot be banned either — a ban outlives every sync" do
+    admin = user_fixture(%{email: "only@example.com", role: "admin"})
+
+    assert {:error, :last_admin} = Accounts.ban(admin, {:system, "test"})
+    refute User.banned?(Accounts.get_user(admin.id))
+    assert User.disabled?(Accounts.get_user(admin.id)) == false
+  end
+
+  test "an administrator with a colleague can be banned" do
+    admin = user_fixture(%{email: "one-of-two@example.com", role: "admin"})
+    user_fixture(%{email: "the-other@example.com", role: "admin"})
+
+    assert {:ok, banned} = Accounts.ban(admin, {:system, "test"})
+    assert User.banned?(banned)
+  end
+
   test "a reader the site switched off is refused, because the site decides" do
     user = user_fixture(%{email: "off@example.com"})
 

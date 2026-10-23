@@ -314,15 +314,27 @@ defmodule ConfluencePhxMirror.Accounts do
   A ban is not a switch-off: it outranks every other flag, a sync never clears
   it, and it blocks deletion — deleting the row would let the next sign-in
   provision a fresh account, which is exactly what a ban is for.
+
+  Being the harsher of the two, it refuses what switching off refuses: a seeded
+  administrator, and the last administrator. Banning either is the one way to
+  lock the mirror out for good, because no sync and no sign-in undoes a ban.
   """
   def ban(%User{} = user, actor) do
-    if User.banned?(user) do
-      {:ok, user}
-    else
-      with {:ok, banned} <- put_flags(user, %{banned_at: now()}) do
-        Audit.log(actor, User.audit_event_banned(banned))
-        {:ok, banned}
-      end
+    cond do
+      User.banned?(user) ->
+        {:ok, user}
+
+      Admins.protected?(user) ->
+        {:error, :protected_admin}
+
+      last_admin?(user) ->
+        {:error, :last_admin}
+
+      true ->
+        with {:ok, banned} <- put_flags(user, %{banned_at: now()}) do
+          Audit.log(actor, User.audit_event_banned(banned))
+          {:ok, banned}
+        end
     end
   end
 

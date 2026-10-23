@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersGuardTest do
   import Phoenix.LiveViewTest
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.User
 
   setup do
     # No automatic administrator: this test needs to know exactly who is left.
@@ -27,6 +28,19 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersGuardTest do
     assert has_element?(view, "#role-locked-#{admin.id}", "Last admin")
     assert has_element?(view, "#toggle-locked-#{admin.id}")
     refute has_element?(view, "#toggle-#{admin.id}")
+    assert has_element?(view, "#ban-locked-#{admin.id}", "Last admin")
+    refute has_element?(view, "#ban-#{admin.id}")
+  end
+
+  test "the last administrator cannot be banned even if the event arrives", %{conn: conn} do
+    admin = user_fixture(%{email: "solo@example.com", role: "admin"})
+
+    {:ok, view, _html} = live(sign_in(conn, admin), ~p"/admin/users")
+
+    html = render_submit(view, "ban", %{"user_id" => to_string(admin.id)})
+
+    assert html =~ "last administrator"
+    refute User.banned?(Accounts.get_user(admin.id))
   end
 
   test "the last administrator stays one even if the event arrives", %{conn: conn} do
