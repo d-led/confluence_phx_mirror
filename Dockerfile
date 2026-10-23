@@ -109,11 +109,11 @@ COPY --from=assets /assets/node_modules assets/node_modules
 
 # `assets.setup` fetches the standalone esbuild and tailwind binaries, so the
 # image bundles with the same versions a developer has locally. esbuild's comes
-# from the npm registry, tailwind's from GitHub's releases — where a redirect
-# header larger than `:httpc`'s 10 KiB cap made the download fail on a URL that
-# was perfectly good. `mix assets.install` fetches both with Req, which follows
-# that redirect and retries a transient failure itself, so the build has no
-# loop of its own to get stuck in.
+# from the npm registry by its own Mix task; tailwind's from GitHub's releases,
+# where a redirect header larger than `:httpc`'s 10 KiB cap made the download
+# fail on a URL that was perfectly good. `mix assets.install` fetches that one
+# with Req, which follows the redirect and retries a transient failure itself,
+# so the build has no loop of its own to get stuck in.
 RUN mix assets.setup \
   && mix compile \
   && mix assets.deploy
