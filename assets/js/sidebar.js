@@ -54,7 +54,14 @@ function render() {
   aside.inert = !visible
   if (backdrop) backdrop.hidden = !(state.open && !desktop)
   document.body.classList.toggle("overflow-hidden", state.open && !desktop)
-  if (toggle) toggle.setAttribute("aria-expanded", String(visible))
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", String(visible))
+    // The button names the action it performs, not the state it is in: on a
+    // laptop it collapses or expands the column, on a phone it is the drawer.
+    const label = desktop ? (state.collapsed ? "Expand sidebar" : "Collapse sidebar") : (state.open ? "Close navigation" : "Open navigation")
+    toggle.setAttribute("aria-label", label)
+    toggle.setAttribute("title", label)
+  }
 }
 
 function closeDrawer({restoreFocus = true} = {}) {

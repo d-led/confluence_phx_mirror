@@ -15,7 +15,13 @@ defmodule ConfluencePhxMirrorWeb.ShellTest do
 
       {:ok, view, _html} = live(conn, ~p"/spaces")
 
-      assert has_element?(view, "button[data-sidebar-toggle][aria-controls='mirror-sidebar']")
+      # The button names the action it performs, not the state it is in — the
+      # same contract Confluence's own sidebar control has.
+      assert has_element?(
+               view,
+               "button[data-sidebar-toggle][aria-controls='mirror-sidebar'][aria-expanded='true'][aria-label='Collapse sidebar']"
+             )
+
       assert has_element?(view, "#mirror-sidebar a[href='/spaces/#{space.key}']")
     end
 

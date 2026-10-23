@@ -73,10 +73,45 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             data-sidebar-toggle
             aria-controls="mirror-sidebar"
             aria-expanded="true"
-            aria-label="Browse spaces and pages"
-            class="-ml-1 grid size-11 shrink-0 place-items-center rounded-lg text-base-content/70 transition hover:bg-base-200 hover:text-base-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 lg:size-9"
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+            class="group -ml-1 grid size-11 shrink-0 place-items-center rounded-lg text-base-content/70 transition hover:bg-base-200 hover:text-base-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 lg:size-9"
           >
-            <.icon name="hero-bars-3" class="size-5" />
+            <%!--
+              The panel glyph Atlassian uses: a sidebar with a divider and a
+              chevron pointing the way the panel is about to move — right while
+              it is closed, left while it is open. `sidebar.js` keeps
+              `aria-expanded` in step and these two variants follow it, so the
+              button never states the wrong action.
+            --%>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="size-5 group-aria-expanded:hidden"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M9 3v18" />
+              <path d="m14 9 3 3-3 3" />
+            </svg>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="hidden size-5 group-aria-expanded:block"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M9 3v18" />
+              <path d="m16 15-3-3 3-3" />
+            </svg>
           </button>
           <.link
             navigate={~p"/"}
