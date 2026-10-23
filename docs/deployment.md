@@ -39,6 +39,11 @@ What the image promises:
 * **Unprivileged.** Everything runs as uid/gid `10001` (`app`), so
   `runAsNonRoot` can be checked rather than assumed. CI asserts both the
   non-root uid and that Trivy finds nothing fixable at CRITICAL or HIGH.
+* **Multi-arch.** A published tag is one image index with `linux/amd64` and
+  `linux/arm64` manifests, so an Apple Silicon laptop and an arm64 VM pull a
+  native build while x86 servers pull theirs. CI builds and checks amd64 on the
+  runner's own architecture; the arm64 half is compiled under QEMU on
+  publication only, so pull requests do not pay for it.
 * **One writable directory.** `/app/var/mirror` holds the blob store
   (`MIRROR_BLOB_ROOT`); mount a volume there. The rest of `/app` is read-only
   for the app user, which is why the Kubernetes manifests can set
@@ -226,7 +231,7 @@ not for the deployment.
 | --- | --- |
 | **Static analysis** | `mix lint`: `compile --warnings-as-errors`, `deps.unlock --check-unused`, `format --check-formatted`, `credo --strict`, `sobelow --config` |
 | **Suite and complexity** | Postgres 17 service, `mix cover` (the suite with coverage), then `mix complexity` (CRAP per function, threshold 30) |
-| **Image, scan, non-root** | `docker build`, Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), and `id -u` in the image must be `10001` |
+| **Image, scan, non-root** | `docker build` (amd64), Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), `id -u` must be `10001`, then the amd64 + arm64 index is published |
 
 On `main` and on `v*.*.*` tags the image is published to
 `ghcr.io/d-led/confluence_phx_mirror` under the **branch or tag name**: `:main`
