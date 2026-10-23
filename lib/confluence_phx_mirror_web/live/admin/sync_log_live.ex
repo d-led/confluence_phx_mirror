@@ -10,7 +10,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
 
   Lines arrive over PubSub as the sync writes them, and the page seeds itself
   with whatever the log still holds, so opening it mid-run is useful. Following
-  the tail is on by default; a reader who is reading back can pause it.
+  the tail is on by default and is a toggle: pressing it, or scrolling back to
+  read, stops the page from pulling the reader down while the lines keep coming.
   """
 
   use ConfluencePhxMirrorWeb, :live_view
@@ -41,7 +42,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
        visible: filter_entries(entries, "all", ""),
        level: "all",
        query: "",
-       paused?: false,
+       follow?: true,
        level_options: @level_options,
        counts: count(entries),
        traffic: Traffic.summary(),
@@ -72,8 +73,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
      )}
   end
 
-  def handle_event("pause", _params, socket) do
-    {:noreply, assign(socket, :paused?, not socket.assigns.paused?)}
+  # The tail is followed by default. Pressing the button (or scrolling back, which
+  # the page reports the same way) stops the page from dragging the reader away
+  # from what they are reading; the lines keep arriving either way.
+  def handle_event("toggle_follow", _params, socket) do
+    {:noreply, assign(socket, :follow?, not socket.assigns.follow?)}
+  end
+
+  def handle_event("scrolled", %{"follow" => follow}, socket) when is_boolean(follow) do
+    {:noreply, assign(socket, :follow?, follow)}
   end
 
   def handle_event("clear", _params, socket) do
@@ -82,12 +90,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
     {:noreply, assign(socket, entries: [], visible: [], counts: count([]))}
   end
 
-  # While paused the page keeps the lines it has, and catches up when resumed
-  # from the log itself, which is the ring buffer the sync writes to.
   @impl true
-  def handle_info({:sync_log, _entry}, %{assigns: %{paused?: true}} = socket),
-    do: {:noreply, socket}
-
   def handle_info({:sync_log, entry}, socket) do
     entries = Enum.take(socket.assigns.entries ++ [entry], -Log.limit())
 
@@ -191,17 +194,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
         </select>
 
         <button
-          id="sync-log-pause"
+          id="sync-log-follow"
           type="button"
-          phx-click="pause"
+          phx-click="toggle_follow"
+          aria-pressed={to_string(@follow?)}
+          title="Scroll to new lines as they arrive"
           class={[
             "btn btn-sm h-8 gap-1.5",
-            @paused? && "btn-warning btn-soft",
-            !@paused? && "btn-ghost"
+            @follow? && "btn-ghost",
+            !@follow? && "btn-warning btn-soft"
           ]}
         >
-          <.icon name={if @paused?, do: "hero-play", else: "hero-pause"} class="size-4" />
-          {if @paused?, do: "Paused", else: "Following"}
+          <.icon name={if @follow?, do: "hero-pause", else: "hero-play"} class="size-4" />
+          {if @follow?, do: "Following", else: "Paused"}
         </button>
 
         <button id="sync-log-clear" type="button" phx-click="clear" class="btn btn-ghost btn-sm h-8">
@@ -230,6 +235,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
       <div
         id="sync-log"
         phx-hook=".Follow"
+        data-follow={to_string(@follow?)}
         class="mt-2 max-h-[70vh] overflow-y-auto rounded-xl border border-base-300/70 bg-base-100 font-mono text-[11px]"
       >
         <p class="hidden only:block px-4 py-10 text-center font-sans text-sm text-base-content/70">
@@ -258,18 +264,31 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
       <script :type={Phoenix.LiveView.ColocatedHook} name=".Follow">
         export default {
           mounted() {
-            this.follow = true
-            this.el.scrollTop = this.el.scrollHeight
+            // Scrolling away from the newest line is how a reader says "let me
+            // read": it turns following off without a second control.
             this.el.addEventListener("scroll", () => {
               const atBottom = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40
-              this.follow = atBottom
+              if (atBottom !== this.follow) this.pushEvent("scrolled", {follow: atBottom})
             })
-            this.handleEvent("sync-log:new", () => {
-              if (this.follow) this.el.scrollTop = this.el.scrollHeight
-            })
+            // The server pushes this after the diff, so the new line is already
+            // in the DOM when the event arrives.
+            this.handleEvent("sync-log:new", () => this.scrollToEnd())
+            this.readToggle()
           },
           updated() {
-            if (this.follow) this.el.scrollTop = this.el.scrollHeight
+            this.readToggle()
+          },
+          readToggle() {
+            const follow = this.el.dataset.follow === "true"
+            const turnedOn = follow && this.follow !== true
+            this.follow = follow
+            if (turnedOn) this.scrollToEnd()
+          },
+          scrollToEnd() {
+            if (!this.follow) return
+            // Reading scrollHeight forces the layout, so this includes the line
+            // that just arrived.
+            this.el.scrollTop = this.el.scrollHeight
           }
         }
       </script>

@@ -56,10 +56,22 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
     assert html =~ "page failed: Broken"
   end
 
-  test "a paused reader keeps the lines they were reading", %{conn: conn} do
+  test "the page follows new lines until the reader pauses it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
 
-    view |> element("#sync-log-pause") |> render_click()
+    assert has_element?(view, "#sync-log[data-follow=true]")
+    assert has_element?(view, "#sync-log-follow[aria-pressed=true]")
+
+    view |> element("#sync-log-follow") |> render_click()
+
+    assert has_element?(view, "#sync-log[data-follow=false]")
+    assert has_element?(view, "#sync-log-follow[aria-pressed=false]")
+  end
+
+  test "a paused reader still gets the lines, the page just stops following them", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
+
+    view |> element("#sync-log-follow") |> render_click()
 
     Phoenix.PubSub.broadcast(
       ConfluencePhxMirror.PubSub,
@@ -67,7 +79,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
       {:sync_log, entry(:info, "line while paused")}
     )
 
-    refute render(view) =~ "line while paused"
+    assert render(view) =~ "line while paused"
+    assert has_element?(view, "#sync-log[data-follow=false]")
+  end
+
+  test "scrolling back stops the page from following", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
+
+    view |> render_hook("scrolled", %{"follow" => false})
+
+    assert has_element?(view, "#sync-log-follow[aria-pressed=false]")
+
+    view |> render_hook("scrolled", %{"follow" => true})
+
+    assert has_element?(view, "#sync-log-follow[aria-pressed=true]")
   end
 
   test "a snapshot leaves the pages it mirrored in the log", %{conn: conn} do
