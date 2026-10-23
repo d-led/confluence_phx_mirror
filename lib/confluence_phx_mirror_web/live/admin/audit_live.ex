@@ -154,12 +154,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
           id={"audit-#{event.id}"}
           class="flex flex-wrap gap-x-4 gap-y-1 px-4 py-3"
         >
-          <time
+          <.local_time
+            at={event.inserted_at}
             class="w-24 shrink-0 text-[11px] text-base-content/70"
-            title={Time.datetime(event.inserted_at)}
           >
             {Time.ago(event.inserted_at)}
-          </time>
+          </.local_time>
 
           <div class="min-w-0 flex-1">
             <p class="text-sm">
