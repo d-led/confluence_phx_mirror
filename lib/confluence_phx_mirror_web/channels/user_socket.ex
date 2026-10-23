@@ -7,6 +7,7 @@ defmodule ConfluencePhxMirrorWeb.UserSocket do
   alias ConfluencePhxMirror.Accounts.Scope
 
   channel "page:*", ConfluencePhxMirrorWeb.PageChannel
+  channel "site", ConfluencePhxMirrorWeb.SiteChannel
 
   @impl true
   def connect(_params, %Phoenix.Socket{} = socket, %{session: session}) do

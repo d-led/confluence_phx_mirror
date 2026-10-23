@@ -37,7 +37,7 @@ defmodule ConfluencePhxMirrorWeb.PageChannel do
     topic = Presence.topic(socket.assigns.page.confluence_id)
 
     {:ok, _} =
-      Presence.track(socket, key(socket), %{
+      Presence.track(socket, Presence.reader_key(socket), %{
         online_at: System.system_time(:second),
         user: display_name(socket),
         page_id: socket.assigns.page.confluence_id
@@ -45,13 +45,6 @@ defmodule ConfluencePhxMirrorWeb.PageChannel do
 
     push(socket, "presence_state", Presence.list(topic))
     {:noreply, socket}
-  end
-
-  defp key(socket) do
-    case socket.assigns[:user_id] do
-      nil -> socket.id
-      user_id -> "user:#{user_id}"
-    end
   end
 
   defp display_name(socket) do

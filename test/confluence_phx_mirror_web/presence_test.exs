@@ -7,6 +7,7 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirrorWeb.PageChannel
   alias ConfluencePhxMirrorWeb.Presence
+  alias ConfluencePhxMirrorWeb.SiteChannel
   alias ConfluencePhxMirrorWeb.UserSocket
 
   @endpoint ConfluencePhxMirrorWeb.Endpoint
@@ -62,5 +63,41 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
 
     assert {:error, %{reason: "page_not_found"}} =
              subscribe_and_join(socket, PageChannel, "page:999999")
+  end
+
+  test "a reader with two tabs is one person reading the page" do
+    {:ok, _run} = ConfluencePhxMirror.Sync.run(:snapshot)
+    page = Mirror.get_page!(1002)
+    tab = socket(UserSocket, "user:1", %{user_id: 1, user_name: "jane"})
+
+    {:ok, _reply, _tab} = subscribe_and_join(tab, PageChannel, Presence.topic(page.confluence_id))
+    {:ok, _reply, _tab} = subscribe_and_join(tab, PageChannel, Presence.topic(page.confluence_id))
+
+    # two tabs, one reader
+    assert %{"user:1" => %{metas: [_, _]}} =
+             Presence.list(Presence.topic(page.confluence_id))
+
+    assert Presence.count(page.confluence_id) == 1
+  end
+
+  test "joining the site channel puts the reader online, once per person" do
+    tab = socket(UserSocket, "user:1", %{user_id: 1, user_name: "jane"})
+
+    {:ok, _reply, _tab} = subscribe_and_join(tab, SiteChannel, "site")
+    {:ok, _reply, _tab} = subscribe_and_join(tab, SiteChannel, "site")
+
+    assert %{"user:1" => %{metas: [_, _]}} = Presence.list(Presence.site_topic())
+    assert Presence.online_count() == 1
+  end
+
+  # The footer shows a number, so the site topic carries no names: a reader's
+  # name is only published on the page they are reading, to its readers.
+  test "the site topic never publishes a reader's name" do
+    tab = socket(UserSocket, "user:1", %{user_id: 1, user_name: "jane"})
+
+    {:ok, _reply, _channel} = subscribe_and_join(tab, SiteChannel, "site")
+
+    assert_push "presence_state", state
+    refute inspect(state) =~ "jane"
   end
 end
