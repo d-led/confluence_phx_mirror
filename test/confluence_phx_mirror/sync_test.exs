@@ -6,12 +6,14 @@ defmodule ConfluencePhxMirror.SyncTest do
 
   alias ConfluencePhxMirror.Audit.Event
   alias ConfluencePhxMirror.Blobs.Store
-  alias ConfluencePhxMirror.Confluence.{EditedSource, EmptyListingSource}
+  alias ConfluencePhxMirror.Confluence.{EditedSource, EmptyListingSource, TrafficSource}
+  alias ConfluencePhxMirror.Confluence.Traffic
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Link, Page, Space}
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Notifications.{EmailWorker, Notification}
   alias ConfluencePhxMirror.Sync
+  alias ConfluencePhxMirror.Sync.Log
 
   setup do
     clean_blobs()
@@ -269,4 +271,30 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert run.stats["pages"] == 0
     end
   end
+
+  describe "the account of a run's calls" do
+    setup do
+      Log.clear()
+      on_exit(&Traffic.reset/0)
+      :ok
+    end
+
+    test "a run ends with what its calls to Confluence cost" do
+      assert {:ok, _run} = Sync.run(:snapshot, source: TrafficSource)
+
+      assert %{kind: :http_summary, message: message} = summary_entry()
+      assert message =~ "http: 1 call · 512 B · avg 12 ms"
+    end
+
+    test "the account covers one run, not the run before it" do
+      Traffic.request(200, 900, 1_000_000)
+
+      assert {:ok, _run} = Sync.run(:snapshot)
+
+      assert Traffic.summary().requests == 0
+      refute summary_entry()
+    end
+  end
+
+  defp summary_entry, do: Log.entries() |> Enum.find(&(&1.kind == :http_summary))
 end

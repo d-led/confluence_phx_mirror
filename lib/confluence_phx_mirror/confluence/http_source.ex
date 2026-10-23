@@ -16,12 +16,17 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   (no redirects, same host only), rate limited, size capped and retried on
   transient errors. Content is fetched with `export_view` expanded, so the
   mirror gets Confluence's own macro rendering.
+
+  Every attempt is also one line in the sync log (`/admin/sync-log`) and one
+  tick in `Traffic`: method, path, status, size and latency on success, the
+  reason and the wait before a retry, and the failure that ended it. That is
+  the detail; `Traffic.describe/1` is the account a run ends with.
   """
 
   @behaviour ConfluencePhxMirror.Confluence.Source
 
-  alias ConfluencePhxMirror.Confluence.RateLimiter
-  alias ConfluencePhxMirror.Confluence.SafeURL
+  alias ConfluencePhxMirror.Confluence.{RateLimiter, SafeURL, Traffic}
+  alias ConfluencePhxMirror.Sync.Log
 
   @page_expand "body.storage,body.export_view,version,ancestors,metadata.labels,space,history"
 
@@ -494,10 +499,14 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     SafeURL.resolve(url, config()[:base_url])
   end
 
+  # One attempt, one line in the sync log, one tick in `Traffic`. The line is
+  # written when the answer is in, which is what gives it a status and a
+  # latency; a call that will be retried says so and how long it will wait.
   defp request(method, url, options, attempt \\ 1) do
-    RateLimiter.acquire()
+    {:ok, waited_ms} = RateLimiter.acquire()
+    Traffic.throttled(waited_ms)
 
-    {extra_headers, options} = Keyword.pop(options, :headers, [])
+    {extra_headers, request_options} = Keyword.pop(options, :headers, [])
 
     defaults = [
       headers: auth_headers() ++ extra_headers,
@@ -510,26 +519,154 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
     # `:req_options` lets a deployment (or a test) supply transport options such
     # as a stubbed plug; anything set here wins over the defaults above.
-    request = [method: method, url: url] ++ defaults ++ options ++ (config()[:req_options] || [])
+    request =
+      [method: method, url: url] ++ defaults ++ request_options ++ (config()[:req_options] || [])
+
+    started = now_ms()
 
     case Req.request(request) do
       {:ok, %Req.Response{} = response} ->
-        if retryable?(response) and attempt < max_attempts() do
-          backoff(attempt)
-          request(method, url, options, attempt + 1)
-        else
-          check_size(response)
-        end
+        settle(response, method, url, options, attempt, now_ms() - started, waited_ms)
 
       {:error, reason} ->
-        if attempt < max_attempts() do
-          backoff(attempt)
-          request(method, url, options, attempt + 1)
-        else
-          {:error, {:transport, reason}}
-        end
+        transport_failed(reason, method, url, options, attempt, waited_ms)
     end
   end
+
+  defp settle(response, method, url, options, attempt, duration_ms, waited_ms) do
+    facts = %{
+      status: response.status,
+      ms: duration_ms,
+      bytes: body_size(response),
+      attempt: attempt,
+      waited: waited_ms
+    }
+
+    Traffic.request(response.status, duration_ms, facts.bytes)
+    Traffic.slowest(call_label(method, url), duration_ms)
+
+    if retryable?(response) and attempt < max_attempts() do
+      retry(method, url, options, attempt, facts)
+    else
+      # A 404 is how the site says "no such page or group", and the sync handles
+      # that as an answer, so it is not a failed call. Anything else that ends
+      # the retry loop without content is.
+      if response.status >= 400 and response.status != 404,
+        do: Traffic.failed(response.status)
+
+      store(response, method, url, facts)
+    end
+  end
+
+  defp store(response, method, url, facts) do
+    case check_size(response) do
+      {:ok, %Req.Response{} = response} ->
+        log_call(level_for(response.status), method, url, facts, nil)
+        {:ok, response}
+
+      {:error, {:body_too_large, size, limit} = reason} ->
+        Traffic.failed(:body_too_large)
+
+        log_call(
+          :error,
+          method,
+          url,
+          facts,
+          "body of #{size} bytes is over the #{limit} byte cap"
+        )
+
+        {:error, reason}
+    end
+  end
+
+  defp retry(method, url, options, attempt, facts) do
+    Traffic.retry()
+    wait_ms = retry_wait_ms(attempt)
+
+    note = "retrying in #{wait_ms} ms (attempt #{attempt + 1} of #{max_attempts()})"
+    log_call(:warn, method, url, facts, note)
+
+    Process.sleep(wait_ms)
+    request(method, url, options, attempt + 1)
+  end
+
+  defp transport_failed(reason, method, url, options, attempt, waited_ms) do
+    facts = %{attempt: attempt, waited: waited_ms}
+
+    if attempt < max_attempts() do
+      Traffic.retry()
+      wait_ms = retry_wait_ms(attempt)
+
+      note =
+        "transport error #{inspect(reason)}, retrying in #{wait_ms} ms " <>
+          "(attempt #{attempt + 1} of #{max_attempts()})"
+
+      log_call(:warn, method, url, facts, note)
+
+      Process.sleep(wait_ms)
+      request(method, url, options, attempt + 1)
+    else
+      Traffic.failed(:transport)
+      log_call(:error, method, url, facts, "transport error #{inspect(reason)}")
+      {:error, {:transport, reason}}
+    end
+  end
+
+  # `GET /wiki/rest/api/content?limit=50&spaceKey=ENG&type=page 200 42 ms`
+  defp log_call(level, method, url, facts, note) do
+    line =
+      [
+        call_label(method, url),
+        facts[:status],
+        facts[:ms] && "#{facts[:ms]} ms",
+        attempt_note(facts[:attempt]),
+        note
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join(" ")
+
+    Log.add(level, line, %{
+      kind: :http,
+      method: method,
+      url: path_of(url),
+      status: facts[:status],
+      ms: facts[:ms],
+      bytes: facts[:bytes],
+      attempt: facts[:attempt],
+      waited: facts[:waited]
+    })
+  end
+
+  defp attempt_note(attempt) when attempt > 1, do: "(#{attempt}/#{max_attempts()})"
+  defp attempt_note(_attempt), do: nil
+
+  defp call_label(method, url), do: "#{method |> to_string() |> String.upcase()} #{path_of(url)}"
+
+  defp path_of(url) do
+    uri = URI.parse(url)
+
+    # `expand` is the same column list on every call and says nothing about
+    # which content was asked for, so it is left out of the line.
+    query =
+      if uri.query, do: uri.query |> URI.decode_query() |> Map.delete("expand"), else: %{}
+
+    path = (uri.path || "/") <> if(query == %{}, do: "", else: "?" <> URI.encode_query(query))
+
+    # A download that leaves the site (the media API) means nothing without its
+    # host, so the host is shown only when it is not the configured one.
+    label = if uri.host == site_host(), do: path, else: "#{uri.host}#{path}"
+
+    if String.length(label) > 160, do: String.slice(label, 0, 159) <> "…", else: label
+  end
+
+  defp site_host do
+    (config()[:base_url] || "") |> URI.parse() |> Map.get(:host)
+  end
+
+  defp body_size(%Req.Response{body: body}) when is_binary(body), do: byte_size(body)
+  defp body_size(_response), do: 0
+
+  defp now_ms, do: System.monotonic_time(:millisecond)
 
   defp check_size(%Req.Response{body: body} = response) when is_binary(body) do
     limit =
@@ -551,9 +688,14 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   defp retryable?(%Req.Response{status: status}), do: status == 429 or status >= 500
 
-  defp backoff(attempt) do
-    Process.sleep(retry_backoff_ms() * Integer.pow(2, attempt - 1))
-  end
+  defp level_for(status) when status in 200..399, do: :debug
+  defp level_for(404), do: :debug
+  defp level_for(401), do: :error
+  defp level_for(403), do: :error
+  defp level_for(status) when status >= 500, do: :error
+  defp level_for(_status), do: :warn
+
+  defp retry_wait_ms(attempt), do: retry_backoff_ms() * Integer.pow(2, attempt - 1)
 
   defp decode_json(body) do
     case JSON.decode(body) do

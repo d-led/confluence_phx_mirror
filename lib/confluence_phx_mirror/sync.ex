@@ -21,6 +21,7 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Blobs.{Key, Store}
   alias ConfluencePhxMirror.Confluence.Source
+  alias ConfluencePhxMirror.Confluence.Traffic
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
   alias ConfluencePhxMirror.Notifications
@@ -886,6 +887,10 @@ defmodule ConfluencePhxMirror.Sync do
   # ---------------------------------------------------------------------------
 
   defp start_run(source, mode, actor, trigger) do
+    # The traffic account covers one run: every call this run makes is counted
+    # here and reported when it ends, so a reader never sees yesterday's totals.
+    Traffic.reset()
+
     {:ok, run} =
       %SyncRun{}
       |> SyncRun.changeset(%{
@@ -946,6 +951,8 @@ defmodule ConfluencePhxMirror.Sync do
       sync_run_id: run.id
     )
 
+    log_traffic_summary()
+
     Log.current_run(nil)
 
     {:ok, run}
@@ -958,9 +965,23 @@ defmodule ConfluencePhxMirror.Sync do
       |> Repo.update()
 
     Log.add(:error, "sync failed: #{message}", sync_run_id: run.id, trigger: trigger)
+    log_traffic_summary()
     Log.current_run(nil)
 
     Audit.log(Audit.system_actor(), SyncRun.audit_event_failed(run, message, trigger: trigger))
+  end
+
+  # The lines above are the detail; this is the account. A run that never
+  # touched the network (the demo snapshot) has nothing to report.
+  defp log_traffic_summary do
+    traffic = Traffic.summary()
+
+    if traffic.requests > 0 do
+      Log.add(:info, "http: " <> Traffic.describe(traffic),
+        kind: :http_summary,
+        answers: Traffic.answers(traffic)
+      )
+    end
   end
 
   defp normalize_errors(errors) do

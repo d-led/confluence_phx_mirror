@@ -12,6 +12,11 @@ defmodule ConfluencePhxMirror.Sync.Log do
   so a page opened mid-run still shows the last few hundred lines. The console
   gets the same entry through `Logger`, because a deployed mirror has no browser
   attached to it.
+
+  A run's calls to Confluence are entries too (`kind: :http`), one line per
+  attempt, so the page is a real stream of what went over the wire rather than
+  a summary of it. They are written at `:debug`, which keeps them out of the
+  console but in the page.
   """
 
   use GenServer
@@ -23,10 +28,17 @@ defmodule ConfluencePhxMirror.Sync.Log do
 
   @type level :: :debug | :info | :warn | :error
 
+  @typedoc """
+  What a line is about: the sync's own progress (`:sync`), one call to
+  Confluence (`:http`), or the account of a run's calls (`:http_summary`).
+  """
+  @type kind :: :sync | :http | :http_summary
+
   @type entry :: %{
           id: integer(),
           at: DateTime.t(),
           level: level(),
+          kind: kind(),
           message: String.t(),
           run_id: integer() | nil,
           details: map()
@@ -61,6 +73,10 @@ defmodule ConfluencePhxMirror.Sync.Log do
   @spec entries() :: [entry()]
   def entries, do: GenServer.call(__MODULE__, :entries)
 
+  @doc "How many lines the log keeps; a page showing the tail shows this many."
+  @spec limit() :: pos_integer()
+  def limit, do: @limit
+
   @doc "Forgets everything kept in memory. The log is a view, not a record."
   @spec clear() :: :ok
   def clear, do: GenServer.cast(__MODULE__, :clear)
@@ -70,10 +86,13 @@ defmodule ConfluencePhxMirror.Sync.Log do
 
   @impl true
   def handle_cast({:append, level, message, details}, state) do
+    {kind, details} = Map.pop(details, :kind, :sync)
+
     entry = %{
       id: System.unique_integer([:monotonic, :positive]),
       at: DateTime.utc_now(),
       level: level,
+      kind: kind,
       message: message,
       run_id: details[:sync_run_id] || state.run_id,
       details: Map.drop(details, [:sync_run_id, :message])

@@ -284,6 +284,13 @@ Two things must be backed up together:
 * **Client → Confluence**: the token bucket that protects your Confluence site
   is a sync setting; see
   [site-admin-guide.md](site-admin-guide.md#the-client-is-conservative-on-purpose).
+* **Watching it work**: `/admin/sync-log` streams every call the sync makes —
+  method, path, status, size and latency, with `waited=…` on the calls the
+  bucket made queue and a `warn` line naming the wait before each retry. The run
+  ends with a summary of the whole account: calls, bytes, average latency,
+  retries, throttled time and failures, followed by the answers the site gave
+  (`200×4200 429×31`). The same lines reach stdout at `debug` level, so a
+  release can keep them in its log pipeline.
 
 ## Attachments on disk
 
