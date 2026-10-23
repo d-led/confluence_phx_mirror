@@ -1,0 +1,264 @@
+# The mirror on Kubernetes: one StatefulSet-free Deployment, a headless Service
+# for the cluster, and a Secret for everything that is not in this file.
+#
+# Apply order:
+#
+#   kubectl apply -f deploy/k8s/secret.yaml        # from secret.example.yaml
+#   kubectl apply -f deploy/k8s/confluence-mirror.yaml
+#   kubectl apply -f deploy/k8s/oauth2-proxy.yaml
+#
+# The shape is the same as on Fly: the mirror has no public address, the only
+# way in is the oauth2-proxy Service, and the mirror trusts a proxy-set identity
+# header only because of that (CM_PROXY_AUTH). A NetworkPolicy makes the "no
+# public address" part explicit rather than incidental.
+#
+# The release names its own node from POD_NAME and POD_IP (rel/env.sh.eex) and
+# joins its peers through DNS_CLUSTER_QUERY, so clustering needs nothing beyond
+# the downward API entries below and the headless Service.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: confluence-mirror
+---
+# Attachments live here. ReadWriteMany because more than one replica has to see
+# the same blob store; with a ReadWriteOnce class, run one replica instead
+# (replicas: 1 below) or point MIRROR_BLOB_ROOT at shared storage.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mirror-blobs
+  namespace: confluence-mirror
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: nfs-client   # any class that supports ReadWriteMany
+---
+# The headless Service is what DNSCluster resolves: with a StatefulSet or with
+# pod-IP endpoints, `confluence-mirror-headless` returns one address per ready
+# pod.
+apiVersion: v1
+kind: Service
+metadata:
+  name: confluence-mirror-headless
+  namespace: confluence-mirror
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: confluence-mirror
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+---
+# The address oauth2-proxy points at.
+apiVersion: v1
+kind: Service
+metadata:
+  name: confluence-mirror
+  namespace: confluence-mirror
+spec:
+  selector:
+    app.kubernetes.io/name: confluence-mirror
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: confluence-mirror
+  namespace: confluence-mirror
+spec:
+  # More than one replica needs the shared volume above: URL slugs, counters and
+  # PubSub are clustered, but attachment bytes are not replicated.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: confluence-mirror
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: confluence-mirror
+    spec:
+      securityContext:
+        # The image's uid, so runAsNonRoot can be checked before the container
+        # starts rather than trusted.
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mirror
+          image: ghcr.io/d-led/confluence_phx_mirror:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/app/bin/server"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 4000
+          env:
+            - name: PHX_HOST
+              value: mirror.example.com
+            - name: PORT
+              value: "4000"
+            # Identity comes from oauth2-proxy's X-Forwarded-Email; trust it
+            # only because the NetworkPolicy below admits nothing else.
+            - name: CM_PROXY_AUTH
+              value: "true"
+            - name: CM_TRUST_PROXY_HEADERS
+              value: "true"
+            # Mirroring a real site: set these three as secrets and drop the
+            # demo line instead.
+            - name: CM_SOURCE
+              value: demo
+            - name: POOL_SIZE
+              value: "10"
+            - name: MIRROR_BLOB_ROOT
+              value: /app/var/mirror
+            # A crash dump must not land in the read-only root.
+            - name: ERL_CRASH_DUMP
+              value: /tmp/erl_crash.dump
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: DNS_CLUSTER_QUERY
+              value: confluence-mirror-headless.confluence-mirror.svc.cluster.local
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: confluence-mirror
+                  key: database-url
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: confluence-mirror
+                  key: secret-key-base
+            - name: RELEASE_COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: confluence-mirror
+                  key: release-cookie
+          volumeMounts:
+            - name: blobs
+              mountPath: /app/var/mirror
+            - name: tmp
+              mountPath: /tmp
+          # /health answers 503 when Postgres is unreachable, which is a
+          # readiness question, not a reason to restart the process.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: blobs
+          persistentVolumeClaim:
+            claimName: mirror-blobs
+        - name: tmp
+          emptyDir: {}
+---
+# Migrations as a deploy step, once per release: the same image, the release
+# overlay that only runs `Release.migrate`. Apply it before rolling the
+# Deployment (or let a GitOps pipeline order the two).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: confluence-mirror-migrate
+  namespace: confluence-mirror
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: ghcr.io/d-led/confluence_phx_mirror:latest
+          command: ["/app/bin/migrate"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: confluence-mirror
+                  key: database-url
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: confluence-mirror
+                  key: secret-key-base
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+# The mirror speaks to oauth2-proxy and to Postgres, and to nothing else. The
+# egress rule names the proxy by namespace (a CNI that enforces it will also
+# need the DNS and database endpoints of your cluster).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mirror-ingress-from-proxy-only
+  namespace: confluence-mirror
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: confluence-mirror
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: oauth2-proxy
+      ports:
+        - protocol: TCP
+          port: 4000

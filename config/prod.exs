@@ -11,11 +11,20 @@ config :confluence_phx_mirror, ConfluencePhxMirrorWeb.Endpoint,
 # Force using SSL in production. This also sets the "strict-security-transport" header,
 # known as HSTS. If you have a health check endpoint, you may want to exclude it below.
 # Note `:force_ssl` is required to be set at compile-time.
+#
+# The redirect reads X-Forwarded-Proto, so a TLS-terminating proxy in front has
+# to send it — oauth2-proxy does (OAUTH2_PROXY_REVERSE_PROXY=true), and so does
+# every ingress controller in deploy/k8s. Without it the mirror would redirect
+# the proxy to itself, forever.
+#
+# /health is excluded because probes arrive over plain HTTP from the platform
+# (a Fly Machine check, a Kubernetes kubelet) with no such header: they ask
+# "is this pod alive" and would only ever learn "301".
 config :confluence_phx_mirror, ConfluencePhxMirrorWeb.Endpoint,
   force_ssl: [
     rewrite_on: [:x_forwarded_proto],
     exclude: [
-      # paths: ["/health"],
+      paths: ["/health"],
       hosts: ["localhost", "127.0.0.1"]
     ]
   ]

@@ -1,0 +1,145 @@
+# The public front door on Kubernetes: oauth2-proxy, exactly as on Fly
+# (deploy/fly/proxy/fly.toml), pointing at the in-cluster mirror Service.
+#
+# The Ingress is the only object here with a public address; the mirror Service
+# is not exposed at all, and the NetworkPolicy in confluence-mirror.yaml admits
+# the mirror's port from these pods only.
+#
+# Secrets (see secret.example.yaml): OAUTH2_PROXY_CLIENT_ID,
+# OAUTH2_PROXY_CLIENT_SECRET, OAUTH2_PROXY_COOKIE_SECRET.
+#
+# The GitHub OAuth app's callback URL must be
+# https://mirror.example.com/oauth2/callback
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+  namespace: confluence-mirror
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oauth2-proxy
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 4180
+          env:
+            - name: OAUTH2_PROXY_PROVIDER
+              value: github
+            - name: OAUTH2_PROXY_HTTP_ADDRESS
+              value: 0.0.0.0:4180
+            - name: OAUTH2_PROXY_REDIRECT_URL
+              value: https://mirror.example.com/oauth2/callback
+            - name: OAUTH2_PROXY_UPSTREAMS
+              value: http://confluence-mirror.confluence-mirror.svc.cluster.local:4000/
+            - name: OAUTH2_PROXY_EMAIL_DOMAINS
+              value: "*"
+            # X-Forwarded-Email is what the mirror provisions accounts from;
+            # X-Forwarded-User supplies the display name.
+            - name: OAUTH2_PROXY_PASS_USER_HEADERS
+              value: "true"
+            # Trust X-Forwarded-Proto from the ingress controller, or the
+            # mirror's force_ssl redirects every proxied request to itself.
+            - name: OAUTH2_PROXY_REVERSE_PROXY
+              value: "true"
+            - name: OAUTH2_PROXY_SET_XAUTHREQUEST
+              value: "true"
+            - name: OAUTH2_PROXY_COOKIE_SECURE
+              value: "true"
+            - name: OAUTH2_PROXY_COOKIE_SAMESITE
+              value: lax
+            - name: OAUTH2_PROXY_SKIP_PROVIDER_BUTTON
+              value: "true"
+            - name: OAUTH2_PROXY_SILENCE_PING_LOGGING
+              value: "true"
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: client-id
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: cookie-secret
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth2-proxy
+  namespace: confluence-mirror
+spec:
+  selector:
+    app.kubernetes.io/name: oauth2-proxy
+  ports:
+    - name: http
+      port: 4180
+      targetPort: http
+---
+# The host is the reader-facing name; PHX_HOST on the mirror has to match it,
+# because the mirror builds absolute URLs and sets secure cookies from it.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: oauth2-proxy
+  namespace: confluence-mirror
+  annotations:
+    # Ask the controller to pass X-Forwarded-Proto (nginx: `https`).
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - mirror.example.com
+      secretName: mirror-tls
+  rules:
+    - host: mirror.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: oauth2-proxy
+                port:
+                  name: http

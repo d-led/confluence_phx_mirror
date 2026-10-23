@@ -1,0 +1,85 @@
+# fly.toml — `confluence-mirror-demo`, the public oauth2-proxy in front of the
+# private mirror app (`confluence-mirror-demo-app`, whose fly.toml sits at the
+# repository root).
+#
+# Every request to https://confluence-mirror-demo.fly.dev lands here first. The
+# proxy authenticates the reader with GitHub and forwards
+# X-Forwarded-Email / X-Forwarded-User to the mirror, which provisions the
+# account on first sight (CM_PROXY_AUTH=true on the backend).
+#
+# Secrets, set by scripts/deploy-fly.sh and never written down here:
+#   OAUTH2_PROXY_CLIENT_ID, OAUTH2_PROXY_CLIENT_SECRET  GitHub OAuth app
+#   OAUTH2_PROXY_COOKIE_SECRET                          urlsafe base64, 32 bytes
+#
+# The GitHub OAuth app's callback URL must be
+# https://confluence-mirror-demo.fly.dev/oauth2/callback
+
+app = "confluence-mirror-demo"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  OAUTH2_PROXY_PROVIDER = "github"
+  OAUTH2_PROXY_HTTP_ADDRESS = "0.0.0.0:4180"
+  OAUTH2_PROXY_REDIRECT_URL = "https://confluence-mirror-demo.fly.dev/oauth2/callback"
+
+  # The backend over Flycast, which is HTTP-only and never leaves the private
+  # network. The trailing slash matters: the proxy is mounted at the root.
+  OAUTH2_PROXY_UPSTREAMS = "http://confluence-mirror-demo-app.flycast/"
+
+  # Any GitHub account may sign in; narrow this to a domain list ("acme.com") or
+  # add OAUTH2_PROXY_GITHUB_ORG (and OAUTH2_PROXY_GITHUB_TEAM) to restrict it.
+  OAUTH2_PROXY_EMAIL_DOMAINS = "*"
+
+  # The identity headers the mirror reads: X-Forwarded-Email becomes the reader,
+  # X-Forwarded-User becomes the display name. Both are on by default; they are
+  # named here because the mirror's account provisioning depends on them.
+  OAUTH2_PROXY_PASS_USER_HEADERS = "true"
+
+  # Trust Fly's edge headers, including X-Forwarded-Proto: https. Without this
+  # the mirror's production force_ssl sees plain HTTP, redirects to HTTPS, and
+  # the proxy forwards the redirect forever.
+  OAUTH2_PROXY_REVERSE_PROXY = "true"
+
+  # X-Auth-Request-* alongside the X-Forwarded-* set, so a different backend
+  # (or a debug session with curl) has the identity in a second place.
+  OAUTH2_PROXY_SET_XAUTHREQUEST = "true"
+
+  OAUTH2_PROXY_COOKIE_SECURE = "true"
+  OAUTH2_PROXY_COOKIE_SAMESITE = "lax"
+  OAUTH2_PROXY_COOKIE_EXPIRE = "168h"
+  OAUTH2_PROXY_COOKIE_REFRESH = "1h"
+
+  # Nothing new to learn on the sign-in page, and no log line per health check.
+  OAUTH2_PROXY_SKIP_PROVIDER_BUTTON = "true"
+  OAUTH2_PROXY_SILENCE_PING_LOGGING = "true"
+
+[http_service]
+  internal_port = 4180
+  force_https = true
+  # Keep one proxy running: it holds the only public IP, and a stopped proxy
+  # answers 502 instead of waking the mirror behind it.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  max_machines_per_region = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 250
+    hard_limit = 500
+
+  # oauth2-proxy's own liveness endpoint, which answers without a session.
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/ping"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory_mb = 256

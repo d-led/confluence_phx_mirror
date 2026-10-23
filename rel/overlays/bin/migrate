@@ -1,0 +1,9 @@
+#!/bin/sh
+#
+# Migrations as a deploy step, not as part of the boot: Fly runs it once per
+# deploy as `release_command`, Kubernetes as a Job, Compose as a one-off
+# container. Two instances migrating at boot is the race this avoids.
+set -eu
+
+cd -P -- "$(dirname -- "$0")"
+exec ./confluence_phx_mirror eval "ConfluencePhxMirror.Release.migrate"

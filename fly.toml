@@ -1,0 +1,89 @@
+# fly.toml — the mirror itself, deployed as `confluence-mirror-demo-app`.
+#
+# This app has **no public IP**. The only public entry point is the
+# `confluence-mirror-demo` oauth2-proxy app in deploy/fly/proxy, and the mirror
+# is reachable from it over the private network as
+# `confluence-mirror-demo-app.flycast`. That topology is what makes trusting a
+# proxy-set identity header defensible: nothing else can open a connection, and
+# the app still refuses the header unless CM_PROXY_AUTH says otherwise.
+#
+# `scripts/deploy-fly.sh` creates the app, the volume and the secrets, and
+# deploys both apps in order. Read docs/deployment.md for the whole picture.
+
+app = "confluence-mirror-demo-app"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Once per deploy, before any Machine takes traffic: the step
+  # docs/operations.md calls "migrate as a deploy step". The release overlay
+  # leaves the Machine's own command as "start the server", so a restart never
+  # races a migration.
+  release_command = "/app/bin/migrate"
+
+[env]
+  PHX_SERVER = "true"
+  PHX_HOST = "confluence-mirror-demo.fly.dev"
+  PORT = "8080"
+
+  # The deployment mirrors the bundled demo snapshot, so it needs no Confluence
+  # credentials, and the demo source is what lets the proxy-auth shortcut run in
+  # a release without MIRROR_ALLOW_UNSAFE_IDENTITY (Config.IdentityGuard).
+  # Point CM_CONFLUENCE_SITE/CM_ATL_EMAIL/CM_ATL_TOKEN (as secrets) and drop
+  # this line to mirror a real site.
+  CM_SOURCE = "demo"
+
+  # The reader's identity arrives as X-Forwarded-Email from the proxy, which
+  # provisions the account on first sight. Only safe behind the topology above.
+  CM_PROXY_AUTH = "true"
+
+  # Anonymous readers are rate-limited by X-Forwarded-For rather than by the
+  # proxy's address; without this every reader shares one bucket.
+  CM_TRUST_PROXY_HEADERS = "true"
+
+  # Connections one Machine opens. Machines × this has to fit the Postgres
+  # max_connections budget (docs/operations.md, "Sizing the connection pool").
+  POOL_SIZE = "10"
+
+  # Attachments: a path-based blob store on the mounted volume, never in the
+  # release and never in Postgres.
+  MIRROR_BLOB_ROOT = "/app/var/mirror"
+
+[http_service]
+  internal_port = 8080
+  # Flycast is HTTP-only; TLS ends at the proxy app. The mirror's production
+  # force_ssl reads X-Forwarded-Proto, which the proxy sets.
+  force_https = false
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  max_machines_per_region = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    # LiveView keeps a connection open, so count connections, not requests.
+    type = "connections"
+    soft_limit = 200
+    hard_limit = 250
+
+  # /health answers 200 with a database check and the mirror's counters, 503
+  # when Postgres is unreachable — the same endpoint Kubernetes probes below.
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/health"
+
+# One volume per Machine, mounted where the release keeps its blobs. The deploy
+# script creates it; a Machine with attachments on ephemeral storage would lose
+# them on the next `fly deploy`.
+[[mounts]]
+  source = "mirror_blobs"
+  destination = "/app/var/mirror"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory_mb = 512
