@@ -607,8 +607,8 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
       navigate={~p"/spaces/#{@space.key}"}
       class="group flex min-h-14 items-center gap-3 px-4 py-3 transition hover:bg-base-200/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-inset"
     >
-      <span class="grid size-9 shrink-0 place-items-center rounded-md bg-base-200 text-[11px] font-semibold uppercase tracking-wide text-base-content/70">
-        {@space.key}
+      <span class="flex h-9 w-16 shrink-0 items-center justify-center rounded-md bg-base-200 px-1 text-[11px] font-semibold uppercase tracking-wide text-base-content/70">
+        <span class="truncate">{@space.key}</span>
       </span>
       <span class="min-w-0 flex-1">
         <span class="block truncate text-sm font-semibold group-hover:text-primary">
