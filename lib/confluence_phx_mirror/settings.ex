@@ -42,6 +42,21 @@ defmodule ConfluencePhxMirror.Settings do
   def reload, do: load()
 
   @doc """
+  Drops the cached value without reading the table.
+
+  The cache is `:persistent_term`, which a rolled-back test transaction does not
+  roll back: a test that stored a theme would leave the next one rendering a
+  theme nobody chose. `reload/0` cannot put the cache back in that case,
+  because the uncommitted row is still visible while the test cleans up — so the
+  suite forgets between tests instead.
+  """
+  @spec forget() :: :ok
+  def forget do
+    :persistent_term.erase(@term)
+    :ok
+  end
+
+  @doc """
   Sets the theme, or clears it with `nil`/`""`, and records who did it.
   """
   @spec put_theme(String.t() | nil, Audit.actor()) :: :ok

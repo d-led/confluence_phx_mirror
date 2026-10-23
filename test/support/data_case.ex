@@ -43,6 +43,11 @@ defmodule ConfluencePhxMirror.DataCase do
     # moving that key; every test starts from an empty cache instead.
     ConfluencePhxMirror.Mirror.Counters.clear()
 
+    # The same for the theme an administrator chose: a test that stored one
+    # would otherwise leave `:persistent_term` — which no rollback touches —
+    # wearing it for whatever ran next.
+    ConfluencePhxMirror.Settings.forget()
+
     pid =
       Ecto.Adapters.SQL.Sandbox.start_owner!(ConfluencePhxMirror.Repo, shared: not tags[:async])
 
