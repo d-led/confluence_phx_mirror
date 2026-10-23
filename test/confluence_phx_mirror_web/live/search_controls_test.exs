@@ -56,15 +56,15 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
     assert_patch(view, ~p"/search")
   end
 
-  test "typing a label and submitting it adds a removable pill", %{conn: conn} do
+  test "typing a label and submitting it filters by it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search")
 
     view |> element("#label-form") |> render_submit(%{"label" => "Release Notes"})
 
     assert_patch(view, ~p"/search?labels=release-notes")
-    assert has_element?(view, "button[aria-label='Remove label release-notes']")
+    assert has_element?(view, "#labels-filter", "Label: release-notes")
 
-    view |> element("button[aria-label='Remove label release-notes']") |> render_click()
+    view |> element("#labels-filter button[phx-click='clear_labels']") |> render_click()
 
     assert_patch(view, ~p"/search")
   end
@@ -83,7 +83,7 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
     view |> element("#search-form") |> render_change(%{"search" => %{"q" => "rate limit"}})
 
     assert_patch(view, ~p"/search?q=rate+limit")
-    assert has_element?(view, "a", "“rate limit”")
+    assert has_element?(view, "a", "rate limit")
   end
 
   test "clearing the search forgets every filter", %{conn: conn} do

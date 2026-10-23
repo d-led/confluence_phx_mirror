@@ -12,7 +12,7 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchFiltersTest do
   test "the search page labels every active filter", %{conn: conn} do
     {:ok, _view, html} = live(conn, ~p"/search?q=pipeline&type=blogpost&updated=7d")
 
-    assert html =~ "“pipeline”"
+    assert html =~ "pipeline"
     assert html =~ "Type: blog posts"
     assert html =~ "Past 7 days"
   end

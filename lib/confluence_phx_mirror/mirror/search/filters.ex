@@ -220,6 +220,9 @@ defmodule ConfluencePhxMirror.Mirror.Search.Filters do
     end
   end
 
+  defp cutoff("today"), do: Date.utc_today() |> Date.to_iso8601()
+  defp cutoff("yesterday"), do: Date.utc_today() |> Date.add(-1) |> Date.to_iso8601()
+
   defp cutoff(value) do
     case Regex.run(~r/^(\d{1,3})d$/, value) do
       [_, days] ->

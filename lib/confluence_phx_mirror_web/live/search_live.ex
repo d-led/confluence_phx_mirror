@@ -34,13 +34,14 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
   # How many spaces the space menus list. The directory is `/spaces`.
   @space_window 25
-  @type_options [{"page", "Pages"}, {"blogpost", "Blog posts"}]
+  @type_options [{"page", "Pages and live docs"}, {"blogpost", "Blog posts"}]
   @sort_options [{"", "Best match"}, {"newest", "Newest first"}, {"oldest", "Oldest first"}]
   @window_options [
-    {"", "Any time"},
+    {"", "Anytime"},
+    {"today", "Today"},
+    {"yesterday", "Yesterday"},
     {"7d", "Past 7 days"},
     {"30d", "Past 30 days"},
-    {"90d", "Past 90 days"},
     {"365d", "Past year"}
   ]
 
@@ -70,6 +71,8 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
        types: "",
        updated: "",
        label_query: "",
+       space_query: "",
+       people_query: "",
        results: [],
        terms: [],
        error: nil,
@@ -144,18 +147,31 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     filters =
       current_filters(socket)
       |> Map.merge(%{
-        "q" => clean(params["q"]),
         "phrase" => clean(params["phrase"]),
         "any" => clean(params["any"]),
         "none" => clean(params["none"]),
-        "spaces" => params |> Map.get("spaces", []) |> List.wrap() |> Enum.join(","),
-        "creator" => clean(params["creator"]),
         "from" => clean(params["from"]),
-        "to" => clean(params["to"]),
-        "sort" => clean(params["sort"])
+        "to" => clean(params["to"])
       })
 
     {:noreply, patch(socket, filters)}
+  end
+
+  def handle_event("set_creator", %{"value" => value}, socket) do
+    creator = if value == socket.assigns.creator, do: "", else: value
+    {:noreply, patch(socket, Map.put(current_filters(socket), "creator", creator))}
+  end
+
+  def handle_event("space_query", %{"space" => value}, socket) do
+    {:noreply, assign(socket, :space_query, clean(value))}
+  end
+
+  def handle_event("people_query", %{"people" => value}, socket) do
+    {:noreply, assign(socket, :people_query, clean(value))}
+  end
+
+  def handle_event("clear_labels", _params, socket) do
+    {:noreply, patch(socket, Map.put(current_filters(socket), "labels", ""))}
   end
 
   def handle_event("toggle_advanced", _params, socket) do
@@ -340,10 +356,10 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
   defp remove(filters, key, _value), do: Map.put(filters, key, "")
 
-  defp chip_label("q", value), do: ~s(“#{value}”)
-  defp chip_label("phrase", value), do: ~s(Phrase: “#{value}”)
+  defp chip_label("q", value), do: value
+  defp chip_label("phrase", value), do: "Phrase: #{value}"
   defp chip_label("any", value), do: "Any of: #{value}"
-  defp chip_label("none", value), do: "Without: #{value}"
+  defp chip_label("none", value), do: "None of: #{value}"
   defp chip_label("spaces", value), do: "Spaces: #{String.replace(value, ",", ", ")}"
   defp chip_label("creator", value), do: "By: #{value}"
   defp chip_label("from", value), do: "Modified after #{value}"
@@ -401,12 +417,48 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     end
   end
 
-  defp spaces_label(filter, spaces) do
-    case space_values(filter) do
-      [] -> "All spaces"
-      [one] -> space_label(one, spaces)
-      several -> "#{length(several)} spaces"
+  defp space_summary("", _spaces), do: "Space"
+  defp space_summary(key, spaces), do: space_label(key, spaces)
+
+  defp creator_summary(""), do: "Edited or created by"
+  defp creator_summary(name), do: name
+
+  defp type_summary(types) do
+    case label_values(types) do
+      [] -> "Type"
+      ["page"] -> "Type: Pages and live docs"
+      ["blogpost"] -> "Type: Blog posts"
+      several -> "Type: #{length(several)} kinds"
     end
+  end
+
+  defp labels_summary(labels) do
+    case label_values(labels) do
+      [] -> "Labels"
+      [one] -> "Label: #{one}"
+      several -> "#{length(several)} labels"
+    end
+  end
+
+  defp matching_spaces(spaces, ""), do: spaces
+
+  defp matching_spaces(spaces, query) do
+    query = String.downcase(query)
+    Enum.filter(spaces, &String.contains?(String.downcase(&1.name <> " " <> &1.key), query))
+  end
+
+  defp matching_authors(authors, ""), do: authors
+
+  defp matching_authors(authors, query) do
+    query = String.downcase(query)
+    Enum.filter(authors, &String.contains?(String.downcase(&1.name), query))
+  end
+
+  defp matching_labels(catalog, ""), do: catalog
+
+  defp matching_labels(catalog, query) do
+    query = normalise_label(query)
+    Enum.filter(catalog, fn %{name: name} -> String.contains?(name, query) end)
   end
 
   defp updated_label(value) do
@@ -474,6 +526,10 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           space={@space}
           spaces={@spaces}
           spaces_more?={@spaces_more?}
+          space_query={@space_query}
+          creator={@creator}
+          authors={@authors}
+          people_query={@people_query}
           types={@types}
           type_options={@type_options}
           updated={@updated}
@@ -496,7 +552,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             ]}
           >
             <.icon name="hero-adjustments-horizontal" class="size-4" />
-            {if @advanced?, do: "Hide advanced search", else: "Advanced search"}
+            {if @advanced?, do: "Hide filters", else: "More filters"}
           </button>
 
           <label class="flex items-center gap-1.5 text-[11px] text-base-content/70">
@@ -619,6 +675,10 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   attr :space, :string, required: true
   attr :spaces, :list, required: true
   attr :spaces_more?, :boolean, default: false
+  attr :space_query, :string, default: ""
+  attr :creator, :string, required: true
+  attr :authors, :list, required: true
+  attr :people_query, :string, default: ""
   attr :types, :string, required: true
   attr :type_options, :list, required: true
   attr :updated, :string, required: true
@@ -630,116 +690,174 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   defp filter_bar(assigns) do
     ~H"""
     <div class="mt-3 flex min-w-0 flex-wrap items-center gap-2" id="search-filters">
-      <details class="dropdown">
-        <summary
-          id="space-filter"
-          class="btn btn-sm h-11 min-h-11 gap-1.5 rounded-full border-base-300 bg-base-100 px-3 font-normal"
-        >
-          <.icon name="hero-rectangle-stack" class="size-4 text-base-content/70" />
-          <span class="max-w-40 truncate">{space_label(@space, @spaces)}</span>
-          <.icon name="hero-chevron-down" class="size-3 opacity-45" />
-        </summary>
-        <ul class="menu dropdown-content z-50 mt-1 max-h-80 w-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
-          <li>
-            <button
-              type="button"
-              phx-click="set_space"
-              phx-value-value=""
-              class={[@space == "" && "active"]}
-            >
-              All spaces
-            </button>
-          </li>
-          <li :for={space <- @spaces}>
-            <button
-              type="button"
-              phx-click="set_space"
-              phx-value-value={space.key}
-              class={[@space == space.key && "active"]}
-            >
-              <span class="min-w-0 flex-1 truncate">{space.name}</span>
-              <span class="badge badge-ghost badge-xs">{space.key}</span>
-            </button>
-          </li>
-          <li :if={@spaces_more?}>
-            <a href={~p"/spaces"} class="text-xs text-primary">More spaces →</a>
-          </li>
-        </ul>
-      </details>
-
-      <div class="flex flex-wrap items-center gap-2">
-        <button
-          :for={{value, label} <- @type_options}
-          type="button"
-          phx-click="toggle_type"
-          phx-value-value={value}
-          aria-pressed={value in label_values(@types)}
-          class={[
-            "btn btn-sm h-11 min-h-11 rounded-full border-base-300 px-3.5 font-normal",
-            value in label_values(@types) && "border-primary bg-primary/10 text-primary"
-          ]}
-        >
-          {label}
-        </button>
-      </div>
-
-      <details class="dropdown">
-        <summary
-          id="updated-filter"
-          class="btn btn-sm h-11 min-h-11 gap-1.5 rounded-full border-base-300 bg-base-100 px-3 font-normal"
-        >
-          <.icon name="hero-clock" class="size-4 text-base-content/70" />
-          {updated_label(@updated)}
-          <.icon name="hero-chevron-down" class="size-3 opacity-45" />
-        </summary>
-        <ul class="menu dropdown-content z-50 mt-1 w-52 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
-          <li :for={{value, label} <- @window_options}>
-            <button
-              type="button"
-              phx-click="set_updated"
-              phx-value-value={value}
-              class={[@updated == value && "active"]}
-            >
-              {label}
-            </button>
-          </li>
-        </ul>
-      </details>
-
-      <div class="flex min-w-0 flex-wrap items-center gap-1.5" id="label-pills">
-        <span
-          :for={label <- label_values(@labels)}
-          class="inline-flex h-10 items-center gap-1 rounded-full border border-primary/30 bg-primary/10 pl-3 pr-1 text-xs font-medium text-primary"
-        >
-          {label}
+      <.filter_menu
+        id="space-filter"
+        icon="hero-rectangle-stack"
+        label={space_summary(@space, @spaces)}
+      >
+        <form phx-change="space_query" phx-submit="set_space" class="px-1 pb-1">
+          <input
+            type="text"
+            name="space"
+            value={@space_query}
+            placeholder="Find a space"
+            autocomplete="off"
+            phx-debounce="150"
+            class="input input-sm w-full rounded-lg border-base-300 bg-base-100"
+          />
+        </form>
+        <li :for={space <- matching_spaces(@spaces, @space_query)}>
           <button
             type="button"
-            phx-click="toggle_label"
-            phx-value-label={label}
-            class="grid size-8 place-items-center rounded-full transition hover:bg-primary/20"
-            aria-label={"Remove label #{label}"}
+            phx-click="set_space"
+            phx-value-value={space.key}
+            class={[@space == space.key && "active"]}
           >
-            <.icon name="hero-x-mark" class="size-3.5" />
+            <span class="min-w-0 flex-1 truncate">{space.name}</span>
+            <span class="badge badge-ghost badge-xs">{space.key}</span>
           </button>
-        </span>
+        </li>
+        <li :if={@space_query == ""}>
+          <button type="button" phx-click="set_space" phx-value-value="" class="text-base-content/70">
+            Clear filter
+          </button>
+        </li>
+      </.filter_menu>
 
-        <form id="label-form" phx-change="label_query" phx-submit="add_label" class="flex">
+      <.filter_menu id="creator-filter" icon="hero-user-circle" label={creator_summary(@creator)}>
+        <form phx-change="people_query" phx-submit="set_creator" class="px-1 pb-1">
+          <input
+            type="text"
+            name="people"
+            value={@people_query}
+            placeholder="Find a person"
+            autocomplete="off"
+            phx-debounce="150"
+            class="input input-sm w-full rounded-lg border-base-300 bg-base-100"
+          />
+        </form>
+        <li :for={author <- matching_authors(@authors, @people_query)}>
+          <button
+            type="button"
+            phx-click="set_creator"
+            phx-value-value={author.name}
+            class={[@creator == author.name && "active"]}
+          >
+            <span class="min-w-0 flex-1 truncate">{author.name}</span>
+            <span class="text-[10px] text-base-content/70">{author.pages}</span>
+          </button>
+        </li>
+        <li :if={@people_query == ""}>
+          <button
+            type="button"
+            phx-click="set_creator"
+            phx-value-value=""
+            class="text-base-content/70"
+          >
+            Clear filter
+          </button>
+        </li>
+      </.filter_menu>
+
+      <.filter_menu
+        id="updated-filter"
+        icon="hero-clock"
+        label={"Last updated: #{updated_label(@updated)}"}
+      >
+        <li :for={{value, label} <- @window_options}>
+          <button
+            type="button"
+            phx-click="set_updated"
+            phx-value-value={value}
+            class={[@updated == value && "active"]}
+          >
+            {label}
+          </button>
+        </li>
+      </.filter_menu>
+
+      <.filter_menu id="type-filter" icon="hero-document-text" label={type_summary(@types)}>
+        <li :for={{value, label} <- @type_options}>
+          <button
+            type="button"
+            phx-click="toggle_type"
+            phx-value-value={value}
+            aria-pressed={value in label_values(@types)}
+            class="flex items-center gap-2"
+          >
+            <.icon
+              name={if value in label_values(@types), do: "hero-check", else: "hero-plus"}
+              class="size-3.5 shrink-0 text-primary"
+            />
+            <span class="min-w-0 flex-1 truncate">{label}</span>
+          </button>
+        </li>
+      </.filter_menu>
+
+      <.filter_menu id="labels-filter" icon="hero-tag" label={labels_summary(@labels)}>
+        <form id="label-form" phx-change="label_query" phx-submit="add_label" class="px-1 pb-1">
           <input
             type="text"
             name="label"
             value={@label_query}
             list="label-suggestions"
-            placeholder="+ label"
+            placeholder="Find a label"
             autocomplete="off"
             phx-debounce="150"
-            class="h-11 w-28 rounded-full border border-dashed border-base-300 bg-base-100 px-3 text-xs placeholder:text-base-content/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50 sm:h-10 sm:w-36 [&::-webkit-calendar-picker-indicator]:hidden"
+            class="input input-sm w-full rounded-lg border-base-300 bg-base-100 [&::-webkit-calendar-picker-indicator]:hidden"
           />
           <datalist id="label-suggestions">
             <option :for={%{name: name} <- @label_catalog} value={name} />
           </datalist>
         </form>
-      </div>
+        <li :for={{name, count} <- matching_labels(@label_catalog, @label_query)}>
+          <button
+            type="button"
+            phx-click="toggle_label"
+            phx-value-label={name}
+            class="flex items-center gap-2"
+          >
+            <.icon
+              name={if name in label_values(@labels), do: "hero-check", else: "hero-plus"}
+              class="size-3.5 shrink-0 text-primary"
+            />
+            <span class="min-w-0 flex-1 truncate">{name}</span>
+            <span class="text-[10px] text-base-content/70">{count}</span>
+          </button>
+        </li>
+        <li :if={matching_labels(@label_catalog, @label_query) == []} class="menu-disabled">
+          <span>Start typing to search for a label</span>
+        </li>
+        <li :if={@labels != ""}>
+          <button type="button" phx-click="clear_labels" class="text-base-content/70">
+            Clear filter
+          </button>
+        </li>
+      </.filter_menu>
     </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :icon, :string, required: true
+  attr :label, :string, required: true
+  slot :inner_block, required: true
+
+  # One dropdown per filter, the way Confluence's search bar works: the button
+  # says which filter it is and what is currently chosen, the menu holds the
+  # options (or a "Find a …" box for the long lists).
+  defp filter_menu(assigns) do
+    ~H"""
+    <details class="dropdown" id={@id}>
+      <summary class="btn btn-sm h-9 min-h-9 gap-1.5 rounded-full border-base-300 bg-base-100 px-3 font-normal">
+        <.icon name={@icon} class="size-4 shrink-0 text-base-content/70" />
+        <span class="max-w-48 truncate">{@label}</span>
+        <.icon name="hero-chevron-down" class="size-3 shrink-0 opacity-45" />
+      </summary>
+      <ul class="menu dropdown-content z-50 mt-1 max-h-80 w-72 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
+        {render_slot(@inner_block)}
+      </ul>
+    </details>
     """
   end
 
@@ -768,83 +886,14 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
       phx-submit="advanced"
       class="mt-2 rounded-xl border border-base-300/70 bg-base-200/30 p-3"
     >
-      <div class="grid gap-2 sm:grid-cols-2">
-        <.advanced_field
-          name="search[q]"
-          label="All of these words"
-          value={@q}
-          placeholder="rate limit"
-        />
-        <.advanced_field
-          name="search[phrase]"
-          label="This exact phrase"
-          value={@phrase}
-          placeholder="token bucket"
-        />
-        <.advanced_field
-          name="search[any]"
-          label="Any of these words"
-          value={@any}
-          placeholder="runbook incident"
-        />
-        <.advanced_field
-          name="search[none]"
-          label="None of these words"
-          value={@none}
-          placeholder="draft obsolete"
-        />
-      </div>
-
-      <div class="mt-2 grid gap-2 sm:grid-cols-3">
-        <details class="dropdown">
-          <summary class="btn btn-sm h-9 min-h-9 w-full justify-between gap-1 rounded-lg border-base-300 bg-base-100 px-3 font-normal">
-            <span class="min-w-0 truncate">{spaces_label(@spaces_filter, @spaces)}</span>
-            <.icon name="hero-chevron-down" class="size-3 shrink-0 opacity-45" />
-          </summary>
-          <ul class="menu dropdown-content z-50 mt-1 max-h-64 w-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
-            <li :for={space <- @spaces}>
-              <label class="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name="search[spaces][]"
-                  value={space.key}
-                  checked={space.key in space_values(@spaces_filter)}
-                  class="checkbox checkbox-xs checkbox-primary"
-                />
-                <span class="min-w-0 flex-1 truncate">{space.name}</span>
-                <span class="text-[10px] text-base-content/70">{space.key}</span>
-              </label>
-            </li>
-            <li :if={@spaces == []} class="menu-disabled"><span>Nothing mirrored yet</span></li>
-          </ul>
-        </details>
-
-        <select
-          id="advanced-creator"
-          name="search[creator]"
-          aria-label="Contributor"
-          class="select select-sm h-9 min-h-9 w-full rounded-lg border-base-300 bg-base-100"
-        >
-          <option value="">Anyone</option>
-          <option :for={author <- @authors} value={author.name} selected={author.name == @creator}>
-            {author.name} ({author.pages})
-          </option>
-        </select>
-
-        <select
-          id="advanced-updated"
-          name="updated"
-          aria-label="Last modified"
-          phx-change="set_updated"
-          class="select select-sm h-9 min-h-9 w-full rounded-lg border-base-300 bg-base-100"
-        >
-          <option :for={{value, label} <- @window_options} value={value} selected={value == @updated}>
-            {label}
-          </option>
-        </select>
+      <div class="grid gap-2 sm:grid-cols-3">
+        <.advanced_field name="search[phrase]" label="Exact phrase" value={@phrase} />
+        <.advanced_field name="search[any]" label="Any of these words" value={@any} />
+        <.advanced_field name="search[none]" label="None of these words" value={@none} />
       </div>
 
       <div class="mt-2 flex items-center gap-1.5">
+        <span class="shrink-0 text-[11px] text-base-content/70">Modified</span>
         <input
           type="date"
           name="search[from]"
@@ -863,13 +912,8 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
       </div>
 
       <div class="mt-2 flex items-center justify-between gap-2 text-[11px] text-base-content/70">
-        <p :if={@spaces_more?}>
-          More spaces exist. <a href={~p"/spaces"} class="text-primary">Browse them all</a>.
-        </p>
-        <p :if={not @spaces_more?} class="truncate">
-          Any widens, None excludes; several spaces search together.
-        </p>
-        <a href={~p"/search"} class="link link-hover shrink-0 text-primary">Reset</a>
+        <p class="truncate">Any widens, None excludes.</p>
+        <a href={~p"/search"} class="link link-hover shrink-0 text-primary">Clear all</a>
       </div>
     </form>
     """

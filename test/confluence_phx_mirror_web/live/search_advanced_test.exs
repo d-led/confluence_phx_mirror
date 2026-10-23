@@ -21,7 +21,7 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchAdvancedTest do
 
     html = view |> element("#advanced-toggle") |> render_click()
 
-    assert html =~ "Hide advanced search"
+    assert html =~ "Hide filters"
     assert has_element?(view, "#advanced-search")
   end
 
@@ -30,12 +30,12 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchAdvancedTest do
 
     view
     |> open_panel()
-    |> form("#advanced-search", search: %{"q" => "rate"})
+    |> form("#advanced-search", search: %{"any" => "runbook"})
     |> render_change()
 
-    assert_patch(view, "/search?q=rate")
+    assert_patch(view, "/search?any=runbook")
     assert has_element?(view, "#advanced-search")
-    assert has_element?(view, "#advanced-search input[name='search[q]'][value='rate']")
+    assert has_element?(view, "#advanced-search input[name='search[any]'][value='runbook']")
   end
 
   test "an exact phrase narrows the results to the sentence it searches for", %{conn: conn} do
@@ -48,29 +48,29 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchAdvancedTest do
       |> render_change()
 
     assert_patch(view, "/search?phrase=token+bucket")
-    assert html =~ "Phrase: “token bucket”"
+    assert html =~ "Phrase: token bucket"
   end
 
   test "a word to exclude removes the pages that mention it", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/search")
+    {:ok, view, _html} = live(conn, ~p"/search?q=rate")
 
     view
     |> open_panel()
-    |> form("#advanced-search", search: %{"q" => "rate", "none" => "pipeline"})
+    |> form("#advanced-search", search: %{"none" => "pipeline"})
     |> render_change()
 
     assert_patch(view, "/search?none=pipeline&q=rate")
   end
 
-  test "several spaces are searched together", %{conn: conn} do
+  test "a space picked in the bar narrows the search to it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search")
 
     view
-    |> open_panel()
-    |> form("#advanced-search", search: %{"spaces" => ["ENG", "PROD"]})
-    |> render_change()
+    |> element("#space-filter button[phx-value-value='ENG']")
+    |> render_click()
 
-    assert_patch(view, "/search?spaces=ENG%2CPROD")
+    assert_patch(view, "/search?space=ENG")
+    assert has_element?(view, "#space-filter", "Engineering Handbook")
   end
 
   defp open_panel(view) do
@@ -98,6 +98,7 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchAdvancedTest do
   test "a contributor can be picked from the people the mirror has seen", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search?creator=Jane+Doe")
 
-    assert has_element?(view, "#advanced-creator option[selected]", "Jane Doe")
+    assert has_element?(view, "#creator-filter", "Jane Doe")
+    assert has_element?(view, "button[phx-value-value='Jane Doe'].active")
   end
 end

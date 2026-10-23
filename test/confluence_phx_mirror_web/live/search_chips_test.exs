@@ -22,10 +22,10 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchChipsTest do
       )
 
     for label <- [
-          "“pipeline”",
-          "Phrase: “sync architecture”",
+          "pipeline",
+          "Phrase: sync architecture",
           "Any of: gallery",
-          "Without: draft",
+          "None of: draft",
           "Space: ENG",
           "Spaces: ENG, PROD",
           "By: jane",
