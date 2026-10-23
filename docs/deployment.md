@@ -1,0 +1,212 @@
+# Deploying the mirror
+
+Two deployment configurations ship with the repository, both of the same shape:
+
+```
+                 public                       private
+  reader ──▶ oauth2-proxy ──X-Forwarded-Email──▶ mirror ──▶ Postgres
+             (only public IP)                  (no public IP)   └─▶ blob volume
+```
+
+| | Fly.io | Kubernetes |
+| --- | --- | --- |
+| configuration | [`fly.toml`](../fly.toml) + [`deploy/fly/proxy`](../deploy/fly/proxy) | [`deploy/k8s`](../deploy/k8s) |
+| front door | app `confluence-mirror-demo` (oauth2-proxy) | `oauth2-proxy` Deployment + Ingress |
+| the mirror | app `confluence-mirror-demo-app`, Flycast only | `confluence-mirror` Deployment + ClusterIP Service |
+| migrations | `[deploy] release_command = "/app/bin/migrate"` | the `confluence-mirror-migrate` Job |
+| attachments | Fly volume `mirror_blobs` | PVC `mirror-blobs` |
+| clustering | `FLY_APP_NAME.internal` | headless Service via `DNS_CLUSTER_QUERY` |
+| deploy it | `./scripts/deploy-fly.sh` | `kubectl apply -f …` |
+
+Nothing here is required by the application: it is a 12-factor release, and
+[operations.md](operations.md) describes the environment contract any process
+manager can satisfy. These two are the configurations that are exercised.
+
+## The image
+
+```bash
+docker build -t confluence-mirror --build-arg VERSION="$(git describe --tags --always)" .
+docker run --rm -e DATABASE_URL=… -e SECRET_KEY_BASE=… confluence-mirror /app/bin/migrate
+docker run -p 4000:4000 -e … confluence-mirror          # /app/bin/server
+```
+
+What the image promises:
+
+* **One release, no build tooling.** Node installs the browser dependencies,
+  the Elixir image compiles and bundles, and the runtime stage carries the
+  release plus BEAM's shared libraries — about 160 MB, no compiler, no Node, no
+  git in it.
+* **Unprivileged.** Everything runs as uid/gid `10001` (`app`), so
+  `runAsNonRoot` can be checked rather than assumed. CI asserts both the
+  non-root uid and that Trivy finds nothing fixable at CRITICAL or HIGH.
+* **One writable directory.** `/app/var/mirror` holds the blob store
+  (`MIRROR_BLOB_ROOT`); mount a volume there. The rest of `/app` is read-only
+  for the app user, which is why the Kubernetes manifests can set
+  `readOnlyRootFilesystem` and give `/tmp` an `emptyDir`.
+* **Migrations are not the boot.** `CMD` is `/app/bin/server`; `/app/bin/migrate`
+  is a separate step, so two instances never migrate at once.
+* **Pinned bases.** `ELIXIR_VERSION`, `OTP_VERSION`, `DEBIAN_VERSION` and
+  `NODE_VERSION` are build arguments with dated tags. Debian trixie rather than
+  bookworm: the same image scanned with one CRITICAL and 59 HIGH findings on
+  bookworm and with none of either on trixie, all of them without a fix either
+  way. What remains unfixed is the base distribution's backlog, which is why CI
+  scans with `ignore-unfixed: true` and fails on anything a rebuild could fix.
+
+## Identity: what the proxy sets, what the mirror reads
+
+The proxy authenticates the reader and hands the mirror an identity header.
+This is the contract between the two halves, and it is worth knowing exactly:
+
+| Hop | Header | Who sets it | Who reads it |
+| --- | --- | --- | --- |
+| reader → proxy | session cookie (`_oauth2_proxy`) | oauth2-proxy | oauth2-proxy |
+| proxy → mirror | `X-Forwarded-Email` | oauth2-proxy (`--pass-user-headers`) | `Plugs.ProxyAuth` → `CM_PROXY_AUTH_HEADER` (default `x-forwarded-email`) |
+| proxy → mirror | `X-Forwarded-User` | oauth2-proxy | display name, `CM_PROXY_AUTH_NAME_HEADER` (default `x-forwarded-user`) |
+| proxy → mirror | `X-Forwarded-Proto: https` | oauth2-proxy (`--reverse-proxy`) | `force_ssl` in `config/prod.exs` |
+| proxy → mirror | `X-Forwarded-For` | oauth2-proxy appends | the reader rate limit, with `CM_TRUST_PROXY_HEADERS=true` |
+
+Four consequences follow, and each is a setting in both configurations:
+
+1. **`CM_PROXY_AUTH=true` is only safe because the mirror has no public
+   address.** Anyone who can reach the mirror's port directly can name
+   themselves. On Fly that is `--flycast --no-public-ips`; on Kubernetes it is
+   the NetworkPolicy admitting only the proxy's pods. A production release also
+   refuses the setting unless the source is the demo snapshot or the operator
+   sets `MIRROR_ALLOW_UNSAFE_IDENTITY=1` (`Config.IdentityGuard`).
+2. **Without `X-Forwarded-Proto`, `force_ssl` redirects the proxy to itself.**
+   The proxy forwards an HTTP request to the mirror; the mirror sees plain HTTP,
+   answers `301 https://…`, the proxy passes the redirect on, forever. That is
+   why `OAUTH2_PROXY_REVERSE_PROXY=true` is not optional here, and why every
+   ingress controller has to send the header.
+3. **`/health` is excluded from `force_ssl`.** Probes arrive from a kubelet or
+   from Fly's checker over plain HTTP and cannot send the header; they are
+   asking whether the process is alive, and a `301` would only ever answer
+   "not quite".
+4. **The reader rate limit keys on the reader, not the proxy.**
+   `CM_TRUST_PROXY_HEADERS=true` makes it use the last `X-Forwarded-For` entry —
+   the hop the proxy observed, which a client cannot write.
+
+Because *every* request goes through the proxy, the JSON API and the
+Confluence-compatible REST endpoints are behind GitHub sign-in too. API tokens
+(`/admin/users`) still work for the application's own authentication, but the
+proxy is in front of them; use a skip-auth route on the proxy if a machine
+client has to reach the API unauthenticated.
+
+### Verified, not assumed
+
+Both hops were exercised against the built image before this was written
+(oauth2-proxy v7.15.5, 2026-10-23):
+
+| Check | Result |
+| --- | --- |
+| `GET /health` with no forwarded proto | `200` |
+| `GET /` with `X-Forwarded-Proto: https` | `200` |
+| `GET /` without it | `301` to `https://…/` |
+| `X-Forwarded-Email: jane@example.com` | account provisioned, `display_name` from `X-Forwarded-User` |
+| same header, `CM_ADMINS=ops@example.com` | `/admin` `200` for ops, `302` for jane, `302` for nobody |
+| unauthenticated reader through the proxy | `302` to `github.com/login/oauth/authorize` |
+| request through the proxy with edge `X-Forwarded-Proto: https` | `200` (no redirect loop) |
+| client-supplied `X-Forwarded-Email` through the proxy | stripped — identity only comes from a session |
+
+The last row is the one that matters for the threat model: a reader cannot
+choose their own identity by sending the header, because oauth2-proxy removes
+the forwarded identity headers a client sends and re-sets them from the session.
+
+## Fly.io
+
+```bash
+export DATABASE_URL=…                     # or `fly mpg attach`
+export OAUTH2_PROXY_CLIENT_ID=… OAUTH2_PROXY_CLIENT_SECRET=…
+./scripts/deploy-fly.sh
+```
+
+The script creates both apps, generates `SECRET_KEY_BASE`, `RELEASE_COOKIE` and
+the proxy's cookie secret once, creates the volume, deploys the mirror, then the
+proxy. The GitHub OAuth app's callback URL is
+`https://confluence-mirror-demo.fly.dev/oauth2/callback`.
+
+Details that are easy to get wrong:
+
+* **`fly deploy --flycast --no-public-ips --ha=false`** for the mirror. Without
+  `--no-public-ips` Fly allocates a shared IPv4, and the identity header becomes
+  forgeable by anyone who finds the hostname.
+* **`RELEASE_COOKIE` is a secret, set once.** Regenerating it makes the Machines
+  strangers to each other until they restart together.
+* **One volume, one Machine.** A Fly volume is bound to a Machine; `--ha=false`
+  keeps the deployment honest about that. Two Machines would need a shared blob
+  store, and the mirror writes attachments to the filesystem.
+* **Ports.** The proxy listens on 4180 and is the `http_service`; the mirror
+  listens on 8080 inside the private network, `force_https = false` because
+  Flycast is HTTP-only.
+* **`OAUTH2_PROXY_EMAIL_DOMAINS="*"`** admits any GitHub account. Narrow it to a
+  domain, or add `OAUTH2_PROXY_GITHUB_ORG` / `OAUTH2_PROXY_GITHUB_TEAM`.
+* **The trusted-proxy warning.** oauth2-proxy v7.15.5 logs a warning that
+  `--reverse-proxy` trusts `X-Forwarded-*` from any connecting address. On Fly
+  the only address that can connect is Fly's edge, so this is what the platform
+  intends; setting `OAUTH2_PROXY_TRUSTED_PROXY_IP` to a narrower CIDR is an
+  option when deploying behind a proxy you control.
+
+## Kubernetes
+
+```bash
+kubectl apply -f deploy/k8s/secret.yaml           # from secret.example.yaml
+kubectl apply -f deploy/k8s/confluence-mirror.yaml
+kubectl apply -f deploy/k8s/oauth2-proxy.yaml
+```
+
+* **Storage.** The PVC is `ReadWriteMany` because more than one replica has to
+  see the same attachment bytes. With a `ReadWriteOnce` class, keep
+  `replicas: 1` — the mirror serves attachments from the filesystem, and a
+  reader routed to the other replica would get a `404`.
+* **Probes.** Readiness is `GET /health` (it returns `503` when Postgres is
+  unreachable); liveness is a TCP check, so a database blip does not restart
+  healthy pods; a startup probe covers the first boot.
+* **Identity.** `CM_PROXY_AUTH=true` plus the NetworkPolicy that admits only
+  `app.kubernetes.io/name=oauth2-proxy` on port 4000. Do not expose the mirror's
+  Service through an Ingress.
+* **`PHX_HOST`** must be the public hostname (`mirror.example.com` above),
+  because absolute URLs and secure cookies are built from it.
+* **Ingress.** Any controller works as long as it terminates TLS and forwards
+  `X-Forwarded-Proto`; the manifest carries nginx annotations and a `mirror-tls`
+  secret to point at your certificate.
+
+## Clustering
+
+`rel/env.sh.eex` names the node for the platform it finds itself on, and
+`DNSCluster` (supervised in `ConfluencePhxMirror.Application`) joins the peers
+`DNS_CLUSTER_QUERY` resolves to:
+
+| Platform | Node name | Query |
+| --- | --- | --- |
+| Fly.io | `<app>-<image tag>@<private IPv6>`, distribution over `inet6_tcp` | `<app>.internal` |
+| Kubernetes | `<pod name>@<pod IP>`, from the downward API | the headless Service FQDN |
+| elsewhere | `<release>@<hostname>`, or `RELEASE_NODE` as given | whatever you export |
+
+`FLY_APP_NAME` and `POD_IP` are the switches; neither being set is the
+single-node default, which is also supported.
+
+What changes with more than one node: Phoenix PubSub fan-out (LiveView updates
+follow the reader's node either way), Oban's leader election for the hourly
+digest, and `Node.list/0`. What stays per node: reader rate-limit buckets, the
+`Mirror.Counters` totals cache and the `Confluence.Traffic` tallies. Multi-node
+deployments should therefore size `CM_READER_RATE_LIMIT_PER_MINUTE` per node,
+not for the deployment.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs three jobs on every push and pull request:
+
+| Job | What it is |
+| --- | --- |
+| **Static analysis** | `mix lint`: `compile --warnings-as-errors`, `deps.unlock --check-unused`, `format --check-formatted`, `credo --strict`, `sobelow --config` |
+| **Suite and complexity** | Postgres 17 service, `mix cover` (the suite with coverage), then `mix complexity` (CRAP per function, threshold 30) |
+| **Image, scan, non-root** | `docker build`, Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), and `id -u` in the image must be `10001` |
+
+On `main` and on `v*.*.*` tags the image is published to
+`ghcr.io/d-led/confluence_phx_mirror` (commit tag, `latest`, and the release
+tag). The same two gates run locally as `mix lint` and `scripts/quality.sh`.
+
+`.github/dependabot.yml` opens weekly pull requests for Hex, npm,
+GitHub Actions and the proxy's image. The mirror image's base versions are build
+arguments, so they are bumped by hand — the four `ARG`s at the top of the
+`Dockerfile`.

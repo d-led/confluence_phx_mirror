@@ -1,5 +1,9 @@
 # Confluence Mirror
 
+[![ci](https://github.com/d-led/confluence_phx_mirror/actions/workflows/ci.yml/badge.svg)](https://github.com/d-led/confluence_phx_mirror/actions/workflows/ci.yml)
+[![MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE)
+[![Elixir 1.20 / OTP 29](https://img.shields.io/badge/elixir-1.20%20%2F%20OTP%2029-4B275F.svg)](mix.exs)
+
 A production-shaped, **read-only** mirror of Confluence built with Phoenix 1.8,
 LiveView 1.2, Ecto/Postgres and Elixir 1.20.
 
@@ -61,6 +65,7 @@ Confluence ──REST──▶ Sync (incremental, rate-limited, audited) ──�
 | --- | --- |
 | the site administrator: syncing, accounts, permissions, webhooks, themes | [docs/site-admin-guide.md](docs/site-admin-guide.md) |
 | deploying and operating it: build, env contract, migrations, monitoring, backups | [docs/operations.md](docs/operations.md) |
+| deploying it to Fly.io or Kubernetes, behind an OAuth proxy | [docs/deployment.md](docs/deployment.md) |
 | looking for a setting | [docs/configuration.md](docs/configuration.md) |
 | integrating: JSON API, Confluence-compatible REST, CQL | [docs/api.md](docs/api.md) |
 | working on the code: architecture, tests, quality gates | [docs/developers.md](docs/developers.md) |
@@ -70,7 +75,8 @@ Confluence ──REST──▶ Sync (incremental, rate-limited, audited) ──�
 ## What you need
 
 * **Elixir 1.20 or newer** — `mix.exs` requires `~> 1.20`, and the `Dockerfile`
-  builds on `elixir:1.20-alpine`; the tests are run on Elixir 1.20.4/OTP 29.
+  builds on `hexpm/elixir:1.20.4-erlang-29.1.2-debian-trixie`; the tests are run
+  on Elixir 1.20.4/OTP 29.
 * **Node.js with npm** — `mix setup` installs the browser dependencies with
   `npm ci` in `assets/`; a missing `node` is what stops a first run.
 * **Postgres 12 or newer** — the search index is a stored generated column.

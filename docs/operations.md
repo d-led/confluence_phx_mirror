@@ -49,10 +49,12 @@ Run migrations **once per deploy**, before new instances take traffic:
 bin/confluence_phx_mirror eval "ConfluencePhxMirror.Release.migrate"
 ```
 
-The example Dockerfile does exactly that in its command
-(`eval Release.migrate && exec ... start`); a release job, a `Procfile` release
-phase or a systemd `ExecStartPre` does the same. Do not let N instances race each
-other at boot.
+The release ships that command as an overlay too, so it is one word everywhere:
+`bin/migrate` inside a container or a Machine. The image's own command only
+starts the server (`/app/bin/server`); Fly runs `/app/bin/migrate` as its
+`release_command`, Kubernetes as a Job, and a Compose or systemd deployment as a
+one-off `ExecStartPre`. Do not let N instances race each other at boot — see
+[deployment.md](deployment.md) for both platform configurations.
 
 Migrations are split by *when* they may run:
 
