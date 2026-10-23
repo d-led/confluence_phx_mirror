@@ -35,7 +35,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
 
     ~H"""
     <nav
-      class="flex min-w-0 items-center gap-1 text-xs text-base-content/60"
+      class="flex min-w-0 items-center gap-1 text-xs text-base-content/70"
       aria-label="Breadcrumb"
     >
       <.link navigate={~p"/"} class="rounded p-0.5 hover:text-primary" aria-label="Home">
@@ -161,7 +161,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
           title={node.page.title}
           class={[
             "flex min-h-9 items-center gap-2 rounded-md py-1.5 pr-2 text-[13px]",
-            @current && @current.id == node.page.id && "bg-primary/10 font-semibold text-primary"
+            @current && @current.id == node.page.id && "bg-primary/5 font-semibold text-primary"
           ]}
         >
           <.icon
@@ -208,7 +208,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
 
   def page_meta(assigns) do
     ~H"""
-    <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/60">
+    <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/70">
       <span class="inline-flex items-center gap-1">
         <.icon name="hero-user-circle" class="size-3.5" />
         {(@page.author_name || "Unknown author") |> to_string()}
@@ -282,7 +282,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     <div :if={@attachments == []} class="text-xs text-base-content/70">No attachments.</div>
     <ul :if={@attachments != []} class="space-y-2">
       <li :for={attachment <- @attachments} class="group flex items-center gap-2">
-        <span class="grid size-7 shrink-0 place-items-center rounded-md bg-base-200 text-base-content/60">
+        <span class="grid size-7 shrink-0 place-items-center rounded-md bg-base-200 text-base-content/70">
           <.icon name={icon_for(attachment.media_type)} class="size-3.5" />
         </span>
         <a
@@ -517,7 +517,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
           <span>Updated {Time.ago(@result.page.external_updated_at)}</span>
         </div>
       </div>
-      <p class="mt-2 line-clamp-2 text-xs leading-relaxed text-base-content/65">
+      <p class="mt-2 line-clamp-2 text-xs leading-relaxed text-base-content/70">
         {highlight(@result.snippet, @terms)}
       </p>
       <div class="relative z-10 mt-2"><.label_chips labels={@result.page.labels} /></div>
@@ -550,7 +550,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     else
       ~r/(#{pattern})/iu
       |> Regex.replace(escaped, fn match ->
-        ~s(<mark class="rounded bg-warning/40 px-0.5 text-inherit">#{match}</mark>)
+        ~s(<mark class="rounded bg-warning/30 px-0.5 text-base-content">#{match}</mark>)
       end)
       |> Phoenix.HTML.raw()
     end
@@ -584,7 +584,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
           if(id == @active,
             do: "border-primary font-semibold text-primary",
             else:
-              "border-transparent text-base-content/60 hover:border-base-300 hover:text-base-content"
+              "border-transparent text-base-content/70 hover:border-base-300 hover:text-base-content"
           )
         ]}
       >

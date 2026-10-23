@@ -143,7 +143,7 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
           <h1 class="mt-1 text-balance text-3xl font-semibold leading-tight">{@title}</h1>
           <div
             :if={@meta != []}
-            class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-content/60"
+            class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-content/70"
           >
             {render_slot(@meta)}
           </div>

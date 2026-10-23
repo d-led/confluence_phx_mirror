@@ -19,7 +19,7 @@
           <span data-presence-count class="text-2xl font-semibold tabular-nums">{@readers}</span>
           <span class="text-xs text-base-content/70">reading this page</span>
         </p>
-        <ul data-presence-list class="mt-2 space-y-1 text-xs text-base-content/60"></ul>
+        <ul data-presence-list class="mt-2 space-y-1 text-xs text-base-content/70"></ul>
       </div>
     </.rail_section>
 
@@ -43,7 +43,7 @@
     <.rail_section title="Watch" icon="hero-bell">
       <%= if @current_user do %>
         <%= if @subscribed? do %>
-          <p class="text-xs text-base-content/60">You get an e-mail when this page changes.</p>
+          <p class="text-xs text-base-content/70">You get an e-mail when this page changes.</p>
           <form action={~p"/subscriptions"} method="post" class="mt-2">
             <input type="hidden" name="_method" value="delete" />
             <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
@@ -52,7 +52,7 @@
             <button type="submit" class="btn btn-outline btn-xs w-full">Stop watching</button>
           </form>
         <% else %>
-          <p class="text-xs text-base-content/60">Get an e-mail when this page changes.</p>
+          <p class="text-xs text-base-content/70">Get an e-mail when this page changes.</p>
           <form action={~p"/subscriptions"} method="post" class="mt-2">
             <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
             <input type="hidden" name="target_type" value="page" />
@@ -75,7 +75,7 @@
           <% end %>
         </div>
       <% else %>
-        <p class="text-xs text-base-content/60">
+        <p class="text-xs text-base-content/70">
           <a href={~p"/session"} class="link link-primary">Sign in</a>
           to get notified when this page changes.
         </p>

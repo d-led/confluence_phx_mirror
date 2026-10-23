@@ -272,7 +272,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
       </div>
 
       <footer class="mt-auto border-t border-base-300/70 bg-base-200/30">
-        <div class="mx-auto flex w-full max-w-[1600px] flex-col gap-2 px-4 py-5 text-xs text-base-content/60 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div class="mx-auto flex w-full max-w-[1600px] flex-col gap-2 px-4 py-5 text-xs text-base-content/70 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span class="font-medium text-base-content/80">{@mirror_name}</span>
             <span aria-hidden="true">·</span>

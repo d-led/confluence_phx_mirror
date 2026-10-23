@@ -143,6 +143,18 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Readability floor.
+
+   daisyUI dims table headers and field labels to 60% of the ink, which is
+   3.99:1 on white — under AA for the 12–14px text they carry. 80% keeps the
+   hierarchy and clears AA in both variants of the Atlassian Cloud skin.
+   --------------------------------------------------------------------------- */
+:where(.table) thead th,
+:where(.label) {
+  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
    Confluence export_view markup.
 
    Macros are rendered by Confluence itself and stored verbatim, so the mirror

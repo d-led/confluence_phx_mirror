@@ -116,7 +116,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   defp time(entry), do: entry.at |> Time.datetime() |> String.replace(" UTC", "")
 
   defp level_badge(:debug), do: {"·", "text-base-content/70"}
-  defp level_badge(:info), do: {"info", "text-base-content/60"}
+  defp level_badge(:info), do: {"info", "text-base-content/70"}
   defp level_badge(:warn), do: {"warn", "text-warning"}
   defp level_badge(:error), do: {"error", "text-error"}
 
@@ -148,7 +148,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
             Administration
           </p>
           <h1 class="mt-1 text-2xl font-semibold">Sync log</h1>
-          <p class="mt-1 text-sm text-base-content/60">
+          <p class="mt-1 text-sm text-base-content/70">
             What the sync is doing, line by line — kept in memory, not in the audit log.
           </p>
         </div>

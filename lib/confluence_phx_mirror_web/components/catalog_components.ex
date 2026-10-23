@@ -157,7 +157,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
               {Time.date(post.external_updated_at)}
             </span>
           </div>
-          <p class="mt-1 line-clamp-2 text-sm leading-relaxed text-base-content/60">
+          <p class="mt-1 line-clamp-2 text-sm leading-relaxed text-base-content/70">
             {String.slice(post.body_text || "", 0, 260)}
           </p>
           <%!-- `relative` keeps the label links clickable above the card-wide overlay. --%>
@@ -225,7 +225,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
                 <span class="truncate font-medium">{page.title}</span>
               </.link>
             </td>
-            <td class="hidden text-xs text-base-content/60 md:table-cell">
+            <td class="hidden text-xs text-base-content/70 md:table-cell">
               {content_kind(page.type)}
             </td>
             <td class="hidden sm:table-cell">
@@ -236,7 +236,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
                 {page.status}
               </span>
             </td>
-            <td class="hidden text-xs text-base-content/60 lg:table-cell">{page.author_name}</td>
+            <td class="hidden text-xs text-base-content/70 lg:table-cell">{page.author_name}</td>
             <td
               class="whitespace-nowrap text-right text-xs text-base-content/70"
               title={Time.datetime(page.external_updated_at)}
@@ -285,7 +285,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
             <td class="hidden max-w-[22rem] text-xs md:table-cell">
               <.link
                 navigate={URLs.content_path(@space.key, attachment.page)}
-                class="truncate text-base-content/60 hover:text-primary"
+                class="truncate text-base-content/70 hover:text-primary"
               >
                 {attachment.page.title}
               </.link>

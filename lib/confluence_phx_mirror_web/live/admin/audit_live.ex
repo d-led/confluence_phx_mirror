@@ -112,7 +112,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
             Administration
           </p>
           <h1 class="mt-1 text-2xl font-semibold">Audit log</h1>
-          <p class="mt-1 text-sm text-base-content/60">
+          <p class="mt-1 text-sm text-base-content/70">
             Every change the mirror made or saw — newest first, append-only.
           </p>
         </div>

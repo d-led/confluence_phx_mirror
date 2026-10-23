@@ -141,7 +141,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
           {@copy.eyebrow}
         </p>
         <h1 class="mt-1 text-2xl font-semibold leading-tight sm:text-3xl">{@copy.title}</h1>
-        <p class="mt-2 max-w-2xl text-sm leading-relaxed text-base-content/65">{@copy.blurb}</p>
+        <p class="mt-2 max-w-2xl text-sm leading-relaxed text-base-content/70">{@copy.blurb}</p>
       </header>
 
       <div :if={@space} class="mt-4 border-b border-base-300/70">

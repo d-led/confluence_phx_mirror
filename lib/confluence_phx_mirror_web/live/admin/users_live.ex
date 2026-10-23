@@ -139,7 +139,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
             Administration
           </p>
           <h1 class="mt-1 text-3xl font-semibold">Users &amp; tokens</h1>
-          <p class="mt-1 text-sm text-base-content/60">
+          <p class="mt-1 text-sm text-base-content/70">
             Accounts are mirror-local — no Confluence credentials are stored. Groups come from the last sync.
           </p>
         </div>
@@ -356,7 +356,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
 
             <div :for={%{group: group, members: members} <- @administrators} class="mt-3">
               <div class="flex items-center gap-2">
-                <span class="font-mono text-[11px] text-base-content/60">{group}</span>
+                <span class="font-mono text-[11px] text-base-content/70">{group}</span>
                 <span class="badge badge-ghost badge-xs">{length(members)}</span>
               </div>
               <ul class="mt-1.5 space-y-1">

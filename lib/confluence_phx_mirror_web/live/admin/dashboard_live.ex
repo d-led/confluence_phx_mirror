@@ -116,7 +116,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
         <div>
           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Operations</p>
           <h1 class="mt-1 text-3xl font-semibold">Mirror dashboard</h1>
-          <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/60">
+          <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/70">
             <span class="uppercase tracking-[0.14em] text-base-content/70">Mirroring</span>
             <a
               :if={@mirror_url}
