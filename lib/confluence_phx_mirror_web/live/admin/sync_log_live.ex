@@ -152,6 +152,32 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   defp detail_value(value) when is_number(value) or is_atom(value), do: to_string(value)
   defp detail_value(value), do: inspect(value)
 
+  attr :edge, :atom, required: true, values: [:top, :bottom]
+
+  # The same four headings twice: one row sticks to the top of the scroller and
+  # one to the bottom, so whichever end of the log a reader is at, the columns
+  # are named.
+  defp log_columns(assigns) do
+    ~H"""
+    <tr class="text-[10px] uppercase tracking-wider text-base-content/60">
+      <th class={["w-[4.5rem] bg-base-200 px-3 py-1 text-left font-semibold", sticky(@edge)]}>
+        Time
+      </th>
+      <th class={["w-14 bg-base-200 px-2 py-1 text-left font-semibold", sticky(@edge)]}>Level</th>
+      <th class={["bg-base-200 px-2 py-1 text-left font-semibold", sticky(@edge)]}>Line</th>
+      <th class={[
+        "hidden w-16 bg-base-200 px-2 py-1 pr-3 text-right font-semibold sm:table-cell",
+        sticky(@edge)
+      ]}>
+        Run
+      </th>
+    </tr>
+    """
+  end
+
+  defp sticky(:top), do: "sticky top-0 z-10"
+  defp sticky(:bottom), do: "sticky bottom-0 z-10"
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -238,36 +264,62 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
         class="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-base-content/70"
       >
         <span class="font-semibold text-base-content/80">Confluence</span>
-        <span>{Traffic.describe(@traffic)}</span>
+        <%!-- A slowest call is a URL, and a URL has no spaces to wrap at: it
+        must break, or it pushes the whole page sideways on a phone. --%>
+        <span class="min-w-0 break-words">{Traffic.describe(@traffic)}</span>
       </p>
 
+      <%!-- A table, not a pile of flex rows: the log scrolls, so the columns have
+      to stay legible while it does. The header sticks to the top and repeats at
+      the bottom, so a reader who scrolled past the newest line still knows what
+      each column is. --%>
       <div
         id="sync-log"
         phx-hook=".Follow"
         data-follow={to_string(@follow?)}
-        class="mt-2 max-h-[70vh] overflow-y-auto rounded-xl border border-base-300/70 bg-base-100 font-mono text-[11px]"
+        class="mt-2 max-h-[70vh] overflow-y-auto rounded-xl border border-base-300/70 bg-base-100 text-[11px]"
       >
-        <p class="hidden only:block px-4 py-10 text-center font-sans text-sm text-base-content/70">
-          Nothing yet. Lines appear here as soon as a sync starts, including every call it makes.
-        </p>
-        <div
-          :for={entry <- @visible}
-          id={"log-#{entry.id}"}
-          class="flex flex-wrap items-baseline gap-x-2 border-b border-base-300/40 px-3 py-1.5 last:border-0"
-        >
-          <.local_time
-            at={entry.at}
-            class="w-28 shrink-0 tabular-nums text-base-content/70"
-          />
-          <span class={["w-10 shrink-0 lowercase", elem(level_badge(entry.level), 1)]}>
-            {elem(level_badge(entry.level), 0)}
-          </span>
-          <span class="min-w-0 flex-1">
-            {entry.message}
-            <span :if={details(entry) != ""} class="text-base-content/70">· {details(entry)}</span>
-          </span>
-          <span :if={entry.run_id} class="shrink-0 text-base-content/70">#{entry.run_id}</span>
-        </div>
+        <table class="w-full table-fixed border-collapse font-mono">
+          <thead>
+            <.log_columns edge={:top} />
+          </thead>
+          <tbody>
+            <tr
+              :for={entry <- @visible}
+              id={"log-#{entry.id}"}
+              class="border-b border-base-300/40 align-baseline"
+            >
+              <td class="whitespace-nowrap px-3 py-1 align-baseline text-base-content/70">
+                <.local_time at={entry.at} format={:time} />
+              </td>
+              <td class={[
+                "whitespace-nowrap px-2 py-1 align-baseline",
+                elem(level_badge(entry.level), 1)
+              ]}>
+                {elem(level_badge(entry.level), 0)}
+              </td>
+              <td class="min-w-0 px-2 py-1 align-baseline break-words">
+                {entry.message}
+                <span :if={details(entry) != ""} class="text-base-content/70">
+                  · {details(entry)}
+                </span>
+              </td>
+              <%!-- The run is the first thing to go on a narrow screen: the line
+              itself usually names it. --%>
+              <td class="hidden whitespace-nowrap px-2 py-1 pr-3 text-right align-baseline text-base-content/70 sm:table-cell">
+                {entry.run_id && "##{entry.run_id}"}
+              </td>
+            </tr>
+            <tr :if={@visible == []}>
+              <td colspan="4" class="px-4 py-10 text-center font-sans text-sm text-base-content/70">
+                Nothing yet. Lines appear here as soon as a sync starts, including every call it makes.
+              </td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <.log_columns edge={:bottom} />
+          </tfoot>
+        </table>
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".Follow">

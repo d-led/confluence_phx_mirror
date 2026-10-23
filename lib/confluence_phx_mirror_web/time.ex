@@ -51,6 +51,13 @@ defmodule ConfluencePhxMirrorWeb.Time do
     datetime |> in_utc() |> Calendar.strftime("%-d %b %Y, %H:%M UTC")
   end
 
+  @doc "Time of day in UTC, e.g. `09:30:12`. A line in a log needs no date."
+  def time_of_day(nil), do: "unknown"
+
+  def time_of_day(%DateTime{} = datetime) do
+    datetime |> in_utc() |> Calendar.strftime("%H:%M:%S")
+  end
+
   @doc """
   The instant as ISO 8601 in UTC, for `datetime` attributes: seconds, the
   precision the mirror stores.

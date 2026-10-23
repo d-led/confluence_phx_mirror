@@ -11,7 +11,7 @@ defmodule ConfluencePhxMirrorWeb.TimeComponents do
 
   use Phoenix.Component
 
-  import ConfluencePhxMirrorWeb.Time, only: [date: 1, datetime: 1, iso: 1]
+  import ConfluencePhxMirrorWeb.Time, only: [date: 1, datetime: 1, iso: 1, time_of_day: 1]
 
   attr :at, :any,
     required: true,
@@ -19,8 +19,9 @@ defmodule ConfluencePhxMirrorWeb.TimeComponents do
 
   attr :format, :atom,
     default: :datetime,
-    values: [:date, :datetime],
-    doc: "how much of the instant the text shows, once the browser has its way"
+    values: [:date, :datetime, :time],
+    doc:
+      "how much of the instant the text shows, once the browser has its way; `:time` is for log lines"
 
   attr :class, :string, default: nil
   attr :rest, :global
@@ -52,5 +53,6 @@ defmodule ConfluencePhxMirrorWeb.TimeComponents do
 
   defp text(nil, _format), do: "unknown"
   defp text(at, :date), do: date(at)
+  defp text(at, :time), do: time_of_day(at)
   defp text(at, :datetime), do: datetime(at)
 end
