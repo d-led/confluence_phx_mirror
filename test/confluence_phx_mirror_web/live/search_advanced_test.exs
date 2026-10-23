@@ -66,7 +66,7 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchAdvancedTest do
     {:ok, view, _html} = live(conn, ~p"/search")
 
     view
-    |> element("#space-filter button[phx-value-value='ENG']")
+    |> element("#space-filter button[phx-value-space='ENG']")
     |> render_click()
 
     assert_patch(view, "/search?space=ENG")
@@ -90,15 +90,15 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchAdvancedTest do
   test "sorting by recency is applied to the results", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search?q=architecture")
 
-    view |> element("#sort-filter") |> render_change(%{"sort" => "oldest"})
+    view |> element("#sort-form") |> render_change(%{"sort" => "oldest"})
 
     assert_patch(view, "/search?q=architecture&sort=oldest")
   end
 
-  test "a contributor can be picked from the people the mirror has seen", %{conn: conn} do
+  test "a shared link names the contributor it filters by", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search?creator=Jane+Doe")
 
-    assert has_element?(view, "#creator-filter", "Jane Doe")
-    assert has_element?(view, "button[phx-value-value='Jane Doe'].active")
+    assert has_element?(view, "#creator-filter > button", "Jane Doe")
+    assert has_element?(view, "#creator-filter button[phx-value-creator='Jane Doe']")
   end
 end

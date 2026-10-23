@@ -20,14 +20,14 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
     {:ok, view, _html} = live(conn, ~p"/search")
 
     view
-    |> element("button[phx-click='set_space'][phx-value-value='#{space.key}']")
+    |> element("button[phx-click='set_space'][phx-value-space='#{space.key}']")
     |> render_click()
 
     assert_patch(view, ~p"/search?space=#{space.key}")
     assert has_element?(view, "a", "Space: #{space.key}")
 
     view
-    |> element("button[phx-click='set_space'][phx-value-value='#{space.key}']")
+    |> element("button[phx-click='set_space'][phx-value-space='#{space.key}']")
     |> render_click()
 
     assert_patch(view, ~p"/search")
@@ -38,21 +38,21 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/search")
 
-    view |> element("button[phx-click='toggle_type'][phx-value-value='page']") |> render_click()
+    view |> element("button[phx-click='toggle_type'][phx-value-type='page']") |> render_click()
     assert_patch(view, ~p"/search?types=page")
     assert has_element?(view, "a", "Type: pages")
 
-    view |> element("button[phx-click='toggle_type'][phx-value-value='page']") |> render_click()
+    view |> element("button[phx-click='toggle_type'][phx-value-type='page']") |> render_click()
     assert_patch(view, ~p"/search")
   end
 
   test "picking a time window replaces the previous one", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search?updated=7d")
 
-    view |> element("button[phx-click='set_updated'][phx-value-value='30d']") |> render_click()
+    view |> element("button[phx-click='set_updated'][phx-value-updated='30d']") |> render_click()
     assert_patch(view, ~p"/search?updated=30d")
 
-    view |> element("button[phx-click='set_updated'][phx-value-value='30d']") |> render_click()
+    view |> element("button[phx-click='set_updated'][phx-value-updated='30d']") |> render_click()
     assert_patch(view, ~p"/search")
   end
 
