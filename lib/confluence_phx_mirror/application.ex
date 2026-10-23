@@ -5,8 +5,8 @@ defmodule ConfluencePhxMirror.Application do
 
   require Logger
 
-  alias ConfluencePhxMirror.Confluence.{HttpSource, RateLimiter}
   alias ConfluencePhxMirror.BuildInfo
+  alias ConfluencePhxMirror.Confluence.{HttpSource, RateLimiter}
 
   @impl true
   def start(_type, _args) do
