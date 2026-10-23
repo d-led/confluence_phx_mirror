@@ -12,7 +12,7 @@
 #
 # One app, no public IP:
 #
-#   confluence-mirror-app   the mirror, Flycast only (fly.main.toml)
+#   confluence-mirror-app   the mirror, Flycast only (fly.toml)
 #   confluence-mirror-db    its Postgres, same region, attached
 #
 # The oauth2-proxy front door is a separate step (deploy/fly/proxy, app
@@ -36,7 +36,7 @@ APP="confluence-mirror-app"
 DB_APP="confluence-mirror-db"
 REGION="ams"
 VOLUME="mirror_blobs"
-CONFIG="fly.main.toml"
+CONFIG="fly.toml"
 RELEASE="confluence_phx_mirror"
 
 seed=0
@@ -175,8 +175,9 @@ revision=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
 git diff --quiet 2>/dev/null || revision="$revision-dirty"
 
 echo "deploying $APP (version $version, commit $revision)"
-fly deploy . \
-  --config "$CONFIG" \
+# No --config: this file is the root `fly.toml`, which is what `fly deploy`
+# reads anyway. $CONFIG exists only so the check above can name the file.
+fly deploy \
   --ha=false \
   --flycast \
   --no-public-ips \

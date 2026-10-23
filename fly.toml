@@ -1,18 +1,23 @@
-# fly.main.toml — the mirror of a real Confluence site, as deployed at
+# fly.toml — the mirror of a real Confluence site, as deployed at
 # `confluence-mirror-app`.
 #
-# ** This is the file the main site is deployed from. ** `scripts/deploy-fly-main.sh`
-# runs `fly deploy . --config fly.main.toml`; a bare `fly deploy` deploys
-# nothing, because there is no `fly.toml` at the root any more.
+# One rule for every config here: the directory you deploy from holds exactly
+# one `fly.toml`, and that file is the app of that directory. Nothing has to be
+# passed with `--config`, so nothing can be passed wrongly.
 #
-# The self-contained demo (CM_SOURCE=demo, no credentials) has its own config at
-# `deploy/fly/demo/fly.toml` (app `confluence-mirror-demo-app`), and the
-# oauth2-proxy front door at `deploy/fly/proxy/fly.main.toml` (app
-# `confluence-mirror`). One app each, because they say different things.
+#   fly.toml                        confluence-mirror-app      the live mirror
+#   deploy/fly/proxy/fly.toml       confluence-mirror          its front door
+#   deploy/fly/demo/fly.toml        confluence-mirror-demo-app the demo
+#   deploy/fly/proxy/fly.demo.toml  confluence-mirror-demo     the demo's door
+#
+# One app each, because they say different things. Every app's default config
+# is called `fly.toml`, so a bare `fly deploy` never picks the wrong one; the
+# demo pair is the only thing that needs `--config`, and its file names the
+# demo in its own name.
 #
 # Deploy from the repository root, so the build context is the whole project:
 #
-#   fly deploy . --config fly.main.toml \
+#   fly deploy \
 #     --build-arg VERSION="$(git describe --tags --always)" \
 #     --build-arg REVISION="$(git rev-parse --short HEAD)"
 #

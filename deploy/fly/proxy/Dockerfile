@@ -9,7 +9,8 @@
 # Dependabot (.github/dependabot.yml, docker/…) proposes the next one.
 FROM quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
 
-# Settings come from the environment (fly.toml [env] and Fly secrets); the
+# Settings come from the environment (the `[env]` block of `fly.toml` here,
+# or `fly.demo.toml`, and Fly secrets); the
 # image's own entrypoint starts the proxy. It already runs as an unprivileged
 # user — CI asserts that for the mirror image, and `docker run --rm --entrypoint
 # /usr/bin/id quay.io/oauth2-proxy/oauth2-proxy:v7.15.5` shows the uid here.

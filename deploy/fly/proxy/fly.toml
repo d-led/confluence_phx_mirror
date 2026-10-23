@@ -1,20 +1,28 @@
-# fly.toml — `confluence-mirror-demo`, the public oauth2-proxy in front of the
-# private mirror app (`confluence-mirror-demo-app`, whose config sits at
-# `deploy/fly/demo/fly.toml`).
+# fly.toml — the public front door of the main site.
 #
-# Every request to https://confluence-mirror-demo.fly.dev lands here first. The
-# proxy authenticates the reader with GitHub and forwards
-# X-Forwarded-Email / X-Forwarded-User to the mirror, which provisions the
-# account on first sight (CM_PROXY_AUTH=true on the backend).
+#   confluence-mirror       this app: oauth2-proxy, public, GitHub sign-in
+#   confluence-mirror-app   the mirror, Flycast only, no public IP
 #
-# Secrets, set by scripts/deploy-fly.sh and never written down here:
-#   OAUTH2_PROXY_CLIENT_ID, OAUTH2_PROXY_CLIENT_SECRET  GitHub OAuth app
-#   OAUTH2_PROXY_COOKIE_SECRET                          urlsafe base64, 32 bytes
+# Deploy it from this directory, which is also its build context:
 #
-# The GitHub OAuth app's callback URL must be
-# https://confluence-mirror-demo.fly.dev/oauth2/callback
+#   fly deploy
+#
+# (from the repository root: `fly deploy deploy/fly/proxy`)
+#
+# Secrets it needs (none live in this file):
+#
+#   OAUTH2_PROXY_CLIENT_ID       the GitHub OAuth app's client id
+#   OAUTH2_PROXY_CLIENT_SECRET   …and its secret
+#   OAUTH2_PROXY_COOKIE_SECRET   urlsafe base64 of 32 random bytes
+#
+# The GitHub OAuth app's callback URL is
+# https://confluence-mirror.fly.dev/oauth2/callback
+#
+# The mirror behind it must trust the identity this proxy sets:
+# CM_PROXY_AUTH=true, CM_TRUST_PROXY_HEADERS=true, and — because that app
+# mirrors a real site rather than the bundled demo — MIRROR_ALLOW_UNSAFE_IDENTITY=1.
 
-app = "confluence-mirror-demo"
+app = "confluence-mirror"
 primary_region = "ams"
 
 [build]
@@ -23,48 +31,39 @@ primary_region = "ams"
 [env]
   OAUTH2_PROXY_PROVIDER = "github"
   OAUTH2_PROXY_HTTP_ADDRESS = "0.0.0.0:4180"
-  OAUTH2_PROXY_REDIRECT_URL = "https://confluence-mirror-demo.fly.dev/oauth2/callback"
+  OAUTH2_PROXY_REDIRECT_URL = "https://confluence-mirror.fly.dev/oauth2/callback"
 
-  # The backend over Flycast, which is HTTP-only and never leaves the private
-  # network. The trailing slash matters: the proxy is mounted at the root.
-  OAUTH2_PROXY_UPSTREAMS = "http://confluence-mirror-demo-app.flycast/"
+  OAUTH2_PROXY_UPSTREAMS = "http://confluence-mirror-app.flycast/"
 
-  # Any GitHub account may sign in; narrow this to a domain list ("acme.com") or
-  # add OAUTH2_PROXY_GITHUB_ORG (and OAUTH2_PROXY_GITHUB_TEAM) to restrict it.
+  # Who may read: any GitHub account. Narrow this to a domain, or add
+  # OAUTH2_PROXY_GITHUB_ORG / OAUTH2_PROXY_GITHUB_TEAM, to make it a
+  # colleagues-only mirror.
   OAUTH2_PROXY_EMAIL_DOMAINS = "*"
 
-  # The identity headers the mirror reads: X-Forwarded-Email becomes the reader,
-  # X-Forwarded-User becomes the display name. Both are on by default; they are
-  # named here because the mirror's account provisioning depends on them.
+  # The mirror reads the identity from these and provisions the account on
+  # first sight; the proxy strips whatever a client sent.
   OAUTH2_PROXY_PASS_USER_HEADERS = "true"
-
-  # Trust Fly's edge headers, including X-Forwarded-Proto: https. Without this
-  # the mirror's production force_ssl sees plain HTTP, redirects to HTTPS, and
-  # the proxy forwards the redirect forever.
-  OAUTH2_PROXY_REVERSE_PROXY = "true"
-
-  # X-Auth-Request-* alongside the X-Forwarded-* set, so a different backend
-  # (or a debug session with curl) has the identity in a second place.
   OAUTH2_PROXY_SET_XAUTHREQUEST = "true"
+
+  # Trust X-Forwarded-* from Fly's edge, which is the only address that reaches
+  # this app. Without it the mirror's force_ssl redirect loops.
+  OAUTH2_PROXY_REVERSE_PROXY = "true"
 
   OAUTH2_PROXY_COOKIE_SECURE = "true"
   OAUTH2_PROXY_COOKIE_SAMESITE = "lax"
   OAUTH2_PROXY_COOKIE_EXPIRE = "168h"
   OAUTH2_PROXY_COOKIE_REFRESH = "1h"
 
-  # Nothing new to learn on the sign-in page, and no log line per health check.
+  # One provider, so no "Sign in with…" chooser; and Fly's liveness probe on
+  # /ping is not an event worth a log line.
   OAUTH2_PROXY_SKIP_PROVIDER_BUTTON = "true"
   OAUTH2_PROXY_SILENCE_PING_LOGGING = "true"
 
 [http_service]
   internal_port = 4180
   force_https = true
-  # Keep one proxy running: it holds the only public IP, and a stopped proxy
-  # answers 502 instead of waking the mirror behind it.
   auto_stop_machines = "stop"
   auto_start_machines = true
-  # The proxy keeps no Machine warm either: a reader's first request wakes it,
-  # and it wakes the mirror behind it. Everything here scales to zero.
   min_machines_running = 0
   max_machines_per_region = 1
   processes = ["app"]
@@ -74,7 +73,6 @@ primary_region = "ams"
     soft_limit = 250
     hard_limit = 500
 
-  # oauth2-proxy's own liveness endpoint, which answers without a session.
   [[http_service.checks]]
     interval = "15s"
     timeout = "2s"

@@ -10,7 +10,7 @@ Two deployment configurations ship with the repository, both of the same shape:
 
 | | Fly.io | Kubernetes |
 | --- | --- | --- |
-| configuration | [`fly.main.toml`](../fly.main.toml) + [`deploy/fly/proxy`](../deploy/fly/proxy) | [`deploy/k8s`](../deploy/k8s) |
+| configuration | [`fly.toml`](../fly.toml) + [`deploy/fly/proxy`](../deploy/fly/proxy) | [`deploy/k8s`](../deploy/k8s) |
 | front door | app `confluence-mirror` (oauth2-proxy, the only public IP) | `oauth2-proxy` Deployment + Ingress |
 | the mirror | app `confluence-mirror-app`, Flycast only | `confluence-mirror` Deployment + ClusterIP Service |
 | database | app `confluence-mirror-db` (Postgres 18, attached) | managed Postgres |
@@ -21,20 +21,27 @@ Two deployment configurations ship with the repository, both of the same shape:
 
 ### Which Fly file is which
 
-There is **no `fly.toml` at the repository root**, deliberately: `fly deploy`
-reads `fly.toml` from the working directory, and one there would create a demo
-app nobody asked for.
+One rule: **a directory you would deploy from holds one `fly.toml`, and that
+file is the app that directory is about.** `fly deploy` reads `fly.toml` from
+the directory it is given, so the default is always the right app and nothing
+has to be remembered.
 
 | file | app | what it is |
 | --- | --- | --- |
-| `fly.main.toml` | `confluence-mirror-app` | **the live mirror of a real site — this is the one that is deployed** |
-| `deploy/fly/proxy/fly.main.toml` | `confluence-mirror` | its oauth2-proxy front door (public) |
+| `fly.toml` | `confluence-mirror-app` | **the live mirror of a real site — this is the one that is deployed** |
+| `deploy/fly/proxy/fly.toml` | `confluence-mirror` | its oauth2-proxy front door (public) |
 | `deploy/fly/demo/fly.toml` | `confluence-mirror-demo-app` | the self-contained demo (`CM_SOURCE=demo`, no credentials) |
-| `deploy/fly/proxy/fly.toml` | `confluence-mirror-demo` | the demo's proxy |
+| `deploy/fly/proxy/fly.demo.toml` | `confluence-mirror-demo` | the demo's proxy |
 
-`scripts/deploy-fly-main.sh` deploys the first two; `scripts/deploy-fly.sh`
-deploys the demo pair. Both pass `--config` explicitly, so nothing depends on a
-file being in a particular directory.
+The demo pair is the only thing that is not a default, and its files say
+`demo` in their names: `fly deploy --config deploy/fly/demo/fly.toml`, and
+`fly deploy deploy/fly/proxy --config deploy/fly/proxy/fly.demo.toml`. The two
+backends are deployed from the repository root, because the Dockerfile that
+builds the release needs the whole project as its build context; the two
+proxies are deployed from `deploy/fly/proxy`, where their Dockerfile is.
+
+`scripts/deploy-fly-main.sh` deploys the live app; `scripts/deploy-fly.sh`
+deploys the demo pair.
 
 Nothing here is required by the application: it is a 12-factor release, and
 [operations.md](operations.md) describes the environment contract any process

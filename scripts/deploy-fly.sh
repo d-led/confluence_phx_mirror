@@ -141,7 +141,9 @@ fi
 # --- proxy -------------------------------------------------------------------
 
 echo "deploying proxy: $PROXY_APP"
-fly deploy deploy/fly/proxy --app "$PROXY_APP"
+fly deploy deploy/fly/proxy \
+  --config deploy/fly/proxy/fly.demo.toml \
+  --app "$PROXY_APP"
 
 echo
 echo "done. public URL: https://${PROXY_APP}.fly.dev/"
