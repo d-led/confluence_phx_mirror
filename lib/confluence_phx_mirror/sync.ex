@@ -673,7 +673,13 @@ defmodule ConfluencePhxMirror.Sync do
   # Text search covers every field a reader is likely to remember: body, labels,
   # author, space and attachment filenames. Title is weighted separately by the
   # generated tsvector column.
-  defp search_text(body_text, page, space, attachments) do
+  #
+  # Public so the scale fixture (`ConfluencePhxMirror.Synthetic`) can store the
+  # same searchable text without going through the per-page pipeline; a fixture
+  # whose pages were only findable by title would make full-text search look
+  # like it worked.
+  @doc false
+  def search_text(body_text, page, space, attachments) do
     [
       body_text,
       Enum.join(page.labels, " "),

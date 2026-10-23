@@ -82,6 +82,20 @@ defmodule ConfluencePhxMirror.Confluence.SyntheticSourceTest do
            ]
   end
 
+  test "a generated page carries prose that search can find it by" do
+    {:ok, _run} = Sync.run(:snapshot, source: SyntheticSource)
+    page = Mirror.get_page!(SyntheticContent.page_id(1, 3))
+
+    assert page.search_text =~ page.author_name
+    assert length(String.split(page.body_text, " ")) > 100
+
+    # The body, not just the title, is what makes a page findable: a word that
+    # never appears in a title still matches the page it is written on.
+    refute page.title =~ "rehearsed"
+    assert {:ok, results} = Mirror.Search.text("rehearsed")
+    assert page.confluence_id in Enum.map(results, & &1.page.confluence_id)
+  end
+
   test "the scale fixture writes the rows a sync writes" do
     {:ok, _run} = Sync.run(:snapshot, source: SyntheticSource)
     synced = Mirror.get_page!(SyntheticContent.page_id(1, 3))
@@ -107,7 +121,10 @@ defmodule ConfluencePhxMirror.Confluence.SyntheticSourceTest do
       author: page.author_name,
       space_key: page.space.key,
       parent_title:
-        page.parent_id && Mirror.find_page_by_local_id(page.parent_id) |> parent_title()
+        page.parent_id && Mirror.find_page_by_local_id(page.parent_id) |> parent_title(),
+      # Full-text search reads this; a fixture that only carried titles would
+      # make search look like it worked.
+      search_text: page.search_text
     }
   end
 

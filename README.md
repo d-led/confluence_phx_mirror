@@ -58,6 +58,7 @@ Confluence ──REST──▶ Sync (incremental, rate-limited, audited) ──�
 | looking for a setting | [docs/configuration.md](docs/configuration.md) |
 | integrating: JSON API, Confluence-compatible REST, CQL | [docs/api.md](docs/api.md) |
 | working on the code: architecture, tests, quality gates | [docs/developers.md](docs/developers.md) |
+| measuring a reader's screens, or load-testing a server | [docs/performance.md](docs/performance.md) |
 | wondering why it is built this way, or what it does not do | [docs/design-notes.md](docs/design-notes.md) |
 
 ## Quick start (demo snapshot)

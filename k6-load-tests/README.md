@@ -22,20 +22,13 @@ Thresholds: `http_req_failed < 1%`, p95 < 800 ms, p99 < 2 s.
 
 ## Before you run it
 
-Two settings of the mirror decide whether you are measuring the mirror or the
-guard rails:
-
-* **Reader rate limit.** `CM_READER_RATE_LIMIT_PER_MINUTE` (default 300/admin,
-  see `docs/configuration.md`) is per client. Every k6 VU shares one client, so
-  the default turns a 200-VU run into 94% `429`. Raise it for the test:
-  `CM_READER_RATE_LIMIT_PER_MINUTE=600000`.
-* **Connection pool.** `POOL_SIZE` (default 20, per replica) is the real
-  ceiling: ~15 queries per page view means a small pool saturates long before
-  the CPU does, and p95 goes from 114 ms to 10 s in queue time (with `500`s once
-  the queue gives up). Size it for the concurrency you expect —
-  `replicas × POOL_SIZE` must fit Postgres' `max_connections` — and shrink the
-  per-request query count, which is the fix worth making (see the home page's
-  per-space queries in `query_budget_test.exs`).
+Two settings decide whether you are measuring the mirror or a guard rail: the
+reader rate limit (every VU shares one client IP, so the default turns a 200-VU
+run into `429`s — raise it for the test) and the connection pool, which is the
+real ceiling per replica. Both, and how to read the report, are in
+[performance.md](../docs/performance.md#part-2--load-against-a-running-server).
+The data to point this at comes from the synthetic source; the same guide has the
+commands.
 
 ## What it measured on 2026-10-22 (dev machine, live site, 43 pages)
 

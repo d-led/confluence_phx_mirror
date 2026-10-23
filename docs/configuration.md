@@ -27,9 +27,11 @@ Configuration is read at boot; a running development server does **not** reload
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CM_SOURCE` | see below | `demo` or `http` |
+| `CM_SOURCE` | see below | `demo`, `http` or `synthetic` |
 | `CM_CONFLUENCE_SITE` | – | `https://acme.atlassian.net` (with or without `/wiki`) |
 | `CM_ATL_EMAIL` / `CM_ATL_TOKEN` | – | API credentials |
+| `CM_SYNTHETIC_SPACES` / `CM_SYNTHETIC_PAGES` | `10` / `100` | generated spaces, and pages per space, when `CM_SOURCE=synthetic` |
+| `CM_SYNTHETIC_BRANCHING` | `10` | children per page in the generated tree |
 | `CM_SPACES` | all | comma-separated space keys |
 | `CM_REQUESTS_PER_SECOND` / `CM_BURST` | `5` / `5` | client rate limit (token bucket) |
 | `CM_HTTP_RETRIES` | `3` | attempts per Confluence request |
@@ -46,10 +48,22 @@ re-read is available on demand ("Re-read everything" on the dashboard, or
 `mix confluence.sync --mode snapshot`); expect it to cost one request per page
 when the site is large.
 
-`CM_SOURCE` is explicit when set (`demo`, or `http` — `live` is accepted as an
-alias). Left unset, a configured `CM_CONFLUENCE_SITE` selects the real REST
-source and no site selects the demo snapshot, so a deployment that has
-credentials never silently mirrors fixtures.
+`CM_SOURCE` is explicit when set (`demo`, `http` — `live` is accepted as an
+alias — or `synthetic`). Left unset, a configured `CM_CONFLUENCE_SITE` selects
+the real REST source and no site selects the demo snapshot, so a deployment
+that has credentials never silently mirrors fixtures.
+
+`synthetic` is for measuring, not for readers: it generates spaces and pages
+(`CM_SYNTHETIC_*`) and ingests them through the ordinary sync, so a laptop can
+be given a mirror large enough for the reader screens to behave the way they do
+in production. Generated content is a fixture — the UI labels it as such and it
+gets its own database (`..._synthetic`), so it can never be mistaken for a
+mirror of a real site. Populate it once, from empty:
+
+```bash
+CM_SOURCE=synthetic CM_SYNTHETIC_SPACES=200 CM_SYNTHETIC_PAGES=500 \
+  mix ecto.drop && CM_SOURCE=synthetic mix ecto.setup
+```
 
 ## Accounts and sign-in
 

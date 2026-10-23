@@ -19,9 +19,10 @@ defmodule ConfluencePhxMirror.Synthetic do
   """
 
   alias ConfluencePhxMirror.Confluence.SyntheticContent
-  alias ConfluencePhxMirror.Mirror.Space
+  alias ConfluencePhxMirror.Mirror.{Page, Space}
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
+  alias ConfluencePhxMirror.Sync.Renderer
 
   # Postgres takes at most 65_535 parameters per statement and a page row is
   # about two dozen of them, so a batch stays under three thousand rows. The
@@ -91,9 +92,13 @@ defmodule ConfluencePhxMirror.Synthetic do
   end
 
   defp pages_of(space_index, opts, now) do
-    {:ok, dtos} = SyntheticContent.pages(SyntheticContent.space_key(space_index), opts)
+    space = SyntheticContent.space(space_index, opts)
+    {:ok, dtos} = SyntheticContent.pages(space.key, opts)
 
     Enum.map(dtos, fn dto ->
+      page = %Page{labels: Enum.sort(dto.labels), author_name: dto.version.by.display_name}
+      text = Renderer.plain_text(dto.body.export_view)
+
       dto
       |> Sync.page_attrs()
       |> Map.merge(%{
@@ -102,10 +107,13 @@ defmodule ConfluencePhxMirror.Synthetic do
         parent_id: parent_local_id(space_index, opts, dto.parent_id),
         # `Mirror.replace_labels/2` stores the sorted, normalised set; the
         # fixture does the same so a benchmark compares like with like.
-        labels: Enum.sort(dto.labels),
+        labels: page.labels,
         body_export: dto.body.export_view,
-        body_text: text_of(dto.body.export_view),
-        search_text: dto.title,
+        body_text: text,
+        # The sync builds the searchable text from the body and the byline;
+        # without it a fixture is only findable by title, which would make
+        # full-text search look like it works when it does not.
+        search_text: Sync.search_text(text, page, %Space{name: space.name, key: space.key}, []),
         inserted_at: now,
         updated_at: now
       })
@@ -199,11 +207,4 @@ defmodule ConfluencePhxMirror.Synthetic do
 
   defp confluence_id(space_index, page_index),
     do: SyntheticContent.page_id(space_index, page_index)
-
-  defp text_of(html) do
-    html
-    |> String.replace(~r/<[^>]*>/u, " ")
-    |> String.replace(~r/\s+/u, " ")
-    |> String.trim()
-  end
 end

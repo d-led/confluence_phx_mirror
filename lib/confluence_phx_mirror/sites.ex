@@ -9,6 +9,7 @@ defmodule ConfluencePhxMirror.Sites do
 
       demo snapshot          -> database ..._demo
       https://dled.atlassian.net/wiki -> database ..._dled_atlassian_net
+      generated content      -> database ..._synthetic
 
   Nothing is ever purged when the active site changes: the instance simply opens
   a different database, and the previous site's mirror is untouched. Starting
@@ -22,6 +23,7 @@ defmodule ConfluencePhxMirror.Sites do
   alias ConfluencePhxMirror.Sites.Site
 
   @demo_key "demo"
+  @synthetic_key "synthetic"
   @max_key_length 40
 
   @type t :: %{
@@ -99,6 +101,7 @@ defmodule ConfluencePhxMirror.Sites do
   def key do
     case Source.source() do
       DemoSource -> @demo_key
+      ConfluencePhxMirror.Confluence.SyntheticSource -> @synthetic_key
       module -> key_for(base_url(module))
     end
   end

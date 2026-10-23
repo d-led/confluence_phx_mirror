@@ -168,24 +168,13 @@ probes) and recomputes when it moves. No timer, no staleness window: a sync is
 visible on the next request.
 
 Both are held to a query budget by the suite — `QueryBudgetTest` over the demo
-snapshot, and `ScaleTest` (opt-in, see [developers.md](developers.md)) over a
-generated mirror of a thousand spaces of a thousand pages. Measured there, warm:
-
-| screen | statements | response | median |
-| --- | --- | --- | --- |
-| a page view | 16 | 48 KB | 3.9 ms |
-| a space overview | 13 | 35 KB | 4.4 ms |
-| a space catalog | 11 | 80 KB | 4.6 ms |
-| the home page | 15 | 36 KB | 6.5 ms |
-| search | 18 | 93 KB | 470 ms |
-
-Before the sidebar became a branch, the same page view sent 445 KB and cost
-11.5 ms at twenty thousand pages, and would have sent twenty-two megabytes at a
-million. Search is the one screen whose cost still grows with the site: ranking
-a query that matches every page is a pass over every match, which is inherent to
-`ts_rank_cd` and is the next thing to look at. The home page's first view after
-a sync pays for the counters' scans once (about seven seconds at a million
-pages); a sync now warms them when it finishes, so a reader does not.
+snapshot on every `mix test`, and `ScaleTest` over a generated mirror of a
+thousand spaces of a thousand pages. Before the sidebar became a branch, a page
+view sent 445 KB and cost 11.5 ms at twenty thousand pages, and would have sent
+twenty-two megabytes at a million; the numbers now, and how to reproduce them,
+are in [performance.md](performance.md). Search is the one screen whose cost
+still grows with the site: ranking a query that matches every page is a pass over
+every match, which is inherent to `ts_rank_cd` and is the next thing to look at.
 
 ## Known limitations
 

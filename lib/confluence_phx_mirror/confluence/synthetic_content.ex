@@ -50,6 +50,88 @@ defmodule ConfluencePhxMirror.Confluence.SyntheticContent do
   @topics ~w(Architecture Operations Onboarding Runbook Decisions Roadmap
              Delivery Incidents Releases Security Tooling)
 
+  # Words the prose is built from. Every list is rotated independently, so two
+  # pages rarely read alike and a search for "rollback" or "schema migration"
+  # matches the subset of pages a real wiki would return.
+  @subjects [
+    "release train",
+    "incident review",
+    "schema migration",
+    "access review",
+    "capacity plan",
+    "backup restore",
+    "feature rollout",
+    "data retention",
+    "vendor onboarding",
+    "on-call rotation",
+    "cost review",
+    "latency budget",
+    "search quality",
+    "dependency upgrade",
+    "disaster drill",
+    "support handover"
+  ]
+
+  @owners ["Jane Doe", "Sam Rivera", "Priya Nair", "Ada Okafor", "Luis Ferreira"]
+
+  @cadences ["week", "two weeks", "month", "quarter", "release", "planning cycle"]
+
+  @tools [
+    "terraform",
+    "kubernetes",
+    "flyway",
+    "grafana",
+    "prometheus",
+    "ansible",
+    "argocd",
+    "k6",
+    "pgbouncer",
+    "vault",
+    "jenkins",
+    "github actions"
+  ]
+
+  @metrics [
+    "p95 latency",
+    "error rate",
+    "queue depth",
+    "replication lag",
+    "cache hit ratio",
+    "disk watermark",
+    "build duration",
+    "search zero-results"
+  ]
+
+  @risks [
+    "an unrehearsed rollback",
+    "a silent schema drift",
+    "a credential that outlives its owner",
+    "a dashboard nobody watches",
+    "a runbook that describes last year's system",
+    "a retry storm during a partial outage",
+    "a backup that has never been restored"
+  ]
+
+  @decisions [
+    "Rehearse the rollback before the release, not after it.",
+    "Keep one owner per signal, and name them on the page.",
+    "Prefer a smaller change on a Tuesday to a heroic one on a Friday.",
+    "Write the runbook while the incident is open.",
+    "Delete the feature flag once the rollout is complete.",
+    "Measure the reader's path before adding another index."
+  ]
+
+  @services [
+    "the billing API",
+    "the search index",
+    "the notification worker",
+    "the export pipeline",
+    "the identity gateway",
+    "the attachment store",
+    "the sync scheduler",
+    "the rate limiter"
+  ]
+
   @doc "The defaults, for a caller that wants to print them."
   def defaults, do: @defaults
 
@@ -137,7 +219,9 @@ defmodule ConfluencePhxMirror.Confluence.SyntheticContent do
       ConfluencePhxMirror.Mirror.Page.slugify(title(page_index))
   end
 
-  defp space(index, opts) do
+  @doc "The space document at `index`, counting from one."
+  def space(index, opts \\ []) do
+    opts = options(opts)
     key = space_key(index)
 
     %{
@@ -156,6 +240,7 @@ defmodule ConfluencePhxMirror.Confluence.SyntheticContent do
     {author, account_id} = Enum.at(@authors, rem(space_index + page_index, length(@authors)))
     key = space_key(space_index)
     id = page_id(space_index, page_index)
+    html = body(space_index, page_index, key, title, author)
 
     %{
       id: id,
@@ -172,8 +257,8 @@ defmodule ConfluencePhxMirror.Confluence.SyntheticContent do
         by: %{display_name: author, account_id: account_id}
       },
       body: %{
-        storage: body(key, title, page_index),
-        export_view: body(key, title, page_index)
+        storage: html,
+        export_view: html
       },
       labels: ["topic-#{rem(page_index, 7)}", "kind-#{rem(page_index, 3)}"],
       url: "https://synthetic.invalid/wiki/spaces/#{key}/pages/#{id}/#{slug(title)}",
@@ -230,37 +315,73 @@ defmodule ConfluencePhxMirror.Confluence.SyntheticContent do
     DateTime.add(@base_time, (space_index * 1_000 + page_index) * 60, :second)
   end
 
-  # Roughly the size of a Confluence page that carries prose: headings, a table
-  # and some code. The mirror renders `body_export` as-is, so what it costs to
-  # send is what the page really costs.
-  defp body(key, title, page_index) do
-    topic = Enum.at(@topics, rem(page_index, length(@topics)))
+  # The prose a generated page carries. It has to be *readable*: search ranks
+  # and snippets it, a reader opens it, and a fixture whose every page says the
+  # same thing would make full-text search look like it works when it does not.
+  # Each page therefore draws independently rotated words for its subject, tools,
+  # metrics, decisions and risks, so pages overlap the way a real wiki does —
+  # "rollback" is everywhere, "schema migration" is not — while staying derived
+  # from the index and therefore reproducible.
+  defp body(space_index, page_index, key, title, author) do
+    subject = word(@subjects, page_index)
+    escalation = word(@owners, page_index + space_index)
+    cadence = word(@cadences, div(page_index, 3) + space_index)
+    tool = word(@tools, div(page_index, 2) + space_index)
+    metric = word(@metrics, page_index * 2 + space_index)
+    risk = word(@risks, div(page_index, 4) + space_index)
+    decision = word(@decisions, div(page_index, 5) + space_index)
+    service = word(@services, div(page_index, 7) + space_index)
+    window = rem(page_index * 37 + space_index, 90) + 5
 
     """
     <h1>#{title}</h1>
-    <p>This page belongs to #{key} and describes how the team works on #{topic}.
-    It is generated content: the shape of a mirrored page, at whatever scale the
-    harness asks for, without pretending to be anyone's documentation.</p>
+    <p><strong>Owner:</strong> #{author} · <strong>Escalates to:</strong> #{escalation} ·
+    <strong>Reviewed:</strong> every #{cadence} · <strong>Service:</strong> #{service}</p>
+    <p>The #{subject} for #{service} is owned by #{author}. This page records how we
+    run it, what we changed last, and what would tell us it has gone wrong. Anything
+    that contradicts the runbook lives here rather than in someone's memory, and the
+    #{cadence} review is where it gets corrected.</p>
     <h2 id="context">Context</h2>
+    <p>#{service} carries a #{window}-minute error budget for the quarter. The
+    #{subject} exists because the last two quarters lost time to changes nobody had
+    rehearsed: we now rehearse them, keep the #{tool} configuration next to the page
+    that describes it, and write down what we learned while it is still fresh.</p>
     <p>Readers arrive here from the sidebar, from search, or from another page's
     link. Every one of those entry points renders this page through the same
     controller, so the cost of a read is one page fetch, its breadcrumbs, its
     children, its attachments, its comments and its backlinks.</p>
+    <h2 id="how-we-work">How we work</h2>
+    <ol>
+      <li>Agree the change with the owners of #{service} and write it down here.</li>
+      <li>Rehearse it in #{tool} against a copy of the #{subject} before touching production.</li>
+      <li>Announce the window, keep a rollback ready, and watch #{metric} for the first hour.</li>
+      <li>Record what happened, including the parts that went smoothly.</li>
+    </ol>
     <table class="confluenceTable"><tbody>
       <tr><th class="confluenceTh">Field</th><th class="confluenceTh">Value</th></tr>
       <tr><td class="confluenceTd">Space</td><td class="confluenceTd">#{key}</td></tr>
       <tr><td class="confluenceTd">Page</td><td class="confluenceTd">#{page_index}</td></tr>
-      <tr><td class="confluenceTd">Owner</td><td class="confluenceTd">Team #{rem(page_index, 12)}</td></tr>
+      <tr><td class="confluenceTd">Owner</td><td class="confluenceTd">#{author}</td></tr>
+      <tr><td class="confluenceTd">Tooling</td><td class="confluenceTd">#{tool}</td></tr>
+      <tr><td class="confluenceTd">Signal</td><td class="confluenceTd">#{metric}</td></tr>
     </tbody></table>
     <h2 id="decisions">Decisions</h2>
     <ul>
+      <li>#{decision}</li>
       <li>Keep the mirror read-only; content arrives through a sync.</li>
       <li>Answer a read with the rows the page needs, not the whole space.</li>
       <li>Page the catalog in the database; never in memory.</li>
     </ul>
+    <h2 id="risks">Risks</h2>
+    <p>The risk we keep coming back to is #{risk}. It is not dramatic and it is not
+    rare, which is exactly why it is written down: the #{cadence} review asks whether
+    it has grown, and the answer goes in this paragraph.</p>
     <div class="code panel"><div class="codeContent panelContent"><pre
-    class="syntaxhighlighter"><code>mix confluence.sync --mode=incremental</code></pre></div></div>
-    <blockquote><p>Generated for scale measurements; not a real document.</p></blockquote>
+    class="syntaxhighlighter"><code>#{tool} --service #{service} --window #{window}m</code></pre></div></div>
+    <blockquote><p>Generated content for scale measurements: the shape of a
+    documented page, at whatever size the harness asks for, not a real document.</p></blockquote>
     """
   end
+
+  defp word(list, index), do: Enum.at(list, rem(index, length(list)))
 end

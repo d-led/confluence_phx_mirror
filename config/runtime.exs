@@ -64,6 +64,9 @@ source =
     {"demo", _env} ->
       ConfluencePhxMirror.Confluence.DemoSource
 
+    {"synthetic", _env} ->
+      ConfluencePhxMirror.Confluence.SyntheticSource
+
     # The suite must never reach for a real site because a developer happens to
     # export credentials: tests use the demo snapshot unless told otherwise.
     {nil, :test} ->
@@ -79,6 +82,24 @@ source =
 
 config :confluence_phx_mirror, :source, source
 
+# --- Generated content -------------------------------------------------------
+#
+# `CM_SOURCE=synthetic` mirrors generated spaces and pages instead of a site.
+# They are a fixture: the reader UI says so, the site key keeps their database
+# apart from a real mirror's, and the sizes are what a measurement asks for.
+# Ingesting them goes through the ordinary sync, one page at a time — see
+# "Reading at scale" in docs/developers.md for the fast path a test uses.
+document_counts =
+  Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Confluence.SyntheticSource, [])
+
+config :confluence_phx_mirror,
+       ConfluencePhxMirror.Confluence.SyntheticSource,
+       Keyword.merge(document_counts,
+         spaces: String.to_integer(System.get_env("CM_SYNTHETIC_SPACES", "10")),
+         pages_per_space: String.to_integer(System.get_env("CM_SYNTHETIC_PAGES", "100")),
+         branching: String.to_integer(System.get_env("CM_SYNTHETIC_BRANCHING", "10"))
+       )
+
 # --- Site isolation ----------------------------------------------------------
 #
 # A mirror instance shows exactly one site, and each site gets its own database,
@@ -91,6 +112,9 @@ if config_env() == :dev and System.get_env("DATABASE_URL") in [nil, ""] do
     case source do
       ConfluencePhxMirror.Confluence.DemoSource ->
         "demo"
+
+      ConfluencePhxMirror.Confluence.SyntheticSource ->
+        "synthetic"
 
       _live ->
         ConfluencePhxMirror.Sites.key_for(System.get_env("CM_CONFLUENCE_SITE"))
