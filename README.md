@@ -61,13 +61,24 @@ Confluence ──REST──▶ Sync (incremental, rate-limited, audited) ──�
 | measuring a reader's screens, or load-testing a server | [docs/performance.md](docs/performance.md) |
 | wondering why it is built this way, or what it does not do | [docs/design-notes.md](docs/design-notes.md) |
 
+## What you need
+
+* **Elixir 1.20 or newer** — `mix.exs` requires `~> 1.20`, and the `Dockerfile`
+  builds on `elixir:1.20-alpine`; the tests are run on Elixir 1.20.4/OTP 29.
+* **Node.js with npm** — `mix setup` installs the browser dependencies with
+  `npm ci` in `assets/`; a missing `node` is what stops a first run.
+* **Postgres 12 or newer** — the search index is a stored generated column.
+  `docker compose` provides one locally; anywhere else it is `DATABASE_URL`.
+
 ## Quick start
 
-Local services first, once:
+Three commands look alike and are not, so pick by intent: `mix setup` is the
+one-off for a fresh checkout, `mix ecto.setup` builds *only* a database (what a
+second source needs), and `mix ecto.reset` drops that database first.
 
 ```bash
-docker compose up -d          # Postgres, Adminer, smtp4dev
-mix setup                     # deps, DB, migrations, assets, demo content
+docker compose up -d          # Postgres, Adminer, smtp4dev (local only)
+mix setup                     # first run: deps, database, migrations, assets, first sync
 ```
 
 ### Mirroring a real site
@@ -133,6 +144,7 @@ environment that names that database:
 ```bash
 CM_SOURCE=demo mix ecto.reset                             # demo back to a clean snapshot
 CM_SOURCE=http CM_CONFLUENCE_SITE=https://acme.atlassian.net mix ecto.drop
+CM_SOURCE=http CM_CONFLUENCE_SITE=https://acme.atlassian.net mix ecto.setup
 CM_SOURCE=synthetic CM_SYNTHETIC_SPACES=200 CM_SYNTHETIC_PAGES=500 mix ecto.reset
 ```
 
