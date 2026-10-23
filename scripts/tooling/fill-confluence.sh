@@ -162,7 +162,9 @@ for i in $(seq 1 "$chunks"); do
   chunk_prefix=$(printf '%s%02d' "$PREFIX" "$i")
   log="$OUT_DIR/${chunk_prefix}.log"
 
-  if grep -q "Generation complete" "$log" 2>/dev/null; then
+  # The generator says "Generation complete" even when it gave up, so a chunk
+  # counts as done only when its own run also created something.
+  if grep -q "Generation complete" "$log" 2>/dev/null && grep -q "Created page" "$log" 2>/dev/null; then
     echo "$(date +%H:%M:%S) $chunk_prefix already complete"
     continue
   fi
@@ -184,8 +186,19 @@ for i in $(seq 1 "$chunks"); do
   created=$(grep -c "Created page" "$log" || true)
   echo "$(date +%H:%M:%S) $chunk_prefix: $created pages" | tee -a "$OUT_DIR/progress.log"
 
+  if [ "$created" -eq 0 ] && grep -q "No spaces created" "$log"; then
+    # The spaces of a chunk that was interrupted are still there, and the tool
+    # refuses to make them twice. Leaving the pages it does have beats deleting
+    # them to start over, and beats stalling every later chunk.
+    echo "$(date +%H:%M:%S) $chunk_prefix: spaces already exist, keeping what it has" |
+      tee -a "$OUT_DIR/progress.log"
+    [ "$i" -lt "$chunks" ] && sleep "$PAUSE"
+    continue
+  fi
+
   if [ "$created" -eq 0 ]; then
     echo "$chunk_prefix created nothing; stopping rather than filling 46 logs with zeros." >&2
+    tail -3 "$log" >&2
     exit 1
   fi
   [ "$i" -lt "$chunks" ] && sleep "$PAUSE"
