@@ -20,6 +20,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   alias ConfluencePhxMirror.Sync.{SnapshotWorker, SpaceWorker}
   alias ConfluencePhxMirror.Sync.SyncRun
   alias ConfluencePhxMirror.Webhooks
+  alias ConfluencePhxMirrorWeb.Plugs
   alias ConfluencePhxMirrorWeb.Time
 
   @refresh_ms 5_000
@@ -84,7 +85,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
     assign(socket,
       stats: Mirror.stats(),
-      spaces: Mirror.list_spaces(),
+      # The shell's switcher draws a window of the directory, so the dashboard
+      # sends a window: this reloads every five seconds.
+      spaces: Mirror.list_spaces(limit: Plugs.SiteContext.switcher_limit()),
       space_counts: Mirror.spaces_with_counts(),
       runs: runs,
       audit: Audit.recent(18),
