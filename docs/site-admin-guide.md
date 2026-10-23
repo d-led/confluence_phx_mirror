@@ -89,6 +89,21 @@ anything that reappears upstream is live again on the next sync. A source that
 suddenly lists no spaces, or no pages for a space, never trashes anything: the
 run is flagged `partial` instead.
 
+**Personal spaces are skipped** unless `CM_SYNC_PERSONAL_SPACES=true`. Everyone
+on a Confluence site has one (`~accountid`), it holds their drafts, and it is
+rarely the site an operator means to publish. The rule holds for every kind of
+run — a whole-site snapshot, an incremental pull that happens to find a new page
+in someone's private space, a webhook — so the space cannot arrive through the
+back door; the run's counters say how many pages it left out
+(`skipped_personal`). An incremental run asks the site for its space list to
+tell; if that call fails, the run fails rather than guessing. Syncing one space
+by key is still a request rather than a discovery: that one is honoured.
+
+A run also settles **who** before **what**: the people it already knows get their
+groups read first, then the content, then the groups the content's restrictions
+refer to. Confluence never lists its users, so a person the content names for the
+first time is picked up at the end of the same run.
+
 The mirror is **read-only**. Readers cannot edit anything; content only changes
 when a sync pulls a newer snapshot.
 

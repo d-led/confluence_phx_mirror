@@ -40,6 +40,7 @@ Configuration is read at boot; a running development server does **not** reload
 | `CM_SYNC_INTERVAL_SECONDS` | `3600` | scheduled pull (`0` disables) |
 | `CM_SYNC_LOOKBACK_SECONDS` | `3600` | minimum window for an incremental pull |
 | `CM_SYNC_CONCURRENCY` | `4` | changed pages detailed at once |
+| `CM_SYNC_PERSONAL_SPACES` | `false` | mirror personal (`~account`) spaces — every user has one, and it holds their drafts |
 
 Scheduled pulls are incremental: they ask Confluence only for content that
 changed since the last run, and pages whose version is unchanged are skipped
