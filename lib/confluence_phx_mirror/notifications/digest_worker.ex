@@ -24,11 +24,7 @@ defmodule ConfluencePhxMirror.Notifications.DigestWorker do
   end
 
   defp due_now? do
-    hour =
-      Application.get_env(:confluence_phx_mirror, :notifications, [])
-      |> Keyword.get(:digest_hour_utc, 8)
-
-    DateTime.utc_now().hour == hour
+    DateTime.utc_now().hour == ConfluencePhxMirror.Settings.digest_hour_utc()
   end
 
   defp send_digests do

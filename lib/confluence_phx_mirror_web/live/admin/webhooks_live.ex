@@ -94,9 +94,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
       secret?: is_binary(config[:secret]),
       receivers: map_size(tokens),
       signature_required?: Webhooks.signature_required?(),
-      signature_by_admin?: Settings.webhook_require_signature() != nil,
+      # `stored/1`, not the value in force: this says whether an *administrator*
+      # decided, and the deployment's own default is not their decision.
+      signature_by_admin?: Settings.stored("webhook.require_signature") != nil,
       intake_limit: intake_limit,
-      intake_by_admin?: Settings.webhook_rate_limit() != nil
+      intake_by_admin?: Settings.stored("webhook.rate_limit") != nil
     )
   end
 

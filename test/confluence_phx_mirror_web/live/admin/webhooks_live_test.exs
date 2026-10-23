@@ -59,6 +59,6 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminWebhooksLiveTest do
     html = view |> form("#webhook-intake-form", %{"limit" => "0"}) |> render_submit()
 
     assert html =~ "The cap must be a whole number above zero."
-    assert Settings.webhook_rate_limit() == nil
+    assert Settings.stored("webhook.rate_limit") == nil
   end
 end

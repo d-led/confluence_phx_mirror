@@ -1,36 +1,31 @@
 defmodule ConfluencePhxMirrorWeb.Admin.Config do
   @moduledoc """
-  The configuration this mirror booted with, grouped for the settings page.
+  The configuration this mirror *booted* with, grouped for the settings page.
 
-  Everything here is read from the application environment when the page is
-  requested, and those values were fixed at boot — which is why the page is a
-  read-only block on the settings page: nothing in it can change while you
-  look at it. Each row names the environment variable that changes it.
-
-  Two webhook rows are the exception: an administrator can override those on
-  `/admin/webhooks` without a restart, so they show the value in force and say
-  where it came from.
+  What an administrator can change while the mirror runs lives in
+  `ConfluencePhxMirror.Settings` and is edited above this block; everything
+  listed here is read from the application environment and settles at boot.
+  Each row names the variable that sets it, so the page answers "where does this
+  come from?" without a trip through the config files.
 
   Secrets are reported as present or absent and never printed: the page says
   whether a webhook secret is configured, not what it is.
   """
 
   alias ConfluencePhxMirror.Confluence.{HttpSource, Source}
-  alias ConfluencePhxMirror.{Settings, Sites, Webhooks}
-  alias ConfluencePhxMirrorWeb.Plugs.WebhookRateLimit
-  alias ConfluencePhxMirrorWeb.Skins
+  alias ConfluencePhxMirror.Sites
 
   @type row :: %{label: String.t(), value: String.t(), env: String.t() | nil}
   @type section :: %{title: String.t(), rows: [row()]}
 
   @doc """
   The configuration, in the order an operator usually needs it: what is being
-  mirrored, how it looks, who may administer it, where it sends things, and the
-  limits it enforces.
+  mirrored, who may administer it, where it sends things, and where the content
+  and the proxy sit.
   """
   @spec sections(map() | nil) :: [section()]
   def sections(user \\ nil) do
-    [source(), appearance(), access(user), delivery(), limits()]
+    [source(), access(user), delivery(), limits()]
   end
 
   defp source do
@@ -47,17 +42,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
         row("Requests per second", count(http[:requests_per_second]), "CM_REQUESTS_PER_SECOND"),
         row("Burst", count(http[:burst]), "CM_BURST"),
         row("Page size", count(http[:page_size]), "CM_HTTP_PAGE_SIZE")
-      ]
-    }
-  end
-
-  defp appearance do
-    %{
-      title: "Appearance",
-      rows: [
-        row("Theme", Skins.get_theme(Skins.theme()).label, "CM_THEME"),
-        row("Themes offered", Enum.map_join(Skins.themes(), ", ", & &1.name), nil),
-        row("Reader variants", Enum.map_join(Skins.variants(), ", ", & &1.name), nil)
       ]
     }
   end
@@ -88,41 +72,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
           if(webhooks[:secret], do: "configured", else: "not set"),
           "CM_WEBHOOK_SECRET"
         ),
-        row(
-          "Signature required",
-          required_signatures(),
-          "CM_WEBHOOK_REQUIRE_SIGNATURE"
-        ),
         row("Webhook tokens", receivers(config(:webhook_tokens, %{})), "CM_WEBHOOK_TOKENS"),
-        row("Notifications", toggle(notifications[:enabled]), "MIRROR_NOTIFICATIONS"),
-        row("Mail from", mail_from(notifications[:from]), "MIRROR_MAIL_FROM"),
-        row(
-          "Digest hour (UTC)",
-          hour(notifications[:digest_hour_utc]),
-          "MIRROR_DIGEST_HOUR_UTC"
-        )
+        row("Mail from", mail_from(notifications[:from]), "MIRROR_MAIL_FROM")
       ]
     }
   end
 
   defp limits do
-    reader = config(:reader_rate_limit, [])
-
     %{
-      title: "Limits & storage",
+      title: "Storage & proxy",
       rows: [
-        row("Readers (HTML)", per_minute(reader[:html]), "CM_READER_RATE_LIMIT_PER_MINUTE"),
-        row("Readers (API)", per_minute(reader[:api]), "CM_RATE_LIMIT_API_PER_MINUTE"),
-        row(
-          "Readers (attachments)",
-          per_minute(reader[:attachments]),
-          "CM_RATE_LIMIT_ATTACHMENTS_PER_MINUTE"
-        ),
-        row(
-          "Webhook intake",
-          intake_limit(),
-          "CM_WEBHOOK_RATE_LIMIT_PER_MINUTE"
-        ),
         row(
           "Trust proxy headers",
           toggle(config(:trust_proxy_headers)),
@@ -134,23 +93,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
   end
 
   defp row(label, value, env), do: %{label: label, value: value, env: env}
-
-  defp required_signatures do
-    value = toggle(Webhooks.signature_required?())
-
-    if Settings.webhook_require_signature() == nil,
-      do: value,
-      else: value <> " (set on Webhooks)"
-  end
-
-  defp intake_limit do
-    {limit, period_ms} = WebhookRateLimit.config()
-    value = per_minute(limit: limit, period_ms: period_ms)
-
-    if Settings.webhook_rate_limit() == nil,
-      do: value,
-      else: value <> " (set on Webhooks)"
-  end
 
   defp config(key, default \\ nil),
     do: Application.get_env(:confluence_phx_mirror, key, default)
@@ -175,9 +117,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
     do: "every #{div(seconds, 60)} min"
 
   defp every(seconds), do: "every #{seconds} s"
-
-  defp hour(nil), do: "—"
-  defp hour(hour), do: String.pad_leading(to_string(hour), 2, "0") <> ":00"
 
   defp count(nil), do: "—"
   defp count(value), do: to_string(value)
@@ -214,15 +153,4 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
   defp mail_from({name, address}), do: "#{name} <#{address}>"
   defp mail_from(nil), do: "—"
   defp mail_from(address), do: to_string(address)
-
-  defp per_minute(nil), do: "unlimited"
-
-  defp per_minute(settings) when is_list(settings) do
-    case Keyword.get(settings, :limit) do
-      limit when is_integer(limit) and limit > 0 -> "#{limit}/min"
-      _unlimited -> "unlimited"
-    end
-  end
-
-  defp per_minute(_settings), do: "unlimited"
 end

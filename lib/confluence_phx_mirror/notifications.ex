@@ -204,10 +204,7 @@ defmodule ConfluencePhxMirror.Notifications do
     |> Repo.all()
   end
 
-  defp enabled?,
-    do:
-      Application.get_env(:confluence_phx_mirror, :notifications, [])
-      |> Keyword.get(:enabled, true)
+  defp enabled?, do: ConfluencePhxMirror.Settings.notifications_enabled?()
 
   defp format_error(reason) when is_binary(reason), do: reason
   defp format_error(reason), do: inspect(reason)

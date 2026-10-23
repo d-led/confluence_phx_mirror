@@ -80,10 +80,13 @@ mix confluence.webhook --page 1002 --event page_updated
 
 A sync is recorded as a run (`running` → `succeeded` / `partial` / `failed`)
 with counters and errors. Failures are **per page**: one broken attachment or
-comment does not abort the run. Pages missing from a snapshot are marked deleted
-(rows are kept for audit); attachments removed in Confluence are deleted from
-Postgres and the blob store. A source that suddenly lists no pages for a space
-never marks that space's content deleted — the run is flagged `partial` instead.
+comment does not abort the run. Pages and blog posts missing from a snapshot are
+**trashed** (marked deleted, rows kept); attachments removed in Confluence are
+deleted from Postgres and the blob store. A space missing from a whole-site
+snapshot is trashed the same way, with its pages and their comments — and
+anything that reappears upstream is live again on the next sync. A source that
+suddenly lists no spaces, or no pages for a space, never trashes anything: the
+run is flagged `partial` instead.
 
 The mirror is **read-only**. Readers cannot edit anything; content only changes
 when a sync pulls a newer snapshot.
@@ -121,12 +124,18 @@ can move between them without going back to a hub:
   only thing that deletes content, and it takes the comments and attachment
   files with it.
 * `/admin/users` (**live**) – accounts, roles, mirrored groups and API tokens.
-* `/admin/settings` (**live**) – the setup screen. The theme every reader wears
-  is a form here: pick one, save, and the whole site repaints. Below it the page
-  lists what the mirror booted with — source and sync pacing, identity and
-  administrators, webhook and mail delivery, rate limits and the blob root —
-  each row naming the environment variable that changes it, secrets shown as
-  *configured* never printed ([themes and variants](#themes-and-variants)).
+* `/admin/settings` (**live**) – the setup screen, in two halves. The top is
+  what you can change while the mirror runs: the theme every reader wears, the
+  per-reader request limits, and whether notification mail goes out (with the
+  UTC hour for the digest). A field you leave empty means "no decision" — the
+  value this deployment was configured with applies again, and the placeholder
+  shows it. A save is one transaction: either every field of the form and its
+  audit entry were stored, or nothing was. The bottom half is what the mirror
+  booted with — source and sync pacing, identity and administrators, webhook and
+  mail delivery, storage and the proxy — each row naming the environment
+  variable that changes it, secrets shown as *configured* never printed. Those
+  are read at boot: change the variable and restart
+  ([themes and variants](#themes-and-variants)).
 * `/health` – database check, content counters and last sync; no auth, so it
   can back a probe ([operations.md](operations.md)).
 

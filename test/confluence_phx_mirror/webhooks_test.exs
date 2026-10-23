@@ -204,7 +204,7 @@ defmodule ConfluencePhxMirror.WebhooksTest do
     end
 
     test "an administrator's decision on the admin page overrides the deployment" do
-      :ok = Settings.put_webhook_require_signature(false, {:system, "test"})
+      assert {:ok, _applied} = Settings.put_webhook_require_signature(false, {:system, "test"})
       body = JSON.encode!(payload("page_updated", 1002))
 
       assert {:ok, delivery} = Webhooks.receive(JSON.decode!(body), body, [])

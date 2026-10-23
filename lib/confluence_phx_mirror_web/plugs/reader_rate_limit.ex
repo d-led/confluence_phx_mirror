@@ -12,6 +12,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ReaderRateLimit do
   import Phoenix.Controller, only: [put_view: 2, render: 3]
 
   alias ConfluencePhxMirror.RateLimit
+  alias ConfluencePhxMirror.Settings
 
   def init(opts), do: opts
 
@@ -24,12 +25,15 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ReaderRateLimit do
     end
   end
 
+  # The cap an administrator set on `/admin/settings` wins over the deployment's
+  # own; `Settings.reader_limit/1` already falls back to it. The window is a
+  # deployment decision and stays with the config.
   defp lookup(scope) do
     config = Application.get_env(:confluence_phx_mirror, :reader_rate_limit, [])
 
     if Keyword.get(config, :enabled, false) do
       scope_config = Keyword.get(config, scope, [])
-      {:ok, Keyword.get(scope_config, :limit, 120), Keyword.get(scope_config, :period_ms, 60_000)}
+      {:ok, Settings.reader_limit(scope), Keyword.get(scope_config, :period_ms, 60_000)}
     else
       :disabled
     end

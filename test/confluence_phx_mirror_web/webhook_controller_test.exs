@@ -209,7 +209,7 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
 
     test "an administrator's cap overrides the configured one without a restart", %{conn: _conn} do
       # The describe configures two a minute; the page sets one.
-      :ok = Settings.put_webhook_rate_limit(1, {:system, "test"})
+      assert {:ok, _applied} = Settings.put_webhook_rate_limit(1, {:system, "test"})
       body = JSON.encode!(payload("page_updated", 1002))
       caller = unique_address()
 

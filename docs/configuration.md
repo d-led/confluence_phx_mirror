@@ -156,6 +156,32 @@ readers are always limited by identity, proxy or not.
 A throttled browser request answers `429` with a page that names the retry
 window (and a `Retry-After` header); API clients get JSON.
 
+## Settings an administrator changes at runtime
+
+Some configuration does not need a restart, and an administrator owns it on
+**Admin → Settings**. Each of those settings has a **default taken from the
+configuration described in this file**, so a mirror nobody has touched behaves
+exactly as its environment says; what the administrator saves is an override,
+and clearing the field hands the decision back to the environment.
+
+| Setting | Default comes from | Decides |
+| --- | --- | --- |
+| Theme | `CM_THEME` | the palette pair every reader wears |
+| Reader limits (HTML, API, attachments) | `CM_READER_RATE_LIMIT_PER_MINUTE` and the per-scope variables | requests per reader per minute |
+| Notifications on/off | `MIRROR_NOTIFICATIONS` | whether the mirror mails watchers at all |
+| Digest hour (UTC) | `MIRROR_DIGEST_HOUR_UTC` | when the daily digest goes out |
+| Webhook signatures required | `CM_WEBHOOK_REQUIRE_SIGNATURE` | whether deliveries must be signed |
+| Webhook intake limit | `CM_WEBHOOK_RATE_LIMIT_PER_MINUTE` | deliveries accepted per address per minute |
+
+The stored values live in the `settings` table and are read from memory, so a
+change applies to the next request without a restart. A save is one
+transaction: every field of the change and its audit entry (`settings.updated`)
+commit together or not at all, so a save that reports an error changed nothing.
+
+Anything not in that table — the source, the sync schedule, the database, the
+blob root, secrets, who may sign in — is read once at boot and still needs a
+restart; `/admin/settings` lists it with the variable that sets it.
+
 ## Themes
 
 Appearance is two decisions. The **theme** is the site's brand — one palette pair

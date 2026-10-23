@@ -40,11 +40,21 @@ ones specific to the mirror.
   (`system`, `light`, `dark`) is the reader's cookie; it only selects a palette.
   Both reach the document through `Skins.attributes/2`, splatted onto `<html>`
   (`data-theme`, `data-scheme`). Deeper overrides go in `assets/css/author.css`.
-* **Settings an admin changes live in one table.** `settings` (key/value) holds
-  the theme; `ConfluencePhxMirror.Settings` loads it into `:persistent_term` at
-  boot, so the per-request theme lookup never queries, and every write is
-  audited. The environment seeds the same decision (`CM_THEME`) and applies again
-  once the stored value is cleared.
+* **Settings an admin changes live in one table, and a change is one
+  transaction.** `settings` (key/value) holds the two kinds of decision an
+  administrator owns — the site's theme and the handful of runtime knobs
+  (reader limits, notifications, webhook intake). Every key in
+  `ConfluencePhxMirror.Settings` has a *default read from the deployment's own
+  config*, so a stored value is an override and clearing it hands the decision
+  back; that is why there is no second set of defaults in the database. Reads
+  come from `:persistent_term`, loaded at boot and refreshed after a write.
+  `update/2` validates every field first, then writes the rows and their audit
+  entry (`settings.updated`) in one `Repo.transaction`, and only then refreshes
+  the cache: a save that cannot be audited does not happen, and a failed save
+  leaves both the table and the running site untouched. The web layer asks
+  `stored/1` when it needs "did an administrator decide this?" and
+  `effective/1` when it needs the value in force — never compare the value in
+  force against `nil` for provenance.
 * **JS dependencies are real dependencies**: `assets/package.json`, `npm ci`
   wired into `assets.build` / `assets.deploy`. Syntax highlighting uses the
   highlight.js grammar chosen from Confluence's `brush:` attribute.

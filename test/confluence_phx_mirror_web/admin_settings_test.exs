@@ -51,8 +51,59 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     {:ok, _view, html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
 
     assert html =~ "Source &amp; sync"
-    assert html =~ "CM_THEME"
-    assert html =~ "Limits"
+    assert html =~ "CM_CONFLUENCE_SITE"
+    assert html =~ "Storage &amp; proxy"
+  end
+
+  test "an administrator caps how often a reader may call", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    assert view
+           |> element("#limits-form")
+           |> render_submit(%{"limits" => %{"html" => "300", "api" => "", "attachments" => ""}}) =~
+             "Reader limits saved."
+
+    assert Settings.reader_limit(:html) == 300
+    assert Settings.stored("reader.api_limit") == nil
+  end
+
+  test "clearing a limit hands it back to the deployment", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    view
+    |> element("#limits-form")
+    |> render_submit(%{"limits" => %{"html" => "300", "api" => "", "attachments" => ""}})
+
+    view
+    |> element("#limits-form")
+    |> render_submit(%{"limits" => %{"html" => "", "api" => "", "attachments" => ""}})
+
+    assert Settings.stored("reader.html_limit") == nil
+    assert Settings.reader_limit(:html) == Settings.default("reader.html_limit")
+  end
+
+  test "a limit that is not a number saves nothing at all", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    html =
+      view
+      |> element("#limits-form")
+      |> render_submit(%{"limits" => %{"html" => "300", "api" => "lots", "attachments" => ""}})
+
+    assert html =~ "Nothing was saved"
+    assert Settings.stored("reader.html_limit") == nil
+  end
+
+  test "an administrator turns notification mail off", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    assert view
+           |> element("#notifications-form")
+           |> render_submit(%{"notifications" => %{"enabled" => "false", "digest_hour" => "9"}}) =~
+             "Notification settings saved."
+
+    refute Settings.notifications_enabled?()
+    assert Settings.digest_hour_utc() == 9
   end
 
   test "a member is sent home, not shown the page", %{conn: conn} do
