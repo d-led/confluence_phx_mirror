@@ -72,7 +72,8 @@ defmodule ConfluencePhxMirror.Accounts.TokenHash do
   defp stored_params(stored) do
     with [_, params] <- Regex.run(~r/\A\$argon2id\$v=\d+\$([^$]+)\$/, stored),
          %{} = found <-
-           Regex.scan(~r/([mtp])=(\d+)/, params) |> Map.new(fn [_, k, v] -> {k, to_integer(v)} end) do
+           Regex.scan(~r/([mtp])=(\d+)/, params)
+           |> Map.new(fn [_, k, v] -> {k, to_integer(v)} end) do
       found
     else
       _other -> nil
