@@ -26,57 +26,21 @@ Two settings decide whether you are measuring the mirror or a guard rail: the
 reader rate limit (every VU shares one client IP, so the default turns a 200-VU
 run into `429`s — raise it for the test) and the connection pool, which is the
 real ceiling per replica. Both, and how to read the report, are in
-[performance.md](../docs/performance.md#part-2--load-against-a-running-server).
+[performance.md](../docs/performance.md#part-2-load-against-a-running-server).
 The data to point this at comes from the synthetic source; the same guide has the
 commands.
 
-## What it measured on 2026-10-22 (dev machine, live site, 43 pages)
+## Reading a report
 
-| profile | requests | p95 | p99 | failures | note |
-| --- | --- | --- | --- | --- | --- |
-| smoke | 20 | 41 ms | 46 ms | 0% | |
-| 200 | 14 756 | 114 ms | 314 ms | 5.6% (all `429`) | rate limiter, not the mirror |
-| 200 | 4 382 | 10 190 ms | 23 628 ms | 1.2% (`500` from DB queue) | `POOL_SIZE=10` exhausted |
-| 200 | 2 248 | 37 101 ms | 40 723 ms | 0.7% | `POOL_SIZE=40`, but the run shared the host with another server and a test suite: not a valid number |
-| 2 000 | 118 213 | 5 001 ms | 6 593 ms | 0% | `POOL_SIZE=20` |
-| 2 000 | 122 963 | 4 360 ms | 6 068 ms | 0% | `POOL_SIZE=100` — best of the four |
-| 2 000 | 79 319 | 7 856 ms | 9 366 ms | 0% | `POOL_SIZE=500` |
-| 2 000 | 44 650 | 27 669 ms | 36 939 ms | 0.5% | `POOL_SIZE=1 000` — twice the connections, a third of the throughput |
-| nav 2 000 | 85 060 | 9 621 ms | 12 771 ms | 0% | `POOL_SIZE=100`, navigation only (no search) |
+Three things explain almost every surprising number. The current measurements
+and how to read a report in full are in
+[performance.md](../docs/performance.md#part-2-load-against-a-running-server).
 
-CPU split during those 2000-reader runs, sampled every 5 s (`ps` `%cpu`,
-summed per process class, 8 cores): the application's BEAM held ~270%, Postgres
-~42%, the load generator ~17%. The database is not the busy component, and
-neither is the connection count: the lever is work per request.
-
-**Throughput does not grow with concurrency.** A 60-second burst of 400 VUs on a
-single page endpoints served **869 rps at 458 ms average**; the 2000-VU runs
-above, on the same server and pool, served 373–407 rps. Past a few hundred
-simultaneous requests the queue inside one replica is the limit, so 2000
-readers are better served by several replicas than by a bigger pool.
-
-The `nav2000` row is slower than the mixed row, which is not a fair comparison:
-the two ran at different times on a shared laptop with another test suite
-running. It exists to separate browsing from searching when both are measured
-on the same host, back to back.
-
-The 2000-reader rows are one replica on 8 cores with Postgres on the same host,
-`CM_READER_RATE_LIMIT_PER_MINUTE` lifted (2000 VUs share one client address, so
-the limiter would otherwise answer instead of the mirror). They say two things:
-the pool size curve peaks around a hundred connections, and even there p95 is
-seconds — the remaining cost is the ~15 queries a page view issues, not the
-number of connections. Sizing guidance lives in
-[`docs/operations.md`](../docs/operations.md#sizing-the-connection-pool).
-
-So: a small pool saturates before 200 concurrent readers, and the queue, not the
-queries, is what a reader would feel.
-
-**Measure on a clean host.** Run the mirror as a release (`MIX_ENV=prod`,
-`PHX_SERVER=true`) on a machine that is not also running k6, Postgres and a test
-suite; dev mode adds the code reloader and per-request logging, and two servers
-on one host share the database pool. Numbers taken on a contended laptop are
-noise, which is what the `POOL_SIZE=40` row above demonstrates.
-
-What to fix before expecting capacity to scale: `POOL_SIZE` per replica (see
-`docs/operations.md`), and the home page's per-space queries — the N+1 pinned in
-`query_budget_test.exs`.
+* **A flat, high rate with tiny latencies is the reader rate limiter.** Every VU
+  shares one client address, so the default 240 HTML requests a minute answers
+  `429` long before the mirror is busy. Check the status codes.
+* **p95 far above the average is queueing**, not slow queries: the connection
+  pool, the acceptor sockets, or the BEAM. Compare `-c 1` with `-c 50` on the
+  same URL.
+* **A contended host is noise.** Run the mirror as a release on a machine that
+  is not also running k6, Postgres and a test suite.

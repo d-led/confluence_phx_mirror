@@ -128,11 +128,10 @@ unreachable or rejected the credentials.
 
 ## The demo snapshot
 
-With no `CM_CONFLUENCE_SITE` (or `CM_SOURCE=demo`) `priv` ships no Confluence
-content; instead `ConfluencePhxMirror.Confluence.DemoContent` builds a realistic
-snapshot in memory (13 pages/blog posts, nested trees, cross-space links, labels,
-comments, attachments, archived pages and the common macros). Everything goes
-through the same pipeline as a real site.
+With no `CM_CONFLUENCE_SITE` (or `CM_SOURCE=demo`) a realistic snapshot is built
+in memory — nested trees, cross-space links, labels, comments, attachments,
+archived pages and the common macros — through the same pipeline as a real site.
+The [README](../README.md#demo-snapshot) has the commands.
 
 ## Browsing the mirror
 
@@ -166,7 +165,7 @@ cosmetic and redirect to the canonical URL.
 Readers search at `/search` (plain text plus filters for space, label, type,
 creator, ancestor and last-modified date); the same index backs
 `GET /api/v1/search`. Confluence's CQL syntax is available on the
-Confluence-compatible REST surface — see [api.md](api.md#search-cql).
+Confluence-compatible REST surface — see [api.md](api.md#search-cql-on-postgres).
 
 ## Who may read what
 
@@ -386,9 +385,5 @@ deliveries.
 
 ## Where next
 
-* [configuration.md](configuration.md) — every environment variable.
-* [operations.md](operations.md) — build, deploy, migrate, monitor, back up.
-* [api.md](api.md) — JSON API, Confluence-compatible REST, CQL.
-* [design-notes.md](design-notes.md) — why the mirror is built this way, and
-  what it does not do.
-* [developers.md](developers.md) — working on the code.
+The other guides — configuration, operations, API, design notes, developer notes
+— are listed in the [README](../README.md#documentation).

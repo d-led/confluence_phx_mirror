@@ -6,17 +6,13 @@ Deployment lives in [operations.md](operations.md), settings in
 
 ## Local setup
 
-```bash
-docker compose up -d          # Postgres, Adminer, smtp4dev — local convenience only
-mix setup                     # deps, DB, migrations, assets, demo content
-mix phx.server
-```
+`docker compose up -d && mix setup && mix phx.server` — the
+[README](../README.md#quick-start) lists the prerequisites and what each setup
+command does. Development and test assume an administrator (`MIRROR_AUTO_ADMIN`),
+so no sign-in is in the way.
 
-`CM_SOURCE=demo` needs no Confluence credentials. Development and test assume an
-administrator (`MIRROR_AUTO_ADMIN`), so no sign-in is in the way.
-
-`AGENTS.md` carries the Phoenix/Elixir conventions for this repository; the
-invariants below are the ones specific to the mirror.
+`AGENTS.md` carries the Phoenix/Elixir conventions; the invariants below are the
+ones specific to the mirror.
 
 ## Invariants
 

@@ -9,11 +9,11 @@ attachments from a path-based blob store, indexes everything with Postgres
 full-text search behind a CQL subset, and keeps two logs: an audit log of
 decisions and a live log of what each sync is doing.
 
-![A mirrored page: the space's page tree, the page with its metadata, and the rail with its ids, version and upstream link](docs/images/reader.png)
+![The bundled demo snapshot: the space's page tree, the page with its metadata, and the rail with its ids, version and upstream link](docs/images/reader.png)
 
-*One mirrored page: the branch of its space on the left, Confluence's own
-rendering in the middle, and a rail naming the Confluence id, version, author
-and the original URL.*
+*The bundled demo snapshot: the branch of its space on the left, Confluence's
+own rendering in the middle, and a rail naming the Confluence id, version,
+author and the original URL.*
 
 ```
 Confluence ──REST──▶ Sync (incremental, rate-limited, audited) ──▶ Postgres (content, links, FTS)
@@ -103,14 +103,12 @@ mix ecto.setup                   # create this site's database, migrate, sync on
 mix phx.server
 ```
 
-`ecto.setup` takes the first snapshot because the scheduler's first pull is a
-whole interval away (`CM_SYNC_INTERVAL_SECONDS`, `3600` by default; `0` turns
-scheduled pulls off) — an empty mirror would otherwise stay empty for an hour.
-Without `ecto.setup`, `mix ecto.create && mix ecto.migrate_all` plus
-`mix confluence.sync` does the same in two steps, and the dashboard's sync
-button does it again later. `mix confluence.probe` checks the site and the
-credentials first; `mix confluence.sync --mode space --space ENG` re-pulls one
-space, `--mode snapshot` re-reads everything.
+`ecto.setup` takes the first snapshot because the scheduler's first pull is an
+interval away (`CM_SYNC_INTERVAL_SECONDS`, `3600` by default; `0` disables it).
+`mix confluence.probe` checks the site and the credentials first;
+`mix confluence.sync` then pulls incrementally, and `--mode snapshot` re-reads
+everything. Accounts, permissions and webhooks:
+[site-admin-guide.md](docs/site-admin-guide.md#point-the-mirror-at-your-site).
 
 Other knobs worth knowing: `CM_REQUESTS_PER_SECOND=5` and `CM_BURST=5` (the
 client's token bucket), `CM_SYNC_CONCURRENCY=4` (changed pages detailed at

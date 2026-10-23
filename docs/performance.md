@@ -6,8 +6,8 @@ large the mirror is — and the server as a whole must hold up under **concurren
 readers**. The first question is answered by a test suite you can run in CI; the
 second by a load generator pointed at a running mirror.
 
-Neither is a benchmark you "just run": a laptop under load, a shared Postgres and
-a development server with a code reloader all change the numbers. What follows is
+Neither is a benchmark you "just run": a busy host, a shared Postgres and a
+development server with a code reloader all change the numbers. What follows is
 what to set up, how to run it, and how to read what comes out.
 
 * budgets in the suite: `test/confluence_phx_mirror_web/scale_test.exs`
@@ -28,7 +28,7 @@ labels, versions and timestamps. The same documents feed two writers:
 
 | writer | built for | how the rows arrive | cost |
 | --- | --- | --- | --- |
-| `ConfluencePhxMirror.Confluence.SyntheticSource` | a running server, and any test of the sync itself | `Sync`, exactly like a Confluence site: one page at a time, rendered and indexed | ~4 ms per page: 30 000 pages took 12 minutes on a loaded laptop |
+| `ConfluencePhxMirror.Confluence.SyntheticSource` | a running server, and any test of the sync itself | `Sync`, exactly like a Confluence site: one page at a time, rendered and indexed | ~4 ms per page, so 30 000 pages is about 12 minutes |
 | `ConfluencePhxMirror.Synthetic` (test support) | the scale suite | `insert_all` batches of the rows a snapshot would have written, local ids assigned up front so the tree resolves at insert time | ~6 min for 1 000 000 pages |
 
 The fast writer is not a second implementation of ingestion: it maps documents
@@ -127,7 +127,7 @@ Two traps worth knowing:
 `GET /api/v1/stats` is the quick check that the data you expect is loaded
 (`pages`, `spaces`, `attachments`) before a single number is measured.
 
-## Part 1 — reader budgets in the suite
+## Part 1: reader budgets in the suite
 
 ```bash
 mix setup                                            # once: databases and demo content
@@ -196,7 +196,7 @@ function is called far more than the work needs, `eprof` when the milliseconds
 are somewhere unexpected. Both are in Erlang's `:tools` — no dependency, and they
 work on a release node through a remote shell.
 
-## Part 2 — load against a running server
+## Part 2: load against a running server
 
 With a server up on generated data (`POOL_SIZE` and the rate limit raised, no
 scheduled pull), the two generators to reach for are `k6` for a reader journey
@@ -243,24 +243,24 @@ releases and development to development.
 
 ## What it measured
 
-Suite numbers are in-process requests against a warm mirror (1000 spaces ×
-1000 pages), statements and bytes as the suite reports them. Load numbers are a
-development server on a laptop that was also running an editor (load average
-16), 50 concurrent readers, 500 requests per URL — treat them as shapes, not
-absolutes. The 30 000-page column is 100 spaces × 300 pages of generated
-content, searched by a phrase that appears in ~30 pages' prose.
+Two kinds of number. **Statements and bytes are budgets the suite enforces**
+(warm mirror, 1000 spaces × 1000 pages); **rps and p95 are one development
+server**, 50 concurrent readers — shapes to compare against, not capacities. The
+load column is 100 spaces × 300 pages of generated content, searched by a phrase
+that appears in ~30 pages.
 
-| screen | statements | response | suite median | hey, 43 pages | hey, 30 000 pages |
-| --- | --- | --- | --- | --- | --- |
-| a page view | 16 | 48 KB | 3.9 ms | 686 rps, p95 85 ms | 720 rps, p95 84 ms |
-| space overview | 13 | 35 KB | 4.4 ms | 518 rps, p95 142 ms | 215 rps, p95 341 ms |
-| space catalog | 11 | 80 KB | 4.6 ms | 497 rps, p95 128 ms | 352 rps, p95 203 ms |
-| home page | 15 | 36 KB | 6.5 ms | 545–580 rps, p95 109 ms | 516 rps, p95 187 ms |
-| search | 18 | 93 KB | 470 ms | 410 rps, p95 163 ms | 170 rps, p95 464 ms |
+| screen | statements | response | suite median | 50 readers, 30 000 pages |
+| --- | --- | --- | --- | --- |
+| a page view | 16 | 48 KB | 3.9 ms | 720 rps, p95 84 ms |
+| space overview | 13 | 35 KB | 4.4 ms | 215 rps, p95 341 ms |
+| space catalog | 11 | 80 KB | 4.6 ms | 352 rps, p95 203 ms |
+| home page | 15 | 36 KB | 6.5 ms | 516 rps, p95 187 ms |
+| search | 18 | 93 KB | 470 ms | 170 rps, p95 464 ms |
 
-And the journey `k6` drives, 200 readers for three minutes over the same
-30 000 pages: 20 889 requests at 115 rps, p50 38 ms, p95 402 ms, p99 1 042 ms,
-0 % failures (the profile's thresholds are p95 < 800 ms and p99 < 2 s).
+`k6`'s 200-reader journey over the same content is the profile to compare a
+change with — run it rather than trusting a stored number. (The harness now
+fetches page URLs directly; it used to follow a redirect first, which cost every
+page sample a second round trip.)
 
 Statement counts do not move with the size of the mirror; response sizes move a
 little (a wider branch, more text); timings move with the data the way the
@@ -268,30 +268,15 @@ little (a wider branch, more text); timings move with the data the way the
 every match before it can sort them (a design question, not a query to trim),
 and the first home page after a sync on a cold cache, which a sync now warms.
 
-The same screens on the real site above (732 mirrored pages over 21 spaces,
-same laptop and server): a page 513 rps at p95 115 ms, the space catalog 486 rps
-at 129 ms, the home page 453 rps at 138 ms, search 381 rps at 168 ms, and the
-space overview 273 rps at 214 ms — the shape of the generated-data columns, which
-is the useful result: real content is not slower per request than a fixture of
-the same size.
-
 ### Where the wall is
 
-Those numbers are latency at a fixed concurrency; they say nothing about
-capacity. The `throughput` profile asks for a fixed arrival rate and reports the
-latency the mirror answers with — raise `RPS` until p95 breaks:
-
-| requested | served | p50 | p95 | dropped iterations |
-| --- | --- | --- | --- | --- |
-| 200 rps | 242 rps | 188 ms | 418 ms | 0 |
-| 300 rps | 343 rps | 1 318 ms | 2 541 ms | 596 |
-| 400 rps | 339 rps | 2 924 ms | 4 372 ms | 4 233 |
-| 800 rps | 299 rps | 7 238 ms | 10 085 ms | 22 717 |
-
-Served stops rising around 300 rps and latency climbs from there: that is the
-knee of one development server on one laptop, and it is queueing, not a slow
-query (the p50 moves with it). A release with a pooled connection set sized to
-Postgres is the number that matters for a deployment; measure it the same way.
+Latency at a fixed concurrency says nothing about capacity. The `throughput`
+profile asks for a fixed arrival rate and reports what the mirror answers with;
+raise `RPS` until p95 breaks and the p50 climbs with it — that is the knee, and
+it is queueing, not a slow query. On a development server it sat near 250 rps of
+mixed traffic (200 rps asked, 242 served, p95 418 ms; at 300 rps the p50 was
+already 1.3 s). What matters for a deployment is a release's capacity, measured
+the same way.
 
 ```bash
 k6 run -e PROFILE=throughput -e RPS=300 -e DURATION=60s \

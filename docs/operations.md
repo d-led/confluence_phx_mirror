@@ -125,36 +125,21 @@ MIX_ENV=prod PHX_SERVER=true POOL_SIZE=40 CM_SYNC_CONCURRENCY=4 \
 scripts/load-test.sh 200 2000      # different host from the mirror, ideally
 ```
 
-**Measured.** The same 2000-reader run (`scripts/load-test.sh 2000`, five
-minutes, one replica, 8 cores, Postgres on the same host) with only `POOL_SIZE`
-changed:
+**Measured.** With only `POOL_SIZE` changed, throughput peaked near a hundred
+connections per replica and fell by two thirds at a thousand: on a fixed number
+of cores, extra backends only add context switches. Every size still missed the
+800 ms p95 target, because the binding cost is the ~15 queries a page view
+issues, not the number of connections. Past ~100 per replica, add replicas; the
+current numbers are in [performance.md](performance.md).
 
-| `POOL_SIZE` | requests | rps | p95 | p99 | failures | peak backends |
-| --- | --- | --- | --- | --- | --- | --- |
-| 20 | 118 213 | 390 | 5.0 s | 6.6 s | 0% | 27 |
-| 100 | 122 963 | **407** | **4.4 s** | **6.1 s** | 0% | 107 |
-| 500 | 79 319 | 263 | 7.9 s | 9.4 s | 0% | 525 |
-| 1 000 | 44 650 | 145 | 27.7 s | 36.9 s | 0.5% | 1 007 |
-
-Throughput peaks around a hundred connections and falls by two thirds at a
-thousand: on a fixed number of cores, extra backends only add context switches.
-Past ~100 per replica, add replicas.
-
-Every row misses the 800 ms p95 target, so at 2000 readers connections are not
-the binding constraint — the ~15 queries a page view costs are. Fixing those
-(the home page's per-space queries are pinned in `query_budget_test.exs`) is
-worth more than any pool size here.
-
-**A pool of 2000 has a second wall.** DBConnection opens its connections as the
-pool starts, all at once, so the kernel's listen backlog decides how many get
-through. macOS clamps it to 128 (`kern.ipc.somaxconn`): a 2000-wide pool is
-greeted with `connection reset by peer` — 1810 of 2000 connects failed — and the
-replica dies during boot; 1000 boots with ~860 connects retried, 1900 dies.
-Linux defaults to 4096 (`net.core.somaxconn`). Raise the backlog before you
-raise the pool:
+**A huge pool has a second wall.** DBConnection opens every connection at once,
+so the kernel's listen backlog decides how many get through: macOS clamps it to
+128 (`kern.ipc.somaxconn`), and a pool in the thousands dies during boot with
+`connection reset by peer`. Linux defaults to 4096 (`net.core.somaxconn`). Raise
+the backlog before you raise the pool:
 
 ```bash
-sudo sysctl -w kern.ipc.somaxconn=4096      # macOS, needs root; Linux: net.core.somaxconn
+sudo sysctl -w kern.ipc.somaxconn=4096      # macOS needs root; Linux: net.core.somaxconn
 ```
 
 **Reader sockets are a different resource, and they need no tuning here.** The
@@ -169,26 +154,13 @@ descriptor limit of the process that starts the release:
 ulimit -n 65536            # before starting the server; macOS defaults are low
 ```
 
-**Measure a release, not a dev server.** `config/dev.exs` sets
-`debug_heex_annotations: true`, which adds an attribute to every rendered
-element, and runs the code reloader: both are pure per-request overhead. The
-difference is not subtle — the same build, same 100-connection pool, same host,
-`hey -n 2000 -c 50`:
-
-| endpoint | dev | `MIX_ENV=prod` |
-| --- | --- | --- |
-| `/health` | 224 rps | **3 027 rps** |
-| `/` (home) | 224 rps | **1 152 rps** |
-| a mirrored page | 259 rps | **885 rps** |
-| a mirrored page, `-c 200` | — | 726 rps |
-
-So one replica of this application serves roughly 900 page views per second on
-eight laptop cores, and the pool-size table above was measured through an 18×
-handicap — it compares pool sizes fairly, but its absolute numbers mean nothing.
-Take capacity numbers from `MIX_ENV=prod PHX_SERVER=true … start`, and note that
-a closed-loop load test with think time (VUs that sleep between requests) cannot
-report more than `VUs / (think time + latency)` however fast the server is; use
-a fixed arrival rate to find the knee.
+**Measure a release, not a dev server.** `config/dev.exs` turns on
+`debug_heex_annotations` (an attribute on every rendered element) and the code
+reloader, which together cost most of the throughput: the same build served a
+page at 259 rps in dev and 885 rps under `MIX_ENV=prod`, `/health` at 224
+against 3 027. So dev numbers compare builds, not capacities — and a closed-loop
+test with think time can never exceed `VUs / (think time + latency)`, which is
+why the knee is found with a fixed arrival rate.
 
 **Postgres itself.** The settings these runs were measured with are in
 [`deploy/postgres-tuning.conf`](../deploy/postgres-tuning.conf) — `max_connections`,
@@ -211,15 +183,9 @@ the sync log and the advanced search panel are LiveViews, and every open page
 holds a `PageChannel` process for the reader-count widget, so a browser tab does
 keep a few tens of kilobytes on the server — but not the content.
 
-Measured on a dev node (`MIX_ENV=dev`, 8 cores) with 400 concurrent requests
-against one page at ~870 rps:
-
-| state | VM RSS |
-| --- | --- |
-| idle | 224 MB |
-| 400 requests in flight | ~290–324 MB, then back to ~220 MB when the burst ends |
-
-That is roughly **190 KB per request in flight**, transient. Sizing from it:
+A burst of 400 concurrent requests against one page moved the VM from 224 MB to
+~320 MB RSS and back when it ended: about **190 KB per request in flight**,
+transient. Sizing from it:
 
 ```
 replica RAM ≈ baseline (200–250 MB) + peak concurrent requests × 0.2 MB + shared_buffers
@@ -244,13 +210,10 @@ Ecto structs with loaded associations in a socket's assigns.
   run inside the same release, and Oban coordinates them through Postgres, so
   running several instances is safe.
 
-  Size the pool for the readers you expect: `POOL_SIZE` (default 20) is **per
-  replica**, so the deployment's total is `replicas × POOL_SIZE` and that is the
-  number Postgres has to accept (`max_connections`). A page view costs around
-  15 queries, so a pool of 10 saturates at roughly a hundred concurrent readers
-  — measured with `k6-load-tests/` (p95 114 ms until the pool runs out, then 10 s
-  in queue time). Raise `POOL_SIZE` before adding replicas, and check the pool
-  also covers the sync's own detail work (`CM_SYNC_CONCURRENCY`).
+  Size the pool for the readers you expect — see
+  [sizing the connection pool](#sizing-the-connection-pool); the total across
+  the deployment is `replicas × POOL_SIZE`, and that is what `max_connections`
+  has to accept.
 * **SMTP** — `SMTP_RELAY` plus credentials; sends are retried per notification,
   so a mailer outage never blocks a sync.
 * **Blob root** (`MIRROR_BLOB_ROOT`, default `var/mirror`) — attachment bytes.
@@ -271,16 +234,16 @@ Two things must be backed up together:
 * `/health` — database check, content counters, last sync. No auth, so it can
   back a probe.
 * `/admin` — freshness, sync runs, audit log, webhook deliveries, manual
-  syncs; see the [admin reference](site-admin-guide.md#the-admin-dashboard).
+  syncs; see the [admin reference](site-admin-guide.md#the-admin-area).
 * Logs go to stdout through Elixir's console logger.
 
 ## Rate limiting
 
-* **Reader → mirror**: `CM_READER_RATE_LIMIT_PER_MINUTE` (HTML, API and
-  attachments get separate budgets, overridable with
-  `CM_RATE_LIMIT_HTML_PER_MINUTE`, `CM_RATE_LIMIT_API_PER_MINUTE`,
-  `CM_RATE_LIMIT_ATTACHMENTS_PER_MINUTE`). Responses carry `X-RateLimit-Limit`
-  and `X-RateLimit-Remaining`; rejections are `429` with `Retry-After`.
+Two meters, in opposite directions:
+
+* **Readers → mirror** — budgets per address for HTML, API and attachments,
+  answering `429` with `Retry-After` and `X-RateLimit-*`. The knobs and the
+  proxy rule are in [configuration.md](configuration.md#reader-rate-limits).
 * **Client → Confluence**: the token bucket that protects your Confluence site
   is a sync setting; see
   [site-admin-guide.md](site-admin-guide.md#the-client-is-conservative-on-purpose).
