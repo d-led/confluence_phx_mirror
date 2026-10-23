@@ -142,45 +142,74 @@ defmodule ConfluencePhxMirror.Catalog do
   @spec labels(Scope.t(), keyword()) :: page()
   def labels(%Scope{} = scope, opts \\ []) do
     scope
-    |> label_count_query()
+    |> counted_label_query()
     |> matching(opts[:q], &label_contains/2)
     |> order_by([l], asc: l.name)
     |> page(opts)
   end
 
   @doc """
-  Every label with its readable page count, for a caller that shows all of them.
+  Labels with the number of readable pages that carry each one.
 
-  Counting a label means counting the pages that carry it: a pass over
-  `page_labels` and a join to `pages`, which at thirty thousand pages is ninety
-  milliseconds and grows with the site. When every reader sees the same pages —
-  no restrictions, or an administrator — the answer is a fact about the content,
-  so it is computed once per version (see `Mirror.Counters`); a mirror that
-  restricts content asks the question per reader instead.
+  Options:
+
+    * `:order` — `:name` (alphabetical, the default) or `:popular` (most pages
+      first, ties broken by name)
+    * `:limit` — how many labels to answer with; `nil` (the default) means all
+      of them
+
+  Both are applied in the query: a screen that shows a dozen labels asks the
+  database for a dozen, it does not pull the label table into memory to slice
+  it. Counting a label means counting the pages that carry it — a pass over
+  `page_labels` joined to `pages`, which at thirty thousand pages is ninety
+  milliseconds and grows with the site. When every reader sees the same pages
+  (no restrictions, or an administrator) the answer is a fact about the
+  content, so it is computed once per version (see `Mirror.Counters`); a mirror
+  that restricts content asks the question per reader instead.
   """
-  @spec label_counts(Scope.t()) :: [%{name: String.t(), pages: non_neg_integer()}]
-  def label_counts(%Scope{} = scope) do
+  @spec label_counts(Scope.t(), keyword()) :: [%{name: String.t(), pages: non_neg_integer()}]
+  def label_counts(%Scope{} = scope, opts \\ []) do
+    order = Keyword.get(opts, :order, :name)
+    limit = Keyword.get(opts, :limit)
+
     if Authorization.uniform_readership?(scope) do
-      Counters.fetch(:label_counts, fn ->
-        scope |> label_count_query() |> order_by([l], asc: l.name) |> Repo.all()
+      Counters.fetch({:label_counts, order, limit}, fn ->
+        scope |> counted_labels(order, limit) |> Repo.all()
       end)
     else
-      scope
-      |> label_count_query()
-      |> order_by([l], asc: l.name)
-      |> Repo.all()
+      scope |> counted_labels(order, limit) |> Repo.all()
     end
   end
+
+  defp counted_labels(scope, order, limit) do
+    scope
+    |> counted_label_query()
+    |> subquery()
+    |> order_counted(order)
+    |> limit_counted(limit)
+    |> select([c], %{name: c.name, pages: c.pages})
+  end
+
+  defp order_counted(counted, :name), do: order_by(counted, [c], asc: c.name)
+  defp order_counted(counted, :popular), do: order_by(counted, [c], desc: c.pages, asc: c.name)
+
+  defp limit_counted(counted, nil), do: counted
+  defp limit_counted(counted, limit) when is_integer(limit), do: limit(counted, ^limit)
 
   defp label_count_query(scope) do
     from(l in Label,
       join: p in assoc(l, :pages),
       as: :page,
       where: is_nil(p.deleted_at),
-      group_by: l.id,
-      select: %{name: l.name, pages: count(p.id)}
+      group_by: l.id
     )
     |> Authorization.restrict_pages(scope)
+  end
+
+  defp counted_label_query(scope) do
+    scope
+    |> label_count_query()
+    |> select([l], %{id: l.id, name: l.name, pages: count(as(:page).id)})
   end
 
   defp label_contains(query, pattern) do

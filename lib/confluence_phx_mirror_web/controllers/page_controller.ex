@@ -23,6 +23,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   # a window of it: a mirror with a thousand spaces would otherwise send a
   # thousand cards with every visit.
   @space_cards 12
+  @label_cards 14
 
   def home(conn, _params) do
     spaces = readable_spaces(conn)
@@ -32,7 +33,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       spaces: Enum.take(spaces, @space_cards),
       space_total: length(spaces),
       recent_pages: visible(conn, Mirror.recent_pages(8)),
-      labels: Catalog.label_counts(scope(conn)),
+      labels: Catalog.label_counts(scope(conn), limit: @label_cards),
       stats: Mirror.stats(),
       last_webhook: List.first(Webhooks.recent(1))
     )

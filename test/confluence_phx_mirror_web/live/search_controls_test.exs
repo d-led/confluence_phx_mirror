@@ -13,6 +13,12 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
     %{space: space_fixture(%{name: "Engineering Handbook"})}
   end
 
+  # A reader opens a filter before picking from it.
+  defp open_menu(view, id) do
+    view |> element("#{id} > button") |> render_click()
+    view
+  end
+
   test "naming a space narrows the search, and naming it again widens it", %{
     conn: conn,
     space: space
@@ -20,6 +26,7 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
     {:ok, view, _html} = live(conn, ~p"/search")
 
     view
+    |> open_menu("#space-filter")
     |> element("button[phx-click='set_space'][phx-value-space='#{space.key}']")
     |> render_click()
 
@@ -27,6 +34,7 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
     assert has_element?(view, "a", "Space: #{space.key}")
 
     view
+    |> open_menu("#space-filter")
     |> element("button[phx-click='set_space'][phx-value-space='#{space.key}']")
     |> render_click()
 
@@ -38,27 +46,45 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/search")
 
-    view |> element("button[phx-click='toggle_type'][phx-value-type='page']") |> render_click()
+    view |> open_menu("#type-filter")
+
+    view
+    |> element("button[phx-click='toggle_type'][phx-value-type='page']")
+    |> render_click()
+
     assert_patch(view, ~p"/search?types=page")
     assert has_element?(view, "a", "Type: pages")
 
-    view |> element("button[phx-click='toggle_type'][phx-value-type='page']") |> render_click()
+    # The type menu stays open: a reader can pick several kinds in one go.
+    view
+    |> element("button[phx-click='toggle_type'][phx-value-type='page']")
+    |> render_click()
+
     assert_patch(view, ~p"/search")
   end
 
   test "picking a time window replaces the previous one", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search?updated=7d")
 
-    view |> element("button[phx-click='set_updated'][phx-value-updated='30d']") |> render_click()
+    view
+    |> open_menu("#updated-filter")
+    |> element("button[phx-click='set_updated'][phx-value-updated='30d']")
+    |> render_click()
+
     assert_patch(view, ~p"/search?updated=30d")
 
-    view |> element("button[phx-click='set_updated'][phx-value-updated='30d']") |> render_click()
+    view
+    |> open_menu("#updated-filter")
+    |> element("button[phx-click='set_updated'][phx-value-updated='30d']")
+    |> render_click()
+
     assert_patch(view, ~p"/search")
   end
 
   test "typing a label and submitting it filters by it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search")
 
+    view |> open_menu("#labels-filter")
     view |> element("#label-form") |> render_submit(%{"label" => "Release Notes"})
 
     assert_patch(view, ~p"/search?labels=release-notes")
@@ -72,6 +98,7 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
   test "the suggestion field keeps what the reader is typing", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search")
 
+    view |> open_menu("#labels-filter")
     view |> element("#label-form") |> render_change(%{"label" => "rel"})
 
     assert has_element?(view, "input[name='label'][value='rel']")

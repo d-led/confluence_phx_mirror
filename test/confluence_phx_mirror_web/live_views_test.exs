@@ -40,7 +40,7 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
 
     assert has_element?(view, "a[href='/spaces/ENG/pages/1002/architecture-overview']")
     assert has_element?(view, "a", "Space: ENG")
-    assert has_element?(view, "#label-pills", "architecture")
+    assert has_element?(view, "a", "Label: architecture")
 
     view
     |> element("#search-form")
@@ -50,18 +50,20 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
     assert has_element?(view, "a[href='/spaces/ENG/pages/1002/architecture-overview']")
   end
 
-  test "labels are free-form pills a reader can add and remove", %{conn: conn} do
+  test "labels are free-form: a reader types one, then takes it off again", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search")
 
+    view |> element("#labels-filter > button") |> render_click()
     view |> form("#label-form", label: "Design") |> render_submit()
 
     assert_patch(view, "/search?labels=design")
-    assert has_element?(view, "#label-pills", "design")
+    assert has_element?(view, "a", "Label: design")
 
-    view |> element("#label-pills button[phx-value-label='design']") |> render_click()
+    # The label menu stays open so several labels can be picked in one go.
+    view |> element("#labels-filter button[phx-value-label='design']") |> render_click()
 
     assert_patch(view, "/search")
-    refute has_element?(view, "#label-pills", "design")
+    refute has_element?(view, "a", "Label: design")
   end
 
   test "search LiveView explains when nothing matches", %{conn: conn} do

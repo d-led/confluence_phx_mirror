@@ -45,4 +45,11 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchChipsTest do
     assert has_element?(view, "a", "Modified before 2026-06-01")
     assert has_element?(view, "a", "Past 7 days")
   end
+
+  test "each label has its own chip, and dropping one keeps the rest", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/search?labels=architecture,design")
+
+    assert has_element?(view, "a[href='/search?labels=design']", "Label: architecture")
+    assert has_element?(view, "a[href='/search?labels=architecture']", "Label: design")
+  end
 end

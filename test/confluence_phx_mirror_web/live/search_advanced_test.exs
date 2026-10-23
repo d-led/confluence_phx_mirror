@@ -66,11 +66,18 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchAdvancedTest do
     {:ok, view, _html} = live(conn, ~p"/search")
 
     view
+    |> open_menu("#space-filter")
     |> element("#space-filter button[phx-value-space='ENG']")
     |> render_click()
 
     assert_patch(view, "/search?space=ENG")
     assert has_element?(view, "#space-filter", "Engineering Handbook")
+  end
+
+  # A reader opens a filter before picking from it.
+  defp open_menu(view, id) do
+    view |> element("#{id} > button") |> render_click()
+    view
   end
 
   defp open_panel(view) do
@@ -99,6 +106,8 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchAdvancedTest do
     {:ok, view, _html} = live(conn, ~p"/search?creator=Jane+Doe")
 
     assert has_element?(view, "#creator-filter > button", "Jane Doe")
+
+    view |> open_menu("#creator-filter")
     assert has_element?(view, "#creator-filter button[phx-value-creator='Jane Doe']")
   end
 end

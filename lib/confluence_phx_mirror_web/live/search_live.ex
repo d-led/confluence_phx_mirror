@@ -34,6 +34,8 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
   # How many spaces the space menus list. The directory is `/spaces`.
   @space_window 25
+  @label_window 200
+  @label_strip 12
   @type_options [{"page", "Pages and live docs"}, {"blogpost", "Blog posts"}]
   @sort_options [{"", "Best match"}, {"newest", "Newest first"}, {"oldest", "Oldest first"}]
   @window_options [
@@ -52,7 +54,9 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     # entries twice with every search. They take a window; a space's own catalog
     # filters inside that space.
     spaces = Mirror.list_spaces(limit: @space_window)
-    labels = Catalog.label_counts(socket.assigns.current_scope)
+    scope = socket.assigns.current_scope
+    label_catalog = Catalog.label_counts(scope, limit: @label_window)
+    label_highlights = Catalog.label_counts(scope, limit: @label_strip, order: :popular)
 
     {:ok,
      assign(socket,
@@ -83,7 +87,8 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
        spaces: spaces,
        spaces_more?: Mirror.stats().spaces > length(spaces),
        authors: Mirror.authors(),
-       label_catalog: labels,
+       label_catalog: label_catalog,
+       label_highlights: label_highlights,
        recent_pages: Mirror.recent_pages(6),
        type_options: @type_options,
        window_options: @window_options,
@@ -356,8 +361,9 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     ]
 
     types = Enum.map(label_values(filters["types"]), &{"types", &1})
+    labels = Enum.map(label_values(filters["labels"]), &{"labels", &1})
 
-    (base ++ types)
+    (base ++ types ++ labels)
     |> Enum.reject(fn {_key, value} -> value in [nil, "", "relevance"] end)
     |> Enum.map(fn {key, value} ->
       %{
@@ -373,6 +379,10 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     Map.put(filters, "types", Enum.join(types, ","))
   end
 
+  defp remove(filters, key, value) when key in ["types", "labels"] do
+    Map.put(filters, key, Enum.join(label_values(filters[key]) -- [value], ","))
+  end
+
   defp remove(filters, key, _value), do: Map.put(filters, key, "")
 
   defp chip_label("q", value), do: value
@@ -386,6 +396,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   defp chip_label("sort", "newest"), do: "Sort: newest first"
   defp chip_label("sort", "oldest"), do: "Sort: oldest first"
   defp chip_label("space", value), do: "Space: #{value}"
+  defp chip_label("labels", value), do: "Label: #{value}"
   defp chip_label("types", "page"), do: "Type: pages"
   defp chip_label("types", "blogpost"), do: "Type: blog posts"
   defp chip_label("types", value), do: "Type: #{value}"
@@ -509,17 +520,21 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           phx-submit="search"
           class="mt-2 sm:mt-6"
         >
-          <div class="flex items-center gap-2 rounded-full border border-base-300 bg-base-100 px-4 py-2 shadow-sm transition focus-within:ring-2 focus-within:ring-primary/50">
-            <.icon name="hero-magnifying-glass" class="size-5 shrink-0 text-base-content/70" />
-            <.input
-              field={@form[:q]}
+          <label class="input input-lg w-full">
+            <.icon name="hero-magnifying-glass" class="size-5 opacity-50" />
+            <%!-- A bare input: the <.input> component wraps its control in a
+            fieldset div, which then is the flex child and never grows. --%>
+            <input
               type="search"
+              name={@form[:q].name}
+              value={@form[:q].value}
+              id={@form[:q].id}
               aria-label="Search"
               placeholder="Search pages, decisions, people…"
               autocomplete="off"
               autofocus
               phx-debounce={@debounce}
-              class="min-h-11 min-w-0 flex-1 border-0 bg-transparent p-1 text-base focus:outline-none sm:min-h-0 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none"
+              class="grow [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none"
             />
             <%!-- One clear affordance, ours: the browser draws its own cancel
             button for type="search", which sat next to this one. --%>
@@ -527,12 +542,12 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
               :if={@q != ""}
               type="button"
               phx-click="clear"
-              class="grid size-11 shrink-0 place-items-center rounded-full text-base-content/70 transition hover:bg-base-200 hover:text-base-content sm:size-8"
+              class="btn btn-ghost btn-sm btn-square"
               aria-label="Clear search"
             >
               <.icon name="hero-x-mark" class="size-4" />
             </button>
-          </div>
+          </label>
         </.form>
 
         <.filter_bar
@@ -573,23 +588,17 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           window_options={@window_options}
         />
 
-        <div class="mt-3 flex flex-wrap items-center gap-1.5">
-          <span :if={@chips == [] and @labels == ""} class="text-[11px] text-base-content/70">
-            <span class="font-medium">Tip:</span> filters combine with your words.
-          </span>
+        <div :if={@chips != []} class="mt-2 flex flex-wrap items-center gap-1">
           <a
             :for={chip <- @chips}
             href={chip.path}
-            class="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary transition hover:bg-primary/20"
+            class="badge badge-primary badge-outline badge-md gap-1"
+            title={"Remove #{chip.label}"}
           >
             {chip.label}
             <.icon name="hero-x-mark" class="size-3" />
           </a>
-          <a
-            :if={length(@chips) + length(label_values(@labels)) > 1}
-            href={~p"/search"}
-            class="ml-1 text-[11px] text-base-content/70 hover:text-primary"
-          >
+          <a :if={length(@chips) > 1} href={~p"/search"} class="link link-hover ml-1 text-xs">
             Clear all
           </a>
         </div>
@@ -638,13 +647,13 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             </div>
           </section>
 
-          <section :if={@label_catalog != []} class="mt-8">
+          <section :if={@label_highlights != []} class="mt-8">
             <h2 class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-base-content/70">
               Browse by label
             </h2>
             <div class="flex flex-wrap gap-1.5">
               <a
-                :for={%{name: label, pages: count} <- Enum.take(@label_catalog, 12)}
+                :for={%{name: label, pages: count} <- @label_highlights}
                 href={~p"/labels/#{label}"}
                 class="badge badge-outline badge-sm"
               >
@@ -679,7 +688,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
   defp filter_bar(assigns) do
     ~H"""
-    <div class="mt-3 flex min-w-0 flex-wrap items-center gap-1.5" id="search-filters">
+    <div class="mt-3 flex min-w-0 flex-wrap items-center gap-2" id="search-filters">
       <.filter_menu
         id="space-filter"
         open?={@open_menu == "space-filter"}
@@ -694,28 +703,28 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             placeholder="Find a space"
             autocomplete="off"
             phx-debounce="150"
-            class="input input-sm mb-1 w-full rounded-lg border-base-300 bg-base-100"
+            phx-mounted={JS.focus()}
+            class="input input-sm w-full"
           />
         </form>
-        <button
-          :for={space <- matching_spaces(@spaces, @space_query)}
-          type="button"
-          phx-click="set_space"
-          phx-value-space={space.key}
-          class={option_class(@space == space.key)}
-        >
-          <span class="min-w-0 flex-1 truncate">{space.name}</span>
-          <span class="badge badge-ghost badge-xs">{space.key}</span>
-        </button>
-        <button
-          :if={@space_query == ""}
-          type="button"
-          phx-click="set_space"
-          phx-value-space=""
-          class={option_class(false)}
-        >
-          Clear filter
-        </button>
+        <ul class="menu menu-sm w-full p-0">
+          <li :for={space <- matching_spaces(@spaces, @space_query)}>
+            <button
+              type="button"
+              phx-click="set_space"
+              phx-value-space={space.key}
+              class={space.key == @space && "menu-active"}
+            >
+              <span class="truncate">{space.name}</span>
+              <span class="badge badge-ghost badge-xs">{space.key}</span>
+            </button>
+          </li>
+          <li :if={@space_query == ""}>
+            <button type="button" phx-click="set_space" phx-value-space="">
+              Clear filter
+            </button>
+          </li>
+        </ul>
       </.filter_menu>
 
       <.filter_menu
@@ -732,28 +741,28 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             placeholder="Find a person"
             autocomplete="off"
             phx-debounce="150"
-            class="input input-sm mb-1 w-full rounded-lg border-base-300 bg-base-100"
+            phx-mounted={JS.focus()}
+            class="input input-sm w-full"
           />
         </form>
-        <button
-          :for={author <- matching_authors(@authors, @people_query)}
-          type="button"
-          phx-click="set_creator"
-          phx-value-creator={author.name}
-          class={option_class(@creator == author.name)}
-        >
-          <span class="min-w-0 flex-1 truncate">{author.name}</span>
-          <span class="text-[10px] text-base-content/70">{author.pages}</span>
-        </button>
-        <button
-          :if={@people_query == ""}
-          type="button"
-          phx-click="set_creator"
-          phx-value-creator=""
-          class={option_class(false)}
-        >
-          Clear filter
-        </button>
+        <ul class="menu menu-sm w-full p-0">
+          <li :for={author <- matching_authors(@authors, @people_query)}>
+            <button
+              type="button"
+              phx-click="set_creator"
+              phx-value-creator={author.name}
+              class={author.name == @creator && "menu-active"}
+            >
+              <span class="truncate">{author.name}</span>
+              <span class="badge badge-ghost badge-xs">{author.pages}</span>
+            </button>
+          </li>
+          <li :if={@people_query == ""}>
+            <button type="button" phx-click="set_creator" phx-value-creator="">
+              Clear filter
+            </button>
+          </li>
+        </ul>
       </.filter_menu>
 
       <.filter_menu
@@ -762,15 +771,18 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
         icon="hero-clock"
         label={"Last updated: #{updated_label(@updated)}"}
       >
-        <button
-          :for={{value, label} <- @window_options}
-          type="button"
-          phx-click="set_updated"
-          phx-value-updated={value}
-          class={option_class(@updated == value)}
-        >
-          {label}
-        </button>
+        <ul class="menu menu-sm w-full p-0">
+          <li :for={{value, label} <- @window_options}>
+            <button
+              type="button"
+              phx-click="set_updated"
+              phx-value-updated={value}
+              class={value == @updated && "menu-active"}
+            >
+              {label}
+            </button>
+          </li>
+        </ul>
       </.filter_menu>
 
       <.filter_menu
@@ -779,20 +791,23 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
         icon="hero-document-text"
         label={type_summary(@types)}
       >
-        <button
-          :for={{value, label} <- @type_options}
-          type="button"
-          phx-click="toggle_type"
-          phx-value-type={value}
-          aria-pressed={value in label_values(@types)}
-          class={option_class(value in label_values(@types))}
-        >
-          <.icon
-            name={if value in label_values(@types), do: "hero-check", else: "hero-plus"}
-            class="size-3.5 shrink-0 text-primary"
-          />
-          <span class="min-w-0 flex-1 truncate">{label}</span>
-        </button>
+        <ul class="menu menu-sm w-full p-0">
+          <li :for={{value, label} <- @type_options}>
+            <button
+              type="button"
+              phx-click="toggle_type"
+              phx-value-type={value}
+              aria-pressed={value in label_values(@types)}
+              class={value in label_values(@types) && "menu-active"}
+            >
+              <.icon
+                name={if value in label_values(@types), do: "hero-check", else: "hero-plus"}
+                class="size-4 text-primary"
+              />
+              <span class="truncate">{label}</span>
+            </button>
+          </li>
+        </ul>
       </.filter_menu>
 
       <.filter_menu
@@ -806,44 +821,36 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             type="text"
             name="label"
             value={@label_query}
-            list="label-suggestions"
             placeholder="Find a label"
             autocomplete="off"
             phx-debounce="150"
-            class="input input-sm mb-1 w-full rounded-lg border-base-300 bg-base-100"
+            phx-mounted={JS.focus()}
+            class="input input-sm w-full"
           />
-          <datalist id="label-suggestions">
-            <option :for={%{name: name} <- @label_catalog} value={name} />
-          </datalist>
         </form>
-        <button
-          :for={%{name: name, pages: count} <- matching_labels(@label_catalog, @label_query)}
-          type="button"
-          phx-click="toggle_label"
-          phx-value-label={name}
-          class={option_class(name in label_values(@labels))}
-        >
-          <.icon
-            name={if name in label_values(@labels), do: "hero-check", else: "hero-plus"}
-            class="size-3.5 shrink-0 text-primary"
-          />
-          <span class="min-w-0 flex-1 truncate">{name}</span>
-          <span class="text-[10px] text-base-content/70">{count}</span>
-        </button>
-        <p
-          :if={matching_labels(@label_catalog, @label_query) == []}
-          class="px-2 py-1.5 text-xs text-base-content/70"
-        >
-          Start typing to search for a label
-        </p>
-        <button
-          :if={@labels != ""}
-          type="button"
-          phx-click="clear_labels"
-          class={option_class(false)}
-        >
-          Clear filter
-        </button>
+        <ul class="menu menu-sm w-full p-0">
+          <li :for={%{name: name, pages: count} <- matching_labels(@label_catalog, @label_query)}>
+            <button
+              type="button"
+              phx-click="toggle_label"
+              phx-value-label={name}
+              class={name in label_values(@labels) && "menu-active"}
+            >
+              <.icon
+                name={if name in label_values(@labels), do: "hero-check", else: "hero-plus"}
+                class="size-4 text-primary"
+              />
+              <span class="truncate">{name}</span>
+              <span class="badge badge-ghost badge-xs">{count}</span>
+            </button>
+          </li>
+          <li :if={matching_labels(@label_catalog, @label_query) == []}>
+            <button type="button" disabled>Start typing to search for a label</button>
+          </li>
+          <li :if={@labels != ""}>
+            <button type="button" phx-click="clear_labels">Clear filter</button>
+          </li>
+        </ul>
       </.filter_menu>
 
       <button
@@ -851,29 +858,15 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
         id="advanced-toggle"
         phx-click="toggle_advanced"
         aria-expanded={@advanced?}
-        class={[
-          "btn btn-sm h-9 min-h-9 gap-1.5 rounded-full border-base-300 bg-base-100 px-3 font-normal",
-          @advanced? && "border-primary text-primary"
-        ]}
+        class="btn btn-sm gap-1.5 font-normal"
       >
-        <.icon
-          name={if @advanced?, do: "hero-minus", else: "hero-plus"}
-          class="size-4 shrink-0"
-        />
+        <.icon name={if @advanced?, do: "hero-minus", else: "hero-plus"} class="size-4" />
         {if @advanced?, do: "Hide filters", else: "More filters"}
       </button>
 
-      <form
-        id="sort-form"
-        phx-change="set_sort"
-        class="ml-auto flex items-center gap-1.5 text-[11px] text-base-content/70"
-      >
-        <label for="sort-filter">Sort</label>
-        <select
-          id="sort-filter"
-          name="sort"
-          class="select select-sm h-9 min-h-9 rounded-full border-base-300 bg-base-100 text-xs"
-        >
+      <form id="sort-form" phx-change="set_sort" class="ml-auto flex items-center gap-2">
+        <label class="label text-xs" for="sort-filter">Sort</label>
+        <select id="sort-filter" name="sort" class="select select-sm">
           <option :for={{value, label} <- @sort_options} value={value} selected={value == @sort}>
             {label}
           </option>
@@ -893,46 +886,38 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   # says which filter it is and what is currently chosen, the menu holds the
   # options (or a "Find a …" box for the long lists).
   #
-  # The menu is a plain div, not a <ul class="menu">: the pickers put a <form>
-  # in there, a <ul> may only contain list items, and the parser closing the
-  # list moved every option out of the dropdown — clicks and focus went with it.
+  # The open state is the server's, not the browser's: daisyUI's dropdown also
+  # opens on :focus-within, which would leave a menu on screen after the reader
+  # picked something and LiveView closed it, so the closed state is spelled out
+  # with `dropdown-close`.
   defp filter_menu(assigns) do
     ~H"""
-    <div class="relative" id={@id} phx-click-away={@open? && "close_menu"}>
+    <div
+      class={["dropdown", if(@open?, do: "dropdown-open", else: "dropdown-close")]}
+      id={@id}
+      phx-click-away={@open? && "close_menu"}
+    >
       <button
         type="button"
         phx-click="toggle_menu"
         phx-value-menu={@id}
         aria-expanded={@open?}
         aria-haspopup="true"
-        class={[
-          "btn btn-sm h-9 min-h-9 gap-1.5 rounded-full border-base-300 bg-base-100 px-3 font-normal",
-          @open? && "border-primary text-primary"
-        ]}
+        class="btn btn-sm gap-1.5 font-normal"
       >
-        <.icon name={@icon} class="size-4 shrink-0 text-base-content/70" />
+        <.icon name={@icon} class="size-4 opacity-60" />
         <span class="max-w-48 truncate">{@label}</span>
-        <.icon name="hero-chevron-down" class="size-3 shrink-0 opacity-45" />
+        <.icon name="hero-chevron-down" class="size-3 opacity-40" />
       </button>
       <div
+        :if={@open?}
         id={@id <> "-panel"}
-        class={[
-          "absolute left-0 top-full z-50 mt-1 max-h-80 w-72 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1 shadow-lg",
-          not @open? && "hidden"
-        ]}
+        class="dropdown-content z-50 max-h-72 w-72 space-y-1 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
       >
         {render_slot(@inner_block)}
       </div>
     </div>
     """
-  end
-
-  defp option_class(true) do
-    "flex w-full items-center gap-2 rounded-md bg-base-200 px-2 py-1.5 text-left text-sm font-medium"
-  end
-
-  defp option_class(false) do
-    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-base-content/80 hover:bg-base-200"
   end
 
   attr :q, :string, required: true
@@ -958,7 +943,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
       id="advanced-search"
       phx-change="advanced"
       phx-submit="advanced"
-      class="mt-2 rounded-xl border border-base-300/70 bg-base-200/30 p-3"
+      class="fieldset mt-2 w-full rounded-box bg-base-200 p-3"
     >
       <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <.advanced_field name="search[phrase]" label="Exact phrase" value={@phrase} />
@@ -967,24 +952,8 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
       </div>
 
       <div class="mt-2 grid gap-2 sm:grid-cols-2">
-        <label class="block min-w-0">
-          <span class="mb-0.5 block text-[11px] font-medium text-base-content/70">Modified after</span>
-          <input
-            type="date"
-            name="search[from]"
-            value={@from}
-            class="input input-sm h-9 min-h-9 w-full rounded-lg border-base-300 bg-base-100"
-          />
-        </label>
-        <label class="block min-w-0">
-          <span class="mb-0.5 block text-[11px] font-medium text-base-content/70">Modified before</span>
-          <input
-            type="date"
-            name="search[to]"
-            value={@to}
-            class="input input-sm h-9 min-h-9 w-full rounded-lg border-base-300 bg-base-100"
-          />
-        </label>
+        <.advanced_field name="search[from]" label="Modified after" value={@from} type="date" />
+        <.advanced_field name="search[to]" label="Modified before" value={@to} type="date" />
       </div>
     </form>
     """
@@ -993,20 +962,20 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   attr :name, :string, required: true
   attr :label, :string, required: true
   attr :value, :string, required: true
+  attr :type, :string, default: "text"
   attr :placeholder, :string, default: nil
 
   defp advanced_field(assigns) do
     ~H"""
     <label class="block min-w-0">
-      <span class="mb-0.5 block text-[11px] font-medium text-base-content/70">{@label}</span>
+      <span class="label">{@label}</span>
       <input
-        type="text"
+        type={@type}
         name={@name}
         value={@value}
         placeholder={@placeholder}
         autocomplete="off"
-        phx-debounce="400"
-        class="input input-sm h-9 min-h-9 w-full rounded-lg border-base-300 bg-base-100"
+        class="input input-sm w-full"
       />
     </label>
     """
