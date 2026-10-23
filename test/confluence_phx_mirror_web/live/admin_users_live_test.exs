@@ -5,6 +5,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.User
 
   defp change_role(view, user, role) do
     render_submit(view, "change_role", %{"user_id" => to_string(user.id), "role" => role})
@@ -152,5 +153,46 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
 
     assert change_role(view, admin, "member") =~ "Could not update the role."
     assert Accounts.get_user(admin.id).role == "admin"
+  end
+
+  describe "disablement" do
+    test "an administrator switches an account off here, and the flag shows", %{conn: conn} do
+      reader = user_fixture(%{email: "off.reader@example.com"})
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      view |> element("#disable-form-#{reader.id}") |> render_submit()
+
+      assert has_element?(view, "#disabled-here-#{reader.id}")
+      assert User.disabled_here?(Accounts.get_user(reader.id))
+      refute User.disabled_on_site?(Accounts.get_user(reader.id))
+    end
+
+    test "a site disablement is shown apart from ours", %{conn: conn} do
+      reader = user_fixture(%{email: "site.off@example.com"})
+
+      assert Accounts.reconcile_site_disabled("557058:site.off", "site.off@example.com", true) ==
+               1
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      assert has_element?(view, "#disabled-on-site-#{reader.id}")
+      refute has_element?(view, "#disabled-here-#{reader.id}")
+    end
+
+    test "the filter narrows the list as the administrator types", %{conn: conn} do
+      user_fixture(%{email: "needle@example.com"})
+      user_fixture(%{email: "haystack@example.com"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      view |> element("#user-filter") |> render_change(%{"q" => "needle"})
+
+      assert render(view) =~ "needle@example.com"
+      refute render(view) =~ "haystack@example.com"
+
+      view |> element("#user-filter") |> render_change(%{"q" => "nothing-matches"})
+
+      assert has_element?(view, "#accounts-empty")
+    end
   end
 end

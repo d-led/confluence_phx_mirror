@@ -15,12 +15,43 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
     {:ok,
      assign(socket,
        new_token: nil,
+       q: "",
        proxy_auth?: Application.get_env(:confluence_phx_mirror, :proxy_auth, false),
        proxy_header:
          Application.get_env(:confluence_phx_mirror, :proxy_auth_header, "x-forwarded-email"),
        page_title: "Users & tokens"
      )
      |> load()}
+  end
+
+  @impl true
+  def handle_event("filter", %{"q" => q}, socket) do
+    {:noreply, socket |> assign(q: q) |> load()}
+  end
+
+  # Disabling here is the mirror's own decision and stays independent of what
+  # Confluence says; access is refused while either flag is set.
+  def handle_event("set_disabled", %{"user_id" => user_id, "disabled" => value}, socket) do
+    user = Accounts.get_user(String.to_integer(user_id))
+    disabled? = value == "true"
+
+    case Accounts.set_disabled(user, disabled?, actor(socket)) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "#{user.email} is now #{if disabled?, do: "disabled", else: "enabled"}."
+         )
+         |> load()}
+
+      {:error, :protected_admin} ->
+        {:noreply,
+         put_flash(socket, :error, "A seeded or bootstrap administrator cannot be disabled.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not change the account.")}
+    end
   end
 
   @impl true
@@ -97,7 +128,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
 
   defp load(socket) do
     users =
-      Accounts.list_users()
+      Accounts.list_users(socket.assigns.q)
       |> Enum.map(fn user ->
         %{
           user: user,
@@ -165,6 +196,22 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
             <span class="badge badge-ghost badge-sm">{length(@users)}</span>
           </div>
 
+          <form id="user-filter" phx-change="filter" class="border-b border-base-300/70 px-5 py-3">
+            <input
+              type="search"
+              name="q"
+              value={@q}
+              phx-debounce="200"
+              placeholder="Filter by e-mail or name"
+              aria-label="Filter accounts"
+              class="input input-sm min-h-11 w-full rounded-lg sm:min-h-0"
+            />
+          </form>
+
+          <p :if={@users == []} id="accounts-empty" class="px-5 py-8 text-sm text-base-content/70">
+            No account matches this filter.
+          </p>
+
           <article
             :for={%{user: user, tokens: tokens, synced_groups: synced_groups} <- @users}
             class="border-b border-base-300/60 px-5 py-4 last:border-b-0"
@@ -179,6 +226,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                     <p class="truncate text-sm font-medium">{user.email}</p>
                     <span :if={Admins.source(user)} class="badge badge-primary badge-xs">
                       admin · {Admins.source(user)}
+                    </span>
+                    <span
+                      :if={User.disabled_here?(user)}
+                      id={"disabled-here-#{user.id}"}
+                      class="badge badge-error badge-xs"
+                    >
+                      disabled here
+                    </span>
+                    <span
+                      :if={User.disabled_on_site?(user)}
+                      id={"disabled-on-site-#{user.id}"}
+                      class="badge badge-warning badge-xs"
+                    >
+                      disabled on the site
                     </span>
                   </div>
                   <p class="text-[11px] text-base-content/70">
@@ -216,6 +277,38 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                   data-confirm={user.role == "admin" && demotion_warning(user)}
                 >
                   Save
+                </button>
+              </form>
+
+              <form
+                id={"disable-form-#{user.id}"}
+                phx-submit="set_disabled"
+                class="flex items-center gap-1.5"
+              >
+                <input type="hidden" name="user_id" value={user.id} />
+                <input
+                  type="hidden"
+                  name="disabled"
+                  value={to_string(not User.disabled_here?(user))}
+                />
+                <button
+                  type="submit"
+                  id={"toggle-#{user.id}"}
+                  class={[
+                    "btn btn-sm min-h-11 sm:min-h-0",
+                    if(User.disabled_here?(user),
+                      do: "btn-success btn-outline",
+                      else: "btn-warning btn-outline"
+                    )
+                  ]}
+                  data-confirm={
+                    if User.disabled_here?(user),
+                      do: "Let #{user.email} read the mirror again?",
+                      else:
+                        "Disable #{user.email} here? They lose access immediately; Confluence is not changed."
+                  }
+                >
+                  {if User.disabled_here?(user), do: "Enable", else: "Disable"}
                 </button>
               </form>
             </div>

@@ -400,6 +400,37 @@ Set `MIRROR_MAIL_FROM` and the Swoosh mailer settings for production.
   `CM_PROXY_AUTH_MEMBERS_ONLY=false` restores the older behaviour, where the
   proxy's word was enough.
 
+## Switched-off accounts
+
+*Users & tokens* lists every account with a filter box (e-mail or name) and two
+independent disablement flags, because different people decide them:
+
+| Flag | Set by | Shown as |
+| --- | --- | --- |
+| `disabled_at` | an administrator, on that screen | *disabled here* |
+| `site_disabled_at` | the sync, when Confluence reports the account as not active | *disabled on the site* |
+
+Access is refused while **either** is set — the effective state is the OR of the
+two — but they stay apart so an operator can tell "we did this" from "the site
+did this". Switching an account off here leaves Confluence alone; the site's flag
+clears itself on the next sync that finds the account active again.
+
+Disabling takes effect immediately: an existing session is ignored, API tokens
+answer `403 account_disabled`, magic links can be neither requested nor consumed,
+and the proxy refuses the identity. Nothing is deleted, so *Enable* restores
+access as it was. A seeded or bootstrap administrator cannot be switched off here
+— the same reason they cannot be demoted: it would remove the only way back in.
+
+The site's flag comes from asking Confluence about the Atlassian accounts the
+mirror knows (page authors, group members, readers who signed in with an account
+id). There is no user directory to walk — Cloud does not expose one — so an
+account nobody here has ever seen is simply not checked.
+
+Every change is audited: `user.disabled` / `user.enabled` for the flag set here,
+`user.site_disabled` / `user.site_enabled` when the sync sees the site's state
+change. The sync writes transitions only, so an hourly run does not fill the log
+with "still active".
+
 ## Webhooks
 
 A webhook is how the mirror hears about a change before the next scheduled pull:
