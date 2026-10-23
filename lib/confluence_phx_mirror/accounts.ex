@@ -38,8 +38,106 @@ defmodule ConfluencePhxMirror.Accounts do
     )
   end
 
-  def list_users do
-    Repo.all(from u in User, order_by: [asc: u.email])
+  def list_users(query \\ nil) do
+    from(u in User, order_by: [asc: u.email])
+    |> filter_users(query)
+    |> Repo.all()
+  end
+
+  defp filter_users(query, blank) when blank in [nil, ""], do: query
+
+  defp filter_users(query, text) do
+    pattern = "%" <> (text |> to_string() |> String.trim() |> String.downcase()) <> "%"
+
+    where(
+      query,
+      [u],
+      fragment("lower(?) like ?", u.email, ^pattern) or
+        fragment("lower(coalesce(?, '')) like ?", u.display_name, ^pattern)
+    )
+  end
+
+  @doc """
+  Switches an account off (or back on) on this mirror, and records who did it.
+
+  A protected administrator cannot be switched off: that would remove the only
+  way back in, the same reason `change_role/3` refuses to demote them.
+  """
+  def set_disabled(%User{} = user, disabled?, actor) when is_boolean(disabled?) do
+    cond do
+      disabled? and Admins.protected?(user) ->
+        {:error, :protected_admin}
+
+      User.disabled_here?(user) == disabled? ->
+        {:ok, user}
+
+      true ->
+        with {:ok, updated} <- put_flags(user, %{disabled_at: if(disabled?, do: now())}) do
+          Audit.log(actor, disabled_event(updated, disabled?))
+          {:ok, updated}
+        end
+    end
+  end
+
+  defp disabled_event(user, true), do: User.audit_event_disabled(user)
+  defp disabled_event(user, false), do: User.audit_event_enabled(user)
+
+  @doc """
+  Applies what the mirrored site says about one Atlassian account: every mirror
+  account that belongs to it is marked as disabled on the site, or the mark is
+  cleared.
+
+  Only transitions are written and audited — a sync that runs every hour must
+  not fill the log with "still active". Returns how many accounts changed.
+  """
+  def reconcile_site_disabled(account_id, email, disabled_on_site?) do
+    account_id
+    |> site_accounts(email)
+    |> Enum.count(fn user -> mirror_site_flag(user, disabled_on_site?) end)
+  end
+
+  defp site_accounts(account_id, email) do
+    keys = Enum.reject([account_id, email && User.normalise_email(email)], &is_nil/1)
+
+    from(u in User,
+      where:
+        coalesce(u.confluence_account_id, "") in ^keys or
+          fragment("lower(?)", u.email) in ^keys
+    )
+    |> Repo.all()
+  end
+
+  defp mirror_site_flag(user, disabled_on_site?) do
+    if User.disabled_on_site?(user) == disabled_on_site? do
+      false
+    else
+      {:ok, updated} =
+        put_flags(user, %{site_disabled_at: if(disabled_on_site?, do: now())})
+
+      Audit.log(
+        Audit.system_actor(),
+        site_event(updated, disabled_on_site?)
+      )
+
+      true
+    end
+  end
+
+  defp site_event(user, true), do: User.audit_event_site_disabled(user)
+  defp site_event(user, false), do: User.audit_event_site_enabled(user)
+
+  defp put_flags(user, attrs) do
+    user |> Ecto.Changeset.change(attrs) |> Repo.update()
+  end
+
+  @doc "The Atlassian account ids the mirror's own accounts are known by."
+  def account_ids do
+    from(u in User,
+      where: not is_nil(u.confluence_account_id),
+      distinct: true,
+      select: u.confluence_account_id
+    )
+    |> Repo.all()
   end
 
   @doc "Finds a user or creates one (used by magic-link sign-up and auto admin)."
@@ -213,7 +311,7 @@ defmodule ConfluencePhxMirror.Accounts do
         end
 
       user ->
-        {:ok, user}
+        if User.disabled?(user), do: {:error, :disabled}, else: {:ok, user}
     end
   end
 
@@ -230,10 +328,17 @@ defmodule ConfluencePhxMirror.Accounts do
         {:error, :invalid}
 
       %LoginToken{} = token ->
-        if DateTime.compare(token.expires_at, now) == :lt do
-          {:error, :expired}
-        else
-          sign_in(token, now)
+        cond do
+          DateTime.compare(token.expires_at, now) == :lt ->
+            {:error, :expired}
+
+          # The link may have been requested before the account was switched
+          # off; consuming it must not undo that.
+          User.disabled?(token.user) ->
+            {:error, :disabled}
+
+          true ->
+            sign_in(token, now)
         end
     end
   end
@@ -313,11 +418,16 @@ defmodule ConfluencePhxMirror.Accounts do
     query = from t in ApiToken, where: not is_nil(t.user_id), preload: [:user]
 
     with {:ok, token} <- find_token(plain, query) do
-      if expired?(token, now) do
-        {:error, :expired_token}
-      else
-        touch(token, now)
-        {:ok, token.user}
+      cond do
+        expired?(token, now) ->
+          {:error, :expired_token}
+
+        User.disabled?(token.user) ->
+          {:error, :account_disabled}
+
+        true ->
+          touch(token, now)
+          {:ok, token.user}
       end
     end
   end

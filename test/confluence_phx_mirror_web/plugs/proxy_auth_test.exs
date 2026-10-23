@@ -73,6 +73,14 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
     refute Accounts.get_user_by_email("stranger@example.com")
   end
 
+  test "a disabled account is refused even though the site knows it" do
+    in_group("jane@example.com", "confluence-users")
+    {:ok, user} = Accounts.ensure_user("jane@example.com")
+    {:ok, _} = Accounts.set_disabled(user, true, {:system, "test"})
+
+    assert html_response(visit("jane@example.com"), 403)
+  end
+
   test "a seeded administrator signing in through the proxy reaches the admin area", %{conn: conn} do
     previous = Application.get_env(:confluence_phx_mirror, :admins)
     Application.put_env(:confluence_phx_mirror, :admins, ["ops@example.com"])

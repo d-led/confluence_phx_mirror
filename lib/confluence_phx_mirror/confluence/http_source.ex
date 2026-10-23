@@ -158,6 +158,18 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   @impl true
+  def user_status(account_id, _opts) when is_binary(account_id) and account_id != "" do
+    with {:ok, body} <- request_json("/user?accountId=#{URI.encode_www_form(account_id)}", %{}) do
+      {:ok,
+       %{
+         account_status: body["accountStatus"],
+         email: body["email"],
+         display_name: body["displayName"]
+       }}
+    end
+  end
+
+  @impl true
   def attachment_data(attachment, _opts) do
     with {:ok, url} <- download_url(attachment.download_url) do
       download(url)

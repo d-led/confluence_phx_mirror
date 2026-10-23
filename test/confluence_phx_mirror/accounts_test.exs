@@ -5,7 +5,7 @@ defmodule ConfluencePhxMirror.AccountsTest do
   import Swoosh.TestAssertions
 
   alias ConfluencePhxMirror.Accounts
-  alias ConfluencePhxMirror.Accounts.{ApiToken, LoginToken}
+  alias ConfluencePhxMirror.Accounts.{ApiToken, LoginToken, User}
   alias ConfluencePhxMirror.Audit.Event
 
   describe "auto admin" do
@@ -125,6 +125,98 @@ defmodule ConfluencePhxMirror.AccountsTest do
       |> Repo.update!()
 
       assert {:error, :expired_token} = Accounts.authenticate_api_token(plain)
+    end
+  end
+
+  describe "disablement" do
+    test "an administrator switches an account off here, and it is audited" do
+      user = user_fixture(%{email: "off@example.com"})
+
+      assert {:ok, disabled} = Accounts.set_disabled(user, true, {:system, "test"})
+      assert User.disabled_here?(disabled)
+      refute User.disabled_on_site?(disabled)
+      assert User.disabled?(disabled)
+
+      assert Repo.exists?(
+               from e in Event,
+                 where: e.action == "user.disabled" and e.entity_id == ^to_string(user.id)
+             )
+    end
+
+    test "switching it back on clears the flag and is audited too" do
+      user = user_fixture(%{email: "back@example.com"})
+      {:ok, _} = Accounts.set_disabled(user, true, {:system, "test"})
+
+      assert {:ok, enabled} =
+               Accounts.set_disabled(Accounts.get_user(user.id), false, {:system, "test"})
+
+      refute User.disabled?(enabled)
+      assert Repo.exists?(from e in Event, where: e.action == "user.enabled")
+    end
+
+    test "a seeded administrator cannot be switched off, or nobody could get back in" do
+      previous = Application.get_env(:confluence_phx_mirror, :admins)
+      Application.put_env(:confluence_phx_mirror, :admins, ["keeper@example.com"])
+      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :admins, previous) end)
+
+      keeper = user_fixture(%{email: "keeper@example.com", role: "admin"})
+
+      assert {:error, :protected_admin} = Accounts.set_disabled(keeper, true, {:system, "test"})
+      refute User.disabled?(Accounts.get_user(keeper.id))
+    end
+
+    test "the site's flag and ours are independent, and either one blocks the token" do
+      user = user_fixture(%{email: "both@example.com"})
+      {:ok, plain, _token} = Accounts.create_api_token(user, "ci", {:system, "test"})
+
+      assert Accounts.reconcile_site_disabled("557058:both", "both@example.com", true) == 1
+
+      reloaded = Accounts.get_user(user.id)
+      assert User.disabled_on_site?(reloaded)
+      refute User.disabled_here?(reloaded)
+      assert {:error, :account_disabled} = Accounts.authenticate_api_token(plain)
+
+      assert Accounts.reconcile_site_disabled("557058:both", "both@example.com", false) == 1
+      assert {:ok, %{id: id}} = Accounts.authenticate_api_token(plain)
+      assert id == user.id
+    end
+
+    test "a site transition is written once, not once per sync" do
+      user = user_fixture(%{email: "quiet@example.com"})
+
+      assert Accounts.reconcile_site_disabled("557058:quiet", "quiet@example.com", true) == 1
+      assert Accounts.reconcile_site_disabled("557058:quiet", "quiet@example.com", true) == 0
+
+      assert Repo.exists?(from e in Event, where: e.action == "user.site_disabled")
+      assert User.disabled_on_site?(Accounts.get_user(user.id))
+    end
+
+    test "a disabled account cannot request or consume a magic link" do
+      user = user_fixture(%{email: "nolink@example.com"})
+
+      assert {:ok, :sent} = Accounts.request_login("nolink@example.com")
+
+      assert_email_sent(fn email ->
+        [_, plain] = Regex.run(~r{/session/([A-Za-z0-9_-]+)}, email.text_body)
+        send(self(), {:token, plain})
+        true
+      end)
+
+      assert_received {:token, plain}
+
+      {:ok, _} = Accounts.set_disabled(user, true, {:system, "test"})
+
+      assert {:error, :disabled} = Accounts.request_login("nolink@example.com")
+      assert {:error, :disabled} = Accounts.consume_login(plain)
+    end
+
+    test "the account list can be narrowed by address or name" do
+      user_fixture(%{email: "find.me@example.com", display_name: "Findable Person"})
+      user_fixture(%{email: "other@example.com", display_name: "Someone Else"})
+
+      assert Enum.map(Accounts.list_users("findable"), & &1.email) == ["find.me@example.com"]
+      assert Enum.map(Accounts.list_users("find.me"), & &1.email) == ["find.me@example.com"]
+      assert length(Accounts.list_users("")) == length(Accounts.list_users())
     end
   end
 end

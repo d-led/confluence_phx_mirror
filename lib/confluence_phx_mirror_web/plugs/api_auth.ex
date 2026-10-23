@@ -31,6 +31,12 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuth do
     |> assign(:api_token, true)
   end
 
+  defp authenticate(conn, {:error, :account_disabled}) do
+    conn
+    |> send_error(403, "account_disabled", "This account is disabled.")
+    |> halt()
+  end
+
   defp authenticate(conn, {:error, reason}) do
     conn
     |> put_resp_header("www-authenticate", ~s(Bearer realm="confluence-mirror"))

@@ -17,6 +17,7 @@ defmodule ConfluencePhxMirror.Sync do
   import Ecto.Query
   require Logger
 
+  alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.Admins
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Blobs.{Key, Store}
@@ -74,6 +75,7 @@ defmodule ConfluencePhxMirror.Sync do
 
     try do
       {stats, errors} = do_run(mode, source, opts)
+      {stats, errors} = reconcile_accounts(mode, source, stats, errors, opts)
       finish_run(run, stats, errors, actor, trigger)
     rescue
       error ->
@@ -105,6 +107,66 @@ defmodule ConfluencePhxMirror.Sync do
   defp source_label(source) do
     if function_exported?(source, :name, 0), do: source.name(), else: inspect(source)
   end
+
+  # ---------------------------------------------------------------------------
+  # Account status
+  # ---------------------------------------------------------------------------
+
+  # A page sync is one page; asking the site about every known account belongs
+  # to the runs that see the site as a whole.
+  defp reconcile_accounts(:page, _source, stats, errors, _opts), do: {stats, errors}
+
+  defp reconcile_accounts(_mode, source, stats, errors, opts) do
+    {checked, account_errors} = sync_account_statuses(source, opts)
+    {Map.put(stats, "accounts", checked), errors ++ account_errors}
+  end
+
+  # Who might be switched off on the site while still holding a mirror account:
+  # every Atlassian account id the mirror knows. A snapshot has to ask about a
+  # lot of people, so the sweep is capped; the accounts that signed in here are
+  # checked first, because those are the rows a flag actually changes.
+  @max_account_checks 500
+
+  defp sync_account_statuses(source, opts) do
+    if function_exported?(source, :user_status, 2) do
+      account_ids()
+      |> Enum.reduce({0, []}, fn id, acc -> check_account(source, id, acc, opts) end)
+    else
+      {0, []}
+    end
+  end
+
+  defp account_ids do
+    (Accounts.account_ids() ++ Mirror.member_account_ids() ++ Mirror.account_ids())
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.uniq()
+    |> Enum.take(@max_account_checks)
+  end
+
+  defp check_account(source, account_id, {checked, errors}, opts) do
+    case source.user_status(account_id, opts) do
+      {:ok, status} ->
+        Accounts.reconcile_site_disabled(
+          account_id,
+          Map.get(status, :email),
+          switched_off?(Map.get(status, :account_status))
+        )
+
+        {checked + 1, errors}
+
+      {:error, :not_supported} ->
+        {checked, errors}
+
+      {:error, reason} ->
+        {checked, [error("account", account_id, reason) | errors]}
+    end
+  end
+
+  # Anything but "active" means the person cannot sign in to the site any more.
+  # A site that says nothing at all is not evidence of anything.
+  defp switched_off?("active"), do: false
+  defp switched_off?(status) when is_binary(status), do: true
+  defp switched_off?(_unknown), do: false
 
   # ---------------------------------------------------------------------------
   # Modes

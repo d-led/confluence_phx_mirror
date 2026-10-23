@@ -303,6 +303,34 @@ defmodule ConfluencePhxMirror.Mirror do
     member_of_any_group?(subject_keys, [group_key])
   end
 
+  @doc """
+  The Atlassian account ids the mirror knows: page authors and group members.
+
+  This is the only list there is — Confluence Cloud has no API that enumerates
+  a site's users — and it is what the sync asks about when it wants to know who
+  the site has switched off.
+  """
+  @spec account_ids() :: [String.t()]
+  def account_ids do
+    from(p in Page,
+      where: not is_nil(p.author_account_id),
+      distinct: true,
+      select: p.author_account_id
+    )
+    |> Repo.all()
+  end
+
+  @doc "Account ids Confluence reported for group members."
+  @spec member_account_ids() :: [String.t()]
+  def member_account_ids do
+    from(m in GroupMember,
+      where: not is_nil(m.account_id),
+      distinct: true,
+      select: m.account_id
+    )
+    |> Repo.all()
+  end
+
   @doc "Names of the mirrored groups a reader belongs to, as Confluence spells them."
   def groups_of(subject_keys) do
     subjects = Enum.reject(subject_keys, &is_nil/1)
@@ -318,7 +346,6 @@ defmodule ConfluencePhxMirror.Mirror do
 
   @doc """
   Whether the sync has ever seen this identity on the mirrored site.
-
   There is no user directory to consult — Confluence Cloud does not list a
   site's users through the API — so "a user of the site" means "the mirror has
   evidence of this person": a member of a group the content mentions, a user

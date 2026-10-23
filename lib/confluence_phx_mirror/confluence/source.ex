@@ -79,6 +79,12 @@ defmodule ConfluencePhxMirror.Confluence.Source do
           display_name: String.t() | nil
         }
 
+  @type account_status :: %{
+          account_status: String.t() | nil,
+          email: String.t() | nil,
+          display_name: String.t() | nil
+        }
+
   @doc "Human readable source name, recorded on every sync run."
   @callback name() :: String.t()
 
@@ -172,11 +178,27 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   @callback space_icon(icon :: %{path: String.t()}, keyword()) ::
               {:ok, %{body: binary(), media_type: String.t()}} | {:error, term()}
 
+  @doc """
+  The state of one Atlassian account, as the site reports it.
+
+  `account_status` is whatever the site says — `"active"`, `"inactive"`,
+  `"closed"` — and the sync treats everything but `"active"` as "the site has
+  switched this person off". The e-mail comes back when the site is willing to
+  share it, which is how a mirror account (known by address) is tied to the
+  Atlassian account it belongs to.
+
+  A source that cannot read accounts leaves the callback out, and the mirror
+  keeps whatever it learned last time.
+  """
+  @callback user_status(account_id :: String.t(), keyword()) ::
+              {:ok, account_status()} | {:error, term()}
+
   @optional_callbacks changed_since: 2,
                       restrictions: 2,
                       space_permissions: 2,
                       space_icon: 2,
                       group_members: 2,
+                      user_status: 2,
                       web_url: 0
 
   @doc "The configured source module."

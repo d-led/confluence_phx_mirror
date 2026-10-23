@@ -7,7 +7,7 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
   import Phoenix.Component
 
   alias ConfluencePhxMirror.Accounts
-  alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Accounts.{Scope, User}
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Sites
@@ -57,9 +57,13 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
           else: nil
 
       id ->
-        Accounts.get_user(id)
+        id |> Accounts.get_user() |> active()
     end
   end
+
+  # A disabled account is nobody, exactly as the request plugs treat it.
+  defp active(%User{} = user), do: if(User.disabled?(user), do: nil, else: user)
+  defp active(nil), do: nil
 
   defp attach_site_context(socket) do
     scope = socket.assigns.current_scope

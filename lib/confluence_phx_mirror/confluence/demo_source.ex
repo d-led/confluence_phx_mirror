@@ -74,6 +74,17 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
     {:ok, members}
   end
 
+  # One demo author has left the company, so the "disabled on the site" flag has
+  # something to show the first time somebody opens /admin/users.
+  @inactive_account "557058:sam.rivera"
+
+  @impl true
+  def user_status(account_id, _opts) do
+    status = if account_id == @inactive_account, do: "inactive", else: "active"
+
+    {:ok, %{account_status: status, email: nil, display_name: nil}}
+  end
+
   @impl true
   def attachments(confluence_id, _opts) do
     attachments =

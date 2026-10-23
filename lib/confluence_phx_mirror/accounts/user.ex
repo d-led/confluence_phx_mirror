@@ -21,6 +21,10 @@ defmodule ConfluencePhxMirror.Accounts.User do
     # Groups an administrator granted here, kept across syncs. Confluence group
     # memberships come from the mirror itself (`Mirror.GroupMember`).
     field :groups, {:array, :string}, default: []
+    # Switched off here by an administrator.
+    field :disabled_at, :utc_datetime
+    # Switched off on the mirrored site, as the sync last saw it.
+    field :site_disabled_at, :utc_datetime
 
     has_many :api_tokens, ConfluencePhxMirror.Accounts.ApiToken
     has_many :subscriptions, ConfluencePhxMirror.Notifications.Subscription
@@ -63,6 +67,23 @@ defmodule ConfluencePhxMirror.Accounts.User do
   def admin?(%__MODULE__{role: "admin"}), do: true
   def admin?(%__MODULE__{}), do: false
 
+  @doc "Whether an administrator switched this account off here."
+  def disabled_here?(%__MODULE__{disabled_at: at}), do: not is_nil(at)
+
+  @doc "Whether the site says this account is no longer active."
+  def disabled_on_site?(%__MODULE__{site_disabled_at: at}), do: not is_nil(at)
+
+  @doc """
+  Whether the account may not be used: either flag is enough.
+
+  They stay independent on purpose. An administrator can switch an account off
+  on the mirror while it is still active on the site, and the sync marks
+  accounts Confluence deactivated even if nobody here touched them. What a
+  reader may do is the OR of the two, and the screens show them apart so an
+  operator can tell "we did this" from "the site did this".
+  """
+  def disabled?(%__MODULE__{} = user), do: disabled_here?(user) or disabled_on_site?(user)
+
   @doc "Name to show in the UI."
   def display_name(%__MODULE__{display_name: name}) when is_binary(name) and name != "", do: name
   def display_name(%__MODULE__{email: email}), do: email |> String.split("@") |> hd()
@@ -94,6 +115,35 @@ defmodule ConfluencePhxMirror.Accounts.User do
       to: Enum.join(user.groups || [], ", ")
     })
   end
+
+  @doc "Audit entry for an administrator switching this account off here."
+  def audit_event_disabled(%__MODULE__{} = user) do
+    Entry.new("user.disabled", "user", user.id, %{
+      email: user.email,
+      at: timestamp(user.disabled_at)
+    })
+  end
+
+  @doc "Audit entry for an administrator switching this account back on here."
+  def audit_event_enabled(%__MODULE__{} = user) do
+    Entry.new("user.enabled", "user", user.id, %{email: user.email})
+  end
+
+  @doc "Audit entry for the site reporting the account as not active."
+  def audit_event_site_disabled(%__MODULE__{} = user) do
+    Entry.new("user.site_disabled", "user", user.id, %{
+      email: user.email,
+      at: timestamp(user.site_disabled_at)
+    })
+  end
+
+  @doc "Audit entry for the site reporting the account as active again."
+  def audit_event_site_enabled(%__MODULE__{} = user) do
+    Entry.new("user.site_enabled", "user", user.id, %{email: user.email})
+  end
+
+  defp timestamp(nil), do: nil
+  defp timestamp(%DateTime{} = at), do: DateTime.to_iso8601(at)
 
   @doc "Audit entry for a magic link being sent."
   def audit_event_login_requested(%__MODULE__{} = user) do

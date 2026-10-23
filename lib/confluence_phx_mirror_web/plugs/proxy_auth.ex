@@ -70,22 +70,25 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
     end
   end
 
-  # An administrator always; everybody else only when the sync can vouch for
-  # them. The account is looked up, never created, before the decision.
+  # A disabled account is refused whatever else is true of it: it is the
+  # strongest statement an operator can make about a reader. Otherwise an
+  # administrator, and everybody else only when the sync can vouch for them —
+  # the account is looked up, never created, before the decision.
   defp admitted?(email) do
-    cond do
-      not members_only?() -> true
-      Admins.seeded?(email) -> true
-      true -> admitted_as_reader?(email)
-    end
+    user = Accounts.get_user_by_email(email)
+
+    not disabled?(user) and
+      (not members_only?() or Admins.seeded?(email) or known?(user, email))
   end
 
-  defp admitted_as_reader?(email) do
-    case Accounts.get_user_by_email(email) do
-      nil -> Mirror.identity_known?([email])
-      %User{} = user -> Admins.admin?(user) or Mirror.identity_known?(User.identity_keys(user))
-    end
+  defp disabled?(%User{} = user), do: User.disabled?(user)
+  defp disabled?(nil), do: false
+
+  defp known?(%User{} = user, _email) do
+    Admins.admin?(user) or Mirror.identity_known?(User.identity_keys(user))
   end
+
+  defp known?(nil, email), do: Mirror.identity_known?([email])
 
   defp refuse(conn) do
     conn

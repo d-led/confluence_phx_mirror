@@ -29,6 +29,11 @@ defmodule ConfluencePhxMirrorWeb.SessionController do
         |> put_flash(:info, "If that address has access, a sign-in link is on its way.")
         |> redirect(to: ~p"/")
 
+      {:error, :disabled} ->
+        conn
+        |> put_flash(:error, "This account is disabled. Ask an administrator of the mirror.")
+        |> redirect(to: ~p"/session")
+
       {:error, reason} ->
         conn
         |> put_flash(:error, "Could not send the sign-in e-mail: #{inspect(reason)}")
@@ -52,6 +57,11 @@ defmodule ConfluencePhxMirrorWeb.SessionController do
       {:error, :expired} ->
         conn
         |> put_flash(:error, "That link has expired. Request a new one.")
+        |> redirect(to: ~p"/session")
+
+      {:error, :disabled} ->
+        conn
+        |> put_flash(:error, "This account is disabled. Ask an administrator of the mirror.")
         |> redirect(to: ~p"/session")
 
       {:error, _reason} ->
