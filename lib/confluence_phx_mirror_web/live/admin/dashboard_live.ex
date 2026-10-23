@@ -163,14 +163,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     }
   end
 
-  # The steps a run walks, in the order `Sync` walks them.
+  # The steps a run walks, in the order `Sync` walks them: a table, because the
+  # sentence for a phase is data, not a decision.
+  @phases %{
+    "people" => "reading people and groups",
+    "spaces" => "reading spaces",
+    "pages" => "reading pages",
+    "details" => "reading comments, files and restrictions",
+    "accounts" => "checking the site's accounts"
+  }
+
   defp phase_label(nil), do: "talking to the site"
-  defp phase_label("people"), do: "reading people and groups"
-  defp phase_label("spaces"), do: "reading spaces"
-  defp phase_label("pages"), do: "reading pages"
-  defp phase_label("details"), do: "reading comments, files and restrictions"
-  defp phase_label("accounts"), do: "checking the site's accounts"
-  defp phase_label(other), do: other
+  defp phase_label(phase), do: Map.get(@phases, phase, phase)
 
   defp human_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
   defp human_bytes(bytes) when bytes < 1024 * 1024, do: "#{round(bytes / 1024)} KB"
