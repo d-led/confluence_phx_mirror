@@ -78,6 +78,7 @@ defmodule ConfluencePhxMirror.MixProject do
        depth: 1},
       {:swoosh, "~> 1.16"},
       {:gen_smtp, "~> 1.3"},
+      {:argon2_elixir, "~> 4.1"},
       {:req, "~> 0.5"},
       {:floki, "~> 0.38"},
       {:hammer, "~> 7.5"},

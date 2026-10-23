@@ -68,14 +68,41 @@ defmodule ConfluencePhxMirror.AccountsTest do
       user = user_fixture()
       {:ok, plain, token} = Accounts.create_api_token(user, "CI", {:system, "test"})
 
-      assert token.token_prefix == String.slice(plain, 0, 8)
-      refute Repo.get!(ApiToken, token.id).token_hash =~ plain
+      assert token.token_prefix == String.slice(plain, 0, 12)
+
+      stored = Repo.get!(ApiToken, token.id).token_hash
+      refute stored =~ plain
+      assert stored =~ ~r/\A\$argon2id\$/
+
       assert {:ok, %{id: id}} = Accounts.authenticate_api_token(plain)
       assert id == user.id
       assert {:error, :invalid_token} = Accounts.authenticate_api_token("nope")
 
       assert :ok = Accounts.revoke_api_token(user, token.id, {:system, "test"})
       assert {:error, :invalid_token} = Accounts.authenticate_api_token(plain)
+    end
+
+    test "a digest written before the algorithm changed is rewritten on first use" do
+      user = user_fixture()
+      plain = "legacy-token-value"
+
+      legacy = :crypto.hash(:sha256, plain) |> Base.encode16(case: :lower)
+
+      {:ok, token} =
+        %ApiToken{}
+        |> ApiToken.changeset(%{
+          user_id: user.id,
+          name: "issued before the change",
+          token_hash: legacy,
+          token_prefix: String.slice(plain, 0, 12)
+        })
+        |> Repo.insert()
+
+      assert {:ok, %{id: id}} = Accounts.authenticate_api_token(plain)
+      assert id == user.id
+
+      assert Repo.get!(ApiToken, token.id).token_hash =~ ~r/\A\$argon2id\$/
+      assert {:ok, %{id: ^id}} = Accounts.authenticate_api_token(plain)
     end
 
     test "basic auth accepts email and token" do

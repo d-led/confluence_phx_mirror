@@ -34,6 +34,9 @@ config :confluence_phx_mirror,
   auto_admin: true,
   self_signup: true,
   blob_root: "tmp/mirror_test",
+  # Argon2 is memory-hard on purpose; the suite pays for the algorithm, not for
+  # the production cost of it (16 MiB and two passes per token check).
+  token_hash_params: [t_cost: 1, m_cost: 3, parallelism: 1],
   reader_rate_limit: [
     enabled: true,
     html: [limit: 1_000, period_ms: 60_000],

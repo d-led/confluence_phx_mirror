@@ -22,7 +22,16 @@ by default. See [configuration.md](configuration.md#api-description).
 ## Authentication
 
 API tokens are created in the admin dashboard (*Users & tokens*), shown once and
-stored as SHA-256 hashes. Send either:
+stored as an **Argon2id** digest in PHC string form (`$argon2id$v=19$m=…,t=…,p=…$…`).
+The string carries its own algorithm and parameters, so the policy can be raised
+without invalidating issued tokens: a digest written under an older policy is
+rewritten the next time the token is used. Only a twelve-character prefix is
+kept in clear, as the indexed lookup key — a salted digest cannot be searched by
+equality. A token presented from that prefix is then verified against the
+digest, which costs about 16 MiB and a few tens of milliseconds per request
+(see `ConfluencePhxMirror.Accounts.TokenHash`).
+
+Send either:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" https://mirror.example.com/api/v1/spaces

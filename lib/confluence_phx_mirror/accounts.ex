@@ -9,7 +9,7 @@ defmodule ConfluencePhxMirror.Accounts do
 
   import Ecto.Query
 
-  alias ConfluencePhxMirror.Accounts.{Admins, ApiToken, LoginToken, User}
+  alias ConfluencePhxMirror.Accounts.{Admins, ApiToken, LoginToken, TokenHash, User}
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Mailer
   alias ConfluencePhxMirror.Repo
@@ -20,6 +20,10 @@ defmodule ConfluencePhxMirror.Accounts do
   end
 
   @api_token_bytes 32
+  # How much of a token is stored in clear as the lookup key. Twelve base64
+  # characters are 72 bits: enough that two tokens of one mirror do not share a
+  # prefix, and no use to anybody holding only the row.
+  @token_prefix_length 12
 
   # ---------------------------------------------------------------------------
   # Users
@@ -264,19 +268,19 @@ defmodule ConfluencePhxMirror.Accounts do
   # ---------------------------------------------------------------------------
 
   @doc """
-  Creates an API token. The plaintext is returned once and never stored.
+  Creates an API token. The plaintext is returned once and never stored — what
+  is kept is an Argon2id digest under the policy in `TokenHash`.
   """
   def create_api_token(%User{} = user, name, actor) do
     plain = random_token()
-    prefix = String.slice(plain, 0, 8)
 
     with {:ok, token} <-
            %ApiToken{}
            |> ApiToken.changeset(%{
              user_id: user.id,
              name: name,
-             token_hash: hash(plain),
-             token_prefix: prefix
+             token_hash: TokenHash.hash(plain),
+             token_prefix: prefix_of(plain)
            })
            |> Repo.insert() do
       Audit.log(actor, ApiToken.audit_event_created(token, user))
@@ -306,22 +310,15 @@ defmodule ConfluencePhxMirror.Accounts do
   @doc "Authenticates a bearer token."
   def authenticate_api_token(plain) when is_binary(plain) do
     now = now()
+    query = from t in ApiToken, where: not is_nil(t.user_id), preload: [:user]
 
-    case Repo.one(
-           from t in ApiToken,
-             where: not is_nil(t.user_id) and t.token_hash == ^hash(plain),
-             preload: [:user]
-         ) do
-      nil ->
-        {:error, :invalid_token}
-
-      %ApiToken{} = token ->
-        if expired?(token, now) do
-          {:error, :expired_token}
-        else
-          touch(token, now)
-          {:ok, token.user}
-        end
+    with {:ok, token} <- find_token(plain, query) do
+      if expired?(token, now) do
+        {:error, :expired_token}
+      else
+        touch(token, now)
+        {:ok, token.user}
+      end
     end
   end
 
@@ -338,18 +335,20 @@ defmodule ConfluencePhxMirror.Accounts do
     )
   end
 
-  @doc "Creates a service token. The plaintext is returned once and never stored."
+  @doc """
+  Creates a service token. The plaintext is returned once and never stored —
+  what is kept is an Argon2id digest under the policy in `TokenHash`.
+  """
   def create_service_token(name, scope, actor) do
     plain = random_token()
-    prefix = String.slice(plain, 0, 8)
 
     with {:ok, token} <-
            %ApiToken{}
            |> ApiToken.changeset(%{
              name: name,
              scope: scope,
-             token_hash: hash(plain),
-             token_prefix: prefix
+             token_hash: TokenHash.hash(plain),
+             token_prefix: prefix_of(plain)
            })
            |> Repo.insert() do
       Audit.log(actor, ApiToken.audit_event_service_created(token))
@@ -374,20 +373,17 @@ defmodule ConfluencePhxMirror.Accounts do
   def authenticate_service_token(plain, scope) when is_binary(plain) do
     now = now()
 
-    case Repo.one(
-           from t in ApiToken,
-             where: is_nil(t.user_id) and t.scope == ^scope and t.token_hash == ^hash(plain)
-         ) do
-      nil ->
-        {:error, :invalid_token}
+    query =
+      from t in ApiToken,
+        where: is_nil(t.user_id) and t.scope == ^scope
 
-      %ApiToken{} = token ->
-        if expired?(token, now) do
-          {:error, :expired_token}
-        else
-          touch(token, now)
-          {:ok, token}
-        end
+    with {:ok, token} <- find_token(plain, query) do
+      if expired?(token, now) do
+        {:error, :expired_token}
+      else
+        touch(token, now)
+        {:ok, token}
+      end
     end
   end
 
@@ -411,6 +407,37 @@ defmodule ConfluencePhxMirror.Accounts do
   defp expired?(%ApiToken{expires_at: expires_at}, now),
     do: DateTime.compare(expires_at, now) != :gt
 
+  # A digest is salted, so it cannot be looked up by equality: the prefix narrows
+  # the table to the row that could match, and the token itself decides. A token
+  # that verifies against a digest written under an older policy is re-written
+  # here — that is what makes changing the algorithm a decision rather than a
+  # migration of live credentials.
+  defp find_token(plain, query) do
+    query
+    |> where([t], t.token_prefix == ^prefix_of(plain))
+    |> Repo.all()
+    |> Enum.find_value({:error, :invalid_token}, fn token ->
+      case TokenHash.verify(plain, token.token_hash) do
+        :error -> nil
+        :current -> {:ok, token}
+        :legacy -> {:ok, upgrade_digest(token, plain)}
+      end
+    end)
+  end
+
+  defp upgrade_digest(%ApiToken{} = token, plain) do
+    {:ok, upgraded} =
+      token
+      |> Ecto.Changeset.change(token_hash: TokenHash.hash(plain))
+      |> Repo.update()
+
+    upgraded
+  end
+
+  defp prefix_of(plain), do: String.slice(plain, 0, @token_prefix_length)
+
+  # A magic-link token lives for one sign-in and is looked up by digest, so it
+  # keeps the fast hash: there is no stored digest to attack offline.
   defp hash(value), do: :crypto.hash(:sha256, value) |> Base.encode16(case: :lower)
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)

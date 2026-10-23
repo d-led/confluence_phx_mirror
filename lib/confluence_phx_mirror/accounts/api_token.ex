@@ -1,9 +1,12 @@
 defmodule ConfluencePhxMirror.Accounts.ApiToken do
   @moduledoc """
-  A bearer token for the read-only REST API.
+  A bearer token for the read-only REST API, or for one integration (a service
+  token, with no user and one scope).
 
-  Only the SHA-256 hash of the token is stored; the plaintext is shown to the
-  user once, when it is generated.
+  Only a one-way digest of the token is stored — an Argon2id PHC string, see
+  `ConfluencePhxMirror.Accounts.TokenHash` — and the plaintext is shown to the
+  caller once, when it is generated. `token_prefix` is the indexed lookup key,
+  because a salted digest cannot be searched by equality.
   """
   use Ecto.Schema
   import Ecto.Changeset
