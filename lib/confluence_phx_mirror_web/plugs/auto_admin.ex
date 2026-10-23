@@ -2,8 +2,13 @@ defmodule ConfluencePhxMirrorWeb.Plugs.AutoAdmin do
   @moduledoc """
   Assumes an administrator in development and test (`MIRROR_AUTO_ADMIN`).
 
-  The mirror is read-only, so the assumed admin only unlocks the admin screens
-  and subscriptions — there is nothing destructive to protect.
+  The reader is the mirror; the admin screens are where it can be changed or
+  deleted. Those screens do have destructive actions — emptying the trash
+  removes content for good, and accounts, settings and webhooks are writable —
+  so this plug is a development convenience, not a deployment setting: a
+  production release that mirrors a real site refuses to start with it enabled
+  (`ConfluencePhxMirror.Config.IdentityGuard`). In development and the test
+  suite it is what lets a browser open `/admin` without a sign-in.
   """
 
   import Plug.Conn

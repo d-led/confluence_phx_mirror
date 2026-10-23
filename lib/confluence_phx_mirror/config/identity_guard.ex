@@ -9,7 +9,8 @@ defmodule ConfluencePhxMirror.Config.IdentityGuard do
   for the bundled demo snapshot, and they are honoured everywhere except a
   production release — because copying a development environment file into a
   release is otherwise indistinguishable from running a demo, and the difference
-  is who can read the mirror.
+  is who can read the mirror, subscribe to a page, and — through the trash —
+  delete content for good.
 
   A production release may still ask for them deliberately: mirroring the demo
   source allows them, and anything else needs `MIRROR_ALLOW_UNSAFE_IDENTITY`.

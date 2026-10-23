@@ -84,8 +84,9 @@ CM_SOURCE=synthetic CM_SYNTHETIC_SPACES=200 CM_SYNTHETIC_PAGES=500 \
 identity without a sign-in, so they belong to development and to the demo. A
 production release that mirrors a real site **refuses to start** with any of
 them on: the mistake and the intention look identical from the outside, and the
-difference is who can read the mirror. Running the bundled demo in a release is
-still allowed without a flag (`CM_SOURCE=demo`); anything else needs
+difference is who can read the mirror — and, because an administrator can empty
+the trash, who can delete its content for good. Running the bundled demo in a
+release is still allowed without a flag (`CM_SOURCE=demo`); anything else needs
 `MIRROR_ALLOW_UNSAFE_IDENTITY=1`.
 
 `CM_PROXY_AUTH` is only safe when the app cannot be reached except through the

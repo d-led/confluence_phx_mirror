@@ -11,6 +11,8 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminAuthorityTest do
   import Phoenix.LiveViewTest
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.{Mirror, Repo, Trash}
+  alias ConfluencePhxMirror.Mirror.Page
 
   setup %{conn: conn} do
     keeper = user_fixture(%{email: "keeper@example.com", role: "admin"})
@@ -50,9 +52,35 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminAuthorityTest do
     reader: reader
   } do
     {:ok, view, _html} = live(conn, ~p"/admin/users")
-    ConfluencePhxMirror.Repo.delete!(keeper)
+    Repo.delete!(keeper)
 
     assert {:error, {:redirect, %{to: "/"}}} = promote(view, reader)
     assert Accounts.get_user(reader.id).role == "member"
+  end
+
+  test "a member cannot open the trash, the one screen that deletes for good", %{
+    conn: conn,
+    reader: reader
+  } do
+    conn = Plug.Test.init_test_session(conn, %{"user_id" => reader.id})
+
+    assert {:error, {:redirect, %{to: "/"}}} = live(conn, ~p"/admin/trash")
+  end
+
+  test "a demoted administrator cannot empty a trash left open in a tab", %{
+    conn: conn,
+    keeper: keeper
+  } do
+    space = space_fixture(%{key: "GONE"})
+    page = page_fixture(space)
+    assert Mirror.trash_space(space) == 1
+
+    {:ok, view, _html} = live(conn, ~p"/admin/trash")
+    {:ok, _} = Accounts.change_role(keeper, "member", {:system, "another administrator"})
+
+    assert {:error, {:redirect, %{to: "/"}}} = view |> element("#empty-trash") |> render_click()
+
+    assert Repo.get(Page, page.id)
+    assert Trash.spaces() != []
   end
 end
