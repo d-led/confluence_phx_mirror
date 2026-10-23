@@ -20,24 +20,19 @@ the mirror actually holds.
 
 Thresholds: `http_req_failed < 1%`, p95 < 800 ms, p99 < 2 s.
 
-## Before you run it
+## Before and after a run
 
 Two settings decide whether you are measuring the mirror or a guard rail: the
-reader rate limit (every VU shares one client IP, so the default turns a 200-VU
-run into `429`s — raise it for the test) and the connection pool, which is the
-real ceiling per replica. Both, and how to read the report, are in
-[performance.md](../docs/performance.md#part-2-load-against-a-running-server).
-The data to point this at comes from the synthetic source; the same guide has the
-commands.
-
-## Reading a report
-
-Three things explain almost every surprising number. The current measurements
-and how to read a report in full are in
+reader rate limit (every VU shares one client address, so the default turns a
+200-VU run into `429`s — raise it for the test) and the connection pool, which is
+the real ceiling per replica. The knobs, how to build the test data and the
+current numbers are in
 [performance.md](../docs/performance.md#part-2-load-against-a-running-server).
 
-* **A flat, high rate with tiny latencies is the reader rate limiter.** Every VU
-  shares one client address, so the default 240 HTML requests a minute answers
+Three things explain almost every surprising report:
+
+* **A flat, high rate with tiny latencies is the reader rate limiter.** The
+  default allows 240 HTML requests a minute per address, so the limiter answers
   `429` long before the mirror is busy. Check the status codes.
 * **p95 far above the average is queueing**, not slow queries: the connection
   pool, the acceptor sockets, or the BEAM. Compare `-c 1` with `-c 50` on the
