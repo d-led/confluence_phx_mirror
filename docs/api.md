@@ -4,6 +4,21 @@ The mirror exposes three surfaces over the same content: the reader UI, a
 first-party JSON API under `/api/v1`, and a Confluence-compatible subset under
 `/wiki/rest/api` for tools that already speak Confluence.
 
+## The description
+
+`/api/openapi.json` is an OpenAPI 3.1 document covering both API surfaces and
+`/health`; `/api/docs` renders the same document as a page, so the two cannot
+disagree. Neither needs a token and neither touches the database.
+
+The paths come from the router — a new endpoint appears in the document without
+anyone remembering to add it — and each one is described in
+`ConfluencePhxMirrorWeb.Api.OpenApi`. A test fails when a route has no
+description, so the document cannot fall behind the code. Hand the JSON to
+Postman, Insomnia or `npx @redocly/cli lint` and it is a complete client.
+
+A release serves both only with `CM_API_DOCS=1`; development and test serve them
+by default. See [configuration.md](configuration.md#api-description).
+
 ## Authentication
 
 API tokens are created in the admin dashboard (*Users & tokens*), shown once and

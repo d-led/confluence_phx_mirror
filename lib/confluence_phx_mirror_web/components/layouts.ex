@@ -300,7 +300,13 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
           </div>
           <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
             <a href={~p"/about"} class="hover:text-primary">About</a>
-            <a href={~p"/api/v1/stats"} class="hover:text-primary">API</a>
+            <a
+              :if={ConfluencePhxMirrorWeb.Api.OpenApi.enabled?()}
+              href={~p"/api/docs"}
+              class="hover:text-primary"
+            >
+              API docs
+            </a>
             <a href={~p"/health"} class="hover:text-primary">Health</a>
             <span class="inline-flex items-center gap-1">
               <.icon name="hero-lock-closed" class="size-3" /> Read-only

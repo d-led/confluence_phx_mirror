@@ -1,0 +1,141 @@
+<Layouts.app
+  flash={@flash}
+  current_scope={@current_scope}
+  spaces={@spaces}
+  last_sync_run={@last_sync_run}
+  mirror_name={@mirror_name}
+  mirror_url={@mirror_url}
+  mirror_host={@mirror_host}
+  mirror_source={@mirror_source}
+  page_title={@page_title}
+  sidebar?={false}
+>
+  <header class="border-b border-base-300/70 pb-4">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Developers</p>
+    <h1 class="mt-1 text-3xl font-semibold">The mirror API</h1>
+    <p class="mt-2 max-w-3xl text-sm text-base-content/70">
+      Everything here reads. Two surfaces describe the same content: <code>/api/v1</code>
+      for first-party clients and <code>/wiki/rest/api</code>
+      for tools that already speak
+      Confluence. This page is rendered from the same document as <a
+        href={@spec_url}
+        class="link link-primary"
+      >/api/openapi.json</a>, so it cannot drift
+      from what the server serves.
+    </p>
+  </header>
+
+  <section class="mt-6 rounded-xl border border-base-300/70 bg-base-200/40 p-4">
+    <h2 class="text-sm font-semibold">Authentication</h2>
+    <p class="mt-1 max-w-3xl text-sm text-base-content/70">
+      Send an API token from the admin dashboard (<em>Users &amp; tokens</em>), either as a
+      bearer token or the Confluence-style Basic pair:
+    </p>
+    <div class="mt-2 grid gap-2 font-mono text-[11px] sm:grid-cols-2">
+      <code class="rounded-lg bg-base-100 px-3 py-2">
+        curl -H "Authorization: Bearer $TOKEN" {Endpoint.url()}/api/v1/spaces
+      </code>
+      <code class="rounded-lg bg-base-100 px-3 py-2">
+        curl -u "you@acme.com:$TOKEN" {Endpoint.url()}/api/v1/spaces
+      </code>
+    </div>
+    <p class="mt-2 text-[11px] text-base-content/60">
+      <code>/health</code>
+      answers without a token so a probe can use it. Rate limits are per reader and carried
+      on <code>X-RateLimit-Limit</code>
+      / <code>X-RateLimit-Remaining</code>.
+    </p>
+  </section>
+
+  <nav class="mt-6 flex flex-wrap items-center gap-2 text-[11px]">
+    <span class="text-base-content/60">Jump to</span>
+    <a :for={section <- @sections} href={"##{slug(section.tag)}"} class="badge badge-ghost">
+      {section.tag}
+    </a>
+  </nav>
+
+  <section :for={section <- @sections} id={slug(section.tag)} class="mt-8 scroll-mt-20">
+    <h2 class="text-xl font-semibold">{section.tag}</h2>
+    <p class="mt-1 max-w-3xl text-sm text-base-content/70">
+      <span :for={{part, code?} <- inline_code(section.description)}>
+        <code :if={code?} class="font-mono text-[0.95em]">{part}</code>
+        <span :if={!code?}>{part}</span>
+      </span>
+    </p>
+
+    <article
+      :for={operation <- section.operations}
+      class="mt-3 rounded-xl border border-base-300/70 bg-base-100 p-4"
+    >
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="badge badge-sm border-0 bg-primary/15 font-mono text-[10px] uppercase text-primary">
+          {operation["verb"]}
+        </span>
+        <code class="break-all text-[12px] font-semibold">{operation["path"]}</code>
+        <span class={[
+          "ml-auto badge badge-xs",
+          has_token?(operation) && "badge-ghost",
+          !has_token?(operation) && "badge-success badge-soft"
+        ]}>
+          {if has_token?(operation), do: "token", else: "no token"}
+        </span>
+      </div>
+
+      <p class="mt-2 text-sm">{operation["summary"]}</p>
+      <p :if={operation["description"]} class="mt-1 max-w-3xl text-[13px] text-base-content/70">
+        <span :for={{part, code?} <- inline_code(operation["description"])}>
+          <code :if={code?} class="font-mono text-[0.95em]">{part}</code>
+          <span :if={!code?}>{part}</span>
+        </span>
+      </p>
+
+      <div :if={operation["parameters"] != []} class="mt-3 overflow-x-auto">
+        <table class="table table-xs">
+          <thead>
+            <tr>
+              <th class="w-32">Parameter</th>
+              <th class="w-16">In</th>
+              <th class="w-24">Type</th>
+              <th>Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={parameter <- operation["parameters"]}>
+              <td class="font-mono text-[11px]">
+                {parameter["name"]}<span :if={parameter["required"]} class="text-error">*</span>
+              </td>
+              <td class="text-[11px] text-base-content/60">{parameter["in"]}</td>
+              <td class="font-mono text-[11px] text-base-content/70">
+                {schema_type(parameter["schema"])}
+              </td>
+              <td class="text-[12px] text-base-content/70">
+                {parameter["schema"]["description"]}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+        <span class="text-base-content/60">Answers</span>
+        <span
+          :for={{status, response} <- Enum.sort(operation["responses"])}
+          class={[
+            "badge badge-xs font-mono",
+            String.starts_with?(status, "2") && "badge-success badge-soft",
+            String.starts_with?(status, "4") && "badge-warning badge-soft",
+            String.starts_with?(status, "5") && "badge-error badge-soft"
+          ]}
+        >
+          {status} · {response["description"]}
+        </span>
+      </div>
+    </article>
+  </section>
+
+  <p class="mt-8 border-t border-base-300/70 pt-4 text-[11px] text-base-content/60">
+    The document itself is <a href={@spec_url} class="link">OpenAPI 3.1</a>
+    and can be switched off per deployment with <code>CM_API_DOCS</code>.
+    Every path in it comes from the router; the descriptions live in <code>ConfluencePhxMirrorWeb.Api.OpenApi</code>.
+  </p>
+</Layouts.app>

@@ -54,6 +54,12 @@ defmodule ConfluencePhxMirrorWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # The API description and its page are static: no token, no database, no
+  # rate-limit budget. `CM_API_DOCS` decides at boot whether they are served.
+  pipeline :docs do
+    plug :accepts, ["html", "json"]
+  end
+
   # ---------------------------------------------------------------------------
   # Reader-facing mirror
   # ---------------------------------------------------------------------------
@@ -181,6 +187,20 @@ defmodule ConfluencePhxMirrorWeb.Router do
     pipe_through :webhook
 
     post "/confluence", WebhookController, :create
+  end
+
+  # The OpenAPI document and the page rendered from it. Served without a token
+  # and without touching the database; `CM_API_DOCS=false` answers 404.
+  scope "/api", ConfluencePhxMirrorWeb do
+    pipe_through :browser
+
+    get "/docs", ApiDocsController, :index
+  end
+
+  scope "/api", ConfluencePhxMirrorWeb do
+    pipe_through :docs
+
+    get "/openapi.json", ApiDocsController, :spec
   end
 
   scope "/health", ConfluencePhxMirrorWeb do

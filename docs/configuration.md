@@ -112,6 +112,12 @@ Who may call it, and what a delivery does, are in the
 | `CM_SEARCH_PAGE_SIZE` | `30` | results per reader search page |
 | `CM_SEARCH_DEFAULT_LIMIT` / `CM_SEARCH_MAX_RESULTS` | `25` / `100` | API/CQL default and cap |
 
+## API description
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CM_API_DOCS` | on in dev/test, off in a release | serve `/api/docs` (the page) and `/api/openapi.json` (OpenAPI 3.1); when off both answer `404` |
+
 ## Mail and notifications
 
 | Variable | Default | Purpose |

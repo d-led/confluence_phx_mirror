@@ -239,6 +239,18 @@ if theme = System.get_env("CM_THEME") do
   config :confluence_phx_mirror, theme: theme
 end
 
+# The API description and its page: `/api/openapi.json` and `/api/docs`. Served
+# in development and test because they cost nothing and help while building
+# against the mirror; a release has to ask for them, so a deployment never grows
+# a surface it did not choose. CM_API_DOCS=1 (or 0) decides either way.
+api_docs =
+  case System.get_env("CM_API_DOCS") do
+    nil -> config_env() != :prod
+    value -> value in ~w(1 true yes on)
+  end
+
+config :confluence_phx_mirror, api_docs: api_docs
+
 config :confluence_phx_mirror,
   notifications: [
     enabled: System.get_env("MIRROR_NOTIFICATIONS", "true") in ~w(1 true yes),
