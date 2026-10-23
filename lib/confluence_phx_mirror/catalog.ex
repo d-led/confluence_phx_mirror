@@ -22,7 +22,7 @@ defmodule ConfluencePhxMirror.Catalog do
 
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Authorization
-  alias ConfluencePhxMirror.Mirror.{Attachment, Label, Page, Space}
+  alias ConfluencePhxMirror.Mirror.{Attachment, Counters, Label, Page, Space}
   alias ConfluencePhxMirror.Repo
 
   @default_limit 50
@@ -148,13 +148,28 @@ defmodule ConfluencePhxMirror.Catalog do
     |> page(opts)
   end
 
-  @doc "Every label with its readable page count, for a caller that shows all of them."
+  @doc """
+  Every label with its readable page count, for a caller that shows all of them.
+
+  Counting a label means counting the pages that carry it: a pass over
+  `page_labels` and a join to `pages`, which at thirty thousand pages is ninety
+  milliseconds and grows with the site. When every reader sees the same pages —
+  no restrictions, or an administrator — the answer is a fact about the content,
+  so it is computed once per version (see `Mirror.Counters`); a mirror that
+  restricts content asks the question per reader instead.
+  """
   @spec label_counts(Scope.t()) :: [%{name: String.t(), pages: non_neg_integer()}]
   def label_counts(%Scope{} = scope) do
-    scope
-    |> label_count_query()
-    |> order_by([l], asc: l.name)
-    |> Repo.all()
+    if Authorization.uniform_readership?(scope) do
+      Counters.fetch(:label_counts, fn ->
+        scope |> label_count_query() |> order_by([l], asc: l.name) |> Repo.all()
+      end)
+    else
+      scope
+      |> label_count_query()
+      |> order_by([l], asc: l.name)
+      |> Repo.all()
+    end
   end
 
   defp label_count_query(scope) do

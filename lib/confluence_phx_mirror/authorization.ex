@@ -214,6 +214,19 @@ defmodule ConfluencePhxMirror.Authorization do
   end
 
   @doc """
+  Whether every reader sees the same pages.
+
+  An administrator does, and so does everybody on a mirror with no space
+  permissions and no page restrictions — which is most of them. A screen that
+  counts or lists content can then compute one answer for the whole mirror
+  instead of one per reader; when this is false it has to ask per reader.
+  """
+  @spec uniform_readership?(Scope.t()) :: boolean()
+  def uniform_readership?(%Scope{} = scope) do
+    Scope.admin?(scope) or not Mirror.any_permissions?()
+  end
+
+  @doc """
   The sidebar branch for `page` (or the space's roots without one), with the
   pages the reader may not open left out.
 

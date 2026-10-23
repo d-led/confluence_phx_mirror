@@ -111,6 +111,21 @@ defmodule ConfluencePhxMirror.Mirror do
   # Permissions
   # ---------------------------------------------------------------------------
 
+  @doc """
+  Whether anything in the mirror is restricted.
+
+  Two existence checks, remembered until the content moves. They answer the
+  question a screen asks before it decides whether a per-reader query is needed
+  at all: with no space permissions and no page restrictions, every reader sees
+  every page.
+  """
+  def any_permissions? do
+    Counters.fetch(:permissions?, fn ->
+      Repo.exists?(from(c in SpacePermission, select: 1, limit: 1)) or
+        Repo.exists?(from(r in PageRestriction, select: 1, limit: 1))
+    end)
+  end
+
   @doc "Subjects that may read a space; empty means the space is open."
   def space_permissions(space_id) do
     from(c in SpacePermission,
