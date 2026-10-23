@@ -31,6 +31,9 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   defp page_size, do: Application.get_env(:confluence_phx_mirror, :search, [])[:page_size] || 30
 
   @debounce 220
+
+  # How many spaces the space menus list. The directory is `/spaces`.
+  @space_window 25
   @type_options [{"page", "Pages"}, {"blogpost", "Blog posts"}]
   @sort_options [{"", "Best match"}, {"newest", "Newest first"}, {"oldest", "Oldest first"}]
   @window_options [
@@ -43,7 +46,11 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    spaces = Mirror.list_spaces()
+    # The space menus are drawn twice on this screen (the pill bar and the
+    # advanced panel), so a mirror with a thousand spaces would send a thousand
+    # entries twice with every search. They take a window; a space's own catalog
+    # filters inside that space.
+    spaces = Mirror.list_spaces(limit: @space_window)
     labels = Catalog.label_counts(socket.assigns.current_scope)
 
     {:ok,
@@ -70,6 +77,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
        chips: [],
        page_title: "Search",
        spaces: spaces,
+       spaces_more?: Mirror.stats().spaces > length(spaces),
        authors: Mirror.authors(),
        label_catalog: labels,
        recent_pages: Mirror.recent_pages(6),
@@ -449,6 +457,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
         <.filter_bar
           space={@space}
           spaces={@spaces}
+          spaces_more?={@spaces_more?}
           types={@types}
           type_options={@type_options}
           updated={@updated}
@@ -497,6 +506,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           none={@none}
           spaces_filter={@spaces_filter}
           spaces={@spaces}
+          spaces_more?={@spaces_more?}
           creator={@creator}
           authors={@authors}
           from={@from}
@@ -592,6 +602,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
 
   attr :space, :string, required: true
   attr :spaces, :list, required: true
+  attr :spaces_more?, :boolean, default: false
   attr :types, :string, required: true
   attr :type_options, :list, required: true
   attr :updated, :string, required: true
@@ -633,6 +644,9 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
               <span class="min-w-0 flex-1 truncate">{space.name}</span>
               <span class="badge badge-ghost badge-xs">{space.key}</span>
             </button>
+          </li>
+          <li :if={@spaces_more?}>
+            <a href={~p"/spaces"} class="text-xs text-primary">More spaces →</a>
           </li>
         </ul>
       </details>
@@ -719,6 +733,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   attr :none, :string, required: true
   attr :spaces_filter, :string, required: true
   attr :spaces, :list, required: true
+  attr :spaces_more?, :boolean, default: false
   attr :creator, :string, required: true
   attr :authors, :list, required: true
   attr :from, :string, required: true
@@ -787,6 +802,10 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
             </label>
             <p :if={@spaces == []} class="px-1.5 py-1 text-xs text-base-content/70">
               Nothing mirrored yet.
+            </p>
+            <p :if={@spaces_more?} class="px-1.5 py-1 text-[11px] text-base-content/70">
+              More spaces exist. <a href={~p"/spaces"} class="text-primary">Browse them all</a>
+              or search inside one from its own pages.
             </p>
           </div>
         </div>

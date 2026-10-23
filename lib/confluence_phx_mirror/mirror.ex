@@ -4,7 +4,12 @@ defmodule ConfluencePhxMirror.Mirror do
 
   Reads serve the web UI and the API; writes are used only by the sync
   pipeline. Queries always ignore pages that were deleted in Confluence, and
-  always preload the space, because every page URL depends on it.
+  preload the space where the caller has none — a page URL depends on it, so a
+  list that crosses spaces carries its space, and a screen that already holds
+  the space does not ask again.
+
+  Totals that need a scan of the content (see `Mirror.Counters`) are computed
+  once per content version, not once per request.
   """
 
   import Ecto.Query
@@ -12,6 +17,7 @@ defmodule ConfluencePhxMirror.Mirror do
   alias ConfluencePhxMirror.Mirror.{
     Attachment,
     Comment,
+    Counters,
     GroupMember,
     Label,
     Link,
@@ -28,8 +34,15 @@ defmodule ConfluencePhxMirror.Mirror do
   # Spaces
   # ---------------------------------------------------------------------------
 
-  def list_spaces do
-    Repo.all(from s in Space, order_by: [asc: s.name])
+  @doc """
+  Mirrored spaces by name.
+
+  Options: `:limit` — the search screen's space menus take a window and leave
+  the directory to `/spaces`.
+  """
+  def list_spaces(opts \\ []) do
+    from(s in Space, order_by: [asc: s.name], limit: ^Keyword.get(opts, :limit))
+    |> Repo.all()
   end
 
   def get_space_by_key(key) when is_binary(key) do
@@ -75,16 +88,23 @@ defmodule ConfluencePhxMirror.Mirror do
     space |> Space.changeset(attrs) |> Repo.insert_or_update()
   end
 
-  @doc "Spaces with their page counts, for the home page and admin dashboard."
+  @doc """
+  Spaces with their page counts, for the home page and admin dashboard.
+
+  Counting every space's pages is a pass over the pages table, so the answer is
+  remembered until the content moves (see `Mirror.Counters`).
+  """
   def spaces_with_counts do
-    from(s in Space,
-      left_join: p in assoc(s, :pages),
-      where: is_nil(p.deleted_at),
-      group_by: s.id,
-      order_by: [asc: s.name],
-      select: {s, count(p.id)}
-    )
-    |> Repo.all()
+    Counters.fetch(:spaces_with_counts, fn ->
+      from(s in Space,
+        left_join: p in assoc(s, :pages),
+        where: is_nil(p.deleted_at),
+        group_by: s.id,
+        order_by: [asc: s.name],
+        select: {s, count(p.id)}
+      )
+      |> Repo.all()
+    end)
   end
 
   # ---------------------------------------------------------------------------
@@ -232,17 +252,25 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc """
   Whether any of `subject_keys` (a reader's e-mail and account id) belongs to
   one of `group_keys`. Group names are compared case-insensitively.
+
+  Either list being empty is answered without asking the database: a
+  deployment with no admin groups, and a reader with no identity, are both
+  common, and this is called for every access question.
   """
   def member_of_any_group?(subject_keys, group_keys) do
     keys = Enum.map(group_keys, &GroupMember.key/1)
     subjects = Enum.reject(subject_keys, &is_nil/1)
 
-    from(m in GroupMember,
-      where: m.group_key in ^keys and m.subject_key in ^subjects,
-      limit: 1,
-      select: 1
-    )
-    |> Repo.exists?()
+    if keys == [] or subjects == [] do
+      false
+    else
+      from(m in GroupMember,
+        where: m.group_key in ^keys and m.subject_key in ^subjects,
+        limit: 1,
+        select: 1
+      )
+      |> Repo.exists?()
+    end
   end
 
   @doc "Whether a reader belongs to one group."
@@ -303,22 +331,17 @@ defmodule ConfluencePhxMirror.Mirror do
 
   @doc "Finds a page by space key and Confluence id."
   def find_page_by_path(space_key, confluence_id) do
-    case get_space_by_key(space_key) do
-      %Space{} = space ->
-        from(p in Page,
-          where:
-            p.space_id == ^space.id and p.confluence_id == ^confluence_id and
-              is_nil(p.deleted_at),
-          preload: [:space]
-        )
-        |> Repo.one()
-        |> case do
-          nil -> {:error, :not_found}
-          page -> {:ok, page}
-        end
-
-      nil ->
-        {:error, :not_found}
+    from(p in Page,
+      join: s in assoc(p, :space),
+      where:
+        s.key == ^String.upcase(space_key) and p.confluence_id == ^confluence_id and
+          is_nil(p.deleted_at),
+      preload: [space: s]
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      page -> {:ok, page}
     end
   end
 
@@ -480,12 +503,25 @@ defmodule ConfluencePhxMirror.Mirror do
   # Trees, navigation and backlinks
   # ---------------------------------------------------------------------------
 
-  @doc "Root pages of a space."
+  @doc """
+  Root pages of a space, as the space overview draws them.
+
+  No space preload and no bodies: the overview already holds the space, and a
+  card needs a title, a link and an excerpt.
+  """
   def root_pages(space_id) do
     from(p in Page,
       where: p.space_id == ^space_id and is_nil(p.parent_id) and is_nil(p.deleted_at),
       order_by: [asc: p.title],
-      preload: [:space]
+      select: %{
+        id: p.id,
+        confluence_id: p.confluence_id,
+        type: p.type,
+        title: p.title,
+        slug: p.slug,
+        body_text: p.body_text,
+        external_updated_at: p.external_updated_at
+      }
     )
     |> Repo.all()
   end
@@ -500,60 +536,135 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
-  The whole page tree of a space as nested `%{page: page, children: [...]}`.
+  The part of a space's tree the sidebar draws around `page`.
 
-  Built in one query; sibling order is alphabetical. Confluence keeps blog posts
-  out of the page tree and hides archived pages from navigation, so the tree
-  does the same — both remain reachable through their catalogs.
+  A page view used to load every page of its space to draw the sidebar: at a
+  thousand pages that is a thousand links and half a megabyte of response that
+  no reader asked for, and it grows with the space, not with the page. What a
+  reader navigates with is the trail from the root to the current page, so that
+  is what is read: every level of the trail with its siblings, and the current
+  page's children, `:siblings` rows per level (fifteen by default) around the
+  reader's position.
+
+  `truncated?` says a level was cut short, so the sidebar can offer the space's
+  catalog — where the whole space can be searched and paged — instead of
+  pretending the list is complete.
+
+  Without a page it returns the space's root pages, which is what the overview
+  and the catalogs need to know about the reader's position (nothing).
+
+  Sibling order is alphabetical, and Confluence's rule that blog posts stay out
+  of the page tree and archived pages stay out of navigation is kept: both are
+  reachable through their catalogs. One statement, whatever the size.
+
+  Options:
+
+    * `:siblings` — rows per level (default 15)
+    * `:filter` — a function applied to the query before it runs, which is how
+      `Authorization.branch/3` keeps pages the reader may not open out of the
+      sidebar without a second statement
   """
-  def tree(space_id) do
-    # Only what the sidebar draws. Selecting whole rows pulled `body_storage` and
-    # `body_export` — every page's full content — and preloaded each page's
-    # space, to render a list of titles and links.
-    pages =
-      from(p in Page,
-        where: p.space_id == ^space_id and is_nil(p.deleted_at),
-        where: p.status != "archived",
-        order_by: [asc: p.title],
-        select: %{
-          id: p.id,
-          space_id: p.space_id,
-          parent_id: p.parent_id,
-          title: p.title,
-          type: p.type,
-          slug: p.slug,
-          confluence_id: p.confluence_id
-        }
-      )
+  def branch_tree(space_id, page \\ nil, opts \\ [])
+
+  def branch_tree(space_id, nil, opts) do
+    {nodes, truncated?} =
+      space_id
+      |> roots_query()
+      |> filtered(opts)
       |> Repo.all()
-      |> Enum.reject(&(&1.type == "blogpost"))
+      |> expand([], [], sibling_window(opts))
 
-    children_by_parent = Enum.group_by(pages, & &1.parent_id)
-    ids = MapSet.new(pages, & &1.id)
-
-    roots =
-      Enum.filter(pages, fn page ->
-        is_nil(page.parent_id) or not MapSet.member?(ids, page.parent_id)
-      end)
-
-    build_tree(roots, children_by_parent)
+    %{nodes: nodes, truncated?: truncated?}
   end
 
-  defp build_tree(pages, children_by_parent) do
-    Enum.map(pages, fn page ->
-      %{page: page, children: build_tree(children_by_parent[page.id] || [], children_by_parent)}
-    end)
+  def branch_tree(space_id, %Page{} = page, opts) do
+    path = (page.ancestors || []) ++ [page.confluence_id]
+    nodes = space_id |> level_rows(page) |> filtered(opts) |> Repo.all()
+    by_parent = Enum.group_by(nodes, & &1.parent_id)
+
+    {tree, truncated?} = expand(by_parent[nil] || [], by_parent, path, sibling_window(opts))
+
+    %{nodes: tree, truncated?: truncated?}
+  end
+
+  defp filtered(query, opts), do: Keyword.get(opts, :filter, & &1).(query)
+
+  defp sibling_window(opts), do: Keyword.get(opts, :siblings, 15)
+
+  # Rows whose parent is the root, the parent of an ancestor, or the page
+  # itself: exactly the levels of the trail, plus the page's own children.
+  defp level_rows(space_id, page) do
+    ancestor_ids = page.ancestors || []
+    parents = from(a in Page, where: a.confluence_id in ^ancestor_ids, select: a.id)
+
+    navigation_query(space_id)
+    |> where(
+      [p],
+      is_nil(p.parent_id) or p.id == ^page.id or p.parent_id == ^page.id or
+        p.parent_id in subquery(parents)
+    )
+  end
+
+  defp roots_query(space_id) do
+    navigation_query(space_id) |> where([p], is_nil(p.parent_id))
+  end
+
+  # Only what the sidebar draws: selecting whole rows pulled `body_storage` and
+  # `body_export` — every page's full content — to render titles and links.
+  # Aliased `:page` so `Authorization.restrict_pages/2` can narrow it in place.
+  defp navigation_query(space_id) do
+    from(p in Page,
+      as: :page,
+      where: p.space_id == ^space_id and is_nil(p.deleted_at),
+      where: p.status != "archived" and p.type != "blogpost",
+      order_by: [asc: p.title],
+      select: %{
+        id: p.id,
+        space_id: p.space_id,
+        parent_id: p.parent_id,
+        title: p.title,
+        type: p.type,
+        slug: p.slug,
+        confluence_id: p.confluence_id
+      }
+    )
+  end
+
+  # `path` is the trail below this level; the level is centred on the node that
+  # leads to the current page, and only that node has children to expand.
+  defp expand(nodes, by_parent, path, limit) do
+    {shown, cut?} = window(nodes, limit, Enum.find(nodes, &(&1.confluence_id in path)))
+
+    {built, deeper?} =
+      Enum.map_reduce(shown, false, fn node, deeper? ->
+        {children, child_cut?} =
+          if node.confluence_id in path do
+            expand(by_parent[node.id] || [], by_parent, path, limit)
+          else
+            {[], false}
+          end
+
+        {%{page: node, children: children}, deeper? or child_cut?}
+      end)
+
+    {built, cut? or deeper?}
+  end
+
+  defp window(nodes, limit, on_path) do
+    count = length(nodes)
+
+    if count <= limit do
+      {nodes, false}
+    else
+      target = on_path && on_path.id
+      index = Enum.find_index(nodes, &(&1.id == target)) || 0
+      start = (index - div(limit, 2)) |> max(0) |> min(count - limit)
+      {Enum.slice(nodes, start, limit), true}
+    end
   end
 
   @doc "Breadcrumb trail (space included) in Confluence order."
   def breadcrumbs(%Page{} = page) do
-    ancestors =
-      page
-      |> ancestor_pages()
-      |> Enum.map(fn ancestor ->
-        %{title: ancestor.title, confluence_id: ancestor.confluence_id, slug: ancestor.slug}
-      end)
-
     [
       %{
         title: page.space.name,
@@ -561,7 +672,21 @@ defmodule ConfluencePhxMirror.Mirror do
         homepage_confluence_id: page.space.homepage_confluence_id,
         kind: :space
       }
-    ] ++ Enum.map(ancestors, &Map.put(&1, :kind, :page))
+    ] ++ Enum.map(ancestor_crumbs(page.ancestors), &Map.put(&1, :kind, :page))
+  end
+
+  # A crumb needs a title and a link to a page, not a page: three columns and no
+  # space preload keep the trail to one statement instead of two.
+  defp ancestor_crumbs(ids) when is_list(ids) do
+    pages =
+      from(p in Page,
+        where: p.confluence_id in ^ids and is_nil(p.deleted_at),
+        select: %{title: p.title, confluence_id: p.confluence_id, slug: p.slug}
+      )
+      |> Repo.all()
+
+    by_id = Map.new(pages, &{&1.confluence_id, &1})
+    Enum.flat_map(ids, &List.wrap(by_id[&1]))
   end
 
   @doc "Ancestor pages in Confluence order (root first)."
@@ -597,10 +722,40 @@ defmodule ConfluencePhxMirror.Mirror do
   def get_space_home(%Space{homepage_confluence_id: nil}), do: nil
 
   def get_space_home(%Space{homepage_confluence_id: id}) do
-    case find_page(id) do
-      {:ok, page} -> page
-      _ -> nil
-    end
+    # The overview and the redirect both know the space: the card needs a title,
+    # a link and an excerpt, so the row is read without its body or its space.
+    Repo.one(
+      from p in Page,
+        where: p.confluence_id == ^id and is_nil(p.deleted_at),
+        select: %{
+          id: p.id,
+          confluence_id: p.confluence_id,
+          type: p.type,
+          title: p.title,
+          slug: p.slug,
+          body_text: p.body_text
+        }
+    )
+  end
+
+  @doc "Blog posts of a space, newest first, as the overview's rail lists them."
+  def blog_posts(space_id \\ nil, limit \\ 20) do
+    from(p in Page,
+      where: p.type == "blogpost" and is_nil(p.deleted_at),
+      order_by: [desc: p.external_updated_at],
+      limit: ^limit,
+      select: %{
+        id: p.id,
+        confluence_id: p.confluence_id,
+        type: p.type,
+        title: p.title,
+        slug: p.slug,
+        author_name: p.author_name,
+        external_updated_at: p.external_updated_at
+      }
+    )
+    |> where_space(space_id)
+    |> Repo.all()
   end
 
   def backlinks(%Page{id: id}) do
@@ -615,11 +770,7 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   def outgoing_links(%Page{id: id}) do
-    from(l in Link,
-      where: l.source_page_id == ^id,
-      order_by: [asc: l.inserted_at],
-      preload: [:target_page]
-    )
+    from(l in Link, where: l.source_page_id == ^id, order_by: [asc: l.inserted_at])
     |> Repo.all()
   end
 
@@ -680,7 +831,14 @@ defmodule ConfluencePhxMirror.Mirror do
       where: p.space_id == ^space_id and is_nil(p.deleted_at),
       order_by: [desc: p.external_updated_at],
       limit: ^limit,
-      preload: [:space]
+      select: %{
+        id: p.id,
+        confluence_id: p.confluence_id,
+        type: p.type,
+        title: p.title,
+        slug: p.slug,
+        external_updated_at: p.external_updated_at
+      }
     )
     |> Repo.all()
   end
@@ -731,27 +889,14 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
-  @doc "Blog posts of a space (or of the whole mirror), newest first."
-  def blog_posts(space_id \\ nil, limit \\ 20) do
-    from(p in Page,
-      where: p.type == "blogpost" and is_nil(p.deleted_at),
-      order_by: [desc: p.external_updated_at],
-      limit: ^limit,
-      preload: [:space]
-    )
-    |> where_space(space_id)
-    |> Repo.all()
-  end
-
-  @doc "Attachments of every page in a space, for the space attachment list."
-  def attachments_in_space(space_id) do
+  @doc "How many files a space holds, without reading them."
+  def count_attachments_in_space(space_id) do
     from(a in Attachment,
       join: p in assoc(a, :page),
       where: p.space_id == ^space_id and is_nil(p.deleted_at),
-      order_by: [asc: a.filename],
-      preload: [page: :space]
+      select: count(a.id)
     )
-    |> Repo.all()
+    |> Repo.one()
   end
 
   @doc "Labels used in one space, with their page counts."
@@ -770,21 +915,25 @@ defmodule ConfluencePhxMirror.Mirror do
   People who authored mirrored content, with page counts.
 
   Confluence's people directory is served from mirrored bylines rather than a
-  separate user sync: the mirror never invents accounts it has not seen.
+  separate user sync: the mirror never invents accounts it has not seen. The
+  grouping is a pass over the pages table, so the answer is remembered until
+  the content moves.
   """
   def authors do
-    from(p in Page,
-      where: is_nil(p.deleted_at) and not is_nil(p.author_name),
-      group_by: [p.author_name, p.author_account_id],
-      order_by: [asc: p.author_name],
-      select: %{
-        name: p.author_name,
-        account_id: p.author_account_id,
-        pages: count(p.id),
-        updated_at: max(p.external_updated_at)
-      }
-    )
-    |> Repo.all()
+    Counters.fetch(:authors, fn ->
+      from(p in Page,
+        where: is_nil(p.deleted_at) and not is_nil(p.author_name),
+        group_by: [p.author_name, p.author_account_id],
+        order_by: [asc: p.author_name],
+        select: %{
+          name: p.author_name,
+          account_id: p.author_account_id,
+          pages: count(p.id),
+          updated_at: max(p.external_updated_at)
+        }
+      )
+      |> Repo.all()
+    end)
   end
 
   @doc "All content authored by one Confluence account."
@@ -927,20 +1076,26 @@ defmodule ConfluencePhxMirror.Mirror do
   defp limit_rows(query, nil), do: query
   defp limit_rows(query, limit), do: limit(query, ^limit)
 
+  @doc """
+  What the mirror holds: spaces, pages, attachments, comments and labels.
+
+  Five aggregates over tables that grow with the site, so it is computed once
+  per content version rather than once per request.
+  """
   def stats do
-    # One statement: five aggregates, five subqueries. Asking the repo five
-    # times cost five round trips on every home page view.
-    Repo.one(
-      from(s in Space,
-        select: %{
-          spaces: count(s.id),
-          pages: fragment("(SELECT count(*) FROM pages WHERE deleted_at IS NULL)"),
-          attachments: fragment("(SELECT count(*) FROM attachments)"),
-          comments: fragment("(SELECT count(*) FROM comments)"),
-          labels: fragment("(SELECT count(*) FROM labels)")
-        }
+    Counters.fetch(:stats, fn ->
+      Repo.one(
+        from(s in Space,
+          select: %{
+            spaces: count(s.id),
+            pages: fragment("(SELECT count(*) FROM pages WHERE deleted_at IS NULL)"),
+            attachments: fragment("(SELECT count(*) FROM attachments)"),
+            comments: fragment("(SELECT count(*) FROM comments)"),
+            labels: fragment("(SELECT count(*) FROM labels)")
+          }
+        )
       )
-    )
+    end)
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)

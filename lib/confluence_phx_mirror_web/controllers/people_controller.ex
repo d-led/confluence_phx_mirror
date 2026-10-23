@@ -31,6 +31,6 @@ defmodule ConfluencePhxMirrorWeb.PeopleController do
   # A byline lists what that person wrote *and* what the reader may open; a
   # restricted page stays with its author, not with every visitor.
   defp readable_pages(conn, pages) do
-    Authorization.readable_pages(Scope.for_user(conn.assigns[:current_user]), pages)
+    Authorization.readable_pages(Scope.from_assigns(conn.assigns), pages)
   end
 end

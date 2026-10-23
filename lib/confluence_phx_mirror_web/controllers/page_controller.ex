@@ -19,10 +19,18 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   alias ConfluencePhxMirrorWeb.NotFound
   alias ConfluencePhxMirrorWeb.Presence
 
+  # The directory is `/spaces`, which pages in the database. The home page shows
+  # a window of it: a mirror with a thousand spaces would otherwise send a
+  # thousand cards with every visit.
+  @space_cards 12
+
   def home(conn, _params) do
+    spaces = readable_spaces(conn)
+
     render(conn, :home,
       page_title: "Home",
-      spaces: readable_spaces(conn),
+      spaces: Enum.take(spaces, @space_cards),
+      space_total: length(spaces),
       recent_pages: visible(conn, Mirror.recent_pages(8)),
       labels: Catalog.label_counts(scope(conn)),
       stats: Mirror.stats(),
@@ -153,6 +161,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   defp do_render_page(conn, page, kind) do
     space = page.space
     user = conn.assigns[:current_user]
+    watching = watched(user, [{"page", page.id}, {"space", space.id}])
 
     breadcrumbs =
       case kind do
@@ -165,18 +174,24 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       page: page,
       kind: kind,
       space: space,
-      tree: Mirror.tree(space.id),
+      tree: tree_for(scope(conn), space, page, kind),
       breadcrumbs: breadcrumbs,
       children: Mirror.children(page),
       attachments: Mirror.attachments(page),
       comments: Mirror.comments(page),
       backlinks: Mirror.backlinks(page),
       outgoing_links: Mirror.outgoing_links(page),
-      subscribed?: subscribed?(user, "page", page.id),
-      space_subscribed?: subscribed?(user, "space", space.id),
+      subscribed?: MapSet.member?(watching, {"page", page.id}),
+      space_subscribed?: MapSet.member?(watching, {"space", space.id}),
       readers: Presence.count(page.confluence_id)
     )
   end
+
+  # The sidebar follows the reader: the trail to this page, its siblings and its
+  # children, and nothing a reader may not open. A blog post is not part of the
+  # page tree, so its view gets the space's roots instead.
+  defp tree_for(scope, space, _page, :blog), do: Authorization.branch(scope, space.id)
+  defp tree_for(scope, space, page, :page), do: Authorization.branch(scope, space.id, page)
 
   # A crumb keeps the identity it was built with — the space's home page id, a
   # page's Confluence id — because the breadcrumb component needs it to avoid
@@ -197,13 +212,10 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     }
   end
 
-  defp subscribed?(%User{} = user, target_type, target_id) do
-    Notifications.subscribed?(user, target_type, target_id)
-  end
+  defp watched(%User{} = user, targets), do: Notifications.watching(user, targets)
+  defp watched(_user, _targets), do: MapSet.new()
 
-  defp subscribed?(_user, _target_type, _target_id), do: false
-
-  defp scope(conn), do: Scope.for_user(conn.assigns[:current_user])
+  defp scope(conn), do: Scope.from_assigns(conn.assigns)
 
   defp readable?(conn, page), do: Authorization.can_read_page?(scope(conn), page)
 

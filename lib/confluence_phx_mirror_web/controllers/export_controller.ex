@@ -57,7 +57,7 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
     |> stream_zip(Export.space_archive(space, scope(conn)))
   end
 
-  defp scope(conn), do: Scope.for_user(conn.assigns[:current_user])
+  defp scope(conn), do: Scope.from_assigns(conn.assigns)
 
   defp stream_zip(conn, entries) do
     entries

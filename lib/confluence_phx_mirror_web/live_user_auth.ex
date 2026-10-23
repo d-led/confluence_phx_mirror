@@ -33,32 +33,48 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
     end
   end
 
+  # A LiveView rendered by the router is handed the request's assigns as
+  # `assign_new` defaults, so the browser pipeline has already resolved the
+  # identity and the site context. Only a websocket mount — which has no request
+  # behind it — has to load them, and `assign_new` is where both flavours meet.
   defp assign_scope(socket, session) do
-    user =
-      case session["user_id"] do
-        nil ->
-          if Application.get_env(:confluence_phx_mirror, :auto_admin, false),
-            do: Accounts.ensure_admin!(),
-            else: nil
+    socket = assign_new(socket, :current_user, fn -> identity(session) end)
 
-        id ->
-          Accounts.get_user(id)
-      end
+    case socket.assigns do
+      %{current_scope: %Scope{}} ->
+        socket
 
-    socket
-    |> assign(:current_user, user)
-    |> assign(:current_scope, Scope.for_user(user))
+      _unset ->
+        assign(socket, :current_scope, Scope.for_user(socket.assigns.current_user))
+    end
+  end
+
+  defp identity(session) do
+    case session["user_id"] do
+      nil ->
+        if Application.get_env(:confluence_phx_mirror, :auto_admin, false),
+          do: Accounts.ensure_admin!(),
+          else: nil
+
+      id ->
+        Accounts.get_user(id)
+    end
   end
 
   defp attach_site_context(socket) do
-    assign(socket,
-      spaces: Authorization.readable_spaces(socket.assigns.current_scope),
-      last_sync_run: Mirror.last_successful_sync_run(),
-      mirror_name: Sites.name(),
-      mirror_url: Sites.url(),
-      mirror_host: Sites.host(),
-      mirror_source: ConfluencePhxMirror.Confluence.Source.source()
-    )
+    scope = socket.assigns.current_scope
+
+    socket
+    |> assign_new(:spaces, fn ->
+      Authorization.readable_spaces(scope,
+        limit: ConfluencePhxMirrorWeb.Plugs.SiteContext.switcher_limit()
+      )
+    end)
+    |> assign_new(:last_sync_run, fn -> Mirror.last_successful_sync_run() end)
+    |> assign_new(:mirror_name, fn -> Sites.name() end)
+    |> assign_new(:mirror_url, fn -> Sites.url() end)
+    |> assign_new(:mirror_host, fn -> Sites.host() end)
+    |> assign_new(:mirror_source, fn -> ConfluencePhxMirror.Confluence.Source.source() end)
   end
 
   # Administration is a property of the account, not of the socket it opened. An

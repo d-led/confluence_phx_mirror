@@ -47,7 +47,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
        items: [],
        more?: false,
        space: nil,
-       tree: [],
+       tree: %{nodes: [], truncated?: false},
        breadcrumbs: [],
        form: to_form(%{"q" => ""}, as: :filter),
        copy: copy,
@@ -223,38 +223,9 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
     %{result | items: Authorization.readable_pages(scope(socket), items)}
   end
 
-  defp tree(nil, _socket), do: []
+  defp tree(nil, _socket), do: %{nodes: [], truncated?: false}
 
-  defp tree(space, socket) do
-    space.id
-    |> Mirror.tree()
-    |> visible_tree(socket)
-  end
-
-  # A restricted page drops out of the tree, and its readable children move up
-  # to the nearest readable ancestor rather than disappearing with it. One
-  # permission question for the whole tree, not one per node.
-  defp visible_tree(nodes, socket) do
-    visible =
-      Authorization.readable_pages(scope(socket), tree_pages(nodes))
-      |> MapSet.new(& &1.id)
-
-    keep_visible(nodes, visible)
-  end
-
-  defp tree_pages(nodes),
-    do:
-      Enum.flat_map(nodes, fn %{page: page, children: children} ->
-        [page | tree_pages(children)]
-      end)
-
-  defp keep_visible(nodes, visible) do
-    Enum.flat_map(nodes, fn %{page: page, children: children} ->
-      kept = keep_visible(children, visible)
-
-      if MapSet.member?(visible, page.id), do: [%{page: page, children: kept}], else: kept
-    end)
-  end
+  defp tree(space, socket), do: Authorization.branch(scope(socket), space.id)
 
   defp breadcrumbs(nil), do: []
   defp breadcrumbs(space), do: [%{title: space.name, path: URLs.space_path(space.key)}]
@@ -312,7 +283,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
 
   defp offset(_value), do: 0
 
-  defp scope(socket), do: socket.assigns.current_scope || Scope.for_user(nil)
+  defp scope(socket), do: Scope.from_assigns(socket.assigns)
 
   # ---------------------------------------------------------------------------
   # Words on the page

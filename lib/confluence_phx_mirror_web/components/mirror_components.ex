@@ -321,13 +321,21 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   attr :pages, :list, required: true
   attr :empty, :string, default: "Nothing here yet."
 
+  attr :space_key, :string,
+    default: nil,
+    doc: """
+    The space the rows come from, when the caller knows it. A space's own
+    screens read their lists without preloading each row's space, and this is
+    what they link with instead.
+    """
+
   def page_list(assigns) do
     ~H"""
     <p :if={@pages == []} class="text-xs text-base-content/70">{@empty}</p>
     <ul :if={@pages != []} class="space-y-2">
       <li :for={page <- @pages}>
         <.link
-          navigate={URLs.page_path(page.space.key, page.confluence_id, page.slug)}
+          navigate={URLs.page_path(@space_key || page.space.key, page.confluence_id, page.slug)}
           class="group flex items-start gap-2"
         >
           <.icon
@@ -337,7 +345,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
           <span class="min-w-0">
             <span class="block truncate text-xs font-medium group-hover:text-primary">{page.title}</span>
             <span class="block text-[10px] text-base-content/70">
-              {page.space.key} · {Time.ago(page.external_updated_at)}
+              {@space_key || page.space.key} · {Time.ago(page.external_updated_at)}
             </span>
           </span>
         </.link>

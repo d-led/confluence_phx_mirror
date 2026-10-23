@@ -28,7 +28,7 @@ defmodule ConfluencePhxMirrorWeb.PageChannel do
   # Presence shows who is reading a page, so it may only be asked about a page
   # the reader could open: a restricted page is not found, like everywhere else.
   defp readable?(socket, page) do
-    scope = socket.assigns[:scope] || Scope.for_user(nil)
+    scope = Scope.from_assigns(socket.assigns)
     Authorization.can_read_page?(scope, page)
   end
 

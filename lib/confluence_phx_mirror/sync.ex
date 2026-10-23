@@ -494,7 +494,12 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
-  defp page_attrs(dto) do
+  # A page DTO as the row it becomes. Public so the scale fixture
+  # (`ConfluencePhxMirror.Synthetic`) can write the same row without the
+  # per-page pipeline; keeping one mapping is what stops a benchmark from
+  # measuring a table shape no sync ever produces.
+  @doc false
+  def page_attrs(dto) do
     %{
       confluence_id: dto.id,
       type: dto.type,
@@ -913,6 +918,10 @@ defmodule ConfluencePhxMirror.Sync do
       |> Repo.update()
 
     Audit.log(actor, SyncRun.audit_event_finished(run, trigger: trigger))
+
+    # The home page prints the mirror's totals; the reader who arrives after a
+    # sync should not be the one who pays for the scans it made stale.
+    ConfluencePhxMirror.Mirror.Counters.warm()
 
     Logger.info("sync finished",
       sync_run_id: run.id,

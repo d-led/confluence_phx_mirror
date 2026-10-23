@@ -101,6 +101,42 @@ mix test --failed
 Tests start processes with `start_supervised!/1`; wait for a process with
 `Process.monitor/1` / `_ = :sys.get_state/1` rather than `Process.sleep/1`.
 
+### Reading at scale
+
+The demo snapshot is a dozen pages, and a page view that quietly loads a whole
+space looks like a fast one there. `test/confluence_phx_mirror_web/scale_test.exs`
+builds the mirror the numbers have to hold for — a thousand spaces of a thousand
+pages — and reports, per screen, the statements it issued, the time each took
+and the size of the response. It is excluded from the default run:
+
+```bash
+mix setup                                                  # once, to create the databases
+MIX_TEST_PARTITION=scale mix test --only scale             # a thousand by a thousand
+
+CM_SCALE_SPACES=20 CM_SCALE_PAGES=1000 \
+  MIX_TEST_PARTITION=scale mix test --only scale           # a quick run while working
+
+CM_PROFILE=1 MIX_TEST_PARTITION=scale mix test --only scale test/confluence_phx_mirror_web/scale_test.exs
+                                                           # plus cprof and eprof on a page view
+```
+
+Statement counts are asserted (they say whether a read is bounded) and response
+sizes are asserted (they say whether a screen carries its whole space); wall
+time is reported but never asserted, because a laptop under load is not a
+regression. The counters the home page prints are cached against the content's
+version — see `Mirror.Counters`.
+
+The content comes from `ConfluencePhxMirror.Confluence.SyntheticContent`, the
+same generator behind `ConfluencePhxMirror.Confluence.SyntheticSource`, a real
+source that `Sync` ingests like any other. A million pages through the per-page
+pipeline would be an overnight job, so the suite writes the rows a snapshot
+would have written — through `Sync.page_attrs/1`, the mapping the sync itself
+uses — in batches, and assigns the local ids itself so the tree is resolved at
+insert time. Seeding the million-page fixture takes about six minutes;
+`test/confluence_phx_mirror/confluence/synthetic_source_test.exs` keeps the two
+in step: a sync of a small generated site and the fast fixture must produce the
+same page rows.
+
 ## Quality gates
 
 One script runs everything and prints one summary; the `mix` aliases below are

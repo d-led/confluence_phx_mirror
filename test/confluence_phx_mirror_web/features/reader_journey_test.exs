@@ -14,6 +14,9 @@ defmodule ConfluencePhxMirrorWeb.Features.ReaderJourneyTest do
     |> within("main", &click_link(&1, "Engineering Handbook"))
     |> assert_path(~p"/spaces/ENG/pages/1000/engineering-handbook")
     |> assert_has("h1", "Engineering Handbook")
+    |> within("#page-tree", &click_link(&1, "Getting Started"))
+    |> assert_path(~p"/spaces/ENG/pages/1001/getting-started")
+    # The sidebar follows the reader: the page's children are now in reach.
     |> within("#page-tree", &click_link(&1, "Architecture Overview"))
     |> assert_path(~p"/spaces/ENG/pages/1002/architecture-overview")
     |> assert_has("h1", "Architecture Overview")

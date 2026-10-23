@@ -79,7 +79,7 @@ defmodule ConfluencePhxMirrorWeb.SubscriptionController do
     end
   end
 
-  defp scope(conn), do: Scope.for_user(conn.assigns[:current_user])
+  defp scope(conn), do: Scope.from_assigns(conn.assigns)
 
   # Only the path of the referer is used, so this cannot become an open redirect.
   defp back(conn) do

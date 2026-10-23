@@ -38,13 +38,13 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
       page_title: space.name,
       active: :overview,
       space: space,
-      tree: Mirror.tree(space.id),
+      tree: Authorization.branch(scope(conn), space.id),
       home: Mirror.get_space_home(space),
       root_pages: Mirror.root_pages(space.id),
       recent_pages: Mirror.recent_pages_for_space(space, 6),
       posts: Mirror.blog_posts(space.id, 3),
       labels: Mirror.labels_in_space(space.id),
-      attachment_count: length(Mirror.attachments_in_space(space.id))
+      attachment_count: Mirror.count_attachments_in_space(space.id)
     )
   end
 
@@ -62,5 +62,5 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
     end
   end
 
-  defp scope(conn), do: Scope.for_user(conn.assigns[:current_user])
+  defp scope(conn), do: Scope.from_assigns(conn.assigns)
 end

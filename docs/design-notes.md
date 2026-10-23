@@ -143,6 +143,50 @@ The plan, when it is built:
 
 Until then, one address per account, as `users.email` is unique today.
 
+## What a page view costs
+
+A mirror of a real site has spaces with thousands of pages, and the reader's
+page view is the screen that is opened most. Two decisions follow from that.
+
+**The sidebar follows the reader.** A page view draws the trail from the space's
+root to the page being read — each level with its siblings, and the page's own
+children — instead of the whole page tree. The whole tree is a query over the
+space, and it grows with the space: at a thousand pages per space it was a
+thousand links and about half a megabyte of response on every page, for pages
+the reader had not asked for. The trail is bounded per level (fifteen siblings
+around the reader's position) and the sidebar says when it has been cut short,
+linking to the space's catalog, which filters and pages in the database. The
+sidebar is also filtered in the same statement that reads it, so a page the
+reader may not open never appears.
+
+**Totals are computed once per version of the content.** The home page says how
+many pages the mirror holds and how many each space has; that is a scan, and a
+scan per request is what a million pages cannot afford. Content only changes
+through a sync, so `Mirror.Counters` remembers the answer against the newest
+write in the mirror (`max(pages.id)`, `max(pages.updated_at)` — two index
+probes) and recomputes when it moves. No timer, no staleness window: a sync is
+visible on the next request.
+
+Both are held to a query budget by the suite — `QueryBudgetTest` over the demo
+snapshot, and `ScaleTest` (opt-in, see [developers.md](developers.md)) over a
+generated mirror of a thousand spaces of a thousand pages. Measured there, warm:
+
+| screen | statements | response | median |
+| --- | --- | --- | --- |
+| a page view | 16 | 48 KB | 3.9 ms |
+| a space overview | 13 | 35 KB | 4.4 ms |
+| a space catalog | 11 | 80 KB | 4.6 ms |
+| the home page | 15 | 36 KB | 6.5 ms |
+| search | 18 | 93 KB | 470 ms |
+
+Before the sidebar became a branch, the same page view sent 445 KB and cost
+11.5 ms at twenty thousand pages, and would have sent twenty-two megabytes at a
+million. Search is the one screen whose cost still grows with the site: ranking
+a query that matches every page is a pass over every match, which is inherent to
+`ts_rank_cd` and is the next thing to look at. The home page's first view after
+a sync pays for the counters' scans once (about seven seconds at a million
+pages); a sync now warms them when it finishes, so a reader does not.
+
 ## Known limitations
 
 * Comments are read-only and rendered flat (one reply level styled).

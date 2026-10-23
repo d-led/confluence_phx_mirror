@@ -51,7 +51,7 @@ defmodule ConfluencePhxMirrorWeb.AttachmentController do
 
   # Attachment bytes are content: the page decides, exactly like the page view.
   defp authorize(conn, space_key, page_id) do
-    scope = Scope.for_user(conn.assigns[:current_user])
+    scope = Scope.from_assigns(conn.assigns)
 
     with {:ok, space} <- Mirror.find_space(space_key),
          true <- Authorization.can_read_space?(scope, space),

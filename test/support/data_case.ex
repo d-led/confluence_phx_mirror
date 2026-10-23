@@ -38,6 +38,11 @@ defmodule ConfluencePhxMirror.DataCase do
   Sets up the sandbox based on the test tags.
   """
   def setup_sandbox(tags) do
+    # The cached totals are keyed on the newest write in the mirror, and a
+    # rolled-back transaction puts the mirror back to an older version without
+    # moving that key; every test starts from an empty cache instead.
+    ConfluencePhxMirror.Mirror.Counters.clear()
+
     pid =
       Ecto.Adapters.SQL.Sandbox.start_owner!(ConfluencePhxMirror.Repo, shared: not tags[:async])
 

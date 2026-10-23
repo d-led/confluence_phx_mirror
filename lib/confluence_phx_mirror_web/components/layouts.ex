@@ -25,7 +25,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   attr :mirror_host, :string, default: nil
   attr :mirror_source, :any, default: nil
   attr :space, :any, default: nil
-  attr :tree, :list, default: []
+  attr :tree, :map, default: %{nodes: [], truncated?: false}, doc: "the sidebar branch"
   attr :current_page, :any, default: nil
   attr :breadcrumbs, :list, default: []
   attr :sidebar?, :boolean, default: true
@@ -231,7 +231,16 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                 </.link>
                 <span class="badge badge-ghost badge-xs">{@space.key}</span>
               </div>
-              <.page_tree nodes={@tree} space_key={@space.key} current={@current_page} />
+              <.page_tree nodes={@tree.nodes} space_key={@space.key} current={@current_page} />
+              <p :if={@tree.truncated?} class="mt-2 px-2 text-[11px] text-base-content/70">
+                Some pages are not shown here.
+                <.link
+                  navigate={ConfluencePhxMirror.Mirror.URLs.space_pages_path(@space.key)}
+                  class="font-medium text-primary hover:underline"
+                >
+                  Browse all of {@space.key}
+                </.link>
+              </p>
             <% else %>
               <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-base-content/70">
                 Spaces

@@ -48,6 +48,27 @@ defmodule ConfluencePhxMirror.Notifications do
     )
   end
 
+  @doc """
+  Which of `targets` — `{type, id}` pairs — the user watches.
+
+  A page view asks about the page and its space in one go: two questions with
+  the same shape, and one subscription row answers both.
+  """
+  @spec watching(User.t(), [{String.t(), integer()}]) :: MapSet.t({String.t(), integer()})
+  def watching(%User{} = user, targets) do
+    types = Enum.map(targets, &elem(&1, 0))
+    ids = Enum.map(targets, &elem(&1, 1))
+
+    from(s in Subscription,
+      where: s.user_id == ^user.id and s.target_type in ^types and s.target_id in ^ids,
+      select: {s.target_type, s.target_id}
+    )
+    |> Repo.all()
+    |> MapSet.new()
+    # A page and a space can share a number; only the pairs asked about count.
+    |> MapSet.intersection(MapSet.new(targets))
+  end
+
   def subscriptions(%User{id: user_id}) do
     Repo.all(from s in Subscription, where: s.user_id == ^user_id, order_by: [asc: s.inserted_at])
   end

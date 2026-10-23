@@ -45,10 +45,16 @@ defmodule ConfluencePhxMirror.Authorization do
 
   This is what the shell lists in its space switcher, so it has to agree with
   the directories — and it is one query, not one per space.
+
+  Options:
+
+    * `:limit` — how many to return. The switcher is a menu, not a directory:
+      it takes a window and leaves "all spaces" to `/spaces`, which pages in
+      the database.
   """
-  @spec readable_spaces(Scope.t()) :: [Space.t()]
-  def readable_spaces(%Scope{} = scope) do
-    from(s in Space, as: :space, order_by: [asc: s.name])
+  @spec readable_spaces(Scope.t(), keyword()) :: [Space.t()]
+  def readable_spaces(%Scope{} = scope, opts \\ []) do
+    from(s in Space, as: :space, order_by: [asc: s.name], limit: ^Keyword.get(opts, :limit))
     |> restrict_spaces(scope)
     |> Repo.all()
   end
@@ -205,6 +211,20 @@ defmodule ConfluencePhxMirror.Authorization do
       restrictions = page_restrictions_by(Enum.map(pages, & &1.id))
       Enum.filter(pages, &visible?(scope, &1, spaces, restrictions))
     end
+  end
+
+  @doc """
+  The sidebar branch for `page` (or the space's roots without one), with the
+  pages the reader may not open left out.
+
+  The filter runs inside the branch's own statement rather than over its
+  result, so a title the reader may not see never leaves the database and the
+  sidebar costs no extra query.
+  """
+  @spec branch(Scope.t(), integer(), ConfluencePhxMirror.Mirror.Page.t() | nil) ::
+          %{nodes: list(), truncated?: boolean()}
+  def branch(%Scope{} = scope, space_id, page \\ nil) do
+    Mirror.branch_tree(space_id, page, filter: &restrict_pages(&1, scope))
   end
 
   @doc """
