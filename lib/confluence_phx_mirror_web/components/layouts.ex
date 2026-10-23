@@ -163,7 +163,10 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
               <.icon name="hero-magnifying-glass" class="size-4" />
             </.link>
 
-            <details class="dropdown dropdown-end hidden sm:block">
+            <%!-- One `name` for every top-bar menu: opening one closes the other,
+            which is the native accordion behaviour of <details> and needs no
+            JavaScript. --%>
+            <details name="topbar-menu" class="dropdown dropdown-end hidden sm:block">
               <summary class="btn btn-ghost btn-sm gap-1.5">
                 <.icon name="hero-rectangle-stack" class="size-4" />
                 <span class="hidden lg:inline">Spaces</span>
@@ -206,7 +209,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             <.theme_menu />
 
             <%= if @current_user do %>
-              <details class="dropdown dropdown-end">
+              <details name="topbar-menu" class="dropdown dropdown-end">
                 <summary class="btn btn-ghost btn-sm gap-1.5" aria-label="Account">
                   <span class="grid size-6 place-items-center rounded-full bg-secondary text-[11px] font-semibold text-secondary-content">
                     {initials(@current_user.display_name || @current_user.email)}
@@ -473,10 +476,13 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
 
   The theme itself is the administrator's choice, so there is nothing else to
   choose here — every reader wears the same brand in the variant they prefer.
+
+  Its `<details>` shares the `topbar-menu` name with the other top-bar menus,
+  so opening one closes the others.
   """
   def theme_menu(assigns) do
     ~H"""
-    <details class="dropdown dropdown-end">
+    <details name="topbar-menu" class="dropdown dropdown-end">
       <summary class="btn btn-ghost btn-sm" aria-label="Theme">
         <.icon name="hero-swatch" class="size-4" />
       </summary>
