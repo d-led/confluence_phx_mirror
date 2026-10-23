@@ -755,6 +755,13 @@
     display: none !important;
   }
 
+  /* Navigation hanging off the article — the child pages — and the `#` link
+     beside each heading: neither goes anywhere on paper. */
+  #mirror-content article nav,
+  .confluence-content .heading-anchor {
+    display: none !important;
+  }
+
   html,
   body {
     background: #fff;
