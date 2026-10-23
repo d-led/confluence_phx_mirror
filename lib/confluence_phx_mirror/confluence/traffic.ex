@@ -13,6 +13,10 @@ defmodule ConfluencePhxMirror.Confluence.Traffic do
   that filled them — the admin page reads them after the run has finished.
   `reset/0` is called when a run starts; a caller that never resets (the probe,
   the seed task) simply keeps counting.
+
+  The account is per node, not per run: two syncs running at the same time share
+  it, exactly as they share the sync log's current run id. Scheduled pulls
+  coalesce (the worker is unique), so in practice a node runs one at a time.
   """
 
   use GenServer

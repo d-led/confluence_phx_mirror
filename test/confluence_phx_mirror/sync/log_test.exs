@@ -33,6 +33,16 @@ defmodule ConfluencePhxMirror.Sync.LogTest do
     assert Enum.map(Log.entries(), & &1.message) == ["first", "second"]
   end
 
+  test "a line says whether it is sync progress, a call to the site or the account" do
+    Log.add(:debug, "GET /content 200 42 ms", kind: :http, status: 200)
+    Log.add(:info, "page created: Budget")
+
+    assert [call, progress] = Log.entries()
+    assert call.kind == :http
+    assert call.details == %{status: 200}
+    assert progress.kind == :sync
+  end
+
   test "the log is a view, not a record: old lines fall off the end" do
     for index <- 1..420, do: Log.add(:debug, "line #{index}")
 
