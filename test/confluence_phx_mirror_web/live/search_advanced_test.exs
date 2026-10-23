@@ -25,6 +25,19 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchAdvancedTest do
     assert has_element?(view, "#advanced-search")
   end
 
+  test "the panel stays open while the reader types in one of its fields", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/search")
+
+    view
+    |> open_panel()
+    |> form("#advanced-search", search: %{"q" => "rate"})
+    |> render_change()
+
+    assert_patch(view, "/search?q=rate")
+    assert has_element?(view, "#advanced-search")
+    assert has_element?(view, "#advanced-search input[name='search[q]'][value='rate']")
+  end
+
   test "an exact phrase narrows the results to the sentence it searches for", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search")
 
