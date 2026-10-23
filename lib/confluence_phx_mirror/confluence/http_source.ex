@@ -617,7 +617,14 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     Traffic.slowest(call_label(method, url), duration_ms)
 
     if retryable?(response) and attempt < max_attempts() do
-      retry(method, url, options, attempt, facts)
+      retry(
+        method,
+        url,
+        options,
+        attempt,
+        facts,
+        Req.Response.get_header(response, "retry-after")
+      )
     else
       # A 404 is how the site says "no such page or group", and the sync handles
       # that as an answer, so it is not a failed call. Anything else that ends
@@ -650,11 +657,14 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     end
   end
 
-  defp retry(method, url, options, attempt, facts) do
+  defp retry(method, url, options, attempt, facts, retry_after) do
     Traffic.retry()
-    wait_ms = retry_wait_ms(attempt)
+    wait_ms = retry_wait_ms(attempt, retry_after)
 
-    note = "retrying in #{wait_ms} ms (attempt #{attempt + 1} of #{max_attempts()})"
+    note =
+      "retrying in #{wait_ms} ms (attempt #{attempt + 1} of #{max_attempts()})" <>
+        retry_after_note(retry_after)
+
     log_call(:warn, method, url, facts, note)
 
     Process.sleep(wait_ms)
@@ -784,6 +794,28 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   defp level_for(_status), do: :warn
 
   defp retry_wait_ms(attempt), do: retry_backoff_ms() * Integer.pow(2, attempt - 1)
+
+  # Confluence answers a throttle with `Retry-After` in seconds and asks that it
+  # be obeyed. Our own backoff (250 ms, 500 ms, 1 s) falls inside the same
+  # throttle window, so ignoring the header spends the retry budget and fails a
+  # page that a pause would have saved.
+  defp retry_wait_ms(attempt, retry_after) do
+    max(retry_wait_ms(attempt), retry_after_ms(retry_after))
+  end
+
+  defp retry_after_ms([value | _rest]), do: retry_after_ms(value)
+
+  defp retry_after_ms(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {seconds, _rest} when seconds > 0 -> seconds * 1000
+      _not_a_number -> 0
+    end
+  end
+
+  defp retry_after_ms(_absent), do: 0
+
+  defp retry_after_note([]), do: ""
+  defp retry_after_note([value | _rest]), do: ", the server asked for #{value}s"
 
   defp decode_json(body) do
     case JSON.decode(body) do

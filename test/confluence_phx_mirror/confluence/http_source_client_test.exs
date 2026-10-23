@@ -412,6 +412,26 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
       assert Process.get(:attempt) == 1
     end
 
+    test "a 429 that names a wait is obeyed, not raced with our own backoff" do
+      stub(fn conn ->
+        case Process.get(:attempt, 0) do
+          0 ->
+            Process.put(:attempt, 1)
+            conn |> Plug.Conn.put_resp_header("retry-after", "1") |> Plug.Conn.resp(429, "")
+
+          _ ->
+            Req.Test.json(conn, %{"results" => []})
+        end
+      end)
+
+      {elapsed_us, result} = :timer.tc(fn -> HttpSource.pages("ENG", []) end)
+
+      assert {:ok, []} = result
+      # The configured backoff is 0 in these tests, so only the header can
+      # account for the pause.
+      assert elapsed_us >= 900_000
+    end
+
     test "reports an error when every attempt fails" do
       stub(fn conn -> Plug.Conn.resp(conn, 503, "maintenance") end)
 

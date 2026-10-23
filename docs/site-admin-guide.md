@@ -48,7 +48,8 @@ The REST client:
 * fetches `body.storage` **and** `body.export_view`, version, ancestors, labels,
   comments and attachments;
 * is limited by `CM_REQUESTS_PER_SECOND` / `CM_BURST` (token bucket), retries
-  `429`/`5xx` with backoff, and never follows redirects;
+  `429`/`5xx` with backoff — waiting as long as `Retry-After` asks when
+  Confluence names one — and never follows redirects;
 * only ever talks to the configured host (`SafeURL`), with response size caps;
 * details changed pages `CM_SYNC_CONCURRENCY` at a time, and supports
   `CM_SYNC_INTERVAL_SECONDS` for scheduled pulls (incremental by default).
