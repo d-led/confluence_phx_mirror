@@ -625,17 +625,26 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       |> Enum.reject(&is_nil/1)
       |> Enum.join(" ")
 
-    Log.add(level, line, %{
-      kind: :http,
-      method: method,
-      url: path_of(url),
-      status: facts[:status],
-      ms: facts[:ms],
-      bytes: facts[:bytes],
-      attempt: facts[:attempt],
-      waited: facts[:waited]
-    })
+    # Only the facts the line cannot carry: the attempt a retried call is on, and
+    # the wait the limiter imposed.
+    details =
+      %{
+        kind: :http,
+        method: method,
+        url: path_of(url),
+        status: facts[:status],
+        ms: facts[:ms],
+        bytes: facts[:bytes]
+      }
+      |> maybe_fact(:attempt, facts[:attempt] > 1 && facts[:attempt])
+      |> maybe_fact(:waited, facts[:waited] > 0 && facts[:waited])
+
+    Log.add(level, line, details)
   end
+
+  defp maybe_fact(details, _key, false), do: details
+  defp maybe_fact(details, _key, nil), do: details
+  defp maybe_fact(details, key, value), do: Map.put(details, key, value)
 
   defp attempt_note(attempt) when attempt > 1, do: "(#{attempt}/#{max_attempts()})"
   defp attempt_note(_attempt), do: nil
@@ -650,13 +659,21 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     query =
       if uri.query, do: uri.query |> URI.decode_query() |> Map.delete("expand"), else: %{}
 
-    path = (uri.path || "/") <> if(query == %{}, do: "", else: "?" <> URI.encode_query(query))
+    path = (uri.path || "/") <> if(query == %{}, do: "", else: "?" <> readable(query))
 
     # A download that leaves the site (the media API) means nothing without its
     # host, so the host is shown only when it is not the configured one.
     label = if uri.host == site_host(), do: path, else: "#{uri.host}#{path}"
 
     if String.length(label) > 160, do: String.slice(label, 0, 159) <> "…", else: label
+  end
+
+  # A CQL query is the one thing on the line an operator wants to read, so the
+  # values are shown as written instead of percent-encoded.
+  defp readable(query) do
+    query
+    |> Enum.sort()
+    |> Enum.map_join("&", fn {key, value} -> "#{key}=#{value}" end)
   end
 
   defp site_host do

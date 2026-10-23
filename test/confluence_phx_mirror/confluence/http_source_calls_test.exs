@@ -50,9 +50,12 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceCallsTest do
 
     assert first.level == :debug
     assert first.details.status == 200
-    assert first.details.attempt == 1
     assert first.message =~ "GET /wiki/rest/api/content?limit=50&spaceKey=ENG"
     assert first.message =~ "200"
+
+    # The first attempt's line says everything; only a retried call needs the
+    # attempt spelled out beside it.
+    refute Map.has_key?(first.details, :attempt)
 
     assert second.details.status == 200
     assert Traffic.summary().requests == 2
@@ -76,6 +79,11 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceCallsTest do
 
     assert message =~ "429"
     assert message =~ "retrying"
+
+    # The call that succeeded on the second try says which try it was; the first
+    # one does not need to.
+    assert Enum.any?(calls(), &(&1.details[:attempt] == 2))
+    refute Enum.any?(calls(), &(&1.details[:attempt] == 1))
 
     summary = Traffic.summary()
     assert summary.retries == 1
@@ -104,6 +112,17 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceCallsTest do
 
     assert [%{level: :debug}] = calls()
     assert Traffic.summary().failed == 0
+  end
+
+  test "the CQL an incremental pull sends is shown as written" do
+    stub(fn conn -> Req.Test.json(conn, %{"results" => []}) end)
+
+    assert {:ok, []} = HttpSource.changed_since(~U[2026-10-01 12:34:56Z], [])
+
+    assert [%{message: message}] = calls()
+
+    assert message =~
+             ~s[cql=lastmodified >= "2026-10-01 12:34" and type in (page, blogpost)]
   end
 
   test "a download that leaves the site keeps its host in the line" do

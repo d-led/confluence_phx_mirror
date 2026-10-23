@@ -8,10 +8,14 @@ defmodule ConfluencePhxMirror.Confluence.Traffic do
   an operator can act on without scrolling.
 
   The counters live in a public ETS table and move with `:ets.update_counter/4`,
-  so recording a call is one BIF and never queues behind a process. `reset/0` is
-  called when a run starts; a caller that never resets (the probe, the seed
-  task) simply keeps counting.
+  so recording a call is one BIF and never queues behind a process. The table is
+  created by this module's process at boot, so the totals outlive the worker
+  that filled them — the admin page reads them after the run has finished.
+  `reset/0` is called when a run starts; a caller that never resets (the probe,
+  the seed task) simply keeps counting.
   """
+
+  use GenServer
 
   @table __MODULE__
 
@@ -29,6 +33,12 @@ defmodule ConfluencePhxMirror.Confluence.Traffic do
           statuses: %{status() => pos_integer()},
           slowest: {non_neg_integer(), String.t()} | nil
         }
+
+  @doc false
+  def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+
+  @impl true
+  def init(_opts), do: {:ok, create_table()}
 
   @doc "Starts a fresh account. Called when a sync run begins."
   @spec reset() :: :ok
@@ -194,8 +204,8 @@ defmodule ConfluencePhxMirror.Confluence.Traffic do
 
   defp add(key, amount), do: :ets.update_counter(table(), key, amount, {key, 0})
 
-  # Created on first use so a caller never has to start a process, and safe
-  # against two callers racing to create it.
+  # Created at boot by `init/1`; the fallback keeps the module usable where the
+  # application is not running (a plain `elixir -e`, a test of this module).
   defp table do
     case :ets.whereis(@table) do
       :undefined -> create_table()
