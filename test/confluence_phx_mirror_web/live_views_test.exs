@@ -12,7 +12,7 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
   test "search LiveView searches every field by default", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search?q=architecture")
 
-    assert has_element?(view, "a[href='/spaces/ENG/pages/1002/architecture-overview']")
+    assert has_element?(view, "a[href='/spaces/ENG/pages/1002/Architecture+Overview']")
     assert has_element?(view, "mark", "Architecture")
   end
 
@@ -21,24 +21,24 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
 
     assert has_element?(
              view,
-             "article[data-hit] a[data-hit-link][class~='after:inset-0'][href='/spaces/ENG/pages/1002/architecture-overview']"
+             "article[data-hit] a[data-hit-link][class~='after:inset-0'][href='/spaces/ENG/pages/1002/Architecture+Overview']"
            )
   end
 
   test "search LiveView supports boolean operators and quotes", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/search?q=rate+limit+NOT+roadmap")
+    {:ok, view, _html} = live(conn, "/search?q=rate+limit+NOT+roadmap")
 
-    assert has_element?(view, "a[href='/spaces/ENG/pages/1004/search-and-cql']")
+    assert has_element?(view, "a[href='/spaces/ENG/pages/1004/Search+and+CQL']")
     refute has_element?(view, "a[href='/spaces/PROD/pages/2002/roadmap']")
 
-    {:ok, phrase_view, _phrase} = live(conn, ~p"/search?q=%22rate+limit%22")
-    assert has_element?(phrase_view, "a[href='/spaces/ENG/pages/1004/search-and-cql']")
+    {:ok, phrase_view, _phrase} = live(conn, "/search?q=%22rate+limit%22")
+    assert has_element?(phrase_view, "a[href='/spaces/ENG/pages/1004/Search+and+CQL']")
   end
 
   test "search LiveView narrows with structured filters", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search?space=ENG&labels=architecture")
 
-    assert has_element?(view, "a[href='/spaces/ENG/pages/1002/architecture-overview']")
+    assert has_element?(view, "a[href='/spaces/ENG/pages/1002/Architecture+Overview']")
     assert has_element?(view, "a", "Space: ENG")
     assert has_element?(view, "a", "Label: architecture")
 
@@ -47,7 +47,7 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
     |> render_change(%{"search" => %{"q" => "pipeline"}})
 
     assert_patch(view, "/search?labels=architecture&q=pipeline&space=ENG")
-    assert has_element?(view, "a[href='/spaces/ENG/pages/1002/architecture-overview']")
+    assert has_element?(view, "a[href='/spaces/ENG/pages/1002/Architecture+Overview']")
   end
 
   test "labels are free-form: a reader types one, then takes it off again", %{conn: conn} do

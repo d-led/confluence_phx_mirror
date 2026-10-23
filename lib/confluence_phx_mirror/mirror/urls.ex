@@ -6,9 +6,13 @@ defmodule ConfluencePhxMirror.Mirror.URLs do
   connection) can build exactly the same links the web layer serves.
   """
 
-  @doc "Pretty path of a mirrored page."
+  @doc "Pretty path of a mirrored page.
+
+  Confluence drops the title segment when a title has nothing usable in it (a
+  Cyrillic or CJK title), and so does this: the id alone is the URL.
+  "
   def page_path(space_key, confluence_id, slug) do
-    "/spaces/#{encode_segment(space_key)}/pages/#{confluence_id}/#{encode_segment(slug)}"
+    with_slug("/spaces/#{encode_segment(space_key)}/pages/#{confluence_id}", slug)
   end
 
   @doc "Path of a mirrored space."
@@ -31,7 +35,7 @@ defmodule ConfluencePhxMirror.Mirror.URLs do
 
   @doc "A single blog post, mirroring Confluence's blog URL shape."
   def blog_post_path(space_key, confluence_id, slug) do
-    space_blog_path(space_key) <> "/#{confluence_id}/#{encode_segment(slug)}"
+    with_slug(space_blog_path(space_key) <> "/#{confluence_id}", slug)
   end
 
   @doc "Canonical URL of anything the mirror stores as content."
@@ -67,5 +71,18 @@ defmodule ConfluencePhxMirror.Mirror.URLs do
       "#{attachment_confluence_id}/#{encode_segment(filename)}"
   end
 
-  defp encode_segment(segment), do: segment |> to_string() |> URI.encode(&URI.char_unreserved?/1)
+  defp with_slug(base, slug) do
+    case to_string(slug || "") do
+      "" -> base
+      slug -> base <> "/" <> encode_segment(slug)
+    end
+  end
+
+  # `+` is legal in a path segment and is how Confluence separates the words of
+  # a title, so it stays raw instead of becoming `%2B`.
+  defp encode_segment(segment) do
+    segment
+    |> to_string()
+    |> URI.encode(&(URI.char_unreserved?(&1) or &1 == ?+))
+  end
 end

@@ -19,7 +19,7 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
   end
 
   test "a deep page collapses its breadcrumb into an ellipsis dropdown", %{conn: conn} do
-    html = conn |> get(~p"/spaces/ENG/pages/1205/emergency-revocation") |> html_response(200)
+    html = conn |> get("/spaces/ENG/pages/1205/Emergency+Revocation") |> html_response(200)
 
     assert html =~ "Emergency Revocation"
     assert html =~ "Certificate Rotation"
@@ -30,7 +30,7 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
   end
 
   test "a shallow page keeps every breadcrumb inline", %{conn: conn} do
-    html = conn |> get(~p"/spaces/ENG/pages/1002/architecture-overview") |> html_response(200)
+    html = conn |> get("/spaces/ENG/pages/1002/Architecture+Overview") |> html_response(200)
 
     assert html =~ "Getting Started"
     refute html =~ "hidden levels"
@@ -92,11 +92,11 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
 
   test "GET /spaces/:key redirects to the space home page", %{conn: conn} do
     conn = get(conn, ~p"/spaces/ENG")
-    assert redirected_to(conn) == ~p"/spaces/ENG/pages/1000/engineering-handbook"
+    assert redirected_to(conn) == "/spaces/ENG/pages/1000/Engineering+Handbook"
   end
 
   test "GET a page renders macro markup, labels and the original link", %{conn: conn} do
-    html = conn |> get(~p"/spaces/ENG/pages/1002/architecture-overview") |> html_response(200)
+    html = conn |> get("/spaces/ENG/pages/1002/Architecture+Overview") |> html_response(200)
 
     assert html =~ "Architecture Overview"
     assert html =~ "confluence-content"
@@ -135,7 +135,53 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
 
   test "a stale slug redirects to the canonical page URL", %{conn: conn} do
     conn = get(conn, ~p"/spaces/ENG/pages/1002/old-name")
-    assert redirected_to(conn) == ~p"/spaces/ENG/pages/1002/architecture-overview"
+    assert redirected_to(conn) == "/spaces/ENG/pages/1002/Architecture+Overview"
+  end
+
+  describe "Confluence's own URL shape" do
+    test "a plus-separated title is the canonical URL, not a redirect", %{conn: conn} do
+      space = space_fixture(%{key: "LOAD013"})
+
+      page =
+        page_fixture(space, %{
+          title: "API /v2: changelog? (draft) #2",
+          slug: "API+v2+changelog+draft+2"
+        })
+
+      html =
+        conn
+        |> get("/spaces/LOAD013/pages/#{page.confluence_id}/API+v2+changelog+draft+2")
+        |> html_response(200)
+
+      assert html =~ "API /v2: changelog? (draft) #2"
+    end
+
+    test "a title with nothing slug-worthy is served by id alone", %{conn: conn} do
+      space = space_fixture(%{key: "MFS"})
+      page = page_fixture(space, %{title: "Обзор проекта", slug: ""})
+
+      html = conn |> get("/spaces/MFS/pages/#{page.confluence_id}") |> html_response(200)
+
+      assert html =~ "Обзор проекта"
+    end
+
+    test "that page still redirects a title-ish segment to the id-only URL", %{conn: conn} do
+      space = space_fixture(%{key: "MFS"})
+      page = page_fixture(space, %{title: "Обзор проекта", slug: ""})
+
+      conn = get(conn, "/spaces/MFS/pages/#{page.confluence_id}/Обзор+проекта")
+
+      assert redirected_to(conn) == "/spaces/MFS/pages/#{page.confluence_id}"
+    end
+
+    test "a space-encoded title resolves to the same page", %{conn: conn} do
+      space = space_fixture(%{key: "LOAD013"})
+      page = page_fixture(space, %{title: "LOAD01 Page 1044", slug: "LOAD01+Page+1044"})
+
+      assert conn
+             |> get("/spaces/LOAD013/pages/#{page.confluence_id}/LOAD01%20Page%201044")
+             |> html_response(200) =~ "LOAD01 Page 1044"
+    end
   end
 
   test "unknown pages return 404", %{conn: conn} do
@@ -144,7 +190,7 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
   end
 
   test "a blog post renders under the space blog URL", %{conn: conn} do
-    html = conn |> get(~p"/spaces/PROD/blog/2001/release-2-0") |> html_response(200)
+    html = conn |> get("/spaces/PROD/blog/2001/Release+2+0") |> html_response(200)
 
     assert html =~ "Release 2.0"
     assert html =~ "Blog post"
@@ -154,11 +200,11 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
   test "a stale blog slug redirects to the canonical blog URL", %{conn: conn} do
     conn = get(conn, ~p"/spaces/PROD/blog/2001/old-release-notes")
 
-    assert redirected_to(conn) == ~p"/spaces/PROD/blog/2001/release-2-0"
+    assert redirected_to(conn) == "/spaces/PROD/blog/2001/Release+2+0"
   end
 
   test "a page names its version in an etag and answers 304 to a repeat", %{conn: conn} do
-    conn = get(conn, ~p"/spaces/ENG/pages/1002/architecture-overview")
+    conn = get(conn, "/spaces/ENG/pages/1002/Architecture+Overview")
     assert [etag] = get_resp_header(conn, "etag")
     assert get_resp_header(conn, "cache-control") == ["public, max-age=0, must-revalidate"]
 
@@ -166,14 +212,14 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
       conn
       |> recycle()
       |> put_req_header("if-none-match", etag)
-      |> get(~p"/spaces/ENG/pages/1002/architecture-overview")
+      |> get("/spaces/ENG/pages/1002/Architecture+Overview")
 
     assert again.status == 304
     assert again.resp_body == ""
   end
 
   test "a page is not served from the blog URL", %{conn: conn} do
-    body = conn |> get(~p"/spaces/ENG/blog/1002/architecture-overview") |> html_response(404)
+    body = conn |> get("/spaces/ENG/blog/1002/Architecture+Overview") |> html_response(404)
     assert body =~ "That blog post is not mirrored"
   end
 

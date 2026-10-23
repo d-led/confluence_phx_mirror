@@ -12,13 +12,13 @@ defmodule ConfluencePhxMirrorWeb.Features.ReaderJourneyTest do
     conn
     |> visit(~p"/spaces")
     |> within("main", &click_link(&1, "Engineering Handbook"))
-    |> assert_path(~p"/spaces/ENG/pages/1000/engineering-handbook")
+    |> assert_path("/spaces/ENG/pages/1000/Engineering+Handbook")
     |> assert_has("h1", "Engineering Handbook")
     |> within("#page-tree", &click_link(&1, "Getting Started"))
-    |> assert_path(~p"/spaces/ENG/pages/1001/getting-started")
+    |> assert_path("/spaces/ENG/pages/1001/Getting+Started")
     # The sidebar follows the reader: the page's children are now in reach.
     |> within("#page-tree", &click_link(&1, "Architecture Overview"))
-    |> assert_path(~p"/spaces/ENG/pages/1002/architecture-overview")
+    |> assert_path("/spaces/ENG/pages/1002/Architecture+Overview")
     |> assert_has("h1", "Architecture Overview")
     |> assert_has("a", "View original")
   end
@@ -31,7 +31,7 @@ defmodule ConfluencePhxMirrorWeb.Features.ReaderJourneyTest do
     |> assert_path(~p"/search", query_params: %{q: "rate limit"})
     |> assert_has("a", "Search and CQL")
     |> click_link("Search and CQL")
-    |> assert_path(~p"/spaces/ENG/pages/1004/search-and-cql")
+    |> assert_path("/spaces/ENG/pages/1004/Search+and+CQL")
     |> assert_has("h1", "Search and CQL")
   end
 
@@ -46,7 +46,7 @@ defmodule ConfluencePhxMirrorWeb.Features.ReaderJourneyTest do
 
   test "a reader jumps from a page label to everything carrying it", %{conn: conn} do
     conn
-    |> visit(~p"/spaces/ENG/pages/1002/architecture-overview")
+    |> visit("/spaces/ENG/pages/1002/Architecture+Overview")
     |> click_link("a.badge[href='/labels/architecture']", "architecture")
     |> assert_path(~p"/labels/architecture")
     |> assert_has("h1", "architecture")

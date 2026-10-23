@@ -67,6 +67,15 @@ ones specific to the mirror.
   `assets/js/local_time.js` to rewrite in the browser's zone, because only the
   browser knows it. Never print one zone's wall clock under another's label, and
   never store a zone the mirror cannot vouch for.
+* **Page URLs are Confluence's URLs.** `Mirror.Page.slugify/1` reproduces
+  Confluence Cloud's rule — ASCII word characters kept, every other run turned
+  into one `+`, and no segment at all when nothing survives (`slug` is nullable,
+  and those pages are served by id) — and `URLs.page_path/3` omits an empty
+  segment. The id is the identity; `Page.slug_match?/2` treats `+` and an
+  encoded space alike, and anything else redirects to the canonical URL.
+  `Web.WikiController` drops Confluence's `/wiki` prefix. Heading ids come from
+  the exported HTML unchanged, so `assets/js/heading_anchors.js` only has to add
+  the copyable link.
 * **Config is read at boot.** The dev code reloader does not reload
   `config/*.exs`.
 

@@ -29,6 +29,7 @@ import {highlightCode} from "./code_highlight"
 import {localizeTimes} from "./local_time"
 import "./confirm"
 import "./sidebar"
+import "./heading_anchors"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

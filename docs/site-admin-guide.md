@@ -193,8 +193,16 @@ Archived pages stay readable and searchable — Confluence only hides them from
 the page tree, and so does the sidebar here. Blog posts are kept out of the tree
 and live under the space's Blog tab.
 
-Links are stable: pages are keyed by `confluence_id` and version, slugs are
-cosmetic and redirect to the canonical URL.
+Links are stable: pages are keyed by `confluence_id` and version, and the title
+part of the URL follows Confluence's own rule — ASCII words joined with `+`, so
+"API /v2: changelog? (draft) #2" becomes `API+v2+changelog+draft+2`. A page
+whose title has no ASCII words in it (Cyrillic, CJK) gets no title segment and
+is served by id alone, exactly as Confluence serves it. Any other segment — an
+old slug, a typo, a title that was since renamed — redirects to the canonical
+URL rather than failing, and Confluence's `/wiki` prefix is dropped, so a
+Confluence link works here after changing nothing but the host. Headings keep
+the ids Confluence gave them and carry a `#` link on hover, so a heading anchor
+copied here works there and vice versa.
 
 ## Search
 

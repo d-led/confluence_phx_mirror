@@ -48,7 +48,7 @@ defmodule ConfluencePhxMirrorWeb.SpaceControllerTest do
   describe "the space overview" do
     test "shows the space home, its top-level pages and the section tabs", %{conn: conn} do
       {space, home} = space_with_home("Engineering Handbook")
-      page_fixture(space, %{title: "Architecture Overview", slug: "architecture-overview"})
+      page_fixture(space, %{title: "Architecture Overview", slug: "Architecture+Overview"})
 
       html = conn |> get(~p"/spaces/#{space.key}/overview") |> html_response(200)
 
@@ -62,7 +62,7 @@ defmodule ConfluencePhxMirrorWeb.SpaceControllerTest do
 
     test "shows the space's blog posts and labels", %{conn: conn} do
       space = space_fixture(%{name: "Product Hub"})
-      page_fixture(space, %{title: "Release 2.0", type: "blogpost", slug: "release-2-0"})
+      page_fixture(space, %{title: "Release 2.0", type: "blogpost", slug: "Release+2+0"})
 
       labelled = page_fixture(space, %{title: "Roadmap", slug: "roadmap"})
       {:ok, _labels} = Mirror.replace_labels(labelled, ["release"])
@@ -79,7 +79,7 @@ defmodule ConfluencePhxMirrorWeb.SpaceControllerTest do
       conn = get(conn, ~p"/spaces/#{space.key}")
 
       assert redirected_to(conn) ==
-               ~p"/spaces/#{space.key}/pages/#{home.confluence_id}/space-home"
+               "/spaces/#{space.key}/pages/#{home.confluence_id}/Space+home"
     end
   end
 
@@ -113,7 +113,7 @@ defmodule ConfluencePhxMirrorWeb.SpaceControllerTest do
   # A space whose home page is already mirrored, the way a sync leaves it.
   defp space_with_home(name) do
     space = space_fixture(%{name: name})
-    home = page_fixture(space, %{title: "Space home", slug: "space-home"})
+    home = page_fixture(space, %{title: "Space home", slug: "Space+home"})
 
     {:ok, space} =
       Mirror.upsert_space(%{

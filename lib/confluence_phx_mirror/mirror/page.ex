@@ -55,8 +55,11 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     timestamps(type: :utc_datetime)
   end
 
-  @required_fields [:confluence_id, :space_id, :title, :slug]
+  # `slug` is not required: a title with no ASCII words in it (Cyrillic, CJK)
+  # has no URL segment at all, and Confluence serves those pages by id.
+  @required_fields [:confluence_id, :space_id, :title]
   @optional_fields [
+    :slug,
     :parent_id,
     :type,
     :status,
@@ -86,17 +89,49 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     |> unique_constraint(:confluence_id)
   end
 
-  @doc "The title slug used in pretty mirror URLs."
+  @doc """
+  The trailing segment Confluence puts in a page URL.
+
+  Confluence keeps ASCII word characters and turns every run of anything else
+  into a single `+`, then drops the segment when nothing survives — which is
+  what a Cyrillic, CJK or punctuation-only title ends up as:
+
+      "API /v2: changelog? (draft) #2"  ->  "API+v2+changelog+draft+2"
+      "Rocket 🚀 launch"                 ->  "Rocket+launch"
+      "Обзор проекта"                     ->  ""   (served by id alone)
+
+  Mirroring the rule is the point: a Confluence page URL works here with the
+  host swapped and nothing else, and a link copied from this mirror works in
+  Confluence. Titles differ from what the old rule produced (lower case,
+  hyphens), which the sync backfills.
+  """
   def slugify(title) do
     title
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/u, "-")
-    |> String.trim("-")
-    |> String.slice(0, 80)
-    |> case do
-      "" -> "page"
-      slug -> slug
-    end
+    |> to_string()
+    |> String.replace(~r/[^A-Za-z0-9_]+/, "+")
+    |> String.trim("+")
+    |> String.slice(0, 255)
+    |> String.trim_trailing("+")
+  end
+
+  @doc """
+  Whether a URL's trailing segment names this page.
+
+  `+` is a word separator in a Confluence URL and a space is what it means when
+  a client percent-encodes it instead, so the two are the same here. Anything
+  else — an old slug, a typo, a title that has since been renamed — does not
+  match, and the controller redirects to the canonical URL.
+  """
+  @spec slug_match?(t(), String.t() | nil) :: boolean()
+  def slug_match?(%__MODULE__{slug: slug}, requested) do
+    normalise_slug(slug) == normalise_slug(requested)
+  end
+
+  defp normalise_slug(slug) do
+    slug
+    |> to_string()
+    |> String.replace("+", " ")
+    |> String.trim()
   end
 
   def audit_event_purged(%__MODULE__{} = page) do

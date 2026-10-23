@@ -38,7 +38,7 @@ defmodule ConfluencePhxMirrorWeb.QueryBudgetTest do
 
   test "deep page rendering stays bounded", %{conn: conn} do
     queries =
-      QueryCounter.count(fn -> get(conn, ~p"/spaces/ENG/pages/1002/architecture-overview") end)
+      QueryCounter.count(fn -> get(conn, "/spaces/ENG/pages/1002/Architecture+Overview") end)
 
     assert queries <= 21, "page view issued #{queries} queries"
   end

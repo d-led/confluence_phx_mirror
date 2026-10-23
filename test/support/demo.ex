@@ -7,14 +7,15 @@ defmodule ConfluencePhxMirror.Demo do
   content changes.
   """
 
+  alias ConfluencePhxMirror.Mirror.Page
+
   # "Architecture Overview" — no restriction at all, on purpose.
   @open_page "1002"
-  @open_page_slug "architecture-overview"
+  @open_page_title "Architecture Overview"
 
   # "Macros Gallery" — restricted to the group below, so it is the page every
   # access test can use as "something this reader may not open".
   @restricted_page "1003"
-  @restricted_page_slug "macros-gallery"
   @restricted_page_title "Macros Gallery"
   @page_readers "confluence-users"
 
@@ -41,8 +42,11 @@ defmodule ConfluencePhxMirror.Demo do
   @doc "The same page as a number, for topic names and id comparisons."
   def open_page_number, do: String.to_integer(@open_page)
 
+  # The slug is the pipeline's, not a constant here: Confluence's rule decides
+  # what a page URL looks like, and a test should break when that rule changes
+  # rather than quietly carrying a stale expectation.
   @doc "Slug of the open page, for its reader URL."
-  def open_page_slug, do: @open_page_slug
+  def open_page_slug, do: Page.slugify(@open_page_title)
 
   @doc "A page restricted to the readers in `page_readers/0`."
   def restricted_page, do: @restricted_page
@@ -51,7 +55,7 @@ defmodule ConfluencePhxMirror.Demo do
   def restricted_page_number, do: String.to_integer(@restricted_page)
 
   @doc "Slug of the restricted page, for its reader URL."
-  def restricted_page_slug, do: @restricted_page_slug
+  def restricted_page_slug, do: Page.slugify(@restricted_page_title)
 
   @doc "Title of the restricted page, as the mirror renders and exports it."
   def restricted_page_title, do: @restricted_page_title

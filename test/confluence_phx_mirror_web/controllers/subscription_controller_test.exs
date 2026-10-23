@@ -15,7 +15,7 @@ defmodule ConfluencePhxMirrorWeb.SubscriptionControllerTest do
 
   test "a reader watches a page and comes back to it", %{conn: conn} do
     {:ok, page} = Mirror.find_page(1002)
-    back = "/spaces/ENG/pages/1002/architecture-overview"
+    back = "/spaces/ENG/pages/1002/Architecture+Overview"
 
     conn =
       conn

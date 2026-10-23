@@ -27,7 +27,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContentTest do
         )
 
       assert html =~ "Content by label: architecture"
-      assert html =~ ~s(href="/spaces/ENG/pages/1002/architecture-overview")
+      assert html =~ ~s(href="/spaces/ENG/pages/1002/Architecture+Overview")
       refute html =~ Demo.restricted_page_title()
     end
 

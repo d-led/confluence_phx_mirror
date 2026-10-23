@@ -20,7 +20,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorIdentityTest do
   end
 
   test "a page view says which site it mirrors", %{conn: conn} do
-    html = conn |> get(~p"/spaces/ENG/pages/1002/architecture-overview") |> html_response(200)
+    html = conn |> get("/spaces/ENG/pages/1002/Architecture+Overview") |> html_response(200)
 
     assert html =~ "mirror of acme.atlassian.net"
     refute html =~ "mirror of the demo snapshot"

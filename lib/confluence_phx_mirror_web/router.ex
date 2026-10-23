@@ -77,6 +77,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/spaces/:key", PageController, :space
     get "/spaces/:key/overview", SpaceController, :overview
     get "/spaces/:key/blog/:id/:slug", PageController, :blog_post
+    get "/spaces/:key/blog/:id", PageController, :blog_post
     get "/spaces/:space_key/pages/:id", PageController, :show
     get "/spaces/:space_key/pages/:id/export.md", ExportController, :page
     get "/spaces/:space_key/pages/:id/:slug", PageController, :show
@@ -192,6 +193,16 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/content/:id/child/attachment", PageController, :attachments
     get "/content/:id/child/comment", PageController, :comments
     get "/content/:id/label", PageController, :labels
+  end
+
+  # Confluence page URLs carry a `/wiki` prefix the mirror does not use, so a
+  # reader who repoints a Confluence link at this mirror keeps working. Declared
+  # after the API scopes above, which must not be swallowed by the glob.
+  scope "/wiki", ConfluencePhxMirrorWeb do
+    pipe_through :browser
+
+    get "/", WikiController, :without_wiki
+    get "/*path", WikiController, :without_wiki
   end
 
   # ---------------------------------------------------------------------------

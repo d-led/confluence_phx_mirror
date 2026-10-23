@@ -13,6 +13,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Catalog
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Mirror.Page
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Webhooks
@@ -65,23 +66,28 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     with {id, ""} <- Integer.parse(id),
          {:ok, page} <- Mirror.find_page_by_path(space_key, id),
          true <- readable?(conn, page) do
-      canonical = URLs.page_path(page.space.key, page.confluence_id, page.slug)
-
-      if slug == page.slug do
+      if Page.slug_match?(page, slug) do
         render_page(conn, page)
       else
-        redirect(conn, to: canonical)
+        redirect(conn, to: URLs.page_path(page.space.key, page.confluence_id, page.slug))
       end
     else
       _ -> NotFound.call(conn, "That page is not mirrored.")
     end
   end
 
+  # A page whose title has nothing slug-worthy — a Cyrillic or CJK title — is
+  # served by id alone, exactly as Confluence serves it. It must render here
+  # rather than redirect to itself.
   def show(conn, %{"space_key" => space_key, "id" => id}) do
     with {id, ""} <- Integer.parse(id),
          {:ok, page} <- Mirror.find_page_by_path(space_key, id),
          true <- readable?(conn, page) do
-      redirect(conn, to: URLs.page_path(page.space.key, page.confluence_id, page.slug))
+      if Page.slug_match?(page, "") do
+        render_page(conn, page)
+      else
+        redirect(conn, to: URLs.page_path(page.space.key, page.confluence_id, page.slug))
+      end
     else
       _ -> NotFound.call(conn, "That page is not mirrored.")
     end
@@ -92,7 +98,22 @@ defmodule ConfluencePhxMirrorWeb.PageController do
          {:ok, page} <- Mirror.find_page_by_path(space_key, id),
          true <- page.type == "blogpost",
          true <- readable?(conn, page) do
-      if slug == page.slug do
+      if Page.slug_match?(page, slug) do
+        render_page(conn, page, :blog)
+      else
+        redirect(conn, to: URLs.blog_post_path(page.space.key, page.confluence_id, page.slug))
+      end
+    else
+      _ -> NotFound.call(conn, "That blog post is not mirrored.")
+    end
+  end
+
+  def blog_post(conn, %{"key" => space_key, "id" => id}) do
+    with {id, ""} <- Integer.parse(id),
+         {:ok, page} <- Mirror.find_page_by_path(space_key, id),
+         true <- page.type == "blogpost",
+         true <- readable?(conn, page) do
+      if Page.slug_match?(page, "") do
         render_page(conn, page, :blog)
       else
         redirect(conn, to: URLs.blog_post_path(page.space.key, page.confluence_id, page.slug))

@@ -41,7 +41,7 @@ defmodule ConfluencePhxMirror.SyncTest do
 
       page = Repo.get_by!(Page, confluence_id: 1002)
       assert page.title == "Architecture Overview"
-      assert page.slug == "architecture-overview"
+      assert page.slug == "Architecture+Overview"
       assert page.labels == ["architecture", "design"]
       assert page.version_number == 15
       assert page.external_url =~ "/wiki/spaces/ENG/pages/1002/"
@@ -82,7 +82,7 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert crosslinks.body_export =~
                ~s(href="https://demo.atlassian.net/pages/viewpage.action?pageId=9999)
 
-      assert crosslinks.body_export =~ ~s(href="/spaces/PROD/pages/2000/product-hub")
+      assert crosslinks.body_export =~ ~s(href="/spaces/PROD/pages/2000/Product+Hub")
     end
 
     test "mirrors comments with their replies" do
@@ -247,7 +247,7 @@ defmodule ConfluencePhxMirror.SyncTest do
 
       notification = Repo.one!(from n in Notification, where: n.user_id == ^user.id)
       assert notification.subject =~ "Architecture Overview"
-      assert notification.body =~ "/spaces/ENG/pages/1002/architecture-overview"
+      assert notification.body =~ "/spaces/ENG/pages/1002/Architecture+Overview"
 
       assert_enqueued(worker: EmailWorker)
       assert :ok = perform_job(EmailWorker, %{"notification_id" => notification.id})
@@ -277,7 +277,7 @@ defmodule ConfluencePhxMirror.SyncTest do
       page = Repo.get_by!(Page, confluence_id: 1003)
 
       assert page.body_export =~ "Content by label: architecture"
-      assert page.body_export =~ ~s(href="/spaces/ENG/pages/1002/architecture-overview")
+      assert page.body_export =~ ~s(href="/spaces/ENG/pages/1002/Architecture+Overview")
       assert page.body_export =~ "Page properties report"
       assert page.body_export =~ "Platform"
       assert page.body_text =~ "Page properties report"

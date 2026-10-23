@@ -13,8 +13,8 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
         base_url: "https://dled.atlassian.net",
         pages: %{
           100 => %{space_key: "ENG", confluence_id: 100, slug: "home"},
-          101 => %{space_key: "ENG", confluence_id: 101, slug: "architecture-overview"},
-          200 => %{space_key: "PROD", confluence_id: 200, slug: "release-2-0"}
+          101 => %{space_key: "ENG", confluence_id: 101, slug: "Architecture+Overview"},
+          200 => %{space_key: "PROD", confluence_id: 200, slug: "Release+2+0"}
         },
         attachments: %{
           "diagram.svg" => %{
@@ -36,7 +36,7 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       result = Renderer.render(html, context())
 
-      assert result.html =~ ~s(href="/spaces/ENG/pages/101/architecture-overview")
+      assert result.html =~ ~s(href="/spaces/ENG/pages/101/Architecture+Overview")
 
       assert [%{kind: "internal", target_confluence_id: 101, label: "Architecture"}] =
                result.links
@@ -47,7 +47,7 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
         ~s(<a href="https://dled.atlassian.net/wiki/spaces/PROD/pages/200/Release+2.0">R2</a>)
 
       assert Renderer.render(html, context()).html =~
-               ~s(href="/spaces/PROD/pages/200/release-2-0")
+               ~s(href="/spaces/PROD/pages/200/Release+2+0")
     end
 
     test "keeps links to pages that were not mirrored absolute" do
@@ -199,7 +199,7 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert result.html =~ "More details"
       refute result.html =~ "expand-control-icon"
       refute result.html =~ "display: none"
-      assert result.html =~ ~s(href="/spaces/ENG/pages/101/architecture-overview")
+      assert result.html =~ ~s(href="/spaces/ENG/pages/101/Architecture+Overview")
     end
   end
 
