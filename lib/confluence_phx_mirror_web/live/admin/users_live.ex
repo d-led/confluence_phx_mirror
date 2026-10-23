@@ -131,6 +131,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       spaces={@spaces}
       last_sync_run={@last_sync_run}
       mirror_name={@mirror_name}
+      mirror_url={@mirror_url}
+      mirror_host={@mirror_host}
       mirror_source={@mirror_source}
       page_title="Users &amp; tokens"
       sidebar?={false}

@@ -129,6 +129,8 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
       spaces={@spaces}
       last_sync_run={@last_sync_run}
       mirror_name={@mirror_name}
+      mirror_url={@mirror_url}
+      mirror_host={@mirror_host}
       mirror_source={@mirror_source}
       space={@space}
       tree={@tree}

@@ -9,6 +9,12 @@ attachments from a path-based blob store, indexes everything with Postgres
 full-text search behind a CQL subset, and keeps two logs: an audit log of
 decisions and a live log of what each sync is doing.
 
+![A mirrored page: the space's page tree, the page with its metadata, and the rail with its ids, version and upstream link](docs/images/reader.png)
+
+*One mirrored page: the branch of its space on the left, Confluence's own
+rendering in the middle, and a rail naming the Confluence id, version, author
+and the original URL.*
+
 ```
 Confluence ──REST──▶ Sync (incremental, rate-limited, audited) ──▶ Postgres (content, links, FTS)
                                     │
