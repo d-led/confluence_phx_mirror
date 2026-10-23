@@ -98,7 +98,14 @@ export function setup() {
   for (const key of spaceKeys.slice(0, 5)) {
     const list = http.get(`${BASE_URL}/wiki/rest/api/content?spaceKey=${key}&limit=25`);
     if (list.status !== 200) continue;
-    pages[key] = (list.json("results") || []).map(p => ({ id: p.id, title: p.title }));
+    // `_links.webui` is the canonical URL. Building it from the id
+    // (`/spaces/KEY/pages/ID`) answers with a 302 to the slug, which would make
+    // every page sample count two round trips instead of one.
+    pages[key] = (list.json("results") || []).map(p => ({
+      id: p.id,
+      title: p.title,
+      url: p._links?.webui || `/spaces/${key}/pages/${p.id}`,
+    }));
   }
 
   const first = spaceKeys[0];
@@ -147,7 +154,7 @@ export default function (data) {
     if (pages.length === 0) return;
     const page = pick(pages);
     group("page", () => {
-      record(pageLoads, http.get(`${BASE_URL}/spaces/${key}/pages/${page.id}`), "page");
+      record(pageLoads, http.get(`${BASE_URL}${page.url}`), "page");
     });
   } else {
     // A query a reader would type, from words the content actually contains.
@@ -197,7 +204,7 @@ function hit(data) {
     record(pageLoads, http.get(`${BASE_URL}/spaces/${key}`), `space ${key}`);
   } else {
     const page = pick(pages);
-    record(pageLoads, http.get(`${BASE_URL}/spaces/${key}/pages/${page.id}`), "page");
+    record(pageLoads, http.get(`${BASE_URL}${page.url}`), "page");
   }
 }
 
@@ -217,7 +224,7 @@ function navigate(data) {
   } else {
     const page = pick(pages);
     group("page", () => {
-      conditionalGet(`${BASE_URL}/spaces/${key}/pages/${page.id}`, "page");
+      conditionalGet(`${BASE_URL}${page.url}`, "page");
     });
   }
 

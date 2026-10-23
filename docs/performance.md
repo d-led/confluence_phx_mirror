@@ -44,6 +44,50 @@ The prose is generated but *readable*, and different pages say different things
 snippets a fixture the way it would rank a real wiki. A fixture whose pages were
 only findable by title would make search look like it works when it does not.
 
+### From a real Confluence site
+
+Generated content exercises the mirror; it cannot exercise `HttpSource`. To
+measure pagination, retry and rate-limiting against a real Cloud instance, a
+free site is enough — [rewind-community's test data
+generator](https://github.com/rewind-community/confluence-test-data-generator)
+writes spaces and pages through the REST API, and `--content-only` keeps it to
+text, which is the part the free plan does not meter (2 GB counts attachments).
+
+```bash
+# --count is pages + blog posts, not pages: at the default multipliers a page is
+# ~16% of it. 20 spaces of ~95 pages each, no attachments, clearable prefix.
+CONFLUENCE_API_TOKEN=... python confluence_data_generator.py \
+  --url https://acme.atlassian.net/wiki --email you@acme.com \
+  --count 12523 --spaces 20 --content-only --prefix PERFSP --dry-run
+
+# Same command without --dry-run writes it; --cleanup --prefix PERFSP --yes
+# deletes every space whose key starts with the prefix (permanently).
+```
+
+What that cost, measured on a free site: **668 pages in ten minutes**
+(concurrency 5, ~1.1 pages/s) before the generator died with an empty
+`TimeoutError`; it checkpoints only after a whole phase, so `--resume` redoes the
+page phase. Treat it as an unattended job with a small `--count` and a prefix you
+can clean up: ~100 000 pages is a day of API budget, not an hour.
+
+Mirroring what it created is the second measurement, and the more useful one:
+
+```bash
+CM_SOURCE=http CM_CONFLUENCE_SITE=https://acme.atlassian.net \
+  CM_ATL_EMAIL=you@acme.com CM_ATL_TOKEN=... CM_REQUESTS_PER_SECOND=10 \
+  mix confluence.sync --mode snapshot      # 732 pages, 21 spaces, 253 s
+```
+
+732 pages in 253 s is **2.9 pages/s** at `CM_REQUESTS_PER_SECOND=10`: the sync is
+bound by the request budget, not by Postgres, so plan a first snapshot of 100 000
+pages at ~10 hours (and watch for 429s before raising the budget).
+
+Two things that surprise a reader on real data: page URLs carry a slug, so
+`/spaces/KEY/pages/ID` answers 302 to the canonical URL — point a load generator
+at `_links.webui` from the REST listing, which is what `reader.js` does; and the
+generator writes lorem ipsum, so a search for a word from *your* site measures the
+old pages only. Search for a word from the generated bodies instead.
+
 ## Starting a server on specific test data
 
 Generated content is a fixture, so it gets its own database
@@ -181,7 +225,10 @@ section are the current ones.
   `-c 1` with `-c 50` on the same URL — if one reader is fast and fifty are not,
   the request is fine and the *capacity* is the problem.
 * **429s** are the reader rate limiter, not the mirror: every `k6` VU shares one
-  client IP. Raise `CM_READER_RATE_LIMIT_PER_MINUTE` for the run.
+  client IP, and the default allows 240 HTML requests a minute, so even one
+  `hey -n 500` trips it. A run that reports a suspiciously flat 700 rps at 70 ms
+  is usually measuring the limiter's 429s — check the status distribution before
+  believing a number. Raise `CM_READER_RATE_LIMIT_PER_MINUTE` for the run.
 * **500s with queue time** are the connection pool: `POOL_SIZE` sets how many
   statements can be in flight. `POOL_SIZE` is per replica and must fit Postgres'
   `max_connections` across all of them ([operations.md](operations.md)).
@@ -220,6 +267,36 @@ little (a wider branch, more text); timings move with the data the way the
 *queries* allow. Two things still scale: search, because `ts_rank_cd` scores
 every match before it can sort them (a design question, not a query to trim),
 and the first home page after a sync on a cold cache, which a sync now warms.
+
+The same screens on the real site above (732 mirrored pages over 21 spaces,
+same laptop and server): a page 513 rps at p95 115 ms, the space catalog 486 rps
+at 129 ms, the home page 453 rps at 138 ms, search 381 rps at 168 ms, and the
+space overview 273 rps at 214 ms — the shape of the generated-data columns, which
+is the useful result: real content is not slower per request than a fixture of
+the same size.
+
+### Where the wall is
+
+Those numbers are latency at a fixed concurrency; they say nothing about
+capacity. The `throughput` profile asks for a fixed arrival rate and reports the
+latency the mirror answers with — raise `RPS` until p95 breaks:
+
+| requested | served | p50 | p95 | dropped iterations |
+| --- | --- | --- | --- | --- |
+| 200 rps | 242 rps | 188 ms | 418 ms | 0 |
+| 300 rps | 343 rps | 1 318 ms | 2 541 ms | 596 |
+| 400 rps | 339 rps | 2 924 ms | 4 372 ms | 4 233 |
+| 800 rps | 299 rps | 7 238 ms | 10 085 ms | 22 717 |
+
+Served stops rising around 300 rps and latency climbs from there: that is the
+knee of one development server on one laptop, and it is queueing, not a slow
+query (the p50 moves with it). A release with a pooled connection set sized to
+Postgres is the number that matters for a deployment; measure it the same way.
+
+```bash
+k6 run -e PROFILE=throughput -e RPS=300 -e DURATION=60s \
+  -e BASE_URL=http://localhost:4000 k6-load-tests/reader.js
+```
 
 ## Things that look like performance problems and are not
 
