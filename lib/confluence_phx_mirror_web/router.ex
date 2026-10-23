@@ -54,6 +54,10 @@ defmodule ConfluencePhxMirrorWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :require_admin do
+    plug Plugs.RequireAdmin
+  end
+
   # ---------------------------------------------------------------------------
   # Reader-facing mirror
   # ---------------------------------------------------------------------------
@@ -107,10 +111,19 @@ defmodule ConfluencePhxMirrorWeb.Router do
       pipe_through :browser
 
       live "/", DashboardLive, :index
+      live "/webhooks", WebhooksLive, :index
       live "/users", UsersLive, :index
       live "/audit", AuditLive, :index
       live "/sync-log", SyncLogLive, :index
     end
+  end
+
+  # The settings page is what the mirror booted with, so it is a plain render:
+  # no socket, same guard (see Plugs.RequireAdmin).
+  scope "/admin", ConfluencePhxMirrorWeb.Admin do
+    pipe_through [:browser, :require_admin]
+
+    get "/settings", SettingsController, :index
   end
 
   # ---------------------------------------------------------------------------

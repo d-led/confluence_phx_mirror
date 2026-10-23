@@ -3,6 +3,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
 
   use ConfluencePhxMirrorWeb, :live_view
 
+  import ConfluencePhxMirrorWeb.AdminComponents
+
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.{Admins, User}
   alias ConfluencePhxMirror.Mirror
@@ -133,20 +135,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       page_title="Users &amp; tokens"
       sidebar?={false}
     >
-      <header class="flex flex-wrap items-end justify-between gap-3 border-b border-base-300/70 pb-5">
-        <div>
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-            Administration
-          </p>
-          <h1 class="mt-1 text-3xl font-semibold">Users &amp; tokens</h1>
-          <p class="mt-1 text-sm text-base-content/70">
-            Accounts are mirror-local — no Confluence credentials are stored. Groups come from the last sync.
-          </p>
-        </div>
-        <.link navigate={~p"/admin"} class="btn btn-ghost btn-sm gap-1.5">
-          <.icon name="hero-arrow-left" class="size-4" /> Dashboard
-        </.link>
-      </header>
+      <.admin_header
+        current={:users}
+        title="Users & tokens"
+        subtitle="Accounts are mirror-local — no Confluence credentials are stored. Groups come from the last sync."
+      />
 
       <div :if={@new_token} class="mt-5 rounded-xl border border-success/40 bg-success/10 p-4">
         <div class="flex items-start justify-between gap-3">

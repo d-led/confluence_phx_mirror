@@ -11,6 +11,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
 
   use ConfluencePhxMirrorWeb, :live_view
 
+  import ConfluencePhxMirrorWeb.AdminComponents
+
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirrorWeb.Time
 
@@ -106,25 +108,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
       page_title="Audit log"
       sidebar?={false}
     >
-      <header class="flex flex-wrap items-end justify-between gap-3 border-b border-base-300/70 pb-4">
-        <div>
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-            Administration
-          </p>
-          <h1 class="mt-1 text-2xl font-semibold">Audit log</h1>
-          <p class="mt-1 text-sm text-base-content/70">
-            Every change the mirror made or saw — newest first, append-only.
-          </p>
-        </div>
-        <div class="flex items-center gap-2">
-          <.link navigate={~p"/admin/sync-log"} class="btn btn-ghost btn-sm gap-1.5">
-            <.icon name="hero-arrow-path" class="size-4" /> Sync log
-          </.link>
-          <.link navigate={~p"/admin"} class="btn btn-ghost btn-sm gap-1.5">
-            <.icon name="hero-arrow-left" class="size-4" /> Dashboard
-          </.link>
-        </div>
-      </header>
+      <.admin_header
+        current={:audit}
+        title="Audit log"
+        subtitle="Every change the mirror made or saw — newest first, append-only."
+      />
 
       <form id="audit-filter" phx-change="filter" class="mt-5 flex flex-wrap items-center gap-2">
         <label class="input input-sm flex min-w-0 flex-1 items-center gap-2 rounded-lg border-base-300 bg-base-200/50">

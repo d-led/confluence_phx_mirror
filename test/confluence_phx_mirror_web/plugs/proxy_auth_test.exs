@@ -54,6 +54,6 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
     conn = put_req_header(conn, "x-forwarded-email", "ops@example.com")
 
     assert {:ok, _view, html} = live(conn, ~p"/admin")
-    assert html =~ "Mirror dashboard"
+    assert html =~ "Sync runs"
   end
 end

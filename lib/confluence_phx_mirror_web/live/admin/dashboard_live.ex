@@ -1,25 +1,25 @@
 defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   @moduledoc """
-  Operator dashboard: freshness, sync runs, recent activity and webhook deliveries,
-  plus the actions an operator needs during a demo or an incident.
+  The overview: freshness, sync runs, recent activity and the actions an
+  operator needs during a demo or an incident.
 
-  The activity list here is a pointer, not the log itself: `/admin/audit` holds
-  the full, filterable audit log with every event's details.
+  Everything here is a pointer or a summary. The sync log streams the detail,
+  `/admin/audit` holds every event, and `/admin/webhooks` holds the deliveries;
+  those pages exist so this one stays a glance rather than a dump.
   """
 
   use ConfluencePhxMirrorWeb, :live_view
 
   import Ecto.Query
   import ConfluencePhxMirrorWeb.UIComponents
+  import ConfluencePhxMirrorWeb.AdminComponents
 
-  alias ConfluencePhxMirror.Accounts.Admins
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.{SnapshotWorker, SpaceWorker}
   alias ConfluencePhxMirror.Sync.SyncRun
-  alias ConfluencePhxMirror.Webhooks
   alias ConfluencePhxMirrorWeb.Plugs
   alias ConfluencePhxMirrorWeb.Time
 
@@ -29,13 +29,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   def mount(_params, _session, socket) do
     if connected?(socket), do: :timer.send_interval(@refresh_ms, self(), :refresh)
 
-    {:ok,
-     assign(socket,
-       webhook_secret?:
-         is_binary(Application.get_env(:confluence_phx_mirror, :webhooks, [])[:secret]),
-       page_title: "Admin"
-     )
-     |> load()}
+    {:ok, assign(socket, page_title: "Overview") |> load()}
   end
 
   @impl true
@@ -91,7 +85,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       space_counts: Mirror.spaces_with_counts(),
       runs: runs,
       audit: Audit.recent(18),
-      deliveries: Webhooks.recent(8),
       recent_pages: Mirror.recent_pages(8),
       last_sync: Mirror.last_successful_sync_run()
     )
@@ -112,47 +105,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       page_title="Admin"
       sidebar?={false}
     >
-      <header class="flex flex-wrap items-end justify-between gap-4 border-b border-base-300/70 pb-5">
-        <div>
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Operations</p>
-          <h1 class="mt-1 text-3xl font-semibold">Mirror dashboard</h1>
-          <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/70">
-            <span class="uppercase tracking-[0.14em] text-base-content/70">Mirroring</span>
-            <a
-              :if={@mirror_url}
-              href={@mirror_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-            >
-              <.icon name="hero-arrow-top-right-on-square" class="size-3.5" /> {@mirror_host}
-            </a>
-            <span :if={is_nil(@mirror_url)} class="text-sm font-medium">{source_name(@mirror_source)}</span>
-          </p>
-          <p class="mt-1 text-xs text-base-content/70">
-            <a href={~p"/admin/audit"} class="link link-primary">Audit log</a>
-            · <a href={~p"/admin/sync-log"} class="link link-primary">Sync log</a>
-            · <a href={~p"/admin/users"} class="link link-primary">Users &amp; tokens</a>
-            <span :if={dev_routes?()}>
-              · <a href="/dev/dashboard" class="link link-primary">LiveDashboard</a>
-            </span>
-          </p>
-          <p
-            :if={Source.demo?(@mirror_source)}
-            class="mt-2 max-w-2xl rounded-lg bg-warning/15 px-3 py-2 text-[11px] text-base-content/70"
-          >
-            Demo data: this mirror reads a sample snapshot bundled with the application, so nothing here was mirrored from a real Confluence site. Set
-            <code>CM_SOURCE=http</code>
-            with site and token settings to mirror a live one.
-          </p>
-          <p :if={@current_user} class="mt-1 text-[11px] text-base-content/70">
-            Signed in as {@current_user.email}
-            <span :if={Admins.source(@current_user)} class="badge badge-primary badge-xs">
-              admin · {Admins.source(@current_user)}
-            </span>
-          </p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
+      <.admin_header
+        current={:overview}
+        title="Overview"
+        subtitle="Freshness, sync runs and recent activity. The sync and audit logs keep the detail."
+      >
+        <:actions>
           <button
             type="button"
             phx-click="snapshot"
@@ -185,8 +143,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           >
             <.icon name="hero-arrow-path-rounded-square" class="size-4" /> Re-read everything
           </button>
-        </div>
-      </header>
+          <a :if={dev_routes?()} href="/dev/dashboard" class="link text-xs">LiveDashboard</a>
+        </:actions>
+      </.admin_header>
+
+      <p
+        :if={Source.demo?(@mirror_source)}
+        class="mt-4 max-w-3xl rounded-lg bg-warning/15 px-3 py-2 text-[11px] text-base-content/70"
+      >
+        Demo data: this mirror reads a sample snapshot bundled with the application, so nothing here was mirrored from a real Confluence site. Set
+        <code>CM_SOURCE=http</code>
+        with site and token settings to mirror a live one.
+      </p>
 
       <section class="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <.stat_card label="Pages" value={@stats.pages} icon="hero-document-text" />
@@ -199,18 +167,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
               do: Time.ago(@last_sync.finished_at || @last_sync.started_at),
               else: "never"
           }
-          hint={if @last_sync, do: Time.datetime(@last_sync.finished_at)}
           icon="hero-arrow-path"
-        />
+        >
+          <:hint :if={@last_sync}>
+            <.local_time at={@last_sync.finished_at} />
+          </:hint>
+        </.stat_card>
       </section>
-
-      <div
-        :if={not @webhook_secret?}
-        class="mt-4 rounded-xl border border-warning/40 bg-warning/5 p-3 text-xs text-base-content/70"
-      >
-        Webhooks are <strong>not configured</strong>: set <code>CM_WEBHOOK_SECRET</code>
-        and point Confluence at <code>/webhooks/confluence</code>. Deliveries without a valid signature are rejected and audited.
-      </div>
 
       <.section title="Sync runs">
         <.data_table id="sync-runs" rows={@runs}>
@@ -265,49 +228,35 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           </ul>
         </.section>
 
-        <.section title="Webhook deliveries" class="mt-0">
-          <.data_table id="webhook-deliveries" rows={@deliveries}>
-            <:head>
-              <th>When</th><th>Event</th><th>Signature</th><th>Status</th>
-            </:head>
-            <:row :let={delivery}>
-              <td class="whitespace-nowrap" title={Time.datetime(delivery.received_at)}>
-                {Time.ago(delivery.received_at)}
-              </td>
-              <td class="font-mono text-[11px]">{delivery.event_type || "—"}</td>
-              <td>
-                <span class={[
-                  "badge badge-xs",
-                  if(delivery.signature_valid, do: "badge-success", else: "badge-error")
-                ]}>
-                  {if delivery.signature_valid, do: "valid", else: "invalid"}
+        <.section title="Recently updated" class="mt-0">
+          <:actions>
+            <a href={~p"/recent"} class="link link-primary text-xs">All recent →</a>
+          </:actions>
+          <ul class="divide-y divide-base-300/60">
+            <li :for={page <- @recent_pages} class="py-1.5">
+              <.link
+                navigate={
+                  ConfluencePhxMirror.Mirror.URLs.page_path(
+                    page.space.key,
+                    page.confluence_id,
+                    page.slug
+                  )
+                }
+                class="flex items-baseline gap-2 text-xs hover:text-primary"
+              >
+                <span class="badge badge-ghost badge-xs">{page.space.key}</span>
+                <span class="min-w-0 flex-1 truncate">{page.title}</span>
+                <span class="shrink-0 text-[11px] text-base-content/70">
+                  {Time.ago(page.external_updated_at)}
                 </span>
-              </td>
-              <td class="text-[11px]">{delivery.status}</td>
-            </:row>
-            <:empty>No deliveries.</:empty>
-          </.data_table>
+              </.link>
+            </li>
+            <li :if={@recent_pages == []} class="py-2 text-xs text-base-content/70">
+              Nothing mirrored yet.
+            </li>
+          </ul>
         </.section>
       </div>
-
-      <section class="mt-8">
-        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-base-content/70">
-          Recently updated pages
-        </h2>
-        <div class="flex flex-wrap gap-2">
-          <.link
-            :for={page <- @recent_pages}
-            navigate={
-              ConfluencePhxMirror.Mirror.URLs.page_path(page.space.key, page.confluence_id, page.slug)
-            }
-            class="inline-flex items-center gap-2 rounded-lg border border-base-300/70 bg-base-100 px-3 py-1.5 text-xs hover:border-primary/40 hover:text-primary"
-          >
-            <span class="badge badge-ghost badge-xs">{page.space.key}</span>
-            <span class="max-w-[20rem] truncate">{page.title}</span>
-            <span class="text-[10px] text-base-content/70">{Time.ago(page.external_updated_at)}</span>
-          </.link>
-        </div>
-      </section>
     </Layouts.app>
     """
   end
@@ -321,11 +270,4 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   defp status_class("failed"), do: "badge-error"
   defp status_class("running"), do: "badge-info"
   defp status_class(_), do: "badge-ghost"
-
-  defp source_name(module) do
-    case Source.kind(module) do
-      :demo -> "bundled demo snapshot — demo data, not a mirrored site"
-      :live -> "Confluence REST API"
-    end
-  end
 end

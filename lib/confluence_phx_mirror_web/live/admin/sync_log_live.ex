@@ -15,6 +15,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
 
   use ConfluencePhxMirrorWeb, :live_view
 
+  import ConfluencePhxMirrorWeb.AdminComponents
+
   alias ConfluencePhxMirror.Confluence.Traffic
   alias ConfluencePhxMirror.Sync.Log
   alias ConfluencePhxMirrorWeb.Time
@@ -157,25 +159,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
       page_title="Sync log"
       sidebar?={false}
     >
-      <header class="flex flex-wrap items-end justify-between gap-3 border-b border-base-300/70 pb-4">
-        <div>
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-            Administration
-          </p>
-          <h1 class="mt-1 text-2xl font-semibold">Sync log</h1>
-          <p class="mt-1 text-sm text-base-content/70">
-            Every page, file and Confluence call, line by line — kept in memory, not in the audit log.
-          </p>
-        </div>
-        <div class="flex items-center gap-2">
-          <.link navigate={~p"/admin/audit"} class="btn btn-ghost btn-sm gap-1.5">
-            <.icon name="hero-clipboard-document-list" class="size-4" /> Audit log
-          </.link>
-          <.link navigate={~p"/admin"} class="btn btn-ghost btn-sm gap-1.5">
-            <.icon name="hero-arrow-left" class="size-4" /> Dashboard
-          </.link>
-        </div>
-      </header>
+      <.admin_header
+        current={:sync_log}
+        title="Sync log"
+        subtitle="Every page, file and Confluence call, line by line — kept in memory, not in the audit log."
+      />
 
       <div class="mt-4 flex flex-wrap items-center gap-2">
         <form id="sync-log-filter" phx-change="filter" class="flex min-w-0 flex-1 items-center gap-2">

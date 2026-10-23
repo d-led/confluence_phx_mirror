@@ -31,7 +31,7 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
     conn = sign_in(conn, user_fixture(%{email: "ops@example.com", role: "member"}))
 
     assert {:ok, _view, html} = live(conn, ~p"/admin")
-    assert html =~ "Mirror dashboard"
+    assert html =~ "Sync runs"
   end
 
   test "a member of the admin group opens the dashboard", %{conn: conn} do
@@ -45,7 +45,7 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
     user = user_fixture(%{email: "lead@example.com"})
 
     assert {:ok, _view, html} = live(sign_in(conn, user), ~p"/admin")
-    assert html =~ "Mirror dashboard"
+    assert html =~ "Sync runs"
   end
 
   test "a seeded administrator may sign in even with self sign-up closed" do

@@ -78,22 +78,34 @@ when a sync pulls a newer snapshot.
   disables them.
 * Webhooks react to single changes within seconds — see [Webhooks](#webhooks).
 
-## The admin dashboard
+## The admin area
 
-Everything you need to operate the mirror as a product lives under `/admin`:
+Everything you need to operate the mirror as a product lives under `/admin`,
+split by what each page is for. Every page carries the same tab strip, so you
+can move between them without going back to a hub:
 
-* `/admin` – freshness, sync runs (counters, errors, `running` → `succeeded` /
-  `partial` / `failed`), webhook deliveries (valid and rejected), manual syncs
-  and "Re-read everything" for a full pull.
-* `/admin/audit` – the audit log: decisions and changes (accounts, tokens,
-  subscriptions, webhooks) and one entry per sync with its counters and what
-  triggered it.
-* `/admin/sync-log` – the live log: every page, file and call to Confluence a
-  sync touches — status, size, latency, retries and the waits the client-side
-  rate limiter imposed — plus a summary line when the run ends (calls, bytes,
-  retries, throttled time, failures and the answers the site gave), held in
-  memory while the run is fresh, with level and text filters.
-* `/admin/users` – accounts, roles, mirrored groups and API tokens.
+* `/admin` (**live**, refreshes every 5 s) – the overview: freshness, sync runs
+  (counters, errors, `running` → `succeeded` / `partial` / `failed`), recent
+  activity and recently updated pages, plus the manual sync actions and
+  "Re-read everything" for a full pull.
+* `/admin/sync-log` (**live**) – the live log: every page, file and call to
+  Confluence a sync touches — status, size, latency, retries and the waits the
+  client-side rate limiter imposed — plus a summary line when the run ends
+  (calls, bytes, retries, throttled time, failures and the answers the site
+  gave), held in memory while the run is fresh, with level and text filters.
+* `/admin/webhooks` (**live**, refreshes every 5 s) – what Confluence sent and
+  whether its signature checked out, including rejected deliveries, plus
+  whether a secret and fixed tokens are configured.
+* `/admin/audit` (**live**) – the audit log: decisions and changes (accounts,
+  tokens, subscriptions, webhooks) and one entry per sync with its counters and
+  what triggered it.
+* `/admin/users` (**live**) – accounts, roles, mirrored groups and API tokens.
+* `/admin/settings` (**static**) – what the mirror booted with: source and sync
+  pacing, the skin and who may pick one, identity and administrators, webhook
+  and mail delivery, rate limits and the blob root. Each row names the
+  environment variable that changes it; secrets are shown as *configured*, never
+  printed. The page is deliberately not a LiveView — these values only change
+  with a restart.
 * `/health` – database check, content counters and last sync; no auth, so it
   can back a probe ([operations.md](operations.md)).
 
