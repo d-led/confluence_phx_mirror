@@ -38,18 +38,16 @@ config :confluence_phx_mirror, Oban,
 # `ConfluencePhxMirror.Confluence.HttpSource` against a real site.
 config :confluence_phx_mirror, :source, ConfluencePhxMirror.Confluence.DemoSource
 
-# Extra skins beyond the built-ins ship as standalone packs: modules
-# implementing `ConfluencePhxMirrorWeb.Skins.Pack`. `FreshBlue` is the
-# reference extension and the mirror's default skin.
+# Themes beyond the built-in default ship as standalone packs: modules
+# implementing `ConfluencePhxMirrorWeb.Skins.Pack`. `FreshBlue` is the reference
+# extension and the theme the mirror ships with.
 config :confluence_phx_mirror, :skin_packs, [ConfluencePhxMirrorWeb.Skins.FreshBlue]
 
-# Every reader may choose a skin from the header; a reader who has not chosen
-# gets this one. Change it with `CM_DEFAULT_SKIN`.
-config :confluence_phx_mirror, default_skin: "fresh-blue"
-
-# A deployment that wants one look for everybody pins it instead — a site skin
-# wins over the reader's cookie and the picker disappears. Unset here on
-# purpose; docs/site-admin-guide.md#skins shows how to set it.
+# The theme the whole site wears. An administrator changes it on the settings
+# page (stored in the `settings` table); this line only seeds it, and `CM_THEME`
+# overrides the seed in a release. Readers pick light, dark or system in the
+# header — never the theme itself.
+config :confluence_phx_mirror, theme: "fresh-blue"
 
 config :confluence_phx_mirror,
   mirror: [name: "Confluence Mirror", tagline: "Read-only, always available"],
@@ -75,8 +73,8 @@ config :confluence_phx_mirror,
   proxy_auth: false,
   proxy_auth_header: "x-forwarded-email",
   proxy_auth_name_header: "x-forwarded-user",
-  # Extra skins for the theme picker. Built-in skins (system/light/mirror/dark)
-  # are always available; the shape is documented in ConfluencePhxMirrorWeb.Skins.
+  # More themes for the admin's picker, on top of the built-in default and the
+  # packs. The shape is documented in ConfluencePhxMirrorWeb.Skins.
   skins: [],
   # Deliveries are stored before their signature is checked so a rejected event
   # stays auditable; that intake is therefore always metered, even where the

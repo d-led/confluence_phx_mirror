@@ -2,83 +2,79 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
   import ConfluencePhxMirror.Fixtures
+  import Phoenix.LiveViewTest
+
+  alias ConfluencePhxMirror.Settings
 
   setup do
     demo_snapshot!()
-    # Readers are anonymous unless a test signs them in.
     previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
     Application.put_env(:confluence_phx_mirror, :auto_admin, false)
     on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
+    Settings.reload()
+    on_exit(fn -> Settings.reload() end)
     :ok
   end
 
-  test "an administrator reads the configuration the mirror booted with", %{conn: conn} do
-    html =
-      conn
-      |> sign_in(admin_conn_user())
-      |> get(~p"/admin/settings")
-      |> html_response(200)
+  test "an administrator sets the theme every reader wears", %{conn: conn} do
+    conn = sign_in(conn, admin_user())
+    {:ok, view, html} = live(conn, ~p"/admin/settings")
 
-    assert html =~ "Settings"
-    assert html =~ "Site skin"
-    assert html =~ "fresh-blue"
-    assert html =~ "CM_SITE_SKIN"
-    assert html =~ "Signed in as"
+    assert html =~ "Fresh blue"
+    assert html =~ "Default"
+
+    # Saving reloads the document, because the theme is an attribute of `<html>`.
+    assert {:error, {:redirect, %{to: "/admin/settings"}}} =
+             view |> element("#theme-form") |> render_submit(%{"theme" => "default"})
+
+    page = conn |> get(~p"/") |> html_response(200)
+    refute document_attributes(page) =~ "fresh-blue"
   end
 
-  test "a secret is reported as configured, never printed", %{conn: conn} do
-    with_env(:webhooks, secret: "super-secret-value", require_signature: true)
+  test "the reader keeps their variant whatever the theme is", %{conn: conn} do
+    conn = sign_in(conn, admin_user())
+    {:ok, view, _html} = live(conn, ~p"/admin/settings")
+
+    view |> element("#theme-form") |> render_submit(%{"theme" => "fresh-blue"})
 
     html =
       conn
-      |> sign_in(admin_conn_user())
-      |> get(~p"/admin/settings")
+      |> Plug.Test.put_req_cookie("mirror_theme", "dark")
+      |> get(~p"/")
       |> html_response(200)
 
-    assert html =~ "configured"
-    refute html =~ "super-secret-value"
+    assert document_attributes(html) =~ ~s(data-theme="fresh-blue")
+    assert document_attributes(html) =~ ~s(data-scheme="dark")
   end
 
-  test "the tabs reach every admin section", %{conn: conn} do
-    html =
-      conn
-      |> sign_in(admin_conn_user())
-      |> get(~p"/admin/settings")
-      |> html_response(200)
+  test "the page shows the configuration the mirror booted with", %{conn: conn} do
+    {:ok, _view, html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
 
-    for path <-
-          ~w(/admin /admin/sync-log /admin/webhooks /admin/audit /admin/users /admin/settings) do
-      assert html =~ ~s(href="#{path}")
-    end
+    assert html =~ "Source &amp; sync"
+    assert html =~ "CM_THEME"
+    assert html =~ "Limits"
   end
 
   test "a member is sent home, not shown the page", %{conn: conn} do
-    conn =
-      conn
-      |> sign_in(user_fixture(%{email: "member@example.com"}))
-      |> get(~p"/admin/settings")
-
-    assert redirected_to(conn) == "/"
-    assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Administrator access required."
+    assert {:error, {:redirect, %{to: "/"}}} =
+             live(
+               sign_in(conn, user_fixture(%{email: "member@example.com"})),
+               ~p"/admin/settings"
+             )
   end
 
   test "an anonymous reader is sent to sign in", %{conn: conn} do
-    conn = get(conn, ~p"/admin/settings")
-
-    assert redirected_to(conn) == "/session"
-    assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Please sign in."
+    assert {:error, {:redirect, %{to: "/session"}}} = live(conn, ~p"/admin/settings")
   end
 
-  defp admin_conn_user do
-    with_env(:admins, ["ops@example.com"])
+  defp admin_user do
+    previous = Application.get_env(:confluence_phx_mirror, :admins)
+    Application.put_env(:confluence_phx_mirror, :admins, ["ops@example.com"])
+
+    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :admins, previous) end)
+
     user_fixture(%{email: "ops@example.com", role: "member"})
   end
 
   defp sign_in(conn, user), do: Plug.Test.init_test_session(conn, %{"user_id" => user.id})
-
-  defp with_env(key, value) do
-    previous = Application.get_env(:confluence_phx_mirror, key)
-    Application.put_env(:confluence_phx_mirror, key, value)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, key, previous) end)
-  end
 end

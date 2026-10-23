@@ -1,14 +1,11 @@
 defmodule ConfluencePhxMirrorWeb.Plugs.Theme do
   @moduledoc """
-  Resolves the daisyUI skin from config or a server-side cookie.
+  Resolves the site's theme and the reader's variant.
 
-  A skin pinned for the whole site (`config :confluence_phx_mirror, :site_skin`)
-  wins for every reader; otherwise the reader's cookie decides. Built-in skins
-  are compiled into `assets/css/app.css`; site-declared skins and packs come
-  from `ConfluencePhxMirrorWeb.Skins`, which also emits their palette for this
-  request. The first paint already has the right `data-theme`, so no
-  client-side script is needed. `system` deliberately sets no attribute:
-  daisyUI's dark theme declares `prefersdark`, so the OS preference applies.
+  The theme is the administrator's choice (`Skins.theme/0`); the variant is the
+  reader's own — `system`, `light` or `dark` — kept in a cookie. Both land on
+  `<html>` as attributes, so the first paint is already right and no JavaScript
+  is involved. `system` leaves the palette to the OS.
   """
 
   import Plug.Conn
@@ -18,15 +15,18 @@ defmodule ConfluencePhxMirrorWeb.Plugs.Theme do
   def init(opts), do: opts
 
   def call(conn, _opts) do
-    theme = Skins.site_skin() || reader_skin(conn)
+    theme = Skins.theme()
+    variant = variant(conn)
 
     conn
     |> assign(:theme, theme)
+    |> assign(:variant, variant)
+    |> assign(:theme_attrs, Skins.attributes(theme, variant))
     |> assign(:skin_css, Skins.style())
   end
 
-  defp reader_skin(conn) do
-    theme = conn.cookies["mirror_theme"]
-    if Skins.valid?(theme), do: theme, else: Skins.default_skin()
+  defp variant(conn) do
+    name = conn.cookies["mirror_theme"]
+    if Skins.variant?(name), do: name, else: "system"
   end
 end

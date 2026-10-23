@@ -1,11 +1,11 @@
-defmodule ConfluencePhxMirrorWeb.Admin.Settings do
+defmodule ConfluencePhxMirrorWeb.Admin.Config do
   @moduledoc """
-  What this mirror booted with, grouped for the admin settings page.
+  The configuration this mirror booted with, grouped for the settings page.
 
   Everything here is read from the application environment when the page is
   requested, and those values were fixed at boot — which is why the page is a
-  static controller and not a LiveView: nothing on it can change while you look
-  at it. Each row names the environment variable that changes it.
+  read-only block on the settings page: nothing in it can change while you
+  look at it. Each row names the environment variable that changes it.
 
   Secrets are reported as present or absent and never printed: the page says
   whether a webhook secret is configured, not what it is.
@@ -50,10 +50,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.Settings do
     %{
       title: "Appearance",
       rows: [
-        row("Default skin", Skins.default_skin(), "CM_DEFAULT_SKIN"),
-        row("Reader picker", picker(), nil),
-        row("Skins offered", Enum.map_join(Skins.all(), ", ", & &1.name), nil),
-        row("Site skin", Skins.site_skin() || "off — readers choose", "CM_SITE_SKIN")
+        row("Theme", Skins.get_theme(Skins.theme()).label, "CM_THEME"),
+        row("Themes offered", Enum.map_join(Skins.themes(), ", ", & &1.name), nil),
+        row("Reader variants", Enum.map_join(Skins.variants(), ", ", & &1.name), nil)
       ]
     }
   end
@@ -160,14 +159,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.Settings do
 
   defp count(nil), do: "—"
   defp count(value), do: to_string(value)
-
-  defp picker do
-    if Skins.site_skin() do
-      "hidden — one skin for every reader"
-    else
-      "#{length(Skins.reader_skins())} skins"
-    end
-  end
 
   defp signed_in(nil), do: "anonymous"
 

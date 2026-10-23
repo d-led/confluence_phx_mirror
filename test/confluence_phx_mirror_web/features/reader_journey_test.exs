@@ -5,13 +5,6 @@ defmodule ConfluencePhxMirrorWeb.Features.ReaderJourneyTest do
 
   setup do
     demo_snapshot!()
-
-    # This file is the reader's own journey, skin choice included; the shipped
-    # whole-site skin is covered by SkinsTest.
-    site_skin = Application.get_env(:confluence_phx_mirror, :site_skin)
-    Application.put_env(:confluence_phx_mirror, :site_skin, nil)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :site_skin, site_skin) end)
-
     :ok
   end
 
@@ -42,13 +35,13 @@ defmodule ConfluencePhxMirrorWeb.Features.ReaderJourneyTest do
     |> assert_has("h1", "Search and CQL")
   end
 
-  test "a reader's skin choice follows them to the next page", %{conn: conn} do
+  test "a reader's variant follows them to the next page", %{conn: conn} do
     conn
     |> visit(~p"/spaces")
     |> click_link("Dark")
-    |> assert_has("html[data-theme='dark']")
+    |> assert_has("html[data-scheme='dark']")
     |> reload_page()
-    |> assert_has("html[data-theme='dark']")
+    |> assert_has("html[data-scheme='dark']")
   end
 
   test "a reader jumps from a page label to everything carrying it", %{conn: conn} do

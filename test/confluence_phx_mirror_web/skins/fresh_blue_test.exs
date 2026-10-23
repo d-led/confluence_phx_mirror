@@ -1,30 +1,37 @@
 defmodule ConfluencePhxMirrorWeb.Skins.FreshBlueTest do
-  use ExUnit.Case, async: true
+  # `Settings.reload/0` reads the table the suite keeps in a sandbox.
+  use ConfluencePhxMirror.DataCase, async: false
 
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirrorWeb.Skins
 
   setup do
-    %{skin: Skins.get("fresh-blue")}
+    Settings.reload()
+    on_exit(fn -> Settings.reload() end)
+    %{theme: Skins.get_theme("fresh-blue")}
   end
 
-  test "is the default choice, and one more skin in the picker", %{skin: skin} do
-    assert skin.label == "Fresh blue"
-    assert skin.custom?
-    refute skin.builtin?
-    assert skin.selectable?
-    assert Skins.default_skin() == "fresh-blue"
+  test "is the theme the mirror ships with", %{theme: theme} do
+    assert theme.label == "Fresh blue"
+    assert theme.note != ""
+    refute theme.builtin?
+    assert Skins.theme() == "fresh-blue"
   end
 
-  test "paints the light variant by default", %{skin: skin} do
-    assert skin.css =~ ~s([data-theme="fresh-blue"]{color-scheme:light)
-    assert skin.css =~ "--color-primary:#1565d8"
-    assert skin.css =~ "--color-base-100:#ffffff"
+  test "paints the light palette by default", %{theme: theme} do
+    assert theme.css =~ ~s([data-theme="fresh-blue"]{color-scheme:light)
+    assert theme.css =~ "--color-primary:#1565d8"
+    assert theme.css =~ "--color-base-100:#ffffff"
   end
 
-  test "paints the dark variant when the OS prefers it", %{skin: skin} do
-    assert skin.css =~ "@media (prefers-color-scheme:dark)"
-    assert skin.css =~ ~s|{[data-theme="fresh-blue"]{color-scheme:dark|
-    assert skin.css =~ "--color-primary:#5c9cf5"
-    assert skin.css =~ "--color-base-100:#1c2026"
+  test "paints the dark palette when it is forced", %{theme: theme} do
+    assert theme.css =~ ~s([data-theme="fresh-blue"][data-scheme="dark"]{color-scheme:dark)
+    assert theme.css =~ "--color-primary:#5c9cf5"
+    assert theme.css =~ "--color-base-100:#1c2026"
+  end
+
+  test "leaves the dark palette to the OS when no variant is forced", %{theme: theme} do
+    assert theme.css =~
+             ~s|@media (prefers-color-scheme:dark){[data-theme="fresh-blue"]:not([data-scheme])|
   end
 end

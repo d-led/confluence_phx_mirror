@@ -109,10 +109,9 @@ config :phoenix, :stacktrace_depth, 20
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
 
-# Development runs with the shipped defaults: `fresh-blue` as the default
-# skin, and the reader theme picker in the header. Set `site_skin` to pin one
-# skin for the whole site (which hides the picker) — see
-# docs/site-admin-guide.md#skins for declaring a site's own skin.
+# Development runs with the shipped theme (`fresh-blue`) and the reader's
+# variant picker (system, light, dark). Change the theme on /admin/settings;
+# docs/site-admin-guide.md#themes-and-variants shows how to ship another one.
 
 config :phoenix_live_view,
   # Include debug annotations and locations in rendered markup.

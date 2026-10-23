@@ -3,11 +3,11 @@ defmodule ConfluencePhxMirror.Settings do
   Decisions an administrator makes at runtime, as opposed to the environment
   the mirror booted with.
 
-  There is one setting today: the **site skin**. It wins over the reader's
-  cookie and hides the theme picker in the header; clearing it hands the choice
-  back to readers. `CM_SITE_SKIN` (or `config :confluence_phx_mirror,
-  :site_skin`) still seeds it for deployments that want it without a manual
-  step, and takes over again when the stored value is cleared.
+  There is one setting today: the **theme** the whole site wears. It is the
+  administrator's choice; readers only pick the variant (light, dark, system).
+  `CM_THEME` (or `config :confluence_phx_mirror, :theme`) seeds it for
+  deployments that want it without a manual step, and takes over again when the
+  stored value is cleared.
 
   Reads are served from `:persistent_term`, so the per-request theme lookup
   never touches the database — the value is loaded once at boot and updated on
@@ -20,12 +20,12 @@ defmodule ConfluencePhxMirror.Settings do
   alias ConfluencePhxMirror.Audit.Entry
   alias ConfluencePhxMirror.Settings.Setting
 
-  @key "site_skin"
-  @term {__MODULE__, :site_skin}
+  @key "theme"
+  @term {__MODULE__, :theme}
 
-  @doc "The site skin an administrator set, or `nil` when none is set."
-  @spec site_skin() :: String.t() | nil
-  def site_skin, do: :persistent_term.get(@term, nil)
+  @doc "The theme an administrator set, or `nil` when none is stored."
+  @spec theme() :: String.t() | nil
+  def theme, do: :persistent_term.get(@term, nil)
 
   @doc """
   Loads the stored settings into memory. Called once, after the repository is
@@ -42,10 +42,10 @@ defmodule ConfluencePhxMirror.Settings do
   def reload, do: load()
 
   @doc """
-  Sets the site skin, or clears it with `nil`/`""`, and records who did it.
+  Sets the theme, or clears it with `nil`/`""`, and records who did it.
   """
-  @spec put_site_skin(String.t() | nil, Audit.actor()) :: :ok
-  def put_site_skin(name, actor) do
+  @spec put_theme(String.t() | nil, Audit.actor()) :: :ok
+  def put_theme(name, actor) do
     name = blank_to_nil(name)
 
     %Setting{}
@@ -57,7 +57,7 @@ defmodule ConfluencePhxMirror.Settings do
 
     Audit.log(
       actor,
-      Entry.new("settings.site_skin", "settings", @key, %{site_skin: name || "none"})
+      Entry.new("settings.theme", "settings", @key, %{theme: name || "none"})
     )
 
     :persistent_term.put(@term, name)

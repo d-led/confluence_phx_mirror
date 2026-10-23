@@ -5,17 +5,17 @@ defmodule ConfluencePhxMirrorWeb.Skins.FreshBlue do
   published colour tokens.
 
   This is the mirror's reference `ConfluencePhxMirrorWeb.Skins.Pack` and the
-  shipped example of a skin with two variants. It is the default choice for a
-  reader who has not picked one:
+  shipped example of a theme with both palettes: one `colors` map for light, one
+  `dark_colors` map for dark, and the reader's variant decides which one paints.
 
-      config :confluence_phx_mirror, default_skin: "fresh-blue"
+  It is the theme the mirror ships with:
 
-  or `CM_DEFAULT_SKIN=fresh-blue` in a release; readers can still switch to any
-  other skin from the header picker.
+      config :confluence_phx_mirror, theme: "fresh-blue"
 
-  A deployment that wants one look for everybody pins it for the whole site —
-  the header picker then disappears. An administrator can set and clear it at
-  runtime from the admin area; see `ConfluencePhxMirror.Settings`.
+  or `CM_THEME=fresh-blue` in a release. An administrator can change the theme
+  at runtime from `/admin/settings`; the readers' own choice — system, light,
+  dark — never changes the palette, only which half of it is used. See
+  `ConfluencePhxMirror.Settings`.
 
   The colours map onto daisyUI's variables: `base-100` is the card surface,
   `base-200` the canvas behind it, `base-300` the 1px border, and the semantic
@@ -79,8 +79,7 @@ defmodule ConfluencePhxMirrorWeb.Skins.FreshBlue do
       %{
         name: "fresh-blue",
         label: "Fresh blue",
-        icon: "hero-sparkles",
-        scheme: :light,
+        note: "blue and slate, light and dark",
         colors: @light,
         dark_colors: @dark,
         radius: %{selector: "0.1875rem", field: "0.1875rem", box: "0.375rem"},

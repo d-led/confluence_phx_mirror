@@ -1,4 +1,4 @@
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/components/layouts/root.html.heex:14,200047D
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/error_html/404.html.heex:10,156654E
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/error_html/429.html.heex:10,67A0DFF
-XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/page_html/show.html.heex:135,1CC329D
+XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/page_html/show.html.heex:143,4E071CA

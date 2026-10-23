@@ -1,84 +1,76 @@
 defmodule ConfluencePhxMirrorWeb.Skins do
   @moduledoc """
-  The skins a site author can offer readers.
+  What the mirror looks like: one **theme** for the whole site, and a
+  **variant** each reader picks.
 
-  Four skins ship with the mirror (`system`, `light`, `mirror`, `dark`), defined
-  as daisyUI themes in `assets/css/app.css`. Every other skin is a *declaration*
-  — a plain map, emitted into the page as a `[data-theme]` rule, so it needs no
-  CSS edit and no asset rebuild.
+  A theme is the brand — the palette pair behind every screen. Two ship with the
+  mirror:
 
-  Declarations come from two places:
+    * `default` — the warm light palette and the violet dark one, compiled into
+      `assets/css/app.css` as daisyUI themes;
+    * `fresh-blue` — a skin pack (`ConfluencePhxMirrorWeb.Skins.FreshBlue`) that
+      is emitted per request, light and dark together.
 
-    * `config :confluence_phx_mirror, :skins` — maps for this deployment;
-    * `config :confluence_phx_mirror, :skin_packs` — modules implementing
-      `ConfluencePhxMirrorWeb.Skins.Pack`, the way a skin ships as a
-      standalone extension (see `ConfluencePhxMirrorWeb.Skins.FreshBlue`).
+  An administrator chooses the theme for everyone on `/admin/settings`; the
+  choice is stored by `ConfluencePhxMirror.Settings` and seeded by config
+  (`:theme`, `CM_THEME`) when nothing is stored.
 
-  A declaration looks like this:
+  A variant is the reader's own setting — `system`, `light` or `dark` — kept in
+  a cookie. `system` follows the OS. Both end up as attributes on `<html>`:
+  `data-theme` names the theme, `data-scheme` forces a palette for a theme that
+  is not compiled in:
 
-      config :confluence_phx_mirror, :skins, [
-        %{
-          name: "acme",
-          label: "Acme",
-          icon: "hero-building-office",
-          scheme: :light,
-          colors: %{
-            base_100: "#ffffff",
-            base_content: "#12243b",
-            primary: "#0b5fff",
-            primary_content: "#ffffff"
-          },
-          radius: %{box: "0.75rem", field: "0.375rem"}
-        }
-      ]
+      <html data-theme="fresh-blue" data-scheme="dark">
 
-  The palette is emitted into the page as a `[data-theme]` rule, so the theme
-  picker, the cookie and every daisyUI component pick it up. Declaring
-  `scheme: :dark` also switches native controls and the code-token palette.
-
-  A declaration may carry `dark_colors` as well. The skin then has two variants
-  under one name and follows the reader's OS preference, exactly as `system`
-  does:
+  A pack adds a theme by returning a declaration with both palettes:
 
       %{
         name: "brand",
-        colors: %{base_100: "#ffffff"},
-        dark_colors: %{base_100: "#111214"}
+        label: "Brand",
+        note: "one line for the admin's picker",
+        colors: %{...},       # light
+        dark_colors: %{...},  # dark; falls back to `colors` when absent
+        radius: %{box: "0.5rem"}
       }
 
-  `selectable: false` keeps a skin out of the reader's picker: it is a *whole
-  skin*, chosen by the deployment rather than by each reader. Pinning one for
-  the whole site is `site_skin`, and `default_skin` is what a reader sees before
-  they pick anything:
+  Declarations come from `config :confluence_phx_mirror, :skins` (maps) and
+  `config :confluence_phx_mirror, :skin_packs` (modules implementing
+  `ConfluencePhxMirrorWeb.Skins.Pack`). Supported colour keys are the daisyUI
+  colour names (`base_*`, `primary`, `secondary`, `accent`, `neutral`, `info`,
+  `success`, `warning`, `error`, each with `_content`), the three radii, plus
+  `border`, `depth` and `noise`; unknown keys and values that are not plain CSS
+  are ignored.
 
-      config :confluence_phx_mirror, default_skin: "fresh-blue"
-      config :confluence_phx_mirror, :site_skin, "fresh-blue"
-
-  Anything the palette cannot express (fonts, component tweaks) goes in
-  `assets/css/author.css`, which is loaded after the main stylesheet.
+  Anything a palette cannot express (fonts, component tweaks) goes in
+  `assets/css/author.css`.
   """
 
-  @type scheme :: :light | :dark
+  alias ConfluencePhxMirror.Settings
 
-  @typedoc "A skin as declared in config or returned by a pack."
-  @type declaration :: map()
+  @type variant :: %{name: String.t(), label: String.t(), icon: String.t()}
 
-  @type skin :: %{
+  @type theme :: %{
           name: String.t(),
           label: String.t(),
-          icon: String.t(),
-          scheme: scheme() | nil,
-          selectable?: boolean(),
+          note: String.t(),
           builtin?: boolean(),
-          custom?: boolean(),
           css: String.t()
         }
 
-  @builtin [
-    %{name: "system", label: "System", icon: "hero-computer-desktop", scheme: nil},
-    %{name: "light", label: "Light", icon: "hero-sun", scheme: :light},
-    %{name: "mirror", label: "Mirror", icon: "hero-sparkles", scheme: :light},
-    %{name: "dark", label: "Dark", icon: "hero-moon", scheme: :dark}
+  @builtin_themes [
+    %{
+      name: "default",
+      label: "Default",
+      note: "warm light, violet dark",
+      builtin?: true,
+      css: ""
+    }
+  ]
+
+  @variants [
+    %{name: "system", label: "System", icon: "hero-computer-desktop"},
+    %{name: "light", label: "Light", icon: "hero-sun"},
+    %{name: "dark", label: "Dark", icon: "hero-moon"}
   ]
 
   @colors ~w(base_100 base_200 base_300 base_content
@@ -94,104 +86,54 @@ defmodule ConfluencePhxMirrorWeb.Skins do
   # so anything that could close the rule or the element is refused.
   @unsafe ~r/[;{}<>"'\n\r]/
 
+  @doc "The themes an administrator can choose, built-in first."
+  @spec themes() :: [theme()]
+  def themes, do: @builtin_themes ++ custom()
+
+  @doc "Whether `name` is a theme this site offers."
+  @spec theme?(String.t() | nil) :: boolean()
+  def theme?(name), do: Enum.any?(themes(), &(&1.name == name))
+
+  @doc "Looks a theme up by name."
+  @spec get_theme(String.t() | nil) :: theme() | nil
+  def get_theme(name), do: Enum.find(themes(), &(&1.name == name))
+
   @doc """
-  Built-in skins first, then the site's declarations in order: config, then
-  each pack. The first declaration of a name wins, so a deployment can refine
-  a pack's skin in config.
+  The theme this site uses: what an administrator stored, else the configured
+  seed, else `default`.
   """
-  @spec all() :: [skin()]
-  def all do
-    builtin_skins() ++ custom()
+  @spec theme() :: String.t()
+  def theme do
+    name = Settings.theme() || configured_theme()
+    if theme?(name), do: name, else: "default"
   end
 
-  @doc """
-  The skins a reader may pick, in picker order.
+  @doc "The reader's own setting: `system`, `light` or `dark`."
+  @spec variants() :: [variant()]
+  def variants, do: @variants
 
-  Empty when the site pins one skin for everyone (`site_skin/0`): the picker
-  would offer choices that the site skin overrides anyway.
+  @doc "Whether `name` is a variant a reader can pick."
+  @spec variant?(String.t() | nil) :: boolean()
+  def variant?(name), do: Enum.any?(@variants, &(&1.name == name))
+
+  @doc """
+  The attributes `<html>` needs to paint `theme` in `variant`.
+
+  A compiled-in theme swaps daisyUI's own `data-theme`; an emitted theme keeps
+  its name and forces the palette with `data-scheme`.
   """
-  @spec reader_skins() :: [skin()]
-  def reader_skins do
-    if site_skin(), do: [], else: Enum.filter(all(), & &1.selectable?)
-  end
-
-  @doc "Every selectable skin name, used to validate the theme cookie."
-  @spec names() :: [String.t()]
-  def names, do: Enum.map(all(), & &1.name)
-
-  @doc "Looks a skin up by the name stored in the cookie."
-  @spec get(String.t() | nil) :: skin() | nil
-  def get(name), do: Enum.find(all(), &(&1.name == name))
-
-  @doc "Whether `name` is a skin this site offers."
-  @spec valid?(String.t() | nil) :: boolean()
-  def valid?(name), do: not is_nil(get(name))
+  @spec attributes(String.t(), String.t()) :: %{optional(String.t()) => String.t()}
+  def attributes("default", "system"), do: %{}
+  def attributes("default", "light"), do: %{"data-theme" => "light"}
+  def attributes("default", "dark"), do: %{"data-theme" => "dark"}
+  def attributes(theme, "system"), do: %{"data-theme" => theme}
+  def attributes(theme, variant), do: %{"data-theme" => theme, "data-scheme" => variant}
 
   @doc """
-  The skin this deployment applies to every reader, or `nil` when readers
-  choose their own.
+  The `[data-theme]` rules for emitted themes.
 
-  An administrator sets it at runtime from the admin area (stored in the
-  `settings` table, loaded at boot). `config :confluence_phx_mirror, :site_skin`
-  or `CM_SITE_SKIN` seeds it for deployments that want it without a manual step;
-  it takes over again when the stored value is cleared.
-  """
-  @spec site_skin() :: String.t() | nil
-  def site_skin do
-    ConfluencePhxMirror.Settings.site_skin() || configured_site_skin()
-  end
-
-  defp configured_site_skin do
-    case Application.get_env(:confluence_phx_mirror, :site_skin) do
-      "" -> nil
-      name when is_binary(name) -> name
-      _name -> nil
-    end
-  end
-
-  @doc """
-  The skin a reader sees before they pick one. `system` when the configured
-  default is not a skin this site offers.
-
-  This is not a site skin: the reader's cookie still wins, and the picker still
-  offers every selectable skin.
-  """
-  @spec default_skin() :: String.t()
-  def default_skin do
-    name = Application.get_env(:confluence_phx_mirror, :default_skin, "system")
-    if valid?(name), do: name, else: "system"
-  end
-
-  @doc """
-  Fails fast when `:site_skin` or `:default_skin` names a skin this site does
-  not offer.
-
-  Called once at boot: a typo should stop the release, not quietly serve the
-  wrong theme until someone notices.
-  """
-  @spec validate!() :: :ok
-  def validate! do
-    check!(:site_skin, site_skin())
-    check!(:default_skin, Application.get_env(:confluence_phx_mirror, :default_skin))
-  end
-
-  defp check!(_key, nil), do: :ok
-
-  defp check!(key, name) do
-    if valid?(name) do
-      :ok
-    else
-      raise ArgumentError,
-            "#{key} #{inspect(name)} is not a skin this site offers; " <>
-              "available: #{Enum.join(names(), ", ")}"
-    end
-  end
-
-  @doc """
-  The `[data-theme]` rules for site-declared skins.
-
-  Built-in skins are already in the compiled stylesheet, so only custom skins
-  are emitted. Returns an empty string when the site declares none.
+  Built-in themes are already in the compiled stylesheet, so only pack and
+  config themes are emitted. Returns an empty string when none are declared.
   """
   @spec style() :: String.t()
   def style do
@@ -201,8 +143,35 @@ defmodule ConfluencePhxMirrorWeb.Skins do
     |> Enum.join("\n")
   end
 
-  defp builtin_skins do
-    Enum.map(@builtin, &Map.merge(&1, %{builtin?: true, selectable?: true}))
+  @doc """
+  Fails fast when the configured seed names a theme this site does not offer.
+
+  Called once at boot: a typo should stop the release, not quietly paint the
+  default theme until someone notices.
+  """
+  @spec validate!() :: :ok
+  def validate! do
+    case configured_theme() do
+      nil ->
+        :ok
+
+      name ->
+        if theme?(name) do
+          :ok
+        else
+          raise ArgumentError,
+                "theme #{inspect(name)} is not a theme this site offers; " <>
+                  "available: #{Enum.map_join(themes(), ", ", & &1.name)}"
+        end
+    end
+  end
+
+  defp configured_theme do
+    case Application.get_env(:confluence_phx_mirror, :theme) do
+      "" -> nil
+      name when is_binary(name) -> name
+      _name -> nil
+    end
   end
 
   defp custom do
@@ -219,56 +188,39 @@ defmodule ConfluencePhxMirrorWeb.Skins do
     site ++ Enum.flat_map(packs, & &1.skins())
   end
 
-  defp normalise(skin) when is_map(skin) do
-    name = to_string(skin[:name] || "")
-    label = to_string(skin[:label] || name)
+  defp normalise(theme) when is_map(theme) do
+    name = to_string(theme[:name] || "")
+    label = to_string(theme[:label] || name)
 
-    if valid_name?(name) and not Enum.any?(@builtin, &(&1.name == name)) do
-      {scheme, scheme_css} = scheme(skin[:scheme])
-      declarations = declarations(skin)
+    if valid_name?(name) and not Enum.any?(@builtin_themes, &(&1.name == name)) do
+      light = declarations_for(theme, theme[:colors])
+      dark = declarations_for(theme, theme[:dark_colors] || theme[:colors])
 
       %{
         name: name,
         label: label,
-        icon: icon(skin[:icon]),
-        scheme: scheme,
-        selectable?: skin[:selectable] != false,
+        note: to_string(theme[:note] || ""),
         builtin?: false,
-        custom?: true,
-        css: rule(name, scheme_css, declarations, dark_declarations(skin))
+        css: rule(name, light, dark)
       }
     end
   end
 
-  defp normalise(_skin), do: nil
+  defp normalise(_theme), do: nil
 
   defp valid_name?(name), do: Regex.match?(@name_pattern, name)
 
-  defp scheme(:dark), do: {:dark, "dark"}
-  defp scheme(:light), do: {:light, "light"}
-  defp scheme("dark"), do: {:dark, "dark"}
-  defp scheme(_scheme), do: {:light, "light"}
-
-  defp icon(nil), do: "hero-swatch"
-  defp icon("hero-" <> _ = icon), do: icon
-  defp icon(_icon), do: "hero-swatch"
-
-  defp declarations(skin) do
-    colours = palette(skin[:colors])
-    radii = radii(skin[:radius])
+  defp declarations_for(theme, colors) do
+    colours = palette(colors)
+    radii = radii(theme[:radius])
 
     extras =
-      [{"--border", skin[:border]}, {"--depth", skin[:depth]}, {"--noise", skin[:noise]}]
+      [{"--border", theme[:border]}, {"--depth", theme[:depth]}, {"--noise", theme[:noise]}]
       |> Enum.filter(fn {_name, value} -> safe_value?(value) end)
       |> Enum.map(fn {name, value} -> "#{name}:#{String.trim(value)}" end)
 
     colours ++ radii ++ extras
   end
-
-  # Only the colours change between variants; radii, border and depth are
-  # shared, so the media query stays small and one palette cannot drift from
-  # the other's geometry.
-  defp dark_declarations(skin), do: palette(skin[:dark_colors])
 
   defp palette(colors) when is_map(colors) do
     colors
@@ -297,18 +249,17 @@ defmodule ConfluencePhxMirrorWeb.Skins do
 
   defp safe_value?(_value), do: false
 
-  defp rule(_name, _scheme_css, [], _dark), do: ""
+  defp rule(_name, [], _dark), do: ""
 
-  defp rule(name, scheme_css, declarations, []) do
-    variant(name, scheme_css, declarations)
-  end
+  defp rule(name, light, dark) do
+    selector = ~s([data-theme="#{name}"])
 
-  defp rule(name, scheme_css, declarations, dark) do
-    variant(name, scheme_css, declarations) <>
-      "\n@media (prefers-color-scheme:dark){" <> variant(name, "dark", dark) <> "}"
-  end
-
-  defp variant(name, scheme_css, declarations) do
-    "[data-theme=\"#{name}\"]{color-scheme:#{scheme_css};#{Enum.join(declarations, ";")}}"
+    [
+      "#{selector}{color-scheme:light;#{Enum.join(light, ";")}}",
+      "#{selector}[data-scheme=\"dark\"]{color-scheme:dark;#{Enum.join(dark, ";")}}",
+      "@media (prefers-color-scheme:dark){#{selector}:not([data-scheme]){color-scheme:dark;" <>
+        "#{Enum.join(dark, ";")}}}"
+    ]
+    |> Enum.join("\n")
   end
 end

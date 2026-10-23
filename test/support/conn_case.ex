@@ -35,4 +35,16 @@ defmodule ConfluencePhxMirrorWeb.ConnCase do
     ConfluencePhxMirror.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
+
+  @doc """
+  The opening `<html>` tag of a page: the attributes the document is painted with.
+
+  Assert against this rather than the whole page. Every emitted theme brings its own
+  `[data-theme][data-scheme]` rules into the stylesheet, so a substring found anywhere
+  in the page says nothing about what the reader is actually looking at.
+  """
+  def document_attributes(html) do
+    [tag] = Regex.run(~r/<html[^>]*>/, html)
+    tag
+  end
 end

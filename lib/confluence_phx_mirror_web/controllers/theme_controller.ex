@@ -1,7 +1,8 @@
 defmodule ConfluencePhxMirrorWeb.ThemeController do
   @moduledoc """
-  Persists the chosen daisyUI skin in a cookie and returns to the page the
-  reader came from. No JavaScript, no flicker, works with caching.
+  Persists the reader's variant — `system`, `light` or `dark` — in a cookie and
+  returns to the page they came from. No JavaScript, no flicker, works with
+  caching. The theme itself is the administrator's choice, not the reader's.
   """
 
   use ConfluencePhxMirrorWeb, :controller
@@ -9,10 +10,10 @@ defmodule ConfluencePhxMirrorWeb.ThemeController do
   alias ConfluencePhxMirrorWeb.Skins
 
   def set(conn, %{"name" => name} = params) do
-    theme = if Skins.valid?(name), do: name, else: "system"
+    variant = if Skins.variant?(name), do: name, else: "system"
 
     conn
-    |> put_resp_cookie("mirror_theme", theme,
+    |> put_resp_cookie("mirror_theme", variant,
       max_age: 365 * 24 * 60 * 60,
       same_site: "Lax",
       http_only: true,

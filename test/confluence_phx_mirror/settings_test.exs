@@ -10,24 +10,24 @@ defmodule ConfluencePhxMirror.SettingsTest do
     :ok
   end
 
-  test "stores the site skin and records who set it" do
-    assert :ok = Settings.put_site_skin("fresh-blue", {:system, "test"})
+  test "stores the theme and records who set it" do
+    assert :ok = Settings.put_theme("default", {:system, "test"})
 
-    assert Settings.site_skin() == "fresh-blue"
-    assert [%{action: "settings.site_skin", actor_type: "system"}] = Audit.recent(1)
+    assert Settings.theme() == "default"
+    assert [%{action: "settings.theme", actor_type: "system"}] = Audit.recent(1)
   end
 
   test "an empty value clears it" do
-    Settings.put_site_skin("fresh-blue", {:system, "test"})
-    Settings.put_site_skin("", {:system, "test"})
+    Settings.put_theme("default", {:system, "test"})
+    Settings.put_theme("", {:system, "test"})
 
-    assert Settings.site_skin() == nil
+    assert Settings.theme() == nil
   end
 
   test "a reload picks up what the table holds" do
-    Settings.put_site_skin("fresh-blue", {:system, "test"})
+    Settings.put_theme("default", {:system, "test"})
     Settings.reload()
 
-    assert Settings.site_skin() == "fresh-blue"
+    assert Settings.theme() == "default"
   end
 end
