@@ -29,6 +29,7 @@ defmodule ConfluencePhxMirror.Mirror.Space do
     field :icon_media_type, :string
     field :icon_sha256, :string
     field :synced_at, :utc_datetime
+    field :deleted_at, :utc_datetime
 
     has_many :pages, ConfluencePhxMirror.Mirror.Page
 
@@ -66,5 +67,13 @@ defmodule ConfluencePhxMirror.Mirror.Space do
   @doc "Audit entry for pages a sync stopped finding in Confluence."
   def audit_event_pages_deleted(%__MODULE__{} = space, count) do
     Entry.new("pages.deleted", "space", space.key, %{count: count})
+  end
+
+  def audit_event_space_deleted(%__MODULE__{} = space, pages) do
+    Entry.new("space.deleted", "space", space.key, %{pages: pages})
+  end
+
+  def audit_event_space_purged(%__MODULE__{} = space, counts) do
+    Entry.new("space.purged", "space", space.key, counts)
   end
 end

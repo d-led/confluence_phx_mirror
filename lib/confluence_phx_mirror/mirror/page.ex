@@ -10,6 +10,8 @@ defmodule ConfluencePhxMirror.Mirror.Page do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias ConfluencePhxMirror.Audit.Entry
+
   @type t :: %__MODULE__{}
 
   @types ~w(page blogpost)
@@ -95,5 +97,12 @@ defmodule ConfluencePhxMirror.Mirror.Page do
       "" -> "page"
       slug -> slug
     end
+  end
+
+  def audit_event_purged(%__MODULE__{} = page) do
+    Entry.new("page.purged", "page", to_string(page.confluence_id), %{
+      title: page.title,
+      type: page.type
+    })
   end
 end

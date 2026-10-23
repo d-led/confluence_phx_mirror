@@ -115,6 +115,7 @@ defmodule ConfluencePhxMirror.Sync do
       {:ok, space_dtos} ->
         {space_dtos, skipped} = importable_spaces(space_dtos)
         {spaces, icon_errors} = upsert_spaces(source, space_dtos)
+        {spaces_trashed, pages_trashed} = trash_missing_spaces(space_dtos)
         {spaces, permission_errors} = sync_space_permissions(source, spaces)
 
         {entries, counts, errors, deleted} = sync_pages_of(spaces, source, opts)
@@ -129,6 +130,8 @@ defmodule ConfluencePhxMirror.Sync do
             "spaces" => length(spaces),
             "skipped_spaces" => skipped,
             "deleted" => deleted,
+            "spaces_trashed" => spaces_trashed,
+            "pages_trashed" => pages_trashed,
             "group_members" => members
           })
           |> Map.merge(page_counts(counts))
@@ -215,6 +218,23 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp raise_source_error(scope, id, reason) do
     raise "Confluence #{scope} fetch failed#{if id, do: " for #{inspect(id)}"}: #{inspect(reason)}"
+  end
+
+  # A snapshot is the only run that sees the whole site, so it is the only run
+  # that can tell a space was deleted. It trashes rather than deletes, and it
+  # trashes nothing from an empty listing: no spaces at all is a permission or
+  # configuration problem far more often than an empty site, which is the same
+  # guard the per-space page listing gets.
+  defp trash_missing_spaces([]), do: {0, 0}
+
+  defp trash_missing_spaces(space_dtos) do
+    trashed = Mirror.prune_missing_spaces(Enum.map(space_dtos, & &1.key))
+
+    Enum.each(trashed, fn {space, pages} ->
+      Audit.log(Audit.system_actor(), Space.audit_event_space_deleted(space, pages))
+    end)
+
+    {length(trashed), trashed |> Enum.map(&elem(&1, 1)) |> Enum.sum()}
   end
 
   # Everyone has a personal space, and mirroring the sync account's own drafts

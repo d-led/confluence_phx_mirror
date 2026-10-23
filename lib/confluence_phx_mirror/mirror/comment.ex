@@ -14,6 +14,7 @@ defmodule ConfluencePhxMirror.Mirror.Comment do
     field :external_url, :string
     field :external_created_at, :utc_datetime
     field :synced_at, :utc_datetime
+    field :deleted_at, :utc_datetime
 
     belongs_to :page, ConfluencePhxMirror.Mirror.Page
     belongs_to :parent, __MODULE__

@@ -41,12 +41,18 @@ defmodule ConfluencePhxMirror.Mirror do
   the directory to `/spaces`.
   """
   def list_spaces(opts \\ []) do
-    from(s in Space, order_by: [asc: s.name], limit: ^Keyword.get(opts, :limit))
+    from(s in Space,
+      where: is_nil(s.deleted_at),
+      order_by: [asc: s.name],
+      limit: ^Keyword.get(opts, :limit)
+    )
     |> Repo.all()
   end
 
   def get_space_by_key(key) when is_binary(key) do
-    Repo.get_by(Space, key: String.upcase(key))
+    key = String.upcase(key)
+
+    Repo.one(from s in Space, where: s.key == ^key and is_nil(s.deleted_at))
   end
 
   def find_space(key) do
@@ -98,7 +104,7 @@ defmodule ConfluencePhxMirror.Mirror do
     Counters.fetch(:spaces_with_counts, fn ->
       from(s in Space,
         left_join: p in assoc(s, :pages),
-        where: is_nil(p.deleted_at),
+        where: is_nil(s.deleted_at) and is_nil(p.deleted_at),
         group_by: s.id,
         order_by: [asc: s.name],
         select: {s, count(p.id)}
@@ -472,19 +478,26 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
-  Marks pages of `space` that Confluence no longer returns as deleted.
+  Marks pages of `space` that Confluence no longer returns as deleted, and their
+  comments with them.
 
-  Rows are kept for the audit log; queries filter on `deleted_at`.
+  Rows are kept for the audit log and for an administrator to purge from the
+  trash; queries filter on `deleted_at`.
   """
   def mark_missing_deleted(space, seen_confluence_ids) do
-    query =
-      from p in Page,
+    now = now()
+
+    ids =
+      from(p in Page,
         where:
           p.space_id == ^space.id and is_nil(p.deleted_at) and
-            p.confluence_id not in ^Enum.to_list(seen_confluence_ids)
+            p.confluence_id not in ^Enum.to_list(seen_confluence_ids),
+        select: p.id
+      )
+      |> Repo.all()
 
-    {count, _} = Repo.update_all(query, set: [deleted_at: now(), updated_at: now()])
-    count
+    trash_pages(ids, now)
+    length(ids)
   end
 
   def mark_deleted(confluence_id) do
@@ -493,8 +506,147 @@ defmodule ConfluencePhxMirror.Mirror do
         {:error, :not_found}
 
       page ->
-        page |> Ecto.Changeset.change(deleted_at: now()) |> Repo.update()
+        now = now()
+        page = page |> Ecto.Changeset.change(deleted_at: now) |> Repo.update!()
+        trash_comments([page.id], now)
+        {:ok, page}
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Trash
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Trashes the mirrored spaces a snapshot no longer lists, with their pages and
+  those pages' comments. Returns `{spaces, pages}`.
+
+  The same rule as a deleted page: the space stops being readable here, but its
+  rows stay until an administrator purges them (`ConfluencePhxMirror.Trash`).
+  """
+  def prune_missing_spaces(seen_keys) do
+    keep = Enum.map(seen_keys, &Space.normalise_key/1)
+
+    from(s in Space, where: is_nil(s.deleted_at) and s.key not in ^keep)
+    |> Repo.all()
+    |> Enum.map(&{&1, trash_space(&1)})
+  end
+
+  @doc "Trashes one space with its pages and their comments; returns how many pages."
+  def trash_space(%Space{} = space) do
+    now = now()
+
+    ids =
+      from(p in Page, where: p.space_id == ^space.id and is_nil(p.deleted_at), select: p.id)
+      |> Repo.all()
+
+    trash_pages(ids, now)
+
+    from(s in Space, where: s.id == ^space.id and is_nil(s.deleted_at))
+    |> Repo.update_all(set: [deleted_at: now, updated_at: now])
+
+    length(ids)
+  end
+
+  @doc """
+  Spaces in the trash, newest first, with the number of pages that go with each.
+  """
+  def trashed_spaces do
+    from(s in Space,
+      where: not is_nil(s.deleted_at),
+      order_by: [desc: s.deleted_at],
+      select: {s, fragment("(SELECT count(*) FROM pages p WHERE p.space_id = ?)", s.id)}
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Trashed pages and blog posts that did not go with a trashed space.
+
+  Options: `:type` (`"page"` or `"blogpost"`) and `:limit`.
+  """
+  def trashed_pages(opts \\ []) do
+    query =
+      from(p in Page,
+        join: s in assoc(p, :space),
+        where: not is_nil(p.deleted_at) and is_nil(s.deleted_at),
+        order_by: [desc: p.deleted_at, asc: p.title],
+        limit: ^Keyword.get(opts, :limit),
+        select: {p, s}
+      )
+
+    case Keyword.get(opts, :type) do
+      nil -> query
+      type -> where(query, [p, _s], p.type == ^type)
+    end
+    |> Repo.all()
+  end
+
+  @doc """
+  Removes a trashed space for good: its pages, their comments and attachments,
+  and every row that hangs off them (Postgres cascades), plus its icon.
+
+  Returns the blob keys the caller must delete from the store. Refuses a space
+  that is not in the trash, so a live space cannot be purged by mistake.
+  """
+  def purge_space(%Space{deleted_at: nil}), do: {:error, :not_trashed}
+
+  def purge_space(%Space{} = space) do
+    Repo.transaction(fn ->
+      keys =
+        from(a in Attachment,
+          join: p in assoc(a, :page),
+          where: p.space_id == ^space.id,
+          select: a.blob_key
+        )
+        |> blob_keys()
+
+      pages = Repo.aggregate(from(p in Page, where: p.space_id == ^space.id), :count)
+      Repo.delete!(space)
+
+      %{
+        pages: pages,
+        blob_keys: [space.icon_blob_key | keys] |> Enum.reject(&is_nil/1) |> Enum.uniq()
+      }
+    end)
+  end
+
+  @doc """
+  Removes a trashed page for good, with its comments, attachments and the rows
+  that hang off it. Returns the blob keys the caller must delete.
+  """
+  def purge_page(%Page{deleted_at: nil}), do: {:error, :not_trashed}
+
+  def purge_page(%Page{} = page) do
+    Repo.transaction(fn ->
+      keys =
+        from(a in Attachment, where: a.page_id == ^page.id, select: a.blob_key)
+        |> blob_keys()
+
+      Repo.delete!(page)
+      %{blob_keys: keys}
+    end)
+  end
+
+  defp blob_keys(query), do: query |> Repo.all() |> Enum.reject(&is_nil/1)
+
+  defp trash_pages([], _now), do: 0
+
+  defp trash_pages(ids, now) do
+    {pages, _} =
+      from(p in Page, where: p.id in ^ids)
+      |> Repo.update_all(set: [deleted_at: now, updated_at: now])
+
+    trash_comments(ids, now)
+    pages
+  end
+
+  defp trash_comments(page_ids, now) do
+    {comments, _} =
+      from(c in Comment, where: c.page_id in ^page_ids and is_nil(c.deleted_at))
+      |> Repo.update_all(set: [deleted_at: now, updated_at: now])
+
+    comments
   end
 
   @doc """
@@ -828,7 +980,10 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   def comments(%Page{id: id}) do
-    from(c in Comment, where: c.page_id == ^id, order_by: [asc: c.external_created_at])
+    from(c in Comment,
+      where: c.page_id == ^id and is_nil(c.deleted_at),
+      order_by: [asc: c.external_created_at]
+    )
     |> Repo.all()
   end
 
@@ -1131,7 +1286,7 @@ defmodule ConfluencePhxMirror.Mirror do
             spaces: count(s.id),
             pages: fragment("(SELECT count(*) FROM pages WHERE deleted_at IS NULL)"),
             attachments: fragment("(SELECT count(*) FROM attachments)"),
-            comments: fragment("(SELECT count(*) FROM comments)"),
+            comments: fragment("(SELECT count(*) FROM comments WHERE deleted_at IS NULL)"),
             labels: fragment("(SELECT count(*) FROM labels)")
           }
         )
