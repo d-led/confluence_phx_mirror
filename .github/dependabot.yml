@@ -1,0 +1,40 @@
+# Dependency updates as pull requests: one per ecosystem, weekly, and the CI
+# workflow above is what decides whether they land.
+#
+# The Dockerfile takes its base images as build arguments (ELIXIR_VERSION,
+# OTP_VERSION, DEBIAN_VERSION, NODE_VERSION) rather than as literal `FROM`
+# tags, so dependabot cannot see them; bump them by hand — they are the four
+# lines at the top of the Dockerfile, and CI scans the result either way.
+
+version: 2
+
+updates:
+  - package-ecosystem: mix
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      hex:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: "/assets"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: "/deploy/fly/proxy"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
