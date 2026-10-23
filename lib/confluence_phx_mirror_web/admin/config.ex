@@ -55,7 +55,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
         row("Admin groups", joined(config(:admin_groups)), "CM_ADMIN_GROUPS"),
         row("Proxy identity", proxy(), "CM_PROXY_AUTH"),
         row("Automatic sign-in", toggle(config(:auto_admin)), "MIRROR_AUTO_ADMIN"),
-        row("Self sign-up", toggle(config(:self_signup)), "MIRROR_SELF_SIGNUP")
+        row("Self sign-up", toggle(config(:self_signup)), "MIRROR_SELF_SIGNUP"),
+        row(
+          "Site-disabled readers",
+          if(config(:allow_site_disabled_readers, false),
+            do: "admitted",
+            else: "refused (the site decides)"
+          ),
+          "MIRROR_ALLOW_SITE_DISABLED_READERS"
+        )
       ]
     }
   end

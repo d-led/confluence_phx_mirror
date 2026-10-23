@@ -29,6 +29,25 @@ defmodule ConfluencePhxMirrorWeb.Presence do
   @doc "Number of readers with the mirror open."
   def online_count, do: @site_topic |> reader_count()
 
+  @doc """
+  The site topic's key for a reader.
+
+  Derived from the reader's own key, so two tabs are still one person, but
+  opaque: every client on the site receives this topic's state and the footer
+  only needs the count — not a list of who is here or which accounts they are.
+  """
+  def site_key(reader_key), do: "reader:" <> digest(reader_key)
+
+  # Salted with the deployment's secret: unsalted, anyone could hash candidate
+  # account ids and read the state back as a list of who is online.
+  defp digest(reader_key) do
+    salt = ConfluencePhxMirrorWeb.Endpoint.config(:secret_key_base) || "site presence"
+
+    :crypto.hash(:sha256, [reader_key, salt])
+    |> Base.url_encode64(padding: false)
+    |> binary_part(0, 22)
+  end
+
   # Presence keeps one entry per key with one meta per tab; a count asks how
   # many people, so it counts the entries, not the metas.
   defp reader_count(topic), do: topic |> list() |> map_size()

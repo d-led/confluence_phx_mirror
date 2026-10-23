@@ -2,8 +2,9 @@ defmodule ConfluencePhxMirrorWeb.SiteChannel do
   @moduledoc """
   Joins every reader to the site topic, which the footer counts.
 
-  Only the number of readers is published, so a reader is tracked without a
-  name: who is reading a page is only told to the readers of that page.
+  Only the number of readers is published, so the topic is keyed opaquely and
+  tracks no metadata: who is reading a page is only told to that page's
+  readers.
   """
 
   use Phoenix.Channel
@@ -18,7 +19,7 @@ defmodule ConfluencePhxMirrorWeb.SiteChannel do
 
   @impl true
   def handle_info(:after_join, socket) do
-    {:ok, _} = Presence.track(socket, socket.assigns.reader_key, %{})
+    {:ok, _} = Presence.track(socket, Presence.site_key(socket.assigns.reader_key), %{})
     push(socket, "presence_state", Presence.list(socket.topic))
     {:noreply, socket}
   end

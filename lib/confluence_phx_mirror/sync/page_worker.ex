@@ -7,6 +7,9 @@ defmodule ConfluencePhxMirror.Sync.PageWorker do
 
   The outcome is left to `Sync.run/2`, which records a failed run and re-raises
   so that Oban retries; a run that returns is a run that finished.
+
+  A sync already in flight makes this job wait rather than drop the edit: the
+  webhook said a page changed, and snoozing keeps that promise.
   """
 
   use Oban.Worker, queue: :sync, max_attempts: 5, unique: [period: 60, keys: [:confluence_id]]
@@ -18,14 +21,14 @@ defmodule ConfluencePhxMirror.Sync.PageWorker do
 
   @impl true
   def perform(%Oban.Job{args: %{"confluence_id" => id} = args}) do
-    {:ok, _run} =
-      Sync.run(:page,
-        confluence_id: confluence_id(id),
-        actor: @actor,
-        trigger: trigger(args)
-      )
-
-    :ok
+    case Sync.run(:page,
+           confluence_id: confluence_id(id),
+           actor: @actor,
+           trigger: trigger(args)
+         ) do
+      {:ok, _run} -> :ok
+      {:error, :already_running} -> {:snooze, 30}
+    end
   end
 
   # Job arguments survive a round trip through JSON, so an id may come back as

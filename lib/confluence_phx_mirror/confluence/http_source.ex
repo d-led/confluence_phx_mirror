@@ -148,12 +148,17 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   @impl true
   def space_permissions(_space_key, _opts), do: {:error, :not_supported}
 
+  # Cloud removed "who is in this group" (`/group/{name}/member` answers 404 for
+  # a group that exists), but it still answers the other direction, so the sync
+  # learns membership one identity at a time instead. See `Mirror.known_identities/0`.
   @impl true
-  def group_members(group_name, _opts) do
-    path = "/group/#{URI.encode_www_form(group_name)}/member"
-
-    with {:ok, results} <- paginate_json(path, %{"limit" => page_limit()}) do
-      {:ok, Enum.map(results, &parse_group_member/1)}
+  def groups_of_account(account_id, _opts) when is_binary(account_id) and account_id != "" do
+    with {:ok, results} <-
+           paginate_json("/user/memberof", %{
+             "accountId" => account_id,
+             "limit" => page_limit()
+           }) do
+      {:ok, results |> Enum.map(& &1["name"]) |> Enum.reject(&is_nil/1)}
     end
   end
 
@@ -425,14 +430,6 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       version: get_in(content, ["version", "number"]) || 1,
       download_url: content["_links"]["download"],
       updated_at: parse_time(get_in(content, ["version", "when"]))
-    }
-  end
-
-  defp parse_group_member(member) do
-    %{
-      email: member["email"] || get_in(member, ["user", "email"]),
-      account_id: member["accountId"] || get_in(member, ["user", "accountId"]),
-      display_name: member["displayName"] || get_in(member, ["user", "displayName"])
     }
   end
 

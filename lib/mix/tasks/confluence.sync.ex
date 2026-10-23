@@ -40,6 +40,14 @@ defmodule Mix.Tasks.Confluence.Sync do
       {:ok, run} ->
         print_summary(run)
         if run.status == "failed", do: exit({:shutdown, 1})
+
+      {:error, :already_running} ->
+        Mix.shell().error(
+          "Another sync is already running; nothing was started. " <>
+            "Stop it from the admin dashboard first, or wait for it to finish."
+        )
+
+        exit({:shutdown, 75})
     end
   end
 

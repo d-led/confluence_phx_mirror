@@ -5,9 +5,7 @@ defmodule ConfluencePhxMirror.Accounts.AdminsTest do
 
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.Admins
-  alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Repo
 
   test "the admin role is the first source" do
     assert Admins.source(user_fixture(%{role: "admin"})) == :role
@@ -80,8 +78,9 @@ defmodule ConfluencePhxMirror.Accounts.AdminsTest do
     assert Accounts.get_user(bootstrap.id).role == "admin"
   end
 
-  test "an ordinary administrator can step down" do
+  test "an ordinary administrator can step down while another one remains" do
     admin = user_fixture(%{email: "lead@example.com", role: "admin"})
+    user_fixture(%{email: "deputy@example.com", role: "admin"})
 
     refute Admins.protected?(admin)
     assert {:ok, %{role: "member"}} = Accounts.change_role(admin, "member", {:system, "test"})

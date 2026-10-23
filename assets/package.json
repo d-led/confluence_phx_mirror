@@ -4,6 +4,6 @@
   "private": true,
   "description": "Browser dependencies bundled by esbuild; loaded from assets/js/app.js.",
   "dependencies": {
-    "highlight.js": "^11.11.1"
+    "highlight.js": "^11.12.0"
   }
 }

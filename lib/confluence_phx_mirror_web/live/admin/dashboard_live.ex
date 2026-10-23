@@ -16,27 +16,65 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Confluence.Source
+  alias ConfluencePhxMirror.Confluence.Traffic
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.{SnapshotWorker, SpaceWorker}
   alias ConfluencePhxMirror.Sync.SyncRun
   alias ConfluencePhxMirrorWeb.Plugs
   alias ConfluencePhxMirrorWeb.Time
 
   @refresh_ms 5_000
+  # The "sync one space" panel narrows in the database and takes a window: a
+  # site with hundreds of spaces should not feel like a list of hundreds.
+  @space_window 20
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: :timer.send_interval(@refresh_ms, self(), :refresh)
 
-    {:ok, assign(socket, page_title: "Overview") |> load()}
+    {:ok,
+     assign(socket,
+       page_title: "Overview",
+       open_menu: nil,
+       space_query: "",
+       sync_spaces: spaces_like("")
+     )
+     |> load()}
   end
 
   @impl true
   def handle_info(:refresh, socket), do: {:noreply, load(socket)}
 
+  # Every event is a name and a handler: the clauses are one line each, so this
+  # function reads as the table of what the dashboard can be asked to do.
   @impl true
-  def handle_event("snapshot", _params, socket) do
+  def handle_event("toggle_menu", params, socket), do: toggle_menu(params, socket)
+  def handle_event("close_menu", params, socket), do: close_menu(params, socket)
+  def handle_event("space_query", params, socket), do: space_query(params, socket)
+  def handle_event("snapshot", params, socket), do: snapshot(params, socket)
+  def handle_event("full_sync", params, socket), do: full_sync(params, socket)
+  def handle_event("sync_space", params, socket), do: sync_space(params, socket)
+  def handle_event("cancel_sync", params, socket), do: cancel_sync(params, socket)
+  def handle_event("cancel_queued", params, socket), do: cancel_queued(params, socket)
+
+  # One dropdown, so a single name: opening it twice closes it, Escape closes
+  # it, and a click anywhere else does too.
+  defp toggle_menu(%{"menu" => menu}, socket) do
+    open = if socket.assigns.open_menu == menu, do: nil, else: menu
+    {:noreply, assign(socket, :open_menu, open)}
+  end
+
+  defp close_menu(_params, socket) do
+    {:noreply, assign(socket, open_menu: nil, space_query: "", sync_spaces: spaces_like(""))}
+  end
+
+  defp space_query(%{"space" => query}, socket) do
+    {:noreply, assign(socket, space_query: query, sync_spaces: spaces_like(query))}
+  end
+
+  defp snapshot(_params, socket) do
     %{"trigger" => requested_by(socket)}
     |> SnapshotWorker.new()
     |> Oban.insert()
@@ -44,7 +82,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     {:noreply, put_flash(socket, :info, "Sync queued. Runs appear below within seconds.")}
   end
 
-  def handle_event("full_sync", _params, socket) do
+  defp full_sync(_params, socket) do
     %{"trigger" => "#{requested_by(socket)}, re-reading everything", "mode" => "snapshot"}
     |> SnapshotWorker.new()
     |> Oban.insert()
@@ -52,14 +90,91 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     {:noreply, put_flash(socket, :info, "Full re-read queued: every page will be fetched again.")}
   end
 
-  def handle_event("sync_space", %{"key" => key}, socket) do
+  defp sync_space(%{"key" => key}, socket) do
     %{"space_key" => key, "trigger" => requested_by(socket)}
     |> SpaceWorker.new()
     |> Oban.insert()
 
-    {:noreply, put_flash(socket, :info, "Space #{key} queued for refresh.")}
+    {:noreply,
+     socket
+     |> put_flash(:info, "Space #{key} queued for refresh.")
+     |> assign(open_menu: nil, space_query: "", sync_spaces: spaces_like(""))}
   end
 
+  # A cancel is a request the run honours between pages, so the answer is
+  # "asked", not "stopped": the table shows the status change on the next tick.
+  defp cancel_sync(%{"run_id" => run_id}, socket) do
+    case Sync.cancel(run_id, {:user, socket.assigns.current_user}) do
+      {:ok, _run} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Cancelling: the run stops after the page it is working on.")
+         |> load()}
+
+      {:error, :not_running} ->
+        {:noreply, socket |> put_flash(:error, "That run is not running any more.") |> load()}
+    end
+  end
+
+  # A queued job has not started, so dropping it is a queue operation: it never
+  # becomes a run, and nothing has to be interrupted.
+  defp cancel_queued(%{"id" => id}, socket) do
+    case Sync.cancel_queued(String.to_integer(id), {:user, socket.assigns.current_user}) do
+      {:ok, _job} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Dropped from the queue: that sync will not run.")
+         |> load()}
+
+      {:error, :not_queued} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "That one already started, so it is a run now. Its line is above.")
+         |> load()}
+    end
+  end
+
+  # The menu's list is a database answer: name or key contains the words typed,
+  # a window of twenty, alphabetical. Nothing is filtered in the browser.
+  defp spaces_like(query), do: Mirror.list_spaces(query: query, limit: @space_window)
+
+  # What the running run is doing, in numbers that move: the counters are
+  # written by the sync as it counts, `Traffic` keeps what the calls cost, and
+  # this page re-reads both every few seconds.
+  defp progress(nil), do: nil
+
+  defp progress(run) do
+    traffic = Traffic.summary()
+    stats = run.stats || %{}
+    elapsed_s = max(DateTime.diff(DateTime.utc_now(), run.started_at, :second), 1)
+    pages = Map.get(stats, "pages", 0)
+
+    %{
+      phase: phase_label(Map.get(stats, "phase")),
+      mode: run.mode,
+      trigger: run.trigger || "the schedule",
+      running_for: Time.duration(run.started_at, DateTime.utc_now()),
+      pages: pages,
+      requests: traffic.requests,
+      bytes: traffic.bytes,
+      retries: traffic.retries,
+      failed: traffic.failed,
+      pace: "#{Float.round(pages / elapsed_s, 1)} pages/s"
+    }
+  end
+
+  # The steps a run walks, in the order `Sync` walks them.
+  defp phase_label(nil), do: "talking to the site"
+  defp phase_label("people"), do: "reading people and groups"
+  defp phase_label("spaces"), do: "reading spaces"
+  defp phase_label("pages"), do: "reading pages"
+  defp phase_label("details"), do: "reading comments, files and restrictions"
+  defp phase_label("accounts"), do: "checking the site's accounts"
+  defp phase_label(other), do: other
+
+  defp human_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
+  defp human_bytes(bytes) when bytes < 1024 * 1024, do: "#{round(bytes / 1024)} KB"
+  defp human_bytes(bytes), do: "#{Float.round(bytes / (1024 * 1024), 1)} MB"
   # The audit log answers "who asked for this?" for every run, so a manual one
   # carries the address of the admin who pressed the button.
   defp requested_by(socket) do
@@ -70,6 +185,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   end
 
   defp load(socket) do
+    # A "running" run whose node is gone would otherwise sit at the top of this
+    # table forever. The check is one advisory-lock probe while a sync runs and
+    # one indexed select while none does.
+    Sync.abandon_abandoned_runs()
+
     runs =
       Repo.all(
         from r in SyncRun,
@@ -82,8 +202,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       # The shell's switcher draws a window of the directory, so the dashboard
       # sends a window: this reloads every five seconds.
       spaces: Mirror.list_spaces(limit: Plugs.SiteContext.switcher_limit()),
-      space_counts: Mirror.spaces_with_counts(),
-      runs: runs,
+      # Queue and history are one list: what waits is what an operator can still
+      # stop, and it reads next to what already ran.
+      rows: sync_rows(Sync.queued(), runs),
+      # The one the cancel button acts on: only ever zero or one, because the
+      # mirror runs one sync at a time.
+      running: Enum.find(runs, &(&1.status == "running")),
+      progress: progress(Enum.find(runs, &(&1.status == "running"))),
       audit: Audit.recent(18),
       recent_pages: Mirror.recent_pages(8),
       last_sync: Mirror.last_successful_sync_run()
@@ -119,21 +244,65 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           >
             <.icon name="hero-arrow-path" class="size-4" /> Sync now
           </button>
-          <details :if={@spaces != []} class="dropdown dropdown-end">
-            <summary class="btn btn-outline btn-sm">Sync one space</summary>
-            <ul class="menu dropdown-content z-50 mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
-              <li :for={{space, _count} <- @space_counts}>
-                <button
-                  type="button"
-                  phx-click="sync_space"
-                  phx-value-key={space.key}
-                  phx-disable-with="Queueing…"
-                >
-                  {space.name} <span class="badge badge-ghost badge-xs">{space.key}</span>
-                </button>
-              </li>
-            </ul>
-          </details>
+          <%!-- The same shape as the search screen's filter menus: the button
+          opens a panel whose find box takes the keyboard, and the list is
+          narrowed in the database, not in the browser. --%>
+          <div
+            :if={@spaces != []}
+            id="sync-space-menu"
+            class={[
+              "dropdown dropdown-end",
+              if(@open_menu == "sync-space", do: "dropdown-open", else: "dropdown-close")
+            ]}
+            phx-click-away={@open_menu == "sync-space" && "close_menu"}
+            phx-window-keydown={@open_menu == "sync-space" && "close_menu"}
+            phx-key="Escape"
+          >
+            <button
+              type="button"
+              phx-click="toggle_menu"
+              phx-value-menu="sync-space"
+              aria-expanded={@open_menu == "sync-space"}
+              aria-haspopup="true"
+              class="btn btn-outline btn-sm gap-1.5"
+            >
+              Sync one space <.icon name="hero-chevron-down" class="size-3 opacity-40" />
+            </button>
+            <div
+              :if={@open_menu == "sync-space"}
+              id="sync-space-panel"
+              class="dropdown-content z-50 w-72 space-y-1 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+            >
+              <form id="sync-space-form" phx-change="space_query" phx-submit="space_query">
+                <input
+                  type="text"
+                  name="space"
+                  value={@space_query}
+                  placeholder="Find a space"
+                  autocomplete="off"
+                  phx-debounce="150"
+                  phx-mounted={JS.focus()}
+                  class="input input-sm w-full"
+                />
+              </form>
+              <ul class="menu menu-sm max-h-64 w-full flex-nowrap overflow-y-auto p-0">
+                <li :for={space <- @sync_spaces}>
+                  <button
+                    type="button"
+                    phx-click="sync_space"
+                    phx-value-key={space.key}
+                    phx-disable-with="Queueing…"
+                  >
+                    <span class="truncate">{space.name}</span>
+                    <span class="badge badge-ghost badge-xs">{space.key}</span>
+                  </button>
+                </li>
+                <li :if={@sync_spaces == []}>
+                  <button type="button" disabled>No space matches</button>
+                </li>
+              </ul>
+            </div>
+          </div>
           <button
             type="button"
             phx-click="full_sync"
@@ -143,7 +312,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           >
             <.icon name="hero-arrow-path-rounded-square" class="size-4" /> Re-read everything
           </button>
-          <a :if={dev_routes?()} href="/dev/dashboard" class="link text-xs">LiveDashboard</a>
+          <a :if={admin_dashboard?()} href="/admin/runtime" class="link text-xs">LiveDashboard</a>
         </:actions>
       </.admin_header>
 
@@ -156,12 +325,48 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
         with site and token settings to mirror a live one.
       </p>
 
-      <%!-- One column of rows on a phone, four tiles from `sm` up. --%>
-      <section class="mt-6 grid grid-cols-1 divide-y divide-base-300/60 rounded-xl border border-base-300/70 bg-base-100 px-3 sm:grid-cols-2 sm:divide-y-0 sm:gap-3 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-0 lg:grid-cols-4">
-        <.stat_card label="Pages" value={@stats.pages} icon="hero-document-text" />
-        <.stat_card label="Attachments" value={@stats.attachments} icon="hero-paper-clip" />
-        <.stat_card label="Labels" value={@stats.labels} icon="hero-tag" />
-        <.stat_card
+      <%!-- A run in flight is the one thing an operator watches, and a run is
+      long: the numbers below are re-read every five seconds, so they move. --%>
+      <section
+        :if={@progress}
+        id="sync-progress"
+        class="mt-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3"
+      >
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span class="loading loading-spinner loading-xs text-primary"></span>
+          <h2 class="text-sm font-semibold">Syncing now</h2>
+          <span id="sync-phase" class="badge badge-primary badge-xs badge-outline">
+            {@progress.phase}
+          </span>
+          <span class="text-[11px] text-base-content/70">
+            {@progress.mode} sync, started by {@progress.trigger}, running for {@progress.running_for}
+          </span>
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1">
+          <.stat label="Pages" value={@progress.pages} icon="hero-document-text" />
+          <.stat label="Calls" value={@progress.requests} icon="hero-bolt" />
+          <.stat label="Data" value={human_bytes(@progress.bytes)} icon="hero-circle-stack" />
+          <.stat label="Retries" value={@progress.retries} icon="hero-arrow-path" />
+          <.stat
+            :if={@progress.failed > 0}
+            label="Failed"
+            value={@progress.failed}
+            icon="hero-exclamation-triangle"
+          />
+          <.stat label="Pace" value={@progress.pace} icon="hero-clock" />
+        </div>
+      </section>
+
+      <%!-- Four numbers, one strip: they are read together, and a tile each buys
+      nothing but height. One line from `sm` up, two columns on a phone. --%>
+      <section
+        id="overview-stats"
+        class="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-base-300/70 bg-base-100 px-3 py-2 sm:mt-5 sm:flex sm:flex-wrap sm:items-center sm:gap-x-5 sm:px-4"
+      >
+        <.stat label="Pages" value={@stats.pages} icon="hero-document-text" />
+        <.stat label="Attachments" value={@stats.attachments} icon="hero-paper-clip" />
+        <.stat label="Labels" value={@stats.labels} icon="hero-tag" />
+        <.stat
           label="Freshness"
           value={
             if @last_sync,
@@ -173,31 +378,76 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           <:hint :if={@last_sync}>
             <.local_time at={@last_sync.finished_at} />
           </:hint>
-        </.stat_card>
+        </.stat>
       </section>
 
       <.section title="Sync runs">
-        <.data_table id="sync-runs" rows={@runs}>
+        <:actions>
+          <form
+            :if={@running}
+            id="cancel-sync-form"
+            phx-submit="cancel_sync"
+            class="flex items-center gap-1.5"
+          >
+            <input type="hidden" name="run_id" value={@running.id} />
+            <button
+              type="submit"
+              id="cancel-sync"
+              class="btn btn-warning btn-outline btn-sm"
+              data-confirm={
+                "Stop the sync that started #{Time.ago(@running.started_at)}?\n\n" <>
+                  "It finishes the page it is on and stops: #{@running.stats["pages"] || 0} " <>
+                  "pages listed so far stay in the mirror. Nothing is deleted, and the next " <>
+                  "sync starts from where this one stopped."
+              }
+            >
+              <.icon name="hero-stop" class="size-4" /> Cancel sync
+            </button>
+          </form>
+        </:actions>
+        <.data_table id="sync-runs" rows={@rows}>
           <:head>
-            <th>Started</th>
+            <th>When</th>
             <th>Mode</th>
             <th>Status</th>
             <th>Duration</th>
             <th>Pages</th>
+            <th>Skipped</th>
             <th>Attachments</th>
             <th>Errors</th>
+            <th><span class="sr-only">Queue</span></th>
           </:head>
-          <:row :let={run}>
+          <:row :let={row}>
             <td class="whitespace-nowrap text-xs">
-              <.local_time at={run.started_at}>{Time.ago(run.started_at)}</.local_time>
+              <.local_time at={row.at}>{Time.ago(row.at)}</.local_time>
             </td>
-            <td class="text-xs">{run.mode}</td>
-            <td><span class={["badge badge-sm", status_class(run.status)]}>{run.status}</span></td>
-            <td class="text-xs tabular-nums">{Time.duration(run.started_at, run.finished_at)}</td>
-            <td class="text-xs tabular-nums">{run.stats["pages"] || 0}</td>
-            <td class="text-xs tabular-nums">{run.stats["attachments"] || 0}</td>
-            <td class="max-w-[18rem] truncate text-xs text-error" title={run.error}>
-              {run.error || "—"}
+            <td class="text-xs">{row.mode}</td>
+            <td><span class={["badge badge-sm", status_class(row.status)]}>{row.status}</span></td>
+            <td class="text-xs tabular-nums">{row.duration}</td>
+            <td class="text-xs tabular-nums">{row.pages}</td>
+            <%!-- Listed upstream but unchanged, so not fetched again: the point
+            of an incremental mirror, and the number that shows it working. --%>
+            <td class="text-xs tabular-nums">{row.skipped}</td>
+            <td class="text-xs tabular-nums">{row.attachments}</td>
+            <td class="max-w-[18rem] truncate text-xs text-error" title={row.error}>
+              {row.error || "—"}
+            </td>
+            <td class="text-right">
+              <%!-- Only a sync that has not started can be dropped: once it is a
+              run, stopping it means asking it to stop, which is the button
+              above the table. --%>
+              <button
+                :if={row.job_id}
+                type="button"
+                id={"cancel-queued-#{row.job_id}"}
+                phx-click="cancel_queued"
+                phx-value-id={row.job_id}
+                phx-disable-with="Dropping…"
+                title="Drop this sync from the queue: it will not run"
+                class="btn btn-ghost btn-xs gap-1"
+              >
+                <.icon name="hero-x-mark" class="size-4" /> Drop
+              </button>
             </td>
           </:row>
           <:empty>No sync runs yet.</:empty>
@@ -262,13 +512,76 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     """
   end
 
-  defp dev_routes? do
-    Application.get_env(:confluence_phx_mirror, :dev_routes, false)
+  defp admin_dashboard? do
+    Application.get_env(:confluence_phx_mirror, :admin_dashboard, false)
   end
+
+  # One list in the order an operator waits through it: what is queued, then
+  # what already ran. Both kinds share a row shape, because a queued sync is a
+  # line in the same table — with a button of its own — not a separate one.
+  defp sync_rows(queued, runs) do
+    Enum.map(queued, &queued_row/1) ++ Enum.map(runs, &run_row/1)
+  end
+
+  # Nothing has happened yet on a queued row, so the outcome columns say so
+  # rather than claim a zero.
+  defp queued_row(job) do
+    %{
+      at: job.inserted_at,
+      mode: job_mode(job),
+      status: queued_status(job.state),
+      duration: "—",
+      pages: "—",
+      skipped: "—",
+      attachments: "—",
+      error: nil,
+      job_id: job.id
+    }
+  end
+
+  defp run_row(run) do
+    %{
+      at: run.started_at,
+      mode: run.mode,
+      status: run.status,
+      duration: Time.duration(run.started_at, run.finished_at),
+      pages: run.stats["pages"] || 0,
+      skipped: run.stats["unchanged"] || 0,
+      attachments: run.stats["attachments"] || 0,
+      error: run.error,
+      job_id: nil
+    }
+  end
+
+  # A queued job has no run to describe it, so its arguments say what it will do.
+  defp job_mode(%Oban.Job{worker: worker, args: args}) do
+    cond do
+      worker == inspect(SnapshotWorker) ->
+        if args["mode"] == "snapshot", do: "snapshot", else: "incremental"
+
+      worker == inspect(SpaceWorker) ->
+        "space #{args["space_key"]}"
+
+      worker == inspect(PageWorker) ->
+        "page #{args["confluence_id"]}"
+
+      true ->
+        "sync"
+    end
+  end
+
+  # Oban's own states are scheduling vocabulary ("available" means "waiting for
+  # a free slot", "retryable" means "waiting for the next attempt"); the table
+  # says what is true for the reader.
+  defp queued_status("available"), do: "queued"
+  defp queued_status("retryable"), do: "retrying"
+  defp queued_status(state), do: state
 
   defp status_class("succeeded"), do: "badge-success"
   defp status_class("partial"), do: "badge-warning"
   defp status_class("failed"), do: "badge-error"
+  defp status_class("cancelled"), do: "badge-neutral"
   defp status_class("running"), do: "badge-info"
+  defp status_class("retrying"), do: "badge-warning"
   defp status_class(_), do: "badge-ghost"
 end

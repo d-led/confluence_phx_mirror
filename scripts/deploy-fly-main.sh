@@ -111,6 +111,9 @@ ensure_database() {
     echo "  unmanaged Postgres: no support contract, and you own the backups."
     echo "  Volume snapshots are on; WAL backups need \`--enable-backups\`,"
     echo "  which accepts Tigris's terms of service — a decision for a human."
+    # The smallest volume postgres will take. It holds the mirror's content and
+    # nothing else — blobs live on the attachment volume — and a volume cannot
+    # be shrunk later, so start where you mean to be.
     fly postgres create \
       --name "$DB_APP" \
       --org personal \
@@ -118,7 +121,7 @@ ensure_database() {
       --initial-cluster-size 1 \
       --vm-size shared-cpu-1x \
       --vm-memory 1024 \
-      --volume-size 5
+      --volume-size 1
   fi
 
   # Attaching creates a scoped role and the DATABASE_URL secret; doing it twice
@@ -159,6 +162,8 @@ ensure_secret CM_CONFLUENCE_SITE "$CM_CONFLUENCE_SITE"
 ensure_secret CM_ATL_EMAIL "$CM_ATL_EMAIL"
 ensure_secret CM_ATL_TOKEN "$CM_ATL_TOKEN"
 
+# The administrator list names real people, so it is a secret and never a line
+# in a committed file: export CM_ADMINS=… before the first run.
 if [ -n "${CM_ADMINS:-}" ]; then
   ensure_secret CM_ADMINS "$CM_ADMINS"
 fi

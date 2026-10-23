@@ -21,6 +21,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
 
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirrorWeb.Admin.Config
+  alias ConfluencePhxMirrorWeb.Admin.SettingsRefusal
   alias ConfluencePhxMirrorWeb.Skins
 
   @limit_keys %{
@@ -28,7 +29,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
     "api" => "reader.api_limit",
     "attachments" => "reader.attachments_limit"
   }
-  @limit_settings Map.new(@limit_keys, fn {_field, key} -> {key, true} end)
 
   @impl true
   def mount(_params, _session, socket) do
@@ -256,7 +256,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
         {:noreply, socket |> assign_settings() |> put_flash(:info, message)}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, refusal(reason))}
+        {:noreply, put_flash(socket, :error, SettingsRefusal.message(reason))}
     end
   end
 
@@ -304,29 +304,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
 
   # A checked box posts "on"; an unchecked one posts nothing at all.
   defp truthy?(value), do: value in ~w(on true 1 yes)
-
-  defp refusal({:invalid_value, "notifications.digest_hour_utc", _value}),
-    do: "Nothing was saved: the digest hour must be a whole number from 0 to 23."
-
-  defp refusal({:invalid_value, "notifications.enabled", _value}),
-    do: "Nothing was saved: send e-mail is on or off."
-
-  defp refusal({:invalid_value, key, value}) when is_map_key(@limit_settings, key) do
-    "Nothing was saved: reader limits must be whole numbers above zero (got #{inspect(value)})."
-  end
-
-  defp refusal({:invalid_value, key, value}),
-    do: "Nothing was saved: #{inspect(value)} is not a value for #{key}."
-
-  defp refusal({:unknown_key, key}), do: "Nothing was saved: #{inspect(key)} is not a setting."
-
-  defp refusal({:not_audited, error}),
-    do: "Nothing was saved: the change could not be recorded (#{Exception.message(error)})."
-
-  defp refusal({:not_stored, key, changeset}),
-    do: "Nothing was saved: #{key} could not be written (#{inspect(changeset.errors)})."
-
-  defp refusal(reason), do: "Nothing was saved: #{inspect(reason)}"
 
   # The theme is an attribute of `<html>`, which only a document request renders,
   # so the save reloads the page: the administrator sees the theme they just

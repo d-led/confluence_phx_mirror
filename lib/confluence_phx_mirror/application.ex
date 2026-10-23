@@ -15,9 +15,11 @@ defmodule ConfluencePhxMirror.Application do
     ConfluencePhxMirrorWeb.Skins.validate!()
 
     children = [
-      ConfluencePhxMirrorWeb.Telemetry,
       ConfluencePhxMirror.Repo,
       ConfluencePhxMirror.Mirror.Counters,
+      # After the repo and the counters: the first poll runs as soon as the
+      # poller starts, and the catalogue gauge has to ask the database.
+      ConfluencePhxMirrorWeb.Telemetry,
       ConfluencePhxMirror.Sites.Guard,
       {DNSCluster,
        query: Application.get_env(:confluence_phx_mirror, :dns_cluster_query) || :ignore},

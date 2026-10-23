@@ -31,6 +31,18 @@ defmodule ConfluencePhxMirror.Sync.PersonalSpacesTest do
     assert run.stats["skipped_spaces"] == 0
   end
 
+  test "an incremental run does not take a personal space in through the back door" do
+    {:ok, run} =
+      Sync.run(:incremental,
+        source: PersonalSpaceSource,
+        since: ~U[2000-01-01 00:00:00Z]
+      )
+
+    refute Mirror.get_space_by_key(PersonalSpaceSource.personal_key())
+    assert run.stats["skipped_personal"] == 1
+    assert Mirror.get_space_by_key("ENG")
+  end
+
   defp put_sync(opts) do
     Application.put_env(:confluence_phx_mirror, :sync, Keyword.merge(existing(), opts))
   end

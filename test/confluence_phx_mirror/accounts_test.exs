@@ -169,14 +169,14 @@ defmodule ConfluencePhxMirror.AccountsTest do
       user = user_fixture(%{email: "both@example.com"})
       {:ok, plain, _token} = Accounts.create_api_token(user, "ci", {:system, "test"})
 
-      assert Accounts.reconcile_site_disabled("557058:both", "both@example.com", true) == 1
+      assert Accounts.reconcile_site_status("557058:both", "both@example.com", :disabled) == 1
 
       reloaded = Accounts.get_user(user.id)
       assert User.disabled_on_site?(reloaded)
       refute User.disabled_here?(reloaded)
       assert {:error, :account_disabled} = Accounts.authenticate_api_token(plain)
 
-      assert Accounts.reconcile_site_disabled("557058:both", "both@example.com", false) == 1
+      assert Accounts.reconcile_site_status("557058:both", "both@example.com", :active) == 1
       assert {:ok, %{id: id}} = Accounts.authenticate_api_token(plain)
       assert id == user.id
     end
@@ -184,8 +184,8 @@ defmodule ConfluencePhxMirror.AccountsTest do
     test "a site transition is written once, not once per sync" do
       user = user_fixture(%{email: "quiet@example.com"})
 
-      assert Accounts.reconcile_site_disabled("557058:quiet", "quiet@example.com", true) == 1
-      assert Accounts.reconcile_site_disabled("557058:quiet", "quiet@example.com", true) == 0
+      assert Accounts.reconcile_site_status("557058:quiet", "quiet@example.com", :disabled) == 1
+      assert Accounts.reconcile_site_status("557058:quiet", "quiet@example.com", :disabled) == 0
 
       assert Repo.exists?(from e in Event, where: e.action == "user.site_disabled")
       assert User.disabled_on_site?(Accounts.get_user(user.id))

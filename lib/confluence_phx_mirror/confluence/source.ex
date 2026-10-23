@@ -162,12 +162,27 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   that cannot read groups leaves the callback out; the mirror then keeps the
   membership it already has.
 
+  Confluence Cloud no longer serves this route (`/group/{name}/member` answers
+  404 for a site that has the group), so a Cloud source implements
+  `c:groups_of_account/2` instead.
+
   Each member carries whichever identifiers the site exposes:
 
       %{email: "jane@acme.com", account_id: "557058:...", display_name: "Jane"}
   """
   @callback group_members(group_name :: String.t(), keyword()) ::
               {:ok, [group_member()]} | {:error, term()}
+
+  @doc """
+  The groups one account belongs to, as the site names them.
+
+  The other direction of `c:group_members/2`, and the one Confluence Cloud still
+  answers: membership is learned one person at a time, for every identity the
+  mirror knows — the authors its content names. A source that can list group
+  members does not need this; a source that can do neither leaves both out.
+  """
+  @callback groups_of_account(account_id :: String.t(), keyword()) ::
+              {:ok, [String.t()]} | {:error, term()}
 
   @doc """
   Bytes of one space icon, with the media type the site answered with.
@@ -198,6 +213,7 @@ defmodule ConfluencePhxMirror.Confluence.Source do
                       space_permissions: 2,
                       space_icon: 2,
                       group_members: 2,
+                      groups_of_account: 2,
                       user_status: 2,
                       web_url: 0
 

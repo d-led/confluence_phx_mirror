@@ -56,7 +56,7 @@ config :confluence_phx_mirror, ConfluencePhxMirrorWeb.Endpoint,
 # different ports.
 
 # Enable dev routes for dashboard and mailbox
-config :confluence_phx_mirror, dev_routes: true
+config :confluence_phx_mirror, admin_dashboard: true
 
 # In development we assume an administrator, so the mirror UI and the admin
 # screens are immediately usable. Sign-in links are still sent through
@@ -122,6 +122,13 @@ config :phoenix_live_view,
   debug_attributes: true,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
+
+# Show the BEAM dashboard at /admin/runtime, for signed-in administrators.
+config :confluence_phx_mirror, admin_dashboard: true
+
+# The dashboard charts how much the mirror holds; the poller asks every ten
+# seconds. Off everywhere else: production has no one watching these charts.
+config :confluence_phx_mirror, catalogue_metrics: true
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false

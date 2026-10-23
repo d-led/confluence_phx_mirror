@@ -57,6 +57,9 @@ primary_region = "ams"
   # max_connections budget (docs/operations.md, "Sizing the connection pool").
   POOL_SIZE = "10"
 
+  # CM_ADMINS is *not* here on purpose: it names real people, and this file is
+  # in a public repository. It is a secret — see `fly secrets list`.
+
   # Attachments: a path-based blob store on the mounted volume, never in the
   # release and never in Postgres.
   MIRROR_BLOB_ROOT = "/app/var/mirror"

@@ -15,9 +15,15 @@ defmodule ConfluencePhxMirror.Sync.SnapshotWorker do
   tick picks up whatever is missing. A run that *raises* has already been
   recorded as failed by `Sync`; the raise is left to travel, because that is
   what makes Oban retry the job.
+
+  A sync that is already in flight makes this tick a no-op: the run it would
+  have started would have copied the same pages (see `Sync.Gate`), and the next
+  tick is soon enough.
   """
 
   use Oban.Worker, queue: :sync, max_attempts: 3, unique: [period: 300]
+
+  require Logger
 
   alias ConfluencePhxMirror.Sync
 
@@ -26,8 +32,14 @@ defmodule ConfluencePhxMirror.Sync.SnapshotWorker do
 
   @impl true
   def perform(%Oban.Job{args: args}) do
-    {:ok, _run} = Sync.run(mode(args), actor: @actor, trigger: trigger(args))
-    :ok
+    case Sync.run(mode(args), actor: @actor, trigger: trigger(args)) do
+      {:ok, _run} ->
+        :ok
+
+      {:error, :already_running} ->
+        Logger.info("a sync is already running; this scheduled pull waits for the next tick")
+        :ok
+    end
   end
 
   defp mode(%{"mode" => "snapshot"}), do: :snapshot

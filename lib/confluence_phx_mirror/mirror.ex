@@ -38,7 +38,9 @@ defmodule ConfluencePhxMirror.Mirror do
   Mirrored spaces by name.
 
   Options: `:limit` — the search screen's space menus take a window and leave
-  the directory to `/spaces`.
+  the directory to `/spaces`; `:query` — a case-insensitive match on the name or
+  the key, run here rather than in a browser, so a site with hundreds of spaces
+  sends forty rows and not the whole directory.
   """
   def list_spaces(opts \\ []) do
     from(s in Space,
@@ -46,7 +48,16 @@ defmodule ConfluencePhxMirror.Mirror do
       order_by: [asc: s.name],
       limit: ^Keyword.get(opts, :limit)
     )
+    |> named_like(Keyword.get(opts, :query, ""))
     |> Repo.all()
+  end
+
+  defp named_like(queryable, blank) when blank in [nil, ""], do: queryable
+
+  defp named_like(queryable, term) do
+    pattern = "%" <> String.replace(term, ["\\", "%", "_"], &("\\" <> &1)) <> "%"
+
+    where(queryable, [s], ilike(s.name, ^pattern) or ilike(s.key, ^pattern))
   end
 
   def get_space_by_key(key) when is_binary(key) do
@@ -236,6 +247,10 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc """
   Replaces what we know about one group's membership with what Confluence just
   said. A member who left the group disappears here, which is the point.
+
+  This is the group-first direction: "who is in this group". Confluence Cloud
+  no longer answers it, so live sites learn membership the other way round —
+  see `replace_subject_groups/2`.
   """
   def replace_group_members(group_name, members) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -272,6 +287,111 @@ defmodule ConfluencePhxMirror.Mirror do
           updated_at: now
         }
     end
+  end
+
+  @doc """
+  Replaces what we know about the groups one account belongs to.
+
+  This is the person-first direction: "which groups is this account in", the
+  only one Confluence Cloud still answers. Called once per identity the mirror
+  knows, it keeps the same `group_members` rows the group-first direction
+  writes, so access questions and the admin screen read them the same way.
+  """
+  def replace_subject_groups(identity, group_names) when is_map(identity) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    subject_key = GroupMember.subject_key(identity)
+
+    rows =
+      group_names
+      |> Enum.map(&to_string/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq_by(&GroupMember.key/1)
+      |> Enum.map(&subject_row(&1, identity, subject_key, now))
+
+    case subject_key do
+      nil ->
+        {:ok, 0}
+
+      key ->
+        Repo.transaction(fn ->
+          delete_subject_memberships(key, Map.get(identity, :account_id))
+          if rows != [], do: Repo.insert_all(GroupMember, rows)
+          length(rows)
+        end)
+    end
+  end
+
+  defp subject_row(group_name, identity, subject_key, now) do
+    %{
+      group_name: group_name,
+      group_key: GroupMember.key(group_name),
+      subject_key: subject_key,
+      email: Map.get(identity, :email),
+      account_id: Map.get(identity, :account_id),
+      display_name: Map.get(identity, :display_name),
+      inserted_at: now,
+      updated_at: now
+    }
+  end
+
+  # An account can be known by its e-mail on one run and by its account id on
+  # another; both key its rows, so both are cleared.
+  defp delete_subject_memberships(subject_key, nil) do
+    Repo.delete_all(from m in GroupMember, where: m.subject_key == ^subject_key)
+  end
+
+  defp delete_subject_memberships(subject_key, account_id) do
+    Repo.delete_all(
+      from m in GroupMember,
+        where: m.subject_key == ^subject_key or m.account_id == ^account_id
+    )
+  end
+
+  @doc """
+  The Confluence identities the mirrored content names: every page and comment
+  author.
+
+  This is the only user directory a Confluence Cloud mirror can have. The site
+  does not list its users, and it stopped answering "who is in this group"; what
+  it does answer is which groups one account belongs to, and what the content
+  itself says is who wrote it.
+  """
+  def known_identities do
+    from(p in Page,
+      where: not is_nil(p.author_account_id),
+      distinct: true,
+      select: {p.author_account_id, p.author_name}
+    )
+    |> union_all(
+      ^from(c in Comment,
+        where: not is_nil(c.author_account_id),
+        distinct: true,
+        select: {c.author_account_id, c.author_name}
+      )
+    )
+    |> Repo.all()
+    |> Enum.uniq_by(&elem(&1, 0))
+    |> Enum.map(fn {account_id, display_name} ->
+      %{account_id: account_id, display_name: display_name}
+    end)
+  end
+
+  @doc """
+  The people Confluence's content names, each with the groups the last sync read
+  — what the admin screen shows as the site's side of the story.
+  """
+  def people do
+    groups = groups_by_subject()
+
+    known_identities()
+    |> Enum.map(&Map.put(&1, :groups, Map.get(groups, &1.account_id, [])))
+    |> Enum.sort_by(&(&1.display_name || &1.account_id))
+  end
+
+  defp groups_by_subject do
+    from(m in GroupMember, select: {m.subject_key, m.group_name})
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
 
   @doc """
@@ -667,27 +787,31 @@ defmodule ConfluencePhxMirror.Mirror do
   that is not in the trash, so a live space cannot be purged by mistake.
   """
   def purge_space(%Space{} = space) do
-    with %Space{deleted_at: %DateTime{}} = trashed <- Repo.get(Space, space.id) do
-      Repo.transaction(fn ->
-        keys =
-          from(a in Attachment,
-            join: p in assoc(a, :page),
-            where: p.space_id == ^trashed.id,
-            select: a.blob_key
-          )
-          |> blob_keys()
+    case Repo.get(Space, space.id) do
+      %Space{deleted_at: %DateTime{}} = trashed ->
+        Repo.transaction(fn ->
+          keys =
+            from(a in Attachment,
+              join: p in assoc(a, :page),
+              where: p.space_id == ^trashed.id,
+              select: a.blob_key
+            )
+            |> blob_keys()
 
-        pages = Repo.aggregate(from(p in Page, where: p.space_id == ^trashed.id), :count)
-        Repo.delete!(trashed)
+          pages = Repo.aggregate(from(p in Page, where: p.space_id == ^trashed.id), :count)
+          Repo.delete!(trashed)
 
-        %{
-          pages: pages,
-          blob_keys: [trashed.icon_blob_key | keys] |> Enum.reject(&is_nil/1) |> Enum.uniq()
-        }
-      end)
-    else
-      nil -> {:error, :not_found}
-      _live -> {:error, :not_trashed}
+          %{
+            pages: pages,
+            blob_keys: [trashed.icon_blob_key | keys] |> Enum.reject(&is_nil/1) |> Enum.uniq()
+          }
+        end)
+
+      nil ->
+        {:error, :not_found}
+
+      _live ->
+        {:error, :not_trashed}
     end
   end
 
@@ -696,18 +820,22 @@ defmodule ConfluencePhxMirror.Mirror do
   that hang off it. Returns the blob keys the caller must delete.
   """
   def purge_page(%Page{} = page) do
-    with %Page{deleted_at: %DateTime{}} = trashed <- Repo.get(Page, page.id) do
-      Repo.transaction(fn ->
-        keys =
-          from(a in Attachment, where: a.page_id == ^trashed.id, select: a.blob_key)
-          |> blob_keys()
+    case Repo.get(Page, page.id) do
+      %Page{deleted_at: %DateTime{}} = trashed ->
+        Repo.transaction(fn ->
+          keys =
+            from(a in Attachment, where: a.page_id == ^trashed.id, select: a.blob_key)
+            |> blob_keys()
 
-        Repo.delete!(trashed)
-        %{blob_keys: keys}
-      end)
-    else
-      nil -> {:error, :not_found}
-      _live -> {:error, :not_trashed}
+          Repo.delete!(trashed)
+          %{blob_keys: keys}
+        end)
+
+      nil ->
+        {:error, :not_found}
+
+      _live ->
+        {:error, :not_trashed}
     end
   end
 

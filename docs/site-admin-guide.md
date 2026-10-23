@@ -124,7 +124,9 @@ can move between them without going back to a hub:
   with a purge button. "Empty the trash" asks for a second click. Purging is the
   only thing that deletes content, and it takes the comments and attachment
   files with it.
-* `/admin/users` (**live**) – accounts, roles, mirrored groups and API tokens.
+* `/admin/users` (**live**) – accounts, roles, mirrored groups and API tokens,
+  plus the people Confluence's content names and the groups the sync read for
+  each of them.
 * `/admin/settings` (**live**) – the setup screen, in two halves. The top is
   what you can change while the mirror runs: the theme every reader wears, the
   per-reader request limits, and whether notification mail goes out (with the
@@ -402,23 +404,53 @@ Set `MIRROR_MAIL_FROM` and the Swoosh mailer settings for production.
 
 ## Switched-off accounts
 
-*Users & tokens* lists every account with a filter box (e-mail or name) and two
-independent disablement flags, because different people decide them:
+*Users & tokens* lists every account with a filter box (e-mail or name) and the
+flags that keep people out. They are independent, because different people
+decide them — but they are not equally final:
 
-| Flag | Set by | Shown as |
-| --- | --- | --- |
-| `disabled_at` | an administrator, on that screen | *disabled here* |
-| `site_disabled_at` | the sync, when Confluence reports the account as not active | *disabled on the site* |
+| Flag | Set by | Shown as | Can it be lifted here? |
+| --- | --- | --- | --- |
+| `disabled_at` | an administrator, on that screen | *disabled here* | yes, with *Switch on here* |
+| `site_disabled_at` | the sync, when Confluence reports the account as not active | *disabled on the site* | only on the site |
+| `site_deleted_at` | the sync, when Confluence no longer has the account (404, or closed there) | *deleted on the site* | no — the account would have to exist again |
+| `banned_at` | an administrator, on that screen | *banned* | yes, with *Lift ban* |
 
-Access is refused while **either** is set — the effective state is the OR of the
-two — but they stay apart so an operator can tell "we did this" from "the site
-did this". Switching an account off here leaves Confluence alone; the site's flag
-clears itself on the next sync that finds the account active again.
+An account is refused while **any** of the first three applies — the effective
+state is their OR — but they stay apart so an operator can tell "we did this"
+from "the site did this". Switching an account off here leaves Confluence alone;
+the site's flags rewrite themselves on the next sync that sees the account again.
 
-The button says *Switch off here* / *Switch on here* because it manages our flag
-only: an account the site switched off can still be switched off here, and
-switching it on here will not bring back an account Confluence disabled — the
-two badges tell you which is which.
+*Switch on here* is deliberately not called "enable": it lifts the mirror's own
+flag and nothing else. If Confluence switched the person off, they stay out, and
+the account row says so.
+
+### Letting switched-off readers back in
+
+A mirror usually follows the site on access, which is the safe default. Some
+mirrors are meant to outlive an account being stood down — a leaver whose
+knowledge should stay readable. Set
+
+```
+MIRROR_ALLOW_SITE_DISABLED_READERS=true
+```
+
+and readers Confluence reports as *inactive* may read the mirror again. The
+site's *deleted* state is never relaxed, and neither is a ban: those two are
+about a person being gone, not switched off. `/admin/settings` shows which
+answer this deployment gives.
+
+### Banning, and why a ban blocks deletion
+
+A ban is not a switch-off. Nothing lifts it but an administrator: a sync that
+finds the account active leaves the ban alone, and a banned account **cannot be
+deleted**. That second rule is the point — deleting the row would let the next
+sign-in provision a fresh, unrelated account, which is exactly what a ban is
+supposed to prevent. Lift the ban first if you really want the account gone.
+
+An account that is merely switched off (here or on the site) can be deleted:
+*Delete* removes the row with its API tokens, login tokens and subscriptions. It
+does not touch Confluence. The last administrator cannot be deleted, for the
+same reason they cannot be demoted.
 
 Switching off takes effect immediately: an existing session is ignored, API
 tokens answer `403 account_disabled`, magic links can be neither requested nor
@@ -428,15 +460,39 @@ decided in the meantime. A seeded or bootstrap administrator cannot be switched
 off here — the same reason they cannot be demoted: it would remove the only way
 back in.
 
-The site's flag comes from asking Confluence about the Atlassian accounts the
+The site's flags come from asking Confluence about the Atlassian accounts the
 mirror knows (page authors, group members, readers who signed in with an account
 id). There is no user directory to walk — Cloud does not expose one — so an
 account nobody here has ever seen is simply not checked.
 
 Every change is audited: `user.disabled` / `user.enabled` for the flag set here,
-`user.site_disabled` / `user.site_enabled` when the sync sees the site's state
-change. The sync writes transitions only, so an hourly run does not fill the log
-with "still active".
+`user.banned` / `user.unbanned` for a ban, `user.deleted` when an account is
+removed, and `user.site_disabled` / `user.site_enabled` / `user.site_deleted`
+when the sync sees the site's state change. The sync writes transitions only, so
+an hourly run does not fill the log with "still active".
+
+### Never lock yourself out
+
+The mirror always keeps one administrator. Seeded (`CM_ADMINS`) and bootstrap
+accounts cannot be demoted or switched off, and neither can whoever is left: if
+an account is the last one that can administer the mirror, both the role select
+and the switch are locked, and the page says *Last admin*. Stepping down works
+again as soon as somebody else can take over — another `admin` account, a member
+of an `CM_ADMIN_GROUPS` group, or a seeded address that has not signed in yet.
+
+## People the site names
+
+Confluence Cloud does not expose a user directory, and it no longer answers
+"who is in this group" (`GET /group/{name}/member` is gone). What it does answer
+is "which groups is this account in", so the sync learns membership one person
+at a time, for every identity the content names — each page author and comment
+author. Those people are listed under *Users & tokens* with the groups the last
+sync read for them, whether or not they ever signed in here.
+
+The membership rows are the same ones the access rules read, so an admin group
+(`CM_ADMIN_GROUPS`) grants administration as soon as one of its members appears
+as an author, and a restriction on a group applies to the readers in it. A sweep
+is capped at 200 identities per run to keep a snapshot bounded.
 
 ## Webhooks
 

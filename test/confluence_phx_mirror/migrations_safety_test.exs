@@ -91,6 +91,13 @@ defmodule ConfluencePhxMirror.MigrationsSafetyTest do
 
       assert offences_in("concurrent.exs", source) == []
     end
+
+    test "a rollback is not a deploy step" do
+      source =
+        ~s|def change do\n  execute("INSERT INTO gate (id) VALUES (true)", "DELETE FROM gate")\nend|
+
+      assert offences_in("gate.exs", source) == []
+    end
   end
 
   defp offences do
@@ -133,7 +140,19 @@ defmodule ConfluencePhxMirror.MigrationsSafetyTest do
   # `remove(:a)`), so prose in a moduledoc about removing things stays quiet.
   defp in_place_column_changes(source), do: scan(source, ~r/^\s*(modify|remove|rename)\s*[\(:]/m)
 
-  defp row_rewrites(source), do: scan(source, ~r/\b(UPDATE\s+\w+\s+SET|DELETE\s+FROM)\b/i)
+  defp row_rewrites(source) do
+    scan(deploy_statements(source), ~r/\b(UPDATE\s+\w+\s+SET|DELETE\s+FROM)\b/i)
+  end
+
+  # `execute/2` takes the statement to run and the one that undoes it. Only the
+  # first runs during a deploy, so only the first can be a deploy step.
+  defp deploy_statements(source) do
+    Regex.replace(
+      ~r/execute\(\s*("(?:[^"\\]|\\.)*")\s*,\s*"(?:[^"\\]|\\.)*"\s*\)/s,
+      source,
+      "execute(\\1)"
+    )
+  end
 
   defp scan(source, pattern) do
     pattern

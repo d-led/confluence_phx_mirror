@@ -15,6 +15,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
     {:sync_log, "Sync log", "hero-bars-arrow-down"},
     {:webhooks, "Webhooks", "hero-bolt"},
     {:audit, "Audit", "hero-clipboard-document-list"},
+    {:trash, "Trash", "hero-trash"},
     {:users, "Users", "hero-users"},
     {:settings, "Settings", "hero-cog-6-tooth"}
   ]

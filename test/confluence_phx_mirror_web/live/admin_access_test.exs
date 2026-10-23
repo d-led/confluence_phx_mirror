@@ -56,6 +56,58 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
     assert Accounts.get_user_by_email("new-ops@example.com")
   end
 
+  describe "the BEAM dashboard" do
+    # Every page LiveDashboard serves, not just the way in: it has one LiveView
+    # for all of them, and a hook that only guarded the index would leave the
+    # processes and ETS pages open to whoever guessed the path.
+    @dashboard_pages ~w(home processes ports sockets ets applications)
+
+    test "an anonymous reader is sent to sign in, on every page", %{conn: conn} do
+      for path <- ["/admin/runtime" | Enum.map(@dashboard_pages, &"/admin/runtime/#{&1}")] do
+        assert {:error, {:redirect, %{to: "/session"}}} = live(conn, path),
+               "expected #{path} to require signing in"
+      end
+    end
+
+    test "a member is sent back home, on every page", %{conn: conn} do
+      conn = sign_in(conn, user_fixture(%{email: "member@example.com"}))
+
+      for path <- ["/admin/runtime" | Enum.map(@dashboard_pages, &"/admin/runtime/#{&1}")] do
+        assert {:error, {:redirect, %{to: "/"}}} = live(conn, path),
+               "expected #{path} to refuse a plain member"
+      end
+    end
+
+    test "a member cannot reach a page through a node name either", %{conn: conn} do
+      conn = sign_in(conn, user_fixture(%{email: "member@example.com"}))
+
+      assert {:error, {:redirect, %{to: "/"}}} =
+               live(conn, ~p"/admin/runtime/#{node()}/home")
+    end
+
+    test "an administrator reads the mirror's own metrics", %{conn: conn} do
+      with_env(:admins, ["ops@example.com"])
+      conn = sign_in(conn, user_fixture(%{email: "ops@example.com", role: "member"}))
+
+      # The dashboard groups metrics by the first segment of their name, and
+      # sends `/metrics` to the first group; `confluence_mirror` is ours.
+      {:ok, _view, html} =
+        live(conn, ~p"/admin/runtime/metrics?nav=confluence_mirror")
+
+      assert html =~ "Pages the mirror holds"
+    end
+
+    test "an administrator keeps every page", %{conn: conn} do
+      with_env(:admins, ["ops@example.com"])
+      conn = sign_in(conn, user_fixture(%{email: "ops@example.com", role: "member"}))
+
+      for page <- @dashboard_pages do
+        assert {:ok, _view, _html} = live(conn, "/admin/runtime/#{page}"),
+               "expected an administrator to open #{page}"
+      end
+    end
+  end
+
   defp sign_in(conn, user), do: Plug.Test.init_test_session(conn, %{"user_id" => user.id})
 
   defp with_env(key, value) do

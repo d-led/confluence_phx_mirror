@@ -132,7 +132,9 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
     {:ok, _reply, _tab} = subscribe_and_join(tab, SiteChannel, "site")
     {:ok, _reply, _tab} = subscribe_and_join(tab, SiteChannel, "site")
 
-    assert %{"user:1" => %{metas: [_, _]}} = Presence.list(Presence.site_topic())
+    # two tabs, one reader
+    key = Presence.site_key("user:1")
+    assert %{^key => %{metas: [_, _]}} = Presence.list(Presence.site_topic())
     assert Presence.online_count() == 1
   end
 
@@ -146,14 +148,19 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
     assert Presence.online_count() == 2
   end
 
-  # The footer shows a number, so the site topic carries no names: a reader's
-  # name is only published on the page they are reading, to its readers.
-  test "the site topic never publishes a reader's name" do
+  # The footer shows a number, so the site topic carries no names and no
+  # account ids: a reader's name is only published on the page they are
+  # reading, to that page's readers.
+  test "the site topic publishes no name and no account id" do
     tab = socket(UserSocket, "user:1", %{reader_key: "user:1", user_id: 1, user_name: "jane"})
 
     {:ok, _reply, _channel} = subscribe_and_join(tab, SiteChannel, "site")
 
     assert_push "presence_state", state
+
+    assert [published_key] = Map.keys(state)
+    assert published_key == Presence.site_key("user:1")
+    refute published_key =~ "user:1"
     refute inspect(state) =~ "jane"
   end
 

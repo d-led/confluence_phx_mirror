@@ -36,37 +36,37 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
     """
   end
 
-  @doc "A single metric."
+  @doc """
+  One metric in a strip: icon, label, value.
+
+  Metrics belong on one line, not in four boxes: an operator reads them
+  together, and a tile per number is a frame drawn around a word. The strip
+  wraps between items on a narrow screen, never inside one.
+  """
   attr :label, :string, required: true
   attr :value, :any, required: true
   attr :icon, :string, default: nil
-  slot :hint, doc: "a quieter line under the value, such as when the number was measured"
+  slot :hint, doc: "a quieter trailing detail, such as when the number was measured"
 
-  def stat_card(assigns) do
+  def stat(assigns) do
     ~H"""
-    <%!-- A metric reads better as a row than as a tile on a phone: the label and
-    its number on one line, no half-empty box. From `sm` up it is the tile the
-    eye expects in a row of four. --%>
-    <div class="flex min-h-12 items-center justify-between gap-3 px-1 py-2 sm:block sm:min-h-0 sm:rounded-xl sm:border sm:border-base-300/70 sm:bg-base-100 sm:p-4">
-      <div class="min-w-0">
-        <p class="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-base-content/70">
-          <.icon :if={@icon} name={@icon} class="size-3.5" /> {@label}
-        </p>
-        <p :if={@hint != []} class="mt-0.5 truncate text-[11px] text-base-content/70">
-          {render_slot(@hint)}
-        </p>
-      </div>
-      <p class="shrink-0 text-lg font-semibold tabular-nums sm:mt-1 sm:text-2xl">
-        {@value}
-      </p>
-    </div>
+    <span class="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
+      <.icon :if={@icon} name={@icon} class="size-4 shrink-0 self-center opacity-50" />
+      <span class="text-[11px] uppercase tracking-wider text-base-content/70">{@label}</span>
+      <span class="font-semibold tabular-nums">{@value}</span>
+      <%!-- The trailing detail is the first thing to go when the strip is two
+      columns wide. --%>
+      <span :if={@hint != []} class="hidden text-[11px] text-base-content/60 sm:inline">
+        {render_slot(@hint)}
+      </span>
+    </span>
     """
   end
 
   @doc "A titled region with an action slot and an optional metadata line."
   attr :title, :string, required: true
   attr :subtitle, :string, default: nil
-  attr :class, :any, default: "mt-8"
+  attr :class, :any, default: "mt-6"
   slot :actions
   slot :meta
   slot :inner_block, required: true
@@ -164,7 +164,7 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
 
   def page_header(assigns) do
     ~H"""
-    <header class={["border-b border-base-300/70 pb-4 sm:pb-5", @class]}>
+    <header class={["border-b border-base-300/70 pb-3 sm:pb-4", @class]}>
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <p :if={@eyebrow} class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">

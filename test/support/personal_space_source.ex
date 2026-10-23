@@ -42,6 +42,18 @@ defmodule ConfluencePhxMirror.Confluence.PersonalSpaceSource do
   def pages(@personal_key, _opts), do: {:ok, []}
   def pages(space_key, opts), do: DemoSource.pages(space_key, opts)
 
+  # One of the changed pages lives in the personal space: an incremental run
+  # has to leave it out, or the space arrives through the back door.
+  @impl true
+  def changed_since(since, opts) do
+    {:ok, pages} = DemoSource.changed_since(since, opts)
+
+    case pages do
+      [page | rest] -> {:ok, [%{page | space_key: @personal_key} | rest]}
+      [] -> {:ok, []}
+    end
+  end
+
   @impl true
   defdelegate page(confluence_id, opts), to: DemoSource
 

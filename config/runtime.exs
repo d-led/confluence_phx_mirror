@@ -216,6 +216,15 @@ if proxy_auth = System.get_env("CM_PROXY_AUTH") do
   config :confluence_phx_mirror, :proxy_auth, proxy_auth in ~w(1 true yes)
 end
 
+# A reader Confluence switched off is refused by the mirror too: the site
+# decides who may read it. MIRROR_ALLOW_SITE_DISABLED_READERS=1 relaxes that for
+# a mirror meant to outlive an account being stood down — the content stays
+# readable while the person is inactive on the site. Accounts the site no longer
+# has, and accounts banned here, are refused either way.
+if allow = System.get_env("MIRROR_ALLOW_SITE_DISABLED_READERS") do
+  config :confluence_phx_mirror, allow_site_disabled_readers: allow in ~w(1 true yes)
+end
+
 if header = System.get_env("CM_PROXY_AUTH_HEADER") do
   config :confluence_phx_mirror, :proxy_auth_header, String.downcase(header)
 end

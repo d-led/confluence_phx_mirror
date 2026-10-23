@@ -583,4 +583,22 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
                HttpSource.attachment_data(attachment, [])
     end
   end
+
+  describe "group membership" do
+    # Cloud no longer answers "who is in this group"; it answers this instead,
+    # so a live sync learns membership one person at a time.
+    test "the site is asked which groups one account belongs to" do
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/rest/api/user/memberof"
+        assert conn.query_params["accountId"] == "557058:jane"
+
+        Req.Test.json(conn, %{
+          "results" => [%{"name" => "confluence-users"}, %{"name" => "confluence-admins"}]
+        })
+      end)
+
+      assert {:ok, ["confluence-users", "confluence-admins"]} =
+               HttpSource.groups_of_account("557058:jane", [])
+    end
+  end
 end

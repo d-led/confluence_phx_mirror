@@ -46,6 +46,9 @@ config :confluence_phx_mirror,
   notifications: [enabled: true, from: {"Mirror", "mirror@localhost"}, digest_hour_utc: 8],
   webhooks: [secret: "test-webhook-secret", require_signature: false]
 
+# The route is compiled in so the suite can prove it is administrator-only.
+config :confluence_phx_mirror, admin_dashboard: true
+
 config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.DemoSource,
   sync_interval_seconds: 0,
   # The SQL sandbox hands a test one connection, so detailing pages in

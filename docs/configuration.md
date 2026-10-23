@@ -78,6 +78,7 @@ CM_SOURCE=synthetic CM_SYNTHETIC_SPACES=200 CM_SYNTHETIC_PAGES=500 \
 | `CM_PROXY_AUTH_HEADER` | `x-forwarded-email` | header carrying the reader's e-mail |
 | `CM_PROXY_AUTH_NAME_HEADER` | `x-forwarded-user` | header carrying the display name |
 | `CM_PROXY_AUTH_MEMBERS_ONLY` | `true` | admit only administrators and identities the sync has seen on the mirrored site |
+| `MIRROR_ALLOW_SITE_DISABLED_READERS` | `false` | let readers Confluence reports as *inactive* read anyway; accounts the site no longer has, and banned accounts, stay out |
 | `MIRROR_ALLOW_UNSAFE_IDENTITY` | `false` | acknowledge the three switches above in a production release |
 
 `MIRROR_AUTO_ADMIN`, `MIRROR_SELF_SIGNUP` and `CM_PROXY_AUTH` each hand out an

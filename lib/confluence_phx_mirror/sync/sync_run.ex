@@ -11,7 +11,7 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
   @type t :: %__MODULE__{}
 
   @modes ~w(snapshot incremental webhook)
-  @statuses ~w(running succeeded partial failed)
+  @statuses ~w(running succeeded partial failed cancelled)
 
   schema "sync_runs" do
     field :source, :string
@@ -19,6 +19,7 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
     field :status, :string, default: "running"
     field :started_at, :utc_datetime
     field :finished_at, :utc_datetime
+    field :cancel_requested_at, :utc_datetime
     field :stats, :map, default: %{}
     field :error, :string
 
@@ -27,7 +28,16 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
 
   def changeset(run, attrs) do
     run
-    |> cast(attrs, [:source, :mode, :status, :started_at, :finished_at, :stats, :error])
+    |> cast(attrs, [
+      :source,
+      :mode,
+      :status,
+      :started_at,
+      :finished_at,
+      :cancel_requested_at,
+      :stats,
+      :error
+    ])
     |> validate_required([:source, :mode, :status, :started_at])
     |> validate_inclusion(:mode, @modes)
     |> validate_inclusion(:status, @statuses)
@@ -79,6 +89,35 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
       "sync_run",
       run.id,
       metadata(error: message, mode: run.mode, trigger: opts[:trigger])
+    )
+  end
+
+  @doc """
+  Audit entry for a run that stopped on request.
+
+  Not a failure: an administrator asked for it, and `by` says which one.
+  """
+  def audit_event_cancelled(%__MODULE__{} = run, opts \\ []) do
+    Entry.new(
+      "sync.cancelled",
+      "sync_run",
+      run.id,
+      metadata(mode: run.mode, by: opts[:by], pages: run.stats["pages"], trigger: opts[:trigger])
+    )
+  end
+
+  @doc """
+  Audit entry for a run whose node went away while it was running.
+
+  Nothing asked for this one, so it is recorded as its own event rather than a
+  failure an operator would look for in the source's logs.
+  """
+  def audit_event_abandoned(%__MODULE__{} = run) do
+    Entry.new(
+      "sync.abandoned",
+      "sync_run",
+      run.id,
+      metadata(mode: run.mode, started_at: DateTime.to_iso8601(run.started_at))
     )
   end
 

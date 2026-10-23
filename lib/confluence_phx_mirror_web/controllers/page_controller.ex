@@ -93,33 +93,24 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     end
   end
 
-  def blog_post(conn, %{"key" => space_key, "id" => id, "slug" => slug}) do
+  def blog_post(conn, %{"key" => space_key, "id" => id} = params) do
     with {id, ""} <- Integer.parse(id),
          {:ok, page} <- Mirror.find_page_by_path(space_key, id),
          true <- page.type == "blogpost",
          true <- readable?(conn, page) do
-      if Page.slug_match?(page, slug) do
-        render_page(conn, page, :blog)
-      else
-        redirect(conn, to: URLs.blog_post_path(page.space.key, page.confluence_id, page.slug))
-      end
+      open_blog_post(conn, page, params["slug"] || "")
     else
       _ -> NotFound.call(conn, "That blog post is not mirrored.")
     end
   end
 
-  def blog_post(conn, %{"key" => space_key, "id" => id}) do
-    with {id, ""} <- Integer.parse(id),
-         {:ok, page} <- Mirror.find_page_by_path(space_key, id),
-         true <- page.type == "blogpost",
-         true <- readable?(conn, page) do
-      if Page.slug_match?(page, "") do
-        render_page(conn, page, :blog)
-      else
-        redirect(conn, to: URLs.blog_post_path(page.space.key, page.confluence_id, page.slug))
-      end
+  # The address is the post's own slug; anything else forwards to it, so a
+  # renamed post keeps one URL and every older link still lands.
+  defp open_blog_post(conn, page, slug) do
+    if Page.slug_match?(page, slug) do
+      render_page(conn, page, :blog)
     else
-      _ -> NotFound.call(conn, "That blog post is not mirrored.")
+      redirect(conn, to: URLs.blog_post_path(page.space.key, page.confluence_id, page.slug))
     end
   end
 
@@ -201,6 +192,8 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   # whole job. sobelow cannot see across the function boundary.
   # sobelow_skip ["XSS.Raw"]
   defp do_render_page(conn, page, kind) do
+    :telemetry.execute([:confluence_mirror, :page, :view], %{count: 1}, %{kind: kind})
+
     space = page.space
     user = conn.assigns[:current_user]
     watching = watched(user, [{"page", page.id}, {"space", space.id}])

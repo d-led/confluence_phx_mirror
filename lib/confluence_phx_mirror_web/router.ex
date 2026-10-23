@@ -235,14 +235,21 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/", HealthController, :show
   end
 
-  # Enable LiveDashboard in development
-  if Application.compile_env(:confluence_phx_mirror, :dev_routes) do
+  # The BEAM's own dashboard, for administrators only. Off unless the
+  # deployment asks for it (`admin_dashboard`): it shows what is in memory and
+  # lets you kill a process, which is more than a reader should ever reach.
+  #
+  # `live_dashboard` brings its own `live_session` — they cannot be nested —
+  # so the admin hook is declared on it instead of around it.
+  if Application.compile_env(:confluence_phx_mirror, :admin_dashboard, false) do
     import Phoenix.LiveDashboard.Router
 
-    scope "/dev" do
+    scope "/admin" do
       pipe_through :browser
 
-      live_dashboard "/dashboard", metrics: ConfluencePhxMirrorWeb.Telemetry
+      live_dashboard "/runtime",
+        metrics: ConfluencePhxMirrorWeb.Telemetry,
+        on_mount: [{LiveUserAuth, :admin}]
     end
   end
 end

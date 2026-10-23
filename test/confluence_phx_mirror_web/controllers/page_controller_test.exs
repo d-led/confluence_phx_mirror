@@ -223,6 +223,16 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert body =~ "That blog post is not mirrored"
   end
 
+  test "a blog post opens at its own address, and a stale slug forwards to it", %{conn: conn} do
+    space = space_fixture(%{key: "POSTS", name: "Release Notes"})
+    post = page_fixture(space, %{title: "Release 2.0", type: "blogpost", slug: "Release+2+0"})
+    path = "/spaces/POSTS/blog/#{post.confluence_id}"
+
+    assert conn |> get("#{path}/Release+2+0") |> html_response(200) =~ "Release 2.0"
+
+    assert conn |> get("#{path}/Release+1+0") |> redirected_to() == "#{path}/Release+2+0"
+  end
+
   test "recently updated lists the newest content first, a window at a time", %{conn: conn} do
     html = conn |> get(~p"/recent") |> html_response(200)
 

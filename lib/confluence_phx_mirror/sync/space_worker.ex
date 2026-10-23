@@ -4,6 +4,8 @@ defmodule ConfluencePhxMirror.Sync.SpaceWorker do
 
   The outcome is left to `Sync.run/2`, which records a failed run and re-raises
   so that Oban retries; a run that returns is a run that finished.
+
+  A sync already in flight makes this job wait rather than drop the refresh.
   """
 
   use Oban.Worker, queue: :sync, max_attempts: 3, unique: [period: 120, keys: [:space_key]]
@@ -15,14 +17,14 @@ defmodule ConfluencePhxMirror.Sync.SpaceWorker do
 
   @impl true
   def perform(%Oban.Job{args: %{"space_key" => space_key} = args}) do
-    {:ok, _run} =
-      Sync.run(:space,
-        space_key: space_key,
-        actor: @actor,
-        trigger: trigger(args)
-      )
-
-    :ok
+    case Sync.run(:space,
+           space_key: space_key,
+           actor: @actor,
+           trigger: trigger(args)
+         ) do
+      {:ok, _run} -> :ok
+      {:error, :already_running} -> {:snooze, 30}
+    end
   end
 
   defp trigger(%{"trigger" => trigger}) when is_binary(trigger) and trigger != "",

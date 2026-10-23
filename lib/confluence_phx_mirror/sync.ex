@@ -28,7 +28,17 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sites
-  alias ConfluencePhxMirror.Sync.{DynamicContent, Log, PageProperties, Renderer, SyncRun}
+  alias Oban.Job
+
+  alias ConfluencePhxMirror.Sync.{
+    Cancelled,
+    DynamicContent,
+    Gate,
+    Log,
+    PageProperties,
+    Renderer,
+    SyncRun
+  }
 
   @type mode :: :snapshot | :incremental | :space | :page
   @type report :: {:ok, SyncRun.t()}
@@ -52,12 +62,28 @@ defmodule ConfluencePhxMirror.Sync do
   """
   @spec run(mode(), keyword()) :: report()
   def run(mode, opts \\ []) do
+    # A `running` row whose owner is gone is not a run in flight. Clear those
+    # before taking the lock, because while we hold it we cannot tell ours from
+    # anyone else's.
+    abandon_abandoned_runs()
+
+    case Gate.exclusive(fn gate_owner ->
+           run_locked(mode, Keyword.put(opts, :gate_owner, gate_owner))
+         end) do
+      {:ok, result} -> result
+      {:error, :already_running} = busy -> busy
+    end
+  end
+
+  defp run_locked(mode, opts) do
     source = Keyword.get(opts, :source, Source.source())
     actor = Keyword.get(opts, :actor, {:system, "sync"})
     trigger = Keyword.get(opts, :trigger)
     # One mirror holds one site's content; never let a sync write across sites.
     Sites.verify!()
     run = start_run(source, mode, actor, trigger)
+    # The loops ask the row whether someone asked them to stop.
+    opts = Keyword.put(opts, :run_id, run.id)
 
     Logger.info("sync started",
       sync_run_id: run.id,
@@ -78,6 +104,9 @@ defmodule ConfluencePhxMirror.Sync do
       {stats, errors} = reconcile_accounts(mode, source, stats, errors, opts)
       finish_run(run, stats, errors, actor, trigger)
     rescue
+      Cancelled ->
+        finish_cancelled(run, actor, trigger)
+
       error ->
         fail_run(run, Exception.message(error), trigger)
 
@@ -109,6 +138,207 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   # ---------------------------------------------------------------------------
+  # One run at a time, and stopping one
+  # ---------------------------------------------------------------------------
+
+  @abandoned "the process running this sync stopped before it finished"
+
+  @doc """
+  Asks a running sync to stop at its next safe boundary.
+
+  Returns `{:error, :not_running}` when there is nothing to stop — a run that
+  already finished, or one that never started. The request is a flag the run
+  checks between pages; it is not a kill, so the answer to "has it stopped?"
+  is the run's status, not this call.
+  """
+  @spec cancel(Ecto.UUID.t() | integer(), Audit.actor()) ::
+          {:ok, SyncRun.t()} | {:error, :not_running}
+  def cancel(run_id, actor) do
+    case Repo.get(SyncRun, run_id) do
+      %SyncRun{status: "running"} = run ->
+        {:ok, run} =
+          run
+          |> SyncRun.changeset(%{cancel_requested_at: now()})
+          |> Repo.update()
+
+        Log.add(:warn, "cancellation requested, stopping at the next page",
+          sync_run_id: run.id,
+          by: actor_name(actor)
+        )
+
+        {:ok, run}
+
+      _finished_or_missing ->
+        {:error, :not_running}
+    end
+  end
+
+  @doc """
+  Marks `running` rows as failed when no one holds the sync lock.
+
+  A run outlives its row only while its node holds the advisory lock (see
+  `Sync.Gate`), so a free lock plus a running row means the node that owned it
+  died — a deploy, an OOM kill, a Machine going away. Saying so beats leaving a
+  run that looks busy forever, and beats a timeout that would have to guess.
+
+  Returns how many runs it closed.
+  """
+  @spec abandon_abandoned_runs() :: non_neg_integer()
+  def abandon_abandoned_runs do
+    if Gate.held?() do
+      0
+    else
+      from(r in SyncRun, where: r.status == "running")
+      |> Repo.all()
+      |> Enum.map(&abandon_run/1)
+      |> length()
+    end
+  end
+
+  defp abandon_run(run) do
+    {:ok, run} =
+      run
+      |> SyncRun.changeset(%{status: "failed", finished_at: now(), error: @abandoned})
+      |> Repo.update()
+
+    Log.add(:warn, "sync #{run.id} was abandoned: #{@abandoned}", sync_run_id: run.id)
+    Audit.log(Audit.system_actor(), SyncRun.audit_event_abandoned(run))
+  end
+
+  defp finish_cancelled(run, actor, trigger) do
+    # Whatever the progress flushes left on the row is the honest total: the
+    # pages copied before the stop are in the mirror, so the run reports them.
+    stats = Repo.get(SyncRun, run.id).stats || %{}
+
+    {:ok, run} =
+      run
+      |> SyncRun.changeset(%{
+        status: "cancelled",
+        finished_at: now(),
+        stats: stats,
+        error: "stopped on request; the #{stats["pages"] || 0} pages listed before that stay"
+      })
+      |> Repo.update()
+
+    Log.add(:warn, "sync cancelled: #{stats["pages"] || 0} pages were listed first",
+      sync_run_id: run.id
+    )
+
+    log_traffic_summary()
+    Log.current_run(nil)
+
+    Audit.log(actor, SyncRun.audit_event_cancelled(run, by: actor_name(actor), trigger: trigger))
+
+    {:ok, run}
+  end
+
+  defp actor_name({:user, %{email: email}}), do: email
+  defp actor_name({:system, name}), do: name
+  defp actor_name(other), do: inspect(other)
+
+  # Checked between pages, never inside one: a page is written in a transaction
+  # of its own, so stopping between two of them leaves nothing half-done.
+  @cancel_check_every 100
+
+  defp check_cancelled!(opts) do
+    case opts[:run_id] do
+      nil -> :ok
+      run_id -> if cancel_requested?(run_id), do: raise(Cancelled), else: :ok
+    end
+  end
+
+  defp cancel_requested?(run_id) do
+    Repo.exists?(from(r in SyncRun, where: r.id == ^run_id and not is_nil(r.cancel_requested_at)))
+  end
+
+  # The dashboard shows a run while it runs, so the counters have to move while
+  # the run moves: the row is written as the pages are counted, not only at the
+  # end. The phase is what the dashboard's live strip names.
+  defp record_progress(opts, counts) do
+    case opts[:run_id] do
+      nil ->
+        :ok
+
+      run_id ->
+        Repo.update_all(from(r in SyncRun, where: r.id == ^run_id),
+          set: [stats: counts |> page_counts() |> Map.put("phase", "pages")]
+        )
+    end
+  end
+
+  # Which step the run is on now. One read and one write per step, a handful per
+  # run — the counts themselves are written as they change, above.
+  defp record_phase(opts, phase) do
+    with run_id when not is_nil(run_id) <- opts[:run_id],
+         %SyncRun{} = run <- Repo.get(SyncRun, run_id) do
+      Repo.update_all(from(r in SyncRun, where: r.id == ^run_id),
+        set: [stats: Map.put(run.stats || %{}, "phase", phase)]
+      )
+    else
+      _no_run -> :ok
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # The queue
+  # ---------------------------------------------------------------------------
+
+  # Waiting for a free slot, for its schedule, or for its next attempt — the
+  # states in which a job has not started. `executing` is deliberately absent:
+  # once a job runs it is a run, and stopping it is `cancel/2`.
+  @queued_states ~w(available scheduled retryable)
+
+  @doc """
+  The sync jobs waiting their turn, next first.
+
+  The queue is a place an operator acts on — a webhook storm, a wrong press of
+  "sync one space" — so the dashboard lists what waits there beside the runs
+  that already happened, rather than only inside Oban's own tables.
+  """
+  @spec queued(pos_integer()) :: [Job.t()]
+  def queued(limit \\ 10) do
+    from(j in Job,
+      where: j.queue == "sync" and j.state in ^@queued_states,
+      order_by: [asc: j.scheduled_at, asc: j.id],
+      limit: ^limit
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Drops a queued sync before anything picks it up.
+
+  The state filter is part of the update, so a job that started between the
+  page rendering and the click is left alone — the caller gets
+  `{:error, :not_queued}` and stops offering the button. What was cancelled
+  keeps its row, marked `cancelled`, and is audited, so the queue remembers
+  that someone dropped the work.
+  """
+  @spec cancel_queued(integer(), Audit.actor()) :: {:ok, Job.t()} | {:error, :not_queued}
+  def cancel_queued(job_id, actor) when is_integer(job_id) do
+    with %Job{} = job <- Repo.get(Job, job_id),
+         {:ok, 1} <-
+           Oban.cancel_all_jobs(
+             from(j in Job, where: j.id == ^job_id and j.state in ^@queued_states)
+           ) do
+      Log.add(:warn, "a queued sync was cancelled before it started", by: actor_name(actor))
+      Audit.log(actor, audit_event_dequeued(job, actor))
+
+      {:ok, Repo.get(Job, job_id)}
+    else
+      _gone_or_started -> {:error, :not_queued}
+    end
+  end
+
+  defp audit_event_dequeued(job, actor) do
+    Audit.Entry.new("sync.dequeued", "sync_job", job.id, %{
+      worker: job.worker,
+      args: job.args,
+      by: actor_name(actor)
+    })
+  end
+
+  # ---------------------------------------------------------------------------
   # Account status
   # ---------------------------------------------------------------------------
 
@@ -117,6 +347,7 @@ defmodule ConfluencePhxMirror.Sync do
   defp reconcile_accounts(:page, _source, stats, errors, _opts), do: {stats, errors}
 
   defp reconcile_accounts(_mode, source, stats, errors, opts) do
+    record_phase(opts, "accounts")
     {checked, account_errors} = sync_account_statuses(source, opts)
     {Map.put(stats, "accounts", checked), errors ++ account_errors}
   end
@@ -146,13 +377,19 @@ defmodule ConfluencePhxMirror.Sync do
   defp check_account(source, account_id, {checked, errors}, opts) do
     case source.user_status(account_id, opts) do
       {:ok, status} ->
-        Accounts.reconcile_site_disabled(
+        Accounts.reconcile_site_status(
           account_id,
           Map.get(status, :email),
-          switched_off?(Map.get(status, :account_status))
+          site_state(Map.get(status, :account_status))
         )
 
         {checked + 1, errors}
+
+      # The site has no such account any more. That is not a failure and not a
+      # switch-off: it is the one state a deployment may not relax.
+      {:error, :not_found} ->
+        Accounts.reconcile_site_status(account_id, nil, :deleted)
+        {checked, errors}
 
       {:error, :not_supported} ->
         {checked, errors}
@@ -162,11 +399,14 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
-  # Anything but "active" means the person cannot sign in to the site any more.
-  # A site that says nothing at all is not evidence of anything.
-  defp switched_off?("active"), do: false
-  defp switched_off?(status) when is_binary(status), do: true
-  defp switched_off?(_unknown), do: false
+  # Atlassian reports `active`, `inactive` or `closed`, and nobody but `active`
+  # can use the site. `closed` cannot be undone there, which is the mirror's
+  # notion of deleted. Anything we do not recognise counts as switched off,
+  # never as active: a site that says nothing is not evidence of anything.
+  defp site_state("active"), do: :active
+  defp site_state("inactive"), do: :disabled
+  defp site_state("closed"), do: :deleted
+  defp site_state(_unknown), do: :disabled
 
   # ---------------------------------------------------------------------------
   # Modes
@@ -175,6 +415,13 @@ defmodule ConfluencePhxMirror.Sync do
   defp do_run(:snapshot, source, opts) do
     case source.spaces(opts) do
       {:ok, space_dtos} ->
+        # Who may read what comes first: membership decides access, so it is
+        # settled from the identities the mirror already has before content
+        # moves. Anyone this run's pages introduce is added after the pages.
+        record_phase(opts, "people")
+        {people, people_errors, refreshed} = sync_groups(source, opts)
+        record_phase(opts, "spaces")
+
         {space_dtos, skipped} = importable_spaces(space_dtos)
         {spaces, icon_errors} = upsert_spaces(source, space_dtos)
         {spaces_trashed, pages_trashed} = trash_missing_spaces(space_dtos)
@@ -184,8 +431,15 @@ defmodule ConfluencePhxMirror.Sync do
         resolve_trees(spaces)
         index = Mirror.page_index()
 
+        record_phase(opts, "people")
+        {new_people, newcomer_errors, _} = sync_groups(source, opts, newcomers(refreshed))
+        record_phase(opts, "details")
         {stats, detail_errors} = sync_details(source, entries, index, opts)
-        {members, group_errors} = sync_groups(source, opts)
+
+        # Restrictions and permissions are in by now, so the groups the content
+        # depends on can finally be asked about.
+        record_phase(opts, "groups")
+        {group_rows, group_errors} = refresh_groups(source, opts)
 
         stats =
           Map.merge(stats, %{
@@ -194,11 +448,15 @@ defmodule ConfluencePhxMirror.Sync do
             "deleted" => deleted,
             "spaces_trashed" => spaces_trashed,
             "pages_trashed" => pages_trashed,
-            "group_members" => members
+            "group_members" => people + new_people + group_rows
           })
           |> Map.merge(page_counts(counts))
 
-        {stats, errors ++ icon_errors ++ permission_errors ++ detail_errors ++ group_errors}
+        {stats,
+         errors ++
+           icon_errors ++
+           permission_errors ++
+           people_errors ++ newcomer_errors ++ detail_errors ++ group_errors}
 
       {:error, reason} ->
         raise_source_error(:spaces, nil, reason)
@@ -209,19 +467,31 @@ defmodule ConfluencePhxMirror.Sync do
     space_key = Keyword.fetch!(opts, :space_key)
 
     with {:ok, space, icon_errors} <- ensure_space(source, space_key, opts) do
+      record_phase(opts, "people")
+      {people, people_errors, refreshed} = sync_groups(source, opts)
+      record_phase(opts, "spaces")
       {_spaces, permission_errors} = sync_space_permissions(source, [space])
       {entries, counts, errors, deleted} = sync_pages_of([space], source, opts)
       resolve_trees([space])
       index = Mirror.page_index()
 
+      record_phase(opts, "people")
+      {new_people, newcomer_errors, _} = sync_groups(source, opts, newcomers(refreshed))
+      record_phase(opts, "details")
       {stats, detail_errors} = sync_details(source, entries, index, opts)
-      {members, group_errors} = sync_groups(source, opts)
+      record_phase(opts, "groups")
+      {group_rows, group_errors} = refresh_groups(source, opts)
+      members = people + new_people + group_rows
 
       stats =
         Map.merge(stats, %{"spaces" => 1, "deleted" => deleted, "group_members" => members})
         |> Map.merge(page_counts(counts))
 
-      {stats, errors ++ icon_errors ++ permission_errors ++ detail_errors ++ group_errors}
+      {stats,
+       errors ++
+         icon_errors ++
+         permission_errors ++
+         people_errors ++ newcomer_errors ++ detail_errors ++ group_errors}
     end
   end
 
@@ -234,9 +504,12 @@ defmodule ConfluencePhxMirror.Sync do
          {:ok, entry} <- upsert_page_record(space, dto, previous, force: true) do
       resolve_trees([space])
       index = Mirror.page_index()
+      record_phase(opts, "people")
+      {members, group_errors, _refreshed} = sync_groups(source, opts)
+      record_phase(opts, "details")
       {stats, errors} = sync_details(source, [entry], index, opts)
       {_spaces, permission_errors} = sync_space_permissions(source, [space])
-      {members, group_errors} = sync_groups(source, opts)
+      {group_rows, referenced_errors} = refresh_groups(source, opts)
       refresh_dynamic_pages()
 
       {Map.merge(stats, %{
@@ -244,8 +517,8 @@ defmodule ConfluencePhxMirror.Sync do
          "pages" => 1,
          "changed" => if(entry.change == :updated, do: 1, else: 0),
          "unchanged" => if(entry.change == :unchanged, do: 1, else: 0),
-         "group_members" => members
-       }), errors ++ icon_errors ++ permission_errors ++ group_errors}
+         "group_members" => members + group_rows
+       }), errors ++ icon_errors ++ permission_errors ++ group_errors ++ referenced_errors}
     else
       {:error, reason} -> raise_source_error(:page, confluence_id, reason)
     end
@@ -256,19 +529,38 @@ defmodule ConfluencePhxMirror.Sync do
 
     case source.changed_since(since, opts) do
       {:ok, dtos} ->
+        # A page in a personal space is not imported through the side door.
+        {dtos, skipped_personal} = drop_personal_pages(source, dtos, opts)
+
+        record_phase(opts, "people")
+        {people, people_errors, refreshed} = sync_groups(source, opts)
+        record_phase(opts, "spaces")
         {spaces, icon_errors} = ensure_spaces_for(source, dtos, opts)
         {spaces, permission_errors} = sync_space_permissions(source, spaces)
-        {entries, counts, errors} = upsert_entries(dtos, spaces)
+        {entries, counts, errors} = upsert_entries(dtos, spaces, opts)
         resolve_trees(spaces)
         index = Mirror.page_index()
+
+        record_phase(opts, "people")
+        {new_people, newcomer_errors, _} = sync_groups(source, opts, newcomers(refreshed))
+        record_phase(opts, "details")
         {stats, detail_errors} = sync_details(source, entries, index, opts)
-        {members, group_errors} = sync_groups(source, opts)
+        record_phase(opts, "groups")
+        {group_rows, group_errors} = refresh_groups(source, opts)
 
         stats =
-          Map.merge(stats, %{"spaces" => length(spaces), "group_members" => members})
+          Map.merge(stats, %{
+            "spaces" => length(spaces),
+            "skipped_personal" => skipped_personal,
+            "group_members" => people + new_people + group_rows
+          })
           |> Map.merge(page_counts(counts))
 
-        {stats, errors ++ icon_errors ++ permission_errors ++ detail_errors ++ group_errors}
+        {stats,
+         errors ++
+           icon_errors ++
+           permission_errors ++
+           people_errors ++ newcomer_errors ++ detail_errors ++ group_errors}
 
       {:error, :not_supported} ->
         do_run(:snapshot, source, opts)
@@ -301,14 +593,41 @@ defmodule ConfluencePhxMirror.Sync do
 
   # Everyone has a personal space, and mirroring the sync account's own drafts
   # is rarely what an operator wants, so personal spaces are skipped unless the
-  # deployment asks for them (`CM_SYNC_PERSONAL_SPACES=true`). Syncing one space
-  # explicitly still works: the filter only applies to a whole-site snapshot.
+  # deployment asks for them (`CM_SYNC_PERSONAL_SPACES=true`). The filter is not
+  # only for a whole-site snapshot: an incremental run that finds a new page in
+  # somebody's private space must skip it too, or the space arrives through the
+  # back door. Syncing one space explicitly still works — that is a request, not
+  # a discovery.
   defp importable_spaces(space_dtos) do
     if personal_spaces?() do
       {space_dtos, 0}
     else
       personal = Enum.filter(space_dtos, &(&1[:type] == "personal"))
       {space_dtos -- personal, length(personal)}
+    end
+  end
+
+  # An incremental run only has page DTOs, and a page does not say what kind of
+  # space it lives in, so the space list answers for it. A failure to read the
+  # list fails the run: silently importing a personal space is worse than a
+  # retry.
+  defp drop_personal_pages(source, dtos, opts) do
+    if personal_spaces?() do
+      {dtos, 0}
+    else
+      case source.spaces(opts) do
+        {:ok, space_dtos} ->
+          personal =
+            space_dtos
+            |> Enum.filter(&(&1[:type] == "personal"))
+            |> MapSet.new(& &1.key)
+
+          kept = Enum.reject(dtos, &MapSet.member?(personal, &1.space_key))
+          {kept, length(dtos) - length(kept)}
+
+        {:error, reason} ->
+          raise_source_error(:spaces, nil, reason)
+      end
     end
   end
 
@@ -467,11 +786,82 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
-  # Groups are how Confluence grants access, so the sync refreshes the
-  # membership of every group it has to make decisions on: the ones the content
-  # mentions, plus whatever grants administration. A source that cannot read
-  # groups keeps the membership the mirror already has.
-  defp sync_groups(source, opts) do
+  # Groups are how Confluence grants access, so a run settles them **first**:
+  # the identities the mirror already knows are refreshed before any content
+  # moves. Confluence never lists its users, so `:everyone` here means exactly
+  # that — the people the last run's content named. Anyone this run's content
+  # introduces is refreshed by a second, smaller pass (`newcomers/1`), which is
+  # the closest a Cloud mirror can come to "users first, then spaces".
+  #
+  # The other direction — "who is in this group" — is `refresh_groups/2`, and it
+  # has to wait for the details pass: the groups worth asking about are the ones
+  # page restrictions and space permissions refer to, and those land there.
+  #
+  # Returns how many membership rows were written and which account ids were
+  # asked about, so the second pass knows who is left.
+  defp sync_groups(source, opts, only \\ :everyone) do
+    refresh_memberships(source, opts, only)
+  end
+
+  # A snapshot meets a lot of people, and every one of them is a request, so the
+  # sweep is capped; the order is stable, so the same people are refreshed.
+  @max_membership_checks 200
+
+  defp refresh_memberships(source, opts, only) do
+    if function_exported?(source, :groups_of_account, 2) do
+      only
+      |> identities_to_refresh()
+      |> Enum.reduce({[], 0, []}, fn identity, {refreshed, stored, errors} ->
+        {saved, new_errors} = refresh_membership(source, identity, opts)
+        {[identity.account_id | refreshed], stored + saved, errors ++ new_errors}
+      end)
+    else
+      # A source that only answers "who is in this group" has nothing to say
+      # here; `refresh_groups/2` is its half of the work.
+      {[], 0, []}
+    end
+  end
+
+  defp identities_to_refresh(:everyone) do
+    Mirror.known_identities() |> Enum.take(@max_membership_checks)
+  end
+
+  defp identities_to_refresh(%MapSet{} = only) do
+    Mirror.known_identities()
+    |> Enum.filter(&MapSet.member?(only, &1.account_id))
+    |> Enum.take(@max_membership_checks)
+  end
+
+  defp refresh_membership(source, identity, opts) do
+    case source.groups_of_account(identity.account_id, opts) do
+      {:ok, groups} ->
+        {:ok, stored} = Mirror.replace_subject_groups(identity, groups)
+        {stored, []}
+
+      {:error, :not_supported} ->
+        {0, []}
+
+      # The account is gone from the site; so is its membership.
+      {:error, :not_found} ->
+        {:ok, _} = Mirror.replace_subject_groups(identity, [])
+        {0, []}
+
+      {:error, reason} ->
+        {0, [error("account", identity.account_id, reason)]}
+    end
+  end
+
+  # The people the content named that the first sweep did not cover.
+  defp newcomers(refreshed) do
+    known =
+      Mirror.known_identities()
+      |> Enum.map(& &1.account_id)
+      |> MapSet.new()
+
+    MapSet.difference(known, MapSet.new(refreshed))
+  end
+
+  defp refresh_groups(source, opts) do
     if function_exported?(source, :group_members, 2) do
       groups_to_refresh()
       |> Enum.reduce({0, []}, &refresh_group(source, &1, &2, opts))
@@ -523,17 +913,22 @@ defmodule ConfluencePhxMirror.Sync do
     Enum.reduce(spaces, {[], %{changed: 0, unchanged: 0}, [], 0}, fn space,
                                                                      {entries, counts, errors,
                                                                       deleted} ->
+      check_cancelled!(opts)
+
       case source.pages(space.key, opts) do
         {:ok, dtos} ->
-          {upserted, space_counts, page_errors} = upsert_entries(dtos, [space])
+          {upserted, space_counts, page_errors} = upsert_entries(dtos, [space], opts)
           {deleted_count, guard_errors} = reconcile_deletions(space, dtos)
 
           if deleted_count > 0 do
             Audit.log(Audit.system_actor(), Space.audit_event_pages_deleted(space, deleted_count))
           end
 
-          {entries ++ upserted, add_counts(counts, space_counts),
-           errors ++ page_errors ++ guard_errors, deleted + deleted_count}
+          counts = add_counts(counts, space_counts)
+          record_progress(opts, counts)
+
+          {entries ++ upserted, counts, errors ++ page_errors ++ guard_errors,
+           deleted + deleted_count}
 
         {:error, reason} ->
           {entries, counts, [error("space", space.key, reason) | errors], deleted}
@@ -574,13 +969,18 @@ defmodule ConfluencePhxMirror.Sync do
   # is built around not touching them: existing pages are loaded once as a light
   # index, unchanged pages cost one key lookup, and only pages that changed are
   # rendered and asked for their attachments and comments.
-  defp upsert_entries(dtos, spaces) do
+  defp upsert_entries(dtos, spaces, opts) do
     by_key = Map.new(spaces, &{&1.key, &1})
     existing = existing_pages()
 
     {entries, counts, errors} =
       Enum.reduce(dtos, {[], %{changed: 0, unchanged: 0}, []}, fn dto,
                                                                   {entries, counts, errors} ->
+        if rem(counts.changed + counts.unchanged, @cancel_check_every) == 0 do
+          check_cancelled!(opts)
+          record_progress(opts, counts)
+        end
+
         case Map.fetch(by_key, dto.space_key) do
           {:ok, space} ->
             case upsert_page_record(space, dto, Map.get(existing, dto.id)) do

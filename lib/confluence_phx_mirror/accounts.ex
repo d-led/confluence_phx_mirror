@@ -12,6 +12,8 @@ defmodule ConfluencePhxMirror.Accounts do
   alias ConfluencePhxMirror.Accounts.{Admins, ApiToken, LoginToken, TokenHash, User}
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Mailer
+  alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Mirror.GroupMember
   alias ConfluencePhxMirror.Repo
 
   @doc "Minutes a magic link stays valid."
@@ -60,13 +62,17 @@ defmodule ConfluencePhxMirror.Accounts do
   @doc """
   Switches an account off (or back on) on this mirror, and records who did it.
 
-  A protected administrator cannot be switched off: that would remove the only
-  way back in, the same reason `change_role/3` refuses to demote them.
+  Two administrators cannot be switched off: a protected one (seeded, or the
+  bootstrap account), and the last one. Either would leave nobody able to open
+  the admin screens — the same reason `change_role/3` refuses to demote them.
   """
   def set_disabled(%User{} = user, disabled?, actor) when is_boolean(disabled?) do
     cond do
       disabled? and Admins.protected?(user) ->
         {:error, :protected_admin}
+
+      disabled? and last_admin?(user) ->
+        {:error, :last_admin}
 
       User.disabled_here?(user) == disabled? ->
         {:ok, user}
@@ -84,16 +90,19 @@ defmodule ConfluencePhxMirror.Accounts do
 
   @doc """
   Applies what the mirrored site says about one Atlassian account: every mirror
-  account that belongs to it is marked as disabled on the site, or the mark is
-  cleared.
+  account that belongs to it takes the site's state — `:active`, `:disabled`
+  (the site switched them off) or `:deleted` (the site no longer has them).
 
   Only transitions are written and audited — a sync that runs every hour must
   not fill the log with "still active". Returns how many accounts changed.
   """
-  def reconcile_site_disabled(account_id, email, disabled_on_site?) do
+  @spec reconcile_site_status(String.t() | nil, String.t() | nil, :active | :disabled | :deleted) ::
+          non_neg_integer()
+  def reconcile_site_status(account_id, email, state)
+      when state in [:active, :disabled, :deleted] do
     account_id
     |> site_accounts(email)
-    |> Enum.count(fn user -> mirror_site_flag(user, disabled_on_site?) end)
+    |> Enum.count(&mirror_site_state(&1, state))
   end
 
   defp site_accounts(account_id, email) do
@@ -107,24 +116,30 @@ defmodule ConfluencePhxMirror.Accounts do
     |> Repo.all()
   end
 
-  defp mirror_site_flag(user, disabled_on_site?) do
-    if User.disabled_on_site?(user) == disabled_on_site? do
+  defp mirror_site_state(user, state) do
+    if site_state(user) == state do
       false
     else
-      {:ok, updated} =
-        put_flags(user, %{site_disabled_at: if(disabled_on_site?, do: now())})
-
-      Audit.log(
-        Audit.system_actor(),
-        site_event(updated, disabled_on_site?)
-      )
-
+      {:ok, updated} = put_flags(user, site_flags(state))
+      Audit.log(Audit.system_actor(), User.audit_event_for_site_state(updated, state))
       true
     end
   end
 
-  defp site_event(user, true), do: User.audit_event_site_disabled(user)
-  defp site_event(user, false), do: User.audit_event_site_enabled(user)
+  defp site_state(%User{} = user) do
+    cond do
+      User.deleted_on_site?(user) -> :deleted
+      User.disabled_on_site?(user) -> :disabled
+      true -> :active
+    end
+  end
+
+  # Being gone from the site outranks being switched off there: a deleted
+  # account is not a deactivated one, and the difference decides whether the
+  # deployment may let it read.
+  defp site_flags(:active), do: %{site_disabled_at: nil, site_deleted_at: nil}
+  defp site_flags(:disabled), do: %{site_disabled_at: now(), site_deleted_at: nil}
+  defp site_flags(:deleted), do: %{site_disabled_at: nil, site_deleted_at: now()}
 
   defp put_flags(user, attrs) do
     user |> Ecto.Changeset.change(attrs) |> Repo.update()
@@ -188,18 +203,159 @@ defmodule ConfluencePhxMirror.Accounts do
   Changes the role of an account.
 
   Seeded administrators (`CM_ADMINS`) and the local bootstrap account keep
-  their administration: demoting them would remove the only way back in.
+  their administration: demoting them would remove the only way back in. So
+  does the last administrator, whoever they are.
   """
   def change_role(%User{} = user, role, actor) do
     previous = user.role
 
-    if role != "admin" and Admins.protected?(user) do
-      {:error, :protected_admin}
+    cond do
+      role != "admin" and Admins.protected?(user) ->
+        {:error, :protected_admin}
+
+      loses_administration?(user, role) ->
+        {:error, :last_admin}
+
+      true ->
+        with {:ok, user} <- user |> User.changeset(%{role: role}) |> Repo.update() do
+          Audit.log(actor, User.audit_event_role_changed(user, previous))
+          {:ok, user}
+        end
+    end
+  end
+
+  # A last administrator may still be demoted when the role is not the only
+  # thing that makes them one — `CM_ADMINS` and an admin group do not care about
+  # the role, so the account would keep its way in.
+  defp loses_administration?(%User{} = user, role) do
+    last_admin?(user) and not Admins.admin?(%User{user | role: role})
+  end
+
+  @doc """
+  Whether this account is the mirror's last administrator.
+
+  The guard against locking everybody out: switching this account off, or
+  taking the `admin` role away, would leave nobody able to administer the
+  mirror. Two things still count as a way in — another enabled account that
+  administers the mirror, and a seeded address (`CM_ADMINS`) that is not
+  switched off, which becomes an administrator the first time it signs in.
+  """
+  @spec last_admin?(User.t() | nil) :: boolean()
+  def last_admin?(nil), do: false
+
+  def last_admin?(%User{} = user) do
+    Admins.admin?(user) and not another_administrator?(user)
+  end
+
+  defp another_administrator?(%User{} = user) do
+    other_seed?(user) or other_role_admin?(user) or other_group_admin?(user)
+  end
+
+  defp other_seed?(%User{email: email}) do
+    email = User.normalise_email(email)
+
+    Admins.admins()
+    |> Enum.reject(&(&1 == email))
+    |> Enum.any?(&seed_can_sign_in?/1)
+  end
+
+  defp seed_can_sign_in?(email) do
+    case get_user_by_email(email) do
+      nil -> true
+      account -> not User.disabled?(account)
+    end
+  end
+
+  defp other_role_admin?(%User{} = user) do
+    from(u in enabled_accounts(), where: u.id != ^user.id and u.role == "admin", select: 1)
+    |> Repo.exists?()
+  end
+
+  # A member of an admin group administers the mirror whether or not they have
+  # an account here: the site's membership is what decides, and they get an
+  # account the first time they sign in.
+  defp other_group_admin?(%User{} = user) do
+    Admins.admin_groups()
+    |> Enum.flat_map(&Mirror.group_members/1)
+    |> Enum.reject(&(&1.subject_key in User.identity_keys(user)))
+    |> Enum.any?(&member_can_sign_in?/1)
+  end
+
+  defp member_can_sign_in?(%GroupMember{} = member) do
+    case account_of(member) do
+      nil -> true
+      account -> not User.disabled?(account)
+    end
+  end
+
+  defp account_of(%GroupMember{email: email, account_id: account_id}) do
+    account_by_email(email) || account_by_confluence_id(account_id)
+  end
+
+  defp account_by_email(email) when is_binary(email) and email != "",
+    do: get_user_by_email(email)
+
+  defp account_by_email(_email), do: nil
+
+  defp account_by_confluence_id(account_id) when is_binary(account_id) and account_id != "",
+    do: Repo.get_by(User, confluence_account_id: account_id)
+
+  defp account_by_confluence_id(_account_id), do: nil
+
+  defp enabled_accounts do
+    from(u in User,
+      where: is_nil(u.disabled_at) and is_nil(u.site_disabled_at) and is_nil(u.banned_at)
+    )
+  end
+
+  @doc """
+  Bans an account from this mirror.
+
+  A ban is not a switch-off: it outranks every other flag, a sync never clears
+  it, and it blocks deletion — deleting the row would let the next sign-in
+  provision a fresh account, which is exactly what a ban is for.
+  """
+  def ban(%User{} = user, actor) do
+    if User.banned?(user) do
+      {:ok, user}
     else
-      with {:ok, user} <- user |> User.changeset(%{role: role}) |> Repo.update() do
-        Audit.log(actor, User.audit_event_role_changed(user, previous))
-        {:ok, user}
+      with {:ok, banned} <- put_flags(user, %{banned_at: now()}) do
+        Audit.log(actor, User.audit_event_banned(banned))
+        {:ok, banned}
       end
+    end
+  end
+
+  @doc "Lifts a ban. Access follows the other flags again."
+  def unban(%User{} = user, actor) do
+    if User.banned?(user) do
+      with {:ok, unbanned} <- put_flags(user, %{banned_at: nil}) do
+        Audit.log(actor, User.audit_event_unbanned(unbanned))
+        {:ok, unbanned}
+      end
+    else
+      {:ok, user}
+    end
+  end
+
+  @doc """
+  Deletes an account and everything that hangs off it — tokens, subscriptions,
+  login tokens.
+
+  Refused for a banned account, because the ban has to outlive the row, and for
+  the last administrator, because the mirror must keep one.
+  """
+  def delete_user(%User{} = user, actor) do
+    cond do
+      User.banned?(user) ->
+        {:error, :banned}
+
+      last_admin?(user) ->
+        {:error, :last_admin}
+
+      true ->
+        Audit.log(actor, User.audit_event_deleted(user))
+        Repo.delete(user)
     end
   end
 

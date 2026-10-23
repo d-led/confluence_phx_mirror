@@ -50,6 +50,18 @@ defmodule ConfluencePhxMirror.Sync.SiteDisablementTest do
     refute User.disabled?(Accounts.get_user(user.id))
   end
 
+  test "an account the site no longer has is marked gone, not merely switched off" do
+    user = account_for("557058:gone", "gone@example.com")
+
+    assert {:ok, _run} =
+             Sync.run(:snapshot, source: ConfluencePhxMirror.Confluence.AccountGoneSource)
+
+    reloaded = Accounts.get_user(user.id)
+    assert User.deleted_on_site?(reloaded)
+    refute User.disabled_on_site?(reloaded)
+    assert audited_once?("user.site_deleted", user.id)
+  end
+
   defp account_for(account_id, email) do
     user = user_fixture(%{email: email})
 

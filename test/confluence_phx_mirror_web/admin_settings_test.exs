@@ -106,6 +106,18 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     assert Settings.digest_hour_utc() == 9
   end
 
+  test "an hour that cannot exist saves nothing at all", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    html =
+      view
+      |> element("#notifications-form")
+      |> render_submit(%{"notifications" => %{"enabled" => "true", "digest_hour" => "24"}})
+
+    assert html =~ "Nothing was saved"
+    assert Settings.stored("notifications.digest_hour_utc") == nil
+  end
+
   test "a member is sent home, not shown the page", %{conn: conn} do
     assert {:error, {:redirect, %{to: "/"}}} =
              live(

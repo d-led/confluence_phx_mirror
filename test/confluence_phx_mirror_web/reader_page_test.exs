@@ -27,15 +27,15 @@ defmodule ConfluencePhxMirrorWeb.ReaderPageTest do
     assert Enum.count(article) == 1
     assert article |> LazyHTML.query("h1") |> LazyHTML.text() =~ "Architecture Overview"
 
-    assert Enum.count(LazyHTML.query(article, "time[datetime]")) > 0,
+    refute Enum.empty?(LazyHTML.query(article, "time[datetime]")),
            "a reader view takes the date from a <time datetime>, not from the words"
   end
 
   test "nothing navigational sits inside the article", %{conn: conn} do
     article = article(conn)
 
-    assert Enum.count(LazyHTML.query(article, "aside")) == 0
-    assert Enum.count(LazyHTML.query(article, "header nav")) == 0
+    assert Enum.empty?(LazyHTML.query(article, "aside"))
+    assert Enum.empty?(LazyHTML.query(article, "header nav"))
   end
 
   test "child pages are a navigation landmark, not prose", %{conn: conn} do
@@ -54,7 +54,7 @@ defmodule ConfluencePhxMirrorWeb.ReaderPageTest do
     # the space tree and the rail of page facts
     assert Enum.count(LazyHTML.query(document, "aside[data-print=hide]")) == 2
     # the article is what is printed, so it is never furniture
-    assert Enum.count(LazyHTML.query(document, "article[data-print=hide]")) == 0
+    assert Enum.empty?(LazyHTML.query(document, "article[data-print=hide]"))
   end
 
   test "the footer says how many people have the mirror open", %{conn: conn} do

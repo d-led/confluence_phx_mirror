@@ -19,19 +19,39 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
        proxy_auth?: Application.get_env(:confluence_phx_mirror, :proxy_auth, false),
        proxy_header:
          Application.get_env(:confluence_phx_mirror, :proxy_auth_header, "x-forwarded-email"),
+       allow_site_disabled?:
+         Application.get_env(:confluence_phx_mirror, :allow_site_disabled_readers, false),
        page_title: "Users & tokens"
      )
      |> load()}
   end
 
+  # Every event is a name and a handler: the clauses are one line each, so this
+  # function reads as the table of what the page can be asked to do.
   @impl true
-  def handle_event("filter", %{"q" => q}, socket) do
-    {:noreply, socket |> assign(q: q) |> load()}
-  end
+  def handle_event("filter", params, socket), do: filter(params, socket)
+  def handle_event("set_disabled", params, socket), do: set_disabled(params, socket)
+  def handle_event("change_role", params, socket), do: change_role(params, socket)
+  def handle_event("update_groups", params, socket), do: update_groups(params, socket)
+  def handle_event("unban", params, socket), do: unban(params, socket)
+  def handle_event("ban", params, socket), do: ban(params, socket)
+  def handle_event("delete_user", params, socket), do: delete_user(params, socket)
+
+  def handle_event("create_service_token", params, socket),
+    do: create_service_token(params, socket)
+
+  def handle_event("revoke_service_token", params, socket),
+    do: revoke_service_token(params, socket)
+
+  def handle_event("create_token", params, socket), do: create_token(params, socket)
+  def handle_event("revoke_token", params, socket), do: revoke_token(params, socket)
+  def handle_event("dismiss_token", params, socket), do: dismiss_token(params, socket)
+
+  defp filter(%{"q" => q}, socket), do: {:noreply, socket |> assign(q: q) |> load()}
 
   # Disabling here is the mirror's own decision and stays independent of what
   # Confluence says; access is refused while either flag is set.
-  def handle_event("set_disabled", %{"user_id" => user_id, "disabled" => value}, socket) do
+  defp set_disabled(%{"user_id" => user_id, "disabled" => value}, socket) do
     user = Accounts.get_user(String.to_integer(user_id))
     disabled? = value == "true"
 
@@ -49,22 +69,33 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
         {:noreply,
          put_flash(socket, :error, "A seeded or bootstrap administrator cannot be disabled.")}
 
+      {:error, :last_admin} ->
+        {:noreply, put_flash(socket, :error, last_admin_message(user))}
+
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Could not change the account.")}
     end
   end
 
-  @impl true
-  def handle_event("change_role", %{"user_id" => user_id, "role" => role}, socket) do
+  defp change_role(%{"user_id" => user_id, "role" => role}, socket) do
     user = Accounts.get_user(String.to_integer(user_id))
 
     case Accounts.change_role(user, role, actor(socket)) do
-      {:ok, _} -> {:noreply, socket |> put_flash(:info, "Role updated.") |> load()}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not update the role.")}
+      {:ok, _} ->
+        {:noreply, socket |> put_flash(:info, "Role updated.") |> load()}
+
+      {:error, :protected_admin} ->
+        {:noreply, put_flash(socket, :error, "A seeded or bootstrap administrator stays one.")}
+
+      {:error, :last_admin} ->
+        {:noreply, put_flash(socket, :error, last_admin_message(user))}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not update the role.")}
     end
   end
 
-  def handle_event("update_groups", %{"user_id" => user_id, "groups" => groups}, socket) do
+  defp update_groups(%{"user_id" => user_id, "groups" => groups}, socket) do
     user = Accounts.get_user(String.to_integer(user_id))
     groups = String.split(groups, ",", trim: true)
 
@@ -74,7 +105,58 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
     end
   end
 
-  def handle_event("create_service_token", %{"name" => name, "scope" => scope}, socket) do
+  defp unban(%{"user_id" => user_id}, socket) do
+    with_user(socket, user_id, fn user ->
+      case Accounts.unban(user, actor(socket)) do
+        {:ok, _} ->
+          socket
+          |> put_flash(:info, "#{user.email} is unbanned. The other flags decide again.")
+          |> load()
+
+        {:error, _} ->
+          put_flash(socket, :error, "Could not lift the ban.")
+      end
+    end)
+  end
+
+  defp ban(%{"user_id" => user_id}, socket) do
+    with_user(socket, user_id, fn user ->
+      case Accounts.ban(user, actor(socket)) do
+        {:ok, _} ->
+          socket
+          |> put_flash(
+            :info,
+            "#{user.email} is banned: no access, and not deletable until unbanned."
+          )
+          |> load()
+
+        {:error, _} ->
+          put_flash(socket, :error, "Could not ban the account.")
+      end
+    end)
+  end
+
+  defp delete_user(%{"user_id" => user_id}, socket) do
+    with_user(socket, user_id, fn user ->
+      case Accounts.delete_user(user, actor(socket)) do
+        {:ok, _} ->
+          socket
+          |> put_flash(:info, "#{user.email} is deleted, with its tokens and subscriptions.")
+          |> load()
+
+        {:error, :banned} ->
+          put_flash(socket, :error, "A banned account cannot be deleted — lift the ban first.")
+
+        {:error, :last_admin} ->
+          put_flash(socket, :error, last_admin_message(user))
+
+        {:error, _} ->
+          put_flash(socket, :error, "Could not delete the account.")
+      end
+    end)
+  end
+
+  defp create_service_token(%{"name" => name, "scope" => scope}, socket) do
     case Accounts.create_service_token(String.trim(name), scope, actor(socket)) do
       {:ok, plain, token} ->
         {:noreply,
@@ -88,14 +170,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
     end
   end
 
-  def handle_event("revoke_service_token", %{"token_id" => token_id}, socket) do
+  defp revoke_service_token(%{"token_id" => token_id}, socket) do
     case Accounts.revoke_service_token(String.to_integer(token_id), actor(socket)) do
       :ok -> {:noreply, socket |> put_flash(:info, "Service token revoked.") |> load()}
       _ -> {:noreply, put_flash(socket, :error, "Service token not found.")}
     end
   end
 
-  def handle_event("create_token", %{"user_id" => user_id, "name" => name}, socket) do
+  defp create_token(%{"user_id" => user_id, "name" => name}, socket) do
     user = Accounts.get_user(String.to_integer(user_id))
 
     case Accounts.create_api_token(user, String.trim(name), actor(socket)) do
@@ -111,7 +193,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
     end
   end
 
-  def handle_event("revoke_token", %{"user_id" => user_id, "token_id" => token_id}, socket) do
+  defp revoke_token(%{"user_id" => user_id, "token_id" => token_id}, socket) do
     user = Accounts.get_user(String.to_integer(user_id))
 
     case Accounts.revoke_api_token(user, String.to_integer(token_id), actor(socket)) do
@@ -120,11 +202,24 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
     end
   end
 
-  def handle_event("dismiss_token", _params, socket) do
+  defp dismiss_token(_params, socket) do
     {:noreply, assign(socket, new_token: nil)}
   end
 
   defp actor(%{assigns: %{current_user: user}}), do: {:user, user}
+
+  defp last_admin_message(user) do
+    "#{user.email} is the mirror's last administrator — it has to keep one."
+  end
+
+  # An account the page no longer has (deleted in another tab, or by another
+  # administrator) is not a crash.
+  defp with_user(socket, user_id, fun) do
+    case Accounts.get_user(String.to_integer(user_id)) do
+      nil -> {:noreply, put_flash(socket, :error, "That account is gone already.")}
+      user -> {:noreply, fun.(user)}
+    end
+  end
 
   defp load(socket) do
     users =
@@ -133,15 +228,73 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
         %{
           user: user,
           tokens: Accounts.list_api_tokens(user),
-          synced_groups: Mirror.groups_of(User.identity_keys(user))
+          synced_groups: Mirror.groups_of(User.identity_keys(user)),
+          guard: guard(user)
         }
       end)
 
     assign(socket,
       users: users,
+      people: people(),
       service_tokens: Accounts.list_service_tokens(),
       administrators: administrators()
     )
+  end
+
+  # Why this account cannot be demoted or switched off here, if it cannot.
+  defp guard(user) do
+    cond do
+      Admins.protected?(user) -> :protected
+      Accounts.last_admin?(user) -> :last_admin
+      true -> nil
+    end
+  end
+
+  defp guard_label(:protected), do: "Protected"
+  defp guard_label(:last_admin), do: "Last admin"
+
+  defp guard_note(:protected), do: "Seeded or bootstrap administrator"
+  defp guard_note(:last_admin), do: "The last administrator — the mirror has to keep one"
+  defp guard_note(nil), do: nil
+
+  # What the flags mean for access, said plainly. "Switch on here" is not "let
+  # them in": the site decides that, and a ban ignores it.
+  defp access_note(%User{} = user, allow_site_disabled?) do
+    cond do
+      User.banned?(user) ->
+        "Banned here: no access, and the account cannot be deleted until the ban is lifted."
+
+      User.deleted_on_site?(user) ->
+        "Confluence no longer has this account — access stays closed whatever this mirror says."
+
+      User.disabled_on_site?(user) and allow_site_disabled? ->
+        "Confluence switched this account off, but this mirror still lets switched-off readers in."
+
+      User.disabled_on_site?(user) ->
+        "Confluence switched this account off, and the mirror follows the site."
+
+      true ->
+        nil
+    end
+  end
+
+  # A locked account can still be switched back on, so somebody who was
+  # disabled before the guard existed is not stranded.
+  defp can_toggle?(nil, _user), do: true
+  defp can_toggle?(_guard, user), do: User.disabled_here?(user)
+
+  # The people Confluence's content names, marked when they have an account
+  # here. The site lists no users: the content says who wrote it, and the sync
+  # asks the site which groups each of them is in.
+  defp people do
+    accounts =
+      Accounts.list_users()
+      |> Enum.flat_map(&User.identity_keys/1)
+      |> MapSet.new()
+
+    Enum.map(Mirror.people(), &Map.put(&1, :account?, MapSet.member?(accounts, &1.account_id)))
+    |> Enum.with_index(1)
+    |> Enum.map(fn {person, index} -> Map.put(person, :index, index) end)
   end
 
   # Who Confluence says administers the mirror: the members of every configured
@@ -213,7 +366,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
           </p>
 
           <article
-            :for={%{user: user, tokens: tokens, synced_groups: synced_groups} <- @users}
+            :for={%{user: user, tokens: tokens, synced_groups: synced_groups, guard: guard} <- @users}
             class="border-b border-base-300/60 px-5 py-4 last:border-b-0"
           >
             <div class="flex flex-wrap items-start justify-between gap-3">
@@ -241,7 +394,27 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                     >
                       disabled on the site
                     </span>
+                    <span
+                      :if={User.deleted_on_site?(user)}
+                      id={"deleted-on-site-#{user.id}"}
+                      class="badge badge-error badge-xs"
+                    >
+                      deleted on the site
+                    </span>
+                    <span
+                      :if={User.banned?(user)}
+                      id={"banned-#{user.id}"}
+                      class="badge badge-error badge-xs badge-outline"
+                    >
+                      banned
+                    </span>
                   </div>
+                  <p
+                    :if={access_note(user, @allow_site_disabled?)}
+                    class="mt-1 text-[11px] text-warning"
+                  >
+                    {access_note(user, @allow_site_disabled?)}
+                  </p>
                   <p class="text-[11px] text-base-content/70">
                     {if user.last_sign_in_at,
                       do: "last seen #{Time.ago(user.last_sign_in_at)}",
@@ -256,22 +429,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                   name="role"
                   class="select select-sm select-bordered min-h-11 rounded-lg sm:min-h-0"
                   aria-label={"Role of #{user.email}"}
-                  disabled={Admins.protected?(user)}
-                  title={Admins.protected?(user) && "Seeded or bootstrap administrator"}
+                  disabled={guard != nil}
+                  title={guard_note(guard)}
                 >
                   <option value="member" selected={user.role == "member"}>member</option>
                   <option value="admin" selected={user.role == "admin"}>admin</option>
                 </select>
                 <button
-                  :if={Admins.protected?(user)}
+                  :if={guard}
                   type="button"
+                  id={"role-locked-#{user.id}"}
                   class="btn btn-ghost btn-sm btn-disabled min-h-11 gap-1 sm:min-h-0"
-                  title="Seeded or bootstrap administrator"
+                  title={guard_note(guard)}
                 >
-                  <.icon name="hero-lock-closed" class="size-3.5" /> Protected
+                  <.icon name="hero-lock-closed" class="size-3.5" /> {guard_label(guard)}
                 </button>
                 <button
-                  :if={not Admins.protected?(user)}
+                  :if={is_nil(guard)}
                   type="submit"
                   class="btn btn-ghost btn-sm min-h-11 sm:min-h-0"
                   data-confirm={user.role == "admin" && demotion_warning(user)}
@@ -292,6 +466,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                   value={to_string(not User.disabled_here?(user))}
                 />
                 <button
+                  :if={can_toggle?(guard, user)}
                   type="submit"
                   id={"toggle-#{user.id}"}
                   class={[
@@ -303,12 +478,78 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                   ]}
                   data-confirm={
                     if User.disabled_here?(user),
-                      do: "Let #{user.email} read the mirror again? Confluence is not changed.",
+                      do:
+                        "Lift this mirror's flag on #{user.email}? Confluence still has the last word, and a ban ignores it.",
                       else:
                         "Switch #{user.email} off here? They lose access immediately; Confluence is not changed."
                   }
                 >
                   {if User.disabled_here?(user), do: "Switch on here", else: "Switch off here"}
+                </button>
+                <button
+                  :if={not can_toggle?(guard, user)}
+                  type="button"
+                  id={"toggle-locked-#{user.id}"}
+                  class="btn btn-sm btn-disabled min-h-11 gap-1 sm:min-h-0"
+                  title={guard_note(guard)}
+                >
+                  <.icon name="hero-lock-closed" class="size-3.5" /> {guard_label(guard)}
+                </button>
+              </form>
+
+              <form
+                :if={User.banned?(user)}
+                id={"unban-form-#{user.id}"}
+                phx-submit="unban"
+                class="flex items-center gap-1.5"
+              >
+                <input type="hidden" name="user_id" value={user.id} />
+                <button
+                  type="submit"
+                  id={"unban-#{user.id}"}
+                  class="btn btn-ghost btn-sm min-h-11 sm:min-h-0"
+                >
+                  Lift ban
+                </button>
+              </form>
+
+              <form
+                :if={not User.banned?(user)}
+                id={"ban-form-#{user.id}"}
+                phx-submit="ban"
+                class="flex items-center gap-1.5"
+              >
+                <input type="hidden" name="user_id" value={user.id} />
+                <button
+                  type="submit"
+                  id={"ban-#{user.id}"}
+                  class="btn btn-warning btn-outline btn-sm min-h-11 sm:min-h-0"
+                  data-confirm={
+                    "Ban #{user.email}? They lose access, no sync lifts it, and the account cannot be deleted until the ban is."
+                  }
+                >
+                  Ban
+                </button>
+              </form>
+
+              <form phx-submit="delete_user" class="flex items-center gap-1.5">
+                <input type="hidden" name="user_id" value={user.id} />
+                <button
+                  type="submit"
+                  id={"delete-#{user.id}"}
+                  class={[
+                    "btn btn-sm min-h-11 sm:min-h-0",
+                    if(User.banned?(user), do: "btn-disabled", else: "btn-error btn-outline")
+                  ]}
+                  disabled={User.banned?(user)}
+                  title={
+                    User.banned?(user) && "A banned account cannot be deleted — lift the ban first"
+                  }
+                  data-confirm={
+                    "Delete #{user.email}, its tokens and its subscriptions? Confluence is not changed."
+                  }
+                >
+                  Delete
                 </button>
               </form>
             </div>
@@ -459,6 +700,41 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                 No members synced yet — run a sync.
               </p>
             </div>
+          </div>
+
+          <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">
+            <div class="flex items-center justify-between gap-2">
+              <h2 class="text-sm font-semibold">People from Confluence</h2>
+              <span class="badge badge-ghost badge-xs">{length(@people)}</span>
+            </div>
+            <p class="mt-1 text-[11px] text-base-content/70">
+              Confluence does not list its users, so these are the people its content names: every
+              page and comment author, with the groups the last sync read for them.
+            </p>
+
+            <ul :if={@people != []} class="mt-3 space-y-2.5">
+              <li :for={person <- @people} id={"person-#{person.index}"} class="text-xs">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="truncate font-medium">
+                    {person.display_name || person.account_id}
+                  </span>
+                  <span :if={person.account?} class="badge badge-primary badge-xs">
+                    has an account
+                  </span>
+                </div>
+                <div class="mt-1 flex flex-wrap gap-1">
+                  <span :for={group <- person.groups} class="badge badge-ghost badge-xs">
+                    {group}
+                  </span>
+                  <span :if={person.groups == []} class="text-[11px] text-base-content/70">
+                    no groups synced
+                  </span>
+                </div>
+              </li>
+            </ul>
+            <p :if={@people == []} class="mt-2 text-[11px] text-base-content/70">
+              No author mirrored yet — run a sync.
+            </p>
           </div>
 
           <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">

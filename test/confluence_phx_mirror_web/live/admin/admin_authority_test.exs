@@ -16,6 +16,9 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminAuthorityTest do
 
   setup %{conn: conn} do
     keeper = user_fixture(%{email: "keeper@example.com", role: "admin"})
+    # A second administrator, so the keeper may step down — the mirror always
+    # keeps one, which is a rule of its own.
+    user_fixture(%{email: "deputy@example.com", role: "admin"})
     reader = user_fixture(%{email: "reader@example.com"})
 
     {:ok,

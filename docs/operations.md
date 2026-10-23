@@ -280,7 +280,37 @@ Two things must be backed up together:
   back a probe.
 * `/admin` — freshness, sync runs, audit log, webhook deliveries, manual
   syncs; see the [admin reference](site-admin-guide.md#the-admin-area).
+* `/admin/runtime` — Phoenix LiveDashboard: the BEAM's own numbers, plus the
+  mirror's (`confluence_mirror` in its metric list). Off by default; see below.
 * Logs go to stdout through Elixir's console logger.
+
+### The runtime dashboard, if you want it in production
+
+LiveDashboard shows what a BEAM node is doing — processes, ETS contents, ports,
+sockets, memory — and lets you kill a process or restart an application. That is
+exactly what you want while debugging a busy mirror, and nothing a reader should
+be able to reach, so the route is compiled in only where a deployment asks for
+it and then sits behind the administrator role:
+
+    # config/prod.exs
+    config :confluence_phx_mirror, admin_dashboard: true
+
+Decision recorded at build time (`Application.compile_env/2`), so turning it on
+is a rebuild, not a restart; the role check itself is per request, through
+`LiveUserAuth.on_mount(:admin)`, so demoting an administrator closes the screen
+without a deploy. Two things to weigh before enabling it on a public host:
+
+* **It is another admin surface.** Anyone who can sign in as an administrator
+  sees session tables, cached bodies and absolute paths. Keep the proxy in front
+  of it, and keep the administrator list small.
+* **It can stop the mirror.** Killing a process from it is a click, and it does
+  not ask again.
+
+If all you need is the numbers, leave it off: the same metrics are collected by
+`ConfluencePhxMirrorWeb.Telemetry` and can be scraped or reported without the
+dashboard — `catalogue_metrics: true` makes the poller publish how many pages,
+spaces and attachments the mirror holds, and every rendered page publishes a
+`confluence_mirror.page.view` event.
 
 ## Rate limiting
 

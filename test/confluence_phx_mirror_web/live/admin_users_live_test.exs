@@ -6,6 +6,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
 
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.User
+  alias ConfluencePhxMirror.Mirror
 
   defp change_role(view, user, role) do
     render_submit(view, "change_role", %{"user_id" => to_string(user.id), "role" => role})
@@ -16,6 +17,20 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
 
     assert html =~ "Account provisioning"
     refute html =~ "create-user-form"
+  end
+
+  test "the people Confluence's content names are listed with their groups", %{conn: conn} do
+    space = space_fixture()
+
+    page_fixture(space, %{author_name: "Jane Doe", author_account_id: "557058:jane"})
+    {:ok, _} = Mirror.replace_subject_groups(%{account_id: "557058:jane"}, ["confluence-users"])
+
+    {:ok, _view, html} = live(conn, ~p"/admin/users")
+
+    assert html =~ "People from Confluence"
+    assert html =~ "Jane Doe"
+    assert html =~ "confluence-users"
+    refute html =~ "has an account"
   end
 
   test "protected administrators cannot be demoted", %{conn: conn} do
@@ -151,8 +166,54 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
     admin = Accounts.ensure_admin!()
     {:ok, view, _html} = live(conn, ~p"/admin/users")
 
-    assert change_role(view, admin, "member") =~ "Could not update the role."
+    assert change_role(view, admin, "member") =~ "A seeded or bootstrap administrator stays one."
     assert Accounts.get_user(admin.id).role == "admin"
+  end
+
+  describe "moderation" do
+    test "an administrator bans a reader, and a banned reader cannot be deleted", %{conn: conn} do
+      reader = user_fixture(%{email: "banned.reader@example.com"})
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      assert view |> element("#ban-form-#{reader.id}") |> render_submit() =~ "is banned"
+      assert has_element?(view, "#banned-#{reader.id}")
+      assert has_element?(view, "#unban-#{reader.id}")
+
+      html = render_submit(view, "delete_user", %{"user_id" => to_string(reader.id)})
+
+      assert html =~ "cannot be deleted"
+      assert Accounts.get_user(reader.id)
+    end
+
+    test "a banned reader stays out until an administrator lifts the ban", %{conn: conn} do
+      reader = user_fixture(%{email: "banned.again@example.com"})
+      {:ok, _} = Accounts.ban(reader, {:system, "test"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      assert view |> element("#unban-form-#{reader.id}") |> render_submit() =~ "is unbanned"
+      refute User.banned?(Accounts.get_user(reader.id))
+    end
+
+    test "deleting an account here removes it", %{conn: conn} do
+      reader = user_fixture(%{email: "gone.reader@example.com"})
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      html = render_submit(view, "delete_user", %{"user_id" => to_string(reader.id)})
+
+      assert html =~ "is deleted"
+      refute Accounts.get_user(reader.id)
+    end
+
+    test "an account the site deleted says so, and the mirror refuses it", %{conn: conn} do
+      reader = user_fixture(%{email: "site.gone@example.com"})
+      Accounts.reconcile_site_status("557058:site.gone", "site.gone@example.com", :deleted)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      assert has_element?(view, "#deleted-on-site-#{reader.id}")
+      assert view |> render() =~ "no longer has this account"
+    end
   end
 
   describe "disablement" do
@@ -170,7 +231,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
     test "a site disablement is shown apart from ours", %{conn: conn} do
       reader = user_fixture(%{email: "site.off@example.com"})
 
-      assert Accounts.reconcile_site_disabled("557058:site.off", "site.off@example.com", true) ==
+      assert Accounts.reconcile_site_status("557058:site.off", "site.off@example.com", :disabled) ==
                1
 
       {:ok, view, _html} = live(conn, ~p"/admin/users")
@@ -181,7 +242,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
 
     test "the button reads which flag it manages, not who blocks access", %{conn: conn} do
       reader = user_fixture(%{email: "two.flags@example.com"})
-      Accounts.reconcile_site_disabled("557058:two.flags", "two.flags@example.com", true)
+      Accounts.reconcile_site_status("557058:two.flags", "two.flags@example.com", :disabled)
       {:ok, view, _html} = live(conn, ~p"/admin/users")
 
       assert view |> element("#toggle-#{reader.id}") |> render() =~ "Switch off here"
