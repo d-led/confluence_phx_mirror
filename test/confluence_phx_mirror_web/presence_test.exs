@@ -3,6 +3,10 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
 
   import Phoenix.ChannelTest
 
+  import ConfluencePhxMirror.Fixtures
+
+  alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirrorWeb.PageChannel
@@ -35,7 +39,7 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
     {:ok, _run} = ConfluencePhxMirror.Sync.run(:snapshot)
     page = Mirror.get_page!(1002)
 
-    socket = socket(UserSocket, nil, %{reader_key: "reader:1"})
+    socket = socket(UserSocket, nil, %{reader_key: "reader:1", scope: anonymous()})
 
     {:ok, _reply, _socket} =
       subscribe_and_join(socket, PageChannel, Presence.topic(page.confluence_id))
@@ -50,12 +54,47 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
     {:ok, _run} = ConfluencePhxMirror.Sync.run(:snapshot)
     page = Mirror.get_page!(Demo.restricted_page())
 
-    socket = socket(UserSocket, nil, %{reader_key: "reader:1"})
+    socket = socket(UserSocket, nil, %{reader_key: "reader:1", scope: anonymous()})
 
     assert {:error, %{reason: "page_not_found"}} =
              subscribe_and_join(socket, PageChannel, Presence.topic(page.confluence_id))
 
     assert Presence.count(page.confluence_id) == 0
+  end
+
+  test "a reader the page is shared with may join it and is counted" do
+    {:ok, _run} = ConfluencePhxMirror.Sync.run(:snapshot)
+    page = Mirror.get_page!(Demo.restricted_page())
+    user = reader_in_group(Demo.page_readers())
+
+    socket =
+      socket(UserSocket, "user:#{user.id}", %{
+        reader_key: "user:#{user.id}",
+        user_id: user.id,
+        user_name: user.display_name,
+        scope: Scope.for_user(user)
+      })
+
+    assert {:ok, _reply, _socket} =
+             subscribe_and_join(socket, PageChannel, Presence.topic(page.confluence_id))
+
+    assert Presence.count(page.confluence_id) == 1
+  end
+
+  test "a signed-in reader the page is not shared with is refused" do
+    {:ok, _run} = ConfluencePhxMirror.Sync.run(:snapshot)
+    page = Mirror.get_page!(Demo.restricted_page())
+    user = user_fixture()
+
+    socket =
+      socket(UserSocket, "user:#{user.id}", %{
+        reader_key: "user:#{user.id}",
+        user_id: user.id,
+        scope: Scope.for_user(user)
+      })
+
+    assert {:error, %{reason: "page_not_found"}} =
+             subscribe_and_join(socket, PageChannel, Presence.topic(page.confluence_id))
   end
 
   test "joining an unknown page is rejected" do
@@ -68,7 +107,14 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
   test "a reader with two tabs is one person reading the page" do
     {:ok, _run} = ConfluencePhxMirror.Sync.run(:snapshot)
     page = Mirror.get_page!(1002)
-    tab = socket(UserSocket, "user:1", %{reader_key: "user:1", user_id: 1, user_name: "jane"})
+
+    tab =
+      socket(UserSocket, "user:1", %{
+        reader_key: "user:1",
+        user_id: 1,
+        user_name: "jane",
+        scope: anonymous()
+      })
 
     {:ok, _reply, _tab} = subscribe_and_join(tab, PageChannel, Presence.topic(page.confluence_id))
     {:ok, _reply, _tab} = subscribe_and_join(tab, PageChannel, Presence.topic(page.confluence_id))
@@ -109,5 +155,13 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
 
     assert_push "presence_state", state
     refute inspect(state) =~ "jane"
+  end
+
+  defp anonymous, do: Scope.for_user(nil)
+
+  defp reader_in_group(group) do
+    user = user_fixture()
+    {:ok, user} = Accounts.update_groups(user, [group], {:system, "test"})
+    user
   end
 end

@@ -8,7 +8,6 @@ defmodule ConfluencePhxMirrorWeb.PageChannel do
 
   use Phoenix.Channel
 
-  alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirrorWeb.Presence
@@ -27,9 +26,10 @@ defmodule ConfluencePhxMirrorWeb.PageChannel do
 
   # Presence shows who is reading a page, so it may only be asked about a page
   # the reader could open: a restricted page is not found, like everywhere else.
+  # The socket carries the scope its connection was opened with, so a reader the
+  # page is shared with is let in — and anyone else is not.
   defp readable?(socket, page) do
-    scope = Scope.from_assigns(socket.assigns)
-    Authorization.can_read_page?(scope, page)
+    Authorization.can_read_page?(socket.assigns.scope, page)
   end
 
   @impl true
