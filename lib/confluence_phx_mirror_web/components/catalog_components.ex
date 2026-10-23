@@ -335,7 +335,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
         <.icon name="hero-arrow-left" class="size-4" /> Previous page
       </button>
       <p class="w-full text-center text-[11px] tabular-nums text-base-content/70 sm:w-auto">
-        Showing {@offset + 1}–{@offset + @count}{if @more?, do: " of more"}
+        Showing {@offset + 1}–{@offset + @count}{if @more?, do: " · more results"}
       </p>
       <button
         :if={@more?}

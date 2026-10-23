@@ -136,7 +136,7 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
 
     assert html =~ "Recently updated"
     assert html =~ "Architecture Overview"
-    assert html =~ "Showing 1–25 of more"
+    assert html =~ "Showing 1–25 · more results"
 
     second = conn |> get(~p"/recent?offset=25") |> html_response(200)
 

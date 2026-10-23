@@ -344,7 +344,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
         <.icon name="hero-arrow-left" class="size-4" /> Previous
       </.link>
       <p class="text-xs text-base-content/70">
-        Showing {@offset + 1}–{@offset + @count}{if @more?, do: " of more"}
+        Showing {@offset + 1}–{@offset + @count}{if @more?, do: " · more results"}
       </p>
       <.link
         :if={@more?}

@@ -514,6 +514,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
       sidebar?={false}
     >
       <div class="mx-auto max-w-3xl">
+        <h1 class="sr-only">Search the mirror</h1>
         <.form
           for={@form}
           id="search-form"
@@ -609,7 +610,11 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           <span>{@error}</span>
         </div>
 
-        <p :if={@searched? and is_nil(@error)} class="mt-6 text-xs text-base-content/70">
+        <p
+          :if={@searched? and is_nil(@error)}
+          aria-live="polite"
+          class="mt-6 text-xs text-base-content/70"
+        >
           {result_count(@results)}
         </p>
 
@@ -897,6 +902,8 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
       class={["dropdown", if(@open?, do: "dropdown-open", else: "dropdown-close")]}
       id={@id}
       phx-click-away={@open? && "close_menu"}
+      phx-keydown={@open? && "close_menu"}
+      phx-key="Escape"
     >
       <button
         type="button"

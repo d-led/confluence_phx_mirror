@@ -104,6 +104,23 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
     assert has_element?(view, "input[name='label'][value='rel']")
   end
 
+  test "Escape closes whichever filter is open", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/search")
+
+    view |> open_menu("#labels-filter")
+    assert has_element?(view, "#labels-filter-panel")
+
+    view |> element("#labels-filter") |> render_keydown(%{"key" => "Escape"})
+
+    refute has_element?(view, "#labels-filter-panel")
+  end
+
+  test "the page names itself for screen readers", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/search")
+
+    assert has_element?(view, "h1", "Search the mirror")
+  end
+
   test "typing a question searches for it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search")
 
