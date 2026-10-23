@@ -75,6 +75,17 @@ defmodule ConfluencePhxMirror.Accounts.ModerationTest do
     assert Accounts.get_user(admin.id)
   end
 
+  test "a bootstrap administrator who is also the last one is still not deletable" do
+    # The screen labels this row "Protected" — it is seeded *and* alone, and the
+    # delete rule only cares about the second fact. Asking the label instead
+    # offered a Delete button the server then refused.
+    bootstrap = user_fixture(%{email: "admin@localhost", role: "admin"})
+
+    assert {:error, :last_admin} = Accounts.deletion_blocked(bootstrap)
+    assert {:error, :last_admin} = Accounts.delete_user(bootstrap, {:system, "test"})
+    assert Accounts.get_user(bootstrap.id)
+  end
+
   test "the last administrator cannot be banned either — a ban outlives every sync" do
     admin = user_fixture(%{email: "only@example.com", role: "admin"})
 

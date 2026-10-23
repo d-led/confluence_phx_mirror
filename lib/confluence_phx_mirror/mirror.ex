@@ -395,6 +395,19 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
+  The group names the last sync actually wrote a member for.
+
+  Not the same list as the configured admin groups: a site's group is called
+  what the site calls it (`confluence-admins-dled`, not `confluence-admins`), so
+  an empty admin panel on a synced mirror is a name that does not match, not a
+  sync that never ran. This is the list that tells them apart.
+  """
+  def synced_group_names do
+    from(m in GroupMember, distinct: true, select: m.group_name, order_by: m.group_name)
+    |> Repo.all()
+  end
+
+  @doc """
   Whether any of `subject_keys` (a reader's e-mail and account id) belongs to
   one of `group_keys`. Group names are compared case-insensitively.
 

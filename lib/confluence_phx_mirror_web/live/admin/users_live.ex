@@ -243,7 +243,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       users: users,
       people: people(),
       service_tokens: Accounts.list_service_tokens(),
-      administrators: administrators()
+      administrators: administrators(),
+      synced_groups: Mirror.synced_group_names()
     )
   end
 
@@ -289,18 +290,21 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   defp can_toggle?(nil, _user), do: true
   defp can_toggle?(_guard, user), do: User.disabled_here?(user)
 
-  # Banning is a switch-off no sync undoes, so the accounts the switch-off
-  # protects are the accounts the Ban button must not be offered for. Lifting a
-  # ban stays available: it is the way back.
-  defp can_ban?(nil), do: true
-  defp can_ban?(_guard), do: false
+  # Why an action is not offered, asked of the same function `Accounts` refuses
+  # with, so a button cannot promise something the event will reject.
+  defp ban_note(%User{} = user) do
+    case Accounts.ban_blocked(user) do
+      nil -> nil
+      {:error, :protected_admin} -> "A seeded or bootstrap administrator cannot be banned"
+      {:error, :last_admin} -> "Banning a switch-off no sync undoes — #{guard_note(:last_admin)}"
+    end
+  end
 
-  # Why deleting is not offered for this account, or nil when it is.
-  defp delete_blocked(guard, %User{} = user) do
-    cond do
-      User.banned?(user) -> "A banned account cannot be deleted — lift the ban first"
-      guard == :last_admin -> guard_note(:last_admin)
-      true -> nil
+  defp delete_note(%User{} = user) do
+    case Accounts.deletion_blocked(user) do
+      nil -> nil
+      {:error, :banned} -> "A banned account cannot be deleted — lift the ban first"
+      {:error, :last_admin} -> guard_note(:last_admin)
     end
   end
 
@@ -542,7 +546,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               >
                 <input type="hidden" name="user_id" value={user.id} />
                 <button
-                  :if={can_ban?(guard)}
+                  :if={is_nil(ban_note(user))}
                   type="submit"
                   id={"ban-#{user.id}"}
                   class="btn btn-warning btn-outline btn-sm min-h-11 sm:min-h-0"
@@ -553,17 +557,17 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                   Ban
                 </button>
                 <button
-                  :if={not can_ban?(guard)}
+                  :if={ban_note(user)}
                   type="button"
                   id={"ban-locked-#{user.id}"}
                   class="btn btn-sm btn-disabled min-h-11 gap-1 sm:min-h-0"
-                  title={"Banning is a switch-off no sync undoes — #{guard_note(guard)}"}
+                  title={ban_note(user)}
                 >
                   <.icon name="hero-lock-closed" class="size-3.5" /> {guard_label(guard)}
                 </button>
               </form>
 
-              <% delete_note = delete_blocked(guard, user) %>
+              <% locked_note = delete_note(user) %>
               <form phx-submit="delete_user" class="flex items-center gap-1.5">
                 <input type="hidden" name="user_id" value={user.id} />
                 <button
@@ -571,10 +575,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                   id={"delete-#{user.id}"}
                   class={[
                     "btn btn-sm min-h-11 sm:min-h-0",
-                    if(delete_note, do: "btn-disabled", else: "btn-error btn-outline")
+                    if(locked_note, do: "btn-disabled", else: "btn-error btn-outline")
                   ]}
-                  disabled={delete_note != nil}
-                  title={delete_note}
+                  disabled={locked_note != nil}
+                  title={locked_note}
                   data-confirm={
                     "Delete #{user.email}, its tokens and its subscriptions? Confluence is not changed."
                   }
@@ -727,9 +731,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                 </li>
               </ul>
               <p :if={members == []} class="mt-1.5 text-[11px] text-base-content/70">
-                No members synced yet — run a sync.
+                No member of this group in the last sync.
               </p>
             </div>
+
+            <p :if={@synced_groups != []} class="mt-3 text-[11px] text-base-content/70">
+              Groups the last sync read: <code>{Enum.join(@synced_groups, ", ")}</code>
+            </p>
+            <p :if={@synced_groups == []} class="mt-3 text-[11px] text-base-content/70">
+              No group membership has been synced yet — run a sync.
+            </p>
           </div>
 
           <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">

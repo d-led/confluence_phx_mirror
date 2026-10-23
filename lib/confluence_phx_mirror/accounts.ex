@@ -320,21 +320,33 @@ defmodule ConfluencePhxMirror.Accounts do
   lock the mirror out for good, because no sync and no sign-in undoes a ban.
   """
   def ban(%User{} = user, actor) do
+    if User.banned?(user) do
+      {:ok, user}
+    else
+      with nil <- ban_blocked(user),
+           {:ok, banned} <- put_flags(user, %{banned_at: now()}) do
+        Audit.log(actor, User.audit_event_banned(banned))
+        {:ok, banned}
+      else
+        blocked -> blocked
+      end
+    end
+  end
+
+  @doc """
+  Why banning this account would be refused, or `nil` when it may be banned.
+
+  The screen asks this before it draws the button and `ban/2` asks it before it
+  writes, so there is one rule rather than two that can drift apart. Driving
+  the screen off `guard` instead is what offered a Ban button for the one
+  account a ban would lock the mirror out of.
+  """
+  @spec ban_blocked(User.t()) :: {:error, :protected_admin | :last_admin} | nil
+  def ban_blocked(%User{} = user) do
     cond do
-      User.banned?(user) ->
-        {:ok, user}
-
-      Admins.protected?(user) ->
-        {:error, :protected_admin}
-
-      last_admin?(user) ->
-        {:error, :last_admin}
-
-      true ->
-        with {:ok, banned} <- put_flags(user, %{banned_at: now()}) do
-          Audit.log(actor, User.audit_event_banned(banned))
-          {:ok, banned}
-        end
+      Admins.protected?(user) -> {:error, :protected_admin}
+      last_admin?(user) -> {:error, :last_admin}
+      true -> nil
     end
   end
 
@@ -358,16 +370,30 @@ defmodule ConfluencePhxMirror.Accounts do
   the last administrator, because the mirror must keep one.
   """
   def delete_user(%User{} = user, actor) do
-    cond do
-      User.banned?(user) ->
-        {:error, :banned}
-
-      last_admin?(user) ->
-        {:error, :last_admin}
-
-      true ->
+    case deletion_blocked(user) do
+      nil ->
         Audit.log(actor, User.audit_event_deleted(user))
         Repo.delete(user)
+
+      blocked ->
+        blocked
+    end
+  end
+
+  @doc """
+  Why deleting this account would be refused, or `nil` when it may go.
+
+  As with `ban_blocked/1`: one rule, asked by `delete_user/2` and by the screen
+  that draws the button. The label a row happens to show is not the answer — a
+  seeded administrator is also often the last one, and the delete rule only
+  cares about the second.
+  """
+  @spec deletion_blocked(User.t()) :: {:error, :banned | :last_admin} | nil
+  def deletion_blocked(%User{} = user) do
+    cond do
+      User.banned?(user) -> {:error, :banned}
+      last_admin?(user) -> {:error, :last_admin}
+      true -> nil
     end
   end
 

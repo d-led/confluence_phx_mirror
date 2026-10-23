@@ -32,6 +32,22 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersGuardTest do
     refute has_element?(view, "#ban-#{admin.id}")
   end
 
+  test "the last administrator is offered no Delete the server would refuse", %{conn: conn} do
+    admin = user_fixture(%{email: "solo@example.com", role: "admin"})
+
+    {:ok, view, _html} = live(sign_in(conn, admin), ~p"/admin/users")
+
+    assert has_element?(view, "#delete-#{admin.id}[disabled]")
+  end
+
+  test "a bootstrap administrator who is alone is not offered Delete either", %{conn: conn} do
+    bootstrap = user_fixture(%{email: "admin@localhost", role: "admin"})
+
+    {:ok, view, _html} = live(sign_in(conn, bootstrap), ~p"/admin/users")
+
+    assert has_element?(view, "#delete-#{bootstrap.id}[disabled]")
+  end
+
   test "the last administrator cannot be banned even if the event arrives", %{conn: conn} do
     admin = user_fixture(%{email: "solo@example.com", role: "admin"})
 
