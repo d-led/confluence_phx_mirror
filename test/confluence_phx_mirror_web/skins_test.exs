@@ -155,6 +155,7 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
 
   describe "the reader's picker" do
     test "lists the selectable skins only" do
+      with_site_skin(nil)
       with_skins([@acme, Map.merge(@acme, %{name: "whole", selectable: false})])
 
       names = Enum.map(Skins.reader_skins(), & &1.name)
@@ -174,7 +175,8 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
 
   describe "the site skin" do
     test "applies to every reader, whatever the cookie says", %{conn: conn} do
-      with_site_skin("atlassian-cloud")
+      with_skins([@acme])
+      with_site_skin("acme")
 
       conn =
         conn
@@ -183,12 +185,13 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
 
       html = html_response(conn, 200)
 
-      assert html =~ ~s(data-theme="atlassian-cloud")
-      assert html =~ "--color-primary:#0c66e4"
+      assert html =~ ~s(data-theme="acme")
+      assert html =~ "--color-primary:#0b5fff"
     end
 
     test "removes the reader's picker", %{conn: conn} do
-      with_site_skin("atlassian-cloud")
+      with_skins([@acme])
+      with_site_skin("acme")
 
       html = conn |> get(~p"/") |> html_response(200)
 
@@ -237,6 +240,7 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
 
   describe "the page" do
     test "renders a site skin in the picker and as a theme rule", %{conn: conn} do
+      with_site_skin(nil)
       with_skins([@acme])
 
       html = conn |> get(~p"/") |> html_response(200)
@@ -247,6 +251,7 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
     end
 
     test "renders no theme rule when the site declares no skins", %{conn: conn} do
+      with_site_skin(nil)
       with_skins([])
       with_skin_packs([])
 

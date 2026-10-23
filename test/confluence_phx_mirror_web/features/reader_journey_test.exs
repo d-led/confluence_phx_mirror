@@ -5,6 +5,13 @@ defmodule ConfluencePhxMirrorWeb.Features.ReaderJourneyTest do
 
   setup do
     demo_snapshot!()
+
+    # This file is the reader's own journey, skin choice included; the shipped
+    # whole-site skin is covered by SkinsTest.
+    site_skin = Application.get_env(:confluence_phx_mirror, :site_skin)
+    Application.put_env(:confluence_phx_mirror, :site_skin, nil)
+    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :site_skin, site_skin) end)
+
     :ok
   end
 
