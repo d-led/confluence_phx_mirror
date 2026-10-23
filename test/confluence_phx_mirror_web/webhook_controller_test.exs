@@ -217,9 +217,12 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
       assert post_unsigned(caller, body).status == 429
     end
 
-    # Loopback, but an address no other case in this file uses.
+    # A bucket is keyed by address and lives in ETS for a minute, which outlives
+    # the test that made it: two cases that both count deliveries need two
+    # addresses that are never reused, so the counter spans two octets.
     defp unique_address do
-      {127, 0, 0, 20 + rem(System.unique_integer([:positive]), 200)}
+      n = System.unique_integer([:positive, :monotonic])
+      {198, 18, rem(n, 250) + 1, rem(div(n, 250), 250) + 1}
     end
 
     defp post_unsigned(address, body) do
