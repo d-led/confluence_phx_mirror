@@ -764,9 +764,9 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
-  # Who may read a space is mirrored when the source can read it. Confluence
-  # Cloud cannot (space permissions are writes only), and that is not an error:
-  # the space is simply open, exactly as it is for the sync account.
+  # Who may read a space is mirrored when the source can read it. Cloud answers
+  # it on the space itself (`?expand=permissions`); a source that cannot is not
+  # an error: the space is simply open, exactly as it is for the sync account.
   defp sync_space_permissions(source, spaces) do
     Enum.map_reduce(spaces, [], fn space, errors ->
       case fetch_space_permissions(source, space) do

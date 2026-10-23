@@ -122,6 +122,52 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     end
   end
 
+  # Only `read` decides who may see the space; the other operations are about
+  # writing, which a mirror never does.
+  defp read_subjects(%{"operation" => %{"operation" => "read"}} = permission) do
+    anonymous_subjects(permission) ++ user_subjects(permission) ++ group_subjects(permission)
+  end
+
+  defp read_subjects(_other_operation), do: []
+
+  defp anonymous_subjects(permission) do
+    if permission["anonymousAccess"] == true do
+      [subject("anonymous", nil)]
+    else
+      []
+    end
+  end
+
+  # One row per identifier the site gave, because a mirror account may know its
+  # Atlassian id, its e-mail, or both — whichever it has is what matches.
+  defp user_subjects(permission) do
+    permission
+    |> get_in(["subjects", "user", "results"])
+    |> List.wrap()
+    |> Enum.flat_map(fn user ->
+      for key <- [user["accountId"], user["email"]], present?(key), do: subject("user", key)
+    end)
+  end
+
+  defp group_subjects(permission) do
+    permission
+    |> get_in(["subjects", "group", "results"])
+    |> List.wrap()
+    |> Enum.flat_map(fn group ->
+      # Confluence matches group names case-insensitively, so the stored key is
+      # the normalised one the membership table uses too.
+      if present?(group["name"]) do
+        [subject("group", group["name"] |> String.trim() |> String.downcase())]
+      else
+        []
+      end
+    end)
+  end
+
+  defp subject(type, key), do: %{operation: "read", subject_type: type, subject_key: key}
+
+  defp present?(value), do: is_binary(value) and value != ""
+
   # An uploaded space icon is an attachment of a hidden content record, and the
   # web path Confluence publishes (`/download/attachments/…`) only answers a
   # browser session — an API token gets a 401 there. The REST attachment link is
@@ -145,8 +191,36 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     end
   end
 
+  # Cloud does not serve `/space/{key}/permissions` (404), but it answers the
+  # permissions on the space itself when they are expanded: each entry names an
+  # operation and the subjects it applies to — people, groups, or anonymous —
+  # which is Atlassian's grant model and exactly what a reader question needs.
   @impl true
-  def space_permissions(_space_key, _opts), do: {:error, :not_supported}
+  def space_permissions(space_key, _opts) when is_binary(space_key) and space_key != "" do
+    with {:ok, body} <-
+           request_json("/space/#{URI.encode_www_form(space_key)}", %{
+             "expand" => "permissions"
+           }) do
+      {:ok, parse_space_permissions(body)}
+    end
+  end
+
+  @doc """
+  The `read` grants in a space's `?expand=permissions` answer.
+
+  Only `read` decides who may see the space; the other operations are about
+  writing, which a mirror never does. Each grant becomes one row per identifier
+  the site gave, because a mirror account may know its Atlassian id, its e-mail,
+  or both — whichever it has is what the reader check compares.
+  """
+  def parse_space_permissions(%{"permissions" => permissions}) do
+    permissions
+    |> List.wrap()
+    |> Enum.flat_map(&read_subjects/1)
+    |> Enum.uniq()
+  end
+
+  def parse_space_permissions(_no_permissions), do: []
 
   # Cloud removed "who is in this group" (`/group/{name}/member` answers 404 for
   # a group that exists), but it still answers the other direction, so the sync

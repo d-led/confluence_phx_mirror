@@ -147,9 +147,12 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   @doc """
   Read permissions of one space.
 
-  Confluence Cloud exposes space permissions as writes only, so a source that
-  cannot read them answers `{:error, :not_supported}`; the mirror then treats
-  the space as open rather than guessing.
+  Confluence grants space access to principals — a person, a group, or
+  anonymous readers — per operation, and the mirror only cares about `read`.
+  Cloud answers these on the space itself (`/space/{key}?expand=permissions`);
+  `/space/{key}/permissions` is a 404 there. A source that cannot read them
+  answers `{:error, :not_supported}`, and the mirror then treats the space as
+  open rather than guessing.
   """
   @callback space_permissions(space_key :: String.t(), keyword()) ::
               {:ok, [permission()]} | {:error, term()}

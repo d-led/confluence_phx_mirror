@@ -40,4 +40,17 @@ defmodule ConfluencePhxMirror.Mirror.CountersTest do
 
     assert [{^space, 2}] = Mirror.spaces_with_counts()
   end
+
+  test "permissions arriving are noticed without a page or space changing" do
+    space = space_fixture(%{key: "HIDDEN", name: "Hidden"})
+
+    refute Mirror.any_permissions?()
+
+    {:ok, _} =
+      Mirror.replace_space_permissions(space, [
+        %{subject_type: "user", subject_key: "someone@example.com"}
+      ])
+
+    assert Mirror.any_permissions?()
+  end
 end

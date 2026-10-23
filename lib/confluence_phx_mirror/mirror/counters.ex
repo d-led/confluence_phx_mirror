@@ -66,13 +66,21 @@ defmodule ConfluencePhxMirror.Mirror.Counters do
   purged — a space with no pages would otherwise move no version at all). The
   timestamp alone would not be enough — it has second precision, and two writes
   in the same second are still two versions.
+
+  The permission tables are in it too, and not for the totals: `any_permissions?/0`
+  decides whether a catalog is filtered at all, and a sync that fills
+  `space_permissions` for the first time changes no page and no space. Without
+  the newest permission row in the version, a running mirror would keep
+  answering "nothing is restricted" until some page happened to change.
   """
   def version do
     Repo.one(
       from p in Page,
         select:
           {max(p.id), max(p.updated_at),
-           fragment("(SELECT count(*) FROM spaces WHERE deleted_at IS NULL)")}
+           fragment("(SELECT count(*) FROM spaces WHERE deleted_at IS NULL)"),
+           fragment("(SELECT max(id) FROM space_permissions)"),
+           fragment("(SELECT max(id) FROM page_restrictions)")}
     )
   end
 

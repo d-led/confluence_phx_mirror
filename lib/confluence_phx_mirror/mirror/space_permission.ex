@@ -2,10 +2,11 @@ defmodule ConfluencePhxMirror.Mirror.SpacePermission do
   @moduledoc """
   Who may read a space.
 
-  Confluence Cloud exposes space permissions only as *writes* today, so these
-  rows can come from a source that can read them (Data Center, an export) or
-  from a source that cannot at all. A space without rows is open — the mirror
-  shows exactly what the sync account can read unless something narrows it.
+  A Confluence space grants an operation to principals — people, groups, or
+  anonymous readers — and these rows are that grant list as the last sync read
+  it (`/space/{key}?expand=permissions` on Cloud). A space without rows is open: the
+  mirror shows exactly what the sync account can read unless something narrows
+  it.
   """
   use Ecto.Schema
   import Ecto.Changeset
