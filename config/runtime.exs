@@ -224,13 +224,29 @@ if header = System.get_env("CM_PROXY_AUTH_NAME_HEADER") do
   config :confluence_phx_mirror, :proxy_auth_name_header, String.downcase(header)
 end
 
-if webhook_secret = System.get_env("CM_WEBHOOK_SECRET") do
-  config :confluence_phx_mirror,
-    webhooks: [
-      secret: webhook_secret,
-      require_signature: System.get_env("CM_WEBHOOK_REQUIRE_SIGNATURE", "true") in ~w(1 true yes)
-    ]
-end
+# Webhooks accept unsigned deliveries by default: a mirror that has just been
+# pointed at a Confluence site should work, and /admin/webhooks keeps saying what
+# that costs. `CM_WEBHOOK_SECRET` plus `CM_WEBHOOK_REQUIRE_SIGNATURE=true` closes
+# the intake; an administrator can also flip it on that page, which overrides
+# this without a restart.
+#
+# The secret is only replaced when the variable is set, so the development and
+# test secrets configured elsewhere survive a boot.
+webhooks =
+  :confluence_phx_mirror
+  |> Application.get_env(:webhooks, [])
+  |> Keyword.put(
+    :require_signature,
+    System.get_env("CM_WEBHOOK_REQUIRE_SIGNATURE", "false") in ~w(1 true yes)
+  )
+
+webhooks =
+  case System.get_env("CM_WEBHOOK_SECRET") do
+    nil -> webhooks
+    secret -> Keyword.put(webhooks, :secret, secret)
+  end
+
+config :confluence_phx_mirror, webhooks: webhooks
 
 # CM_THEME seeds the theme the whole site wears ("fresh-blue" ships with the
 # mirror). An administrator changes it on the settings page; readers pick only

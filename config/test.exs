@@ -41,7 +41,7 @@ config :confluence_phx_mirror,
     attachments: [limit: 1_000, period_ms: 60_000]
   ],
   notifications: [enabled: true, from: {"Mirror", "mirror@localhost"}, digest_hour_utc: 8],
-  webhooks: [secret: "test-webhook-secret", require_signature: true]
+  webhooks: [secret: "test-webhook-secret", require_signature: false]
 
 config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.DemoSource,
   sync_interval_seconds: 0,

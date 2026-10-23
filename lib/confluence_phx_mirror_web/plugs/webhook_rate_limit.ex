@@ -14,7 +14,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.WebhookRateLimit do
 
   import Plug.Conn
 
-  alias ConfluencePhxMirror.RateLimit
+  alias ConfluencePhxMirror.{RateLimit, Settings}
 
   @default_limit 60
   @default_period_ms 60_000
@@ -30,11 +30,15 @@ defmodule ConfluencePhxMirrorWeb.Plugs.WebhookRateLimit do
     end
   end
 
-  defp config do
+  @doc "The cap in force per period, and the period in milliseconds."
+  @spec config() :: {pos_integer(), pos_integer()}
+  def config do
     settings = Application.get_env(:confluence_phx_mirror, :webhook_rate_limit, [])
 
-    {Keyword.get(settings, :limit, @default_limit),
-     Keyword.get(settings, :period_ms, @default_period_ms)}
+    limit =
+      Settings.webhook_rate_limit() || Keyword.get(settings, :limit, @default_limit)
+
+    {limit, Keyword.get(settings, :period_ms, @default_period_ms)}
   end
 
   defp client_ip(conn), do: conn.remote_ip |> :inet.ntoa() |> to_string()

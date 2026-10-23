@@ -97,7 +97,12 @@ config :confluence_phx_mirror,
     from: {"Confluence Mirror", "mirror@localhost"},
     digest_hour_utc: 8
   ],
-  webhooks: [secret: nil, require_signature: true]
+  # The intake accepts unsigned deliveries unless a deployment requires
+  # signatures: a mirror that was just pointed at a Confluence site should
+  # work, and /admin/webhooks says loudly what that costs. `CM_WEBHOOK_SECRET`
+  # plus `CM_WEBHOOK_REQUIRE_SIGNATURE=true` (or the switch on that page) closes
+  # it; a route token is accepted either way.
+  webhooks: [secret: nil, require_signature: false]
 
 # HTTP client defaults; runtime.exs overrides them from CM_* variables.
 config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.HttpSource,

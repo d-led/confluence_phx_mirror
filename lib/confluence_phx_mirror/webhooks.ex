@@ -8,6 +8,13 @@ defmodule ConfluencePhxMirror.Webhooks do
   raw request body with HMAC-SHA256 (`X-Hub-Signature-256`, or the legacy
   `X-Hub-Signature`).
 
+  A delivery may also present a route token instead; and a deployment that
+  cannot authenticate its sender at all may accept unsigned deliveries. That is
+  the default, because a mirror that has just been pointed at a Confluence site
+  should work, and it is what `/admin/webhooks` warns about until somebody
+  requires authentication (`CM_WEBHOOK_REQUIRE_SIGNATURE`, or the same switch
+  from that page, which takes effect without a restart).
+
   Accepted events are turned into incremental work: page, blog post and
   attachment events re-sync the affected page; comment events re-sync the
   page that hosts the comment; space events queue a space sync. Removal events
@@ -16,7 +23,7 @@ defmodule ConfluencePhxMirror.Webhooks do
 
   import Ecto.Query
 
-  alias ConfluencePhxMirror.{Audit, Mirror, Repo}
+  alias ConfluencePhxMirror.{Audit, Mirror, Repo, Settings}
   alias ConfluencePhxMirror.Sync.{PageWorker, SpaceWorker}
   alias ConfluencePhxMirror.Webhooks.Delivery
 
@@ -45,33 +52,69 @@ defmodule ConfluencePhxMirror.Webhooks do
   @spec receive(map(), binary(), [{String.t(), String.t()}], keyword()) :: outcome()
   def receive(payload, raw_body, headers, opts \\ []) do
     secret = config()[:secret]
-    signature = signature_header(headers)
 
-    authenticated? =
-      cond do
-        Keyword.get(opts, :token_authenticated, false) -> true
-        is_nil(secret) -> false
-        is_nil(signature) -> false
-        true -> verify(raw_body, signature, secret)
-      end
+    case authenticate(raw_body, signature_header(headers), secret, opts) do
+      {:ok, authenticated?} ->
+        payload |> store_delivery(authenticated?, secret) |> handle()
 
-    delivery = store_delivery(payload, authenticated?, secret)
-
-    cond do
-      authenticated? ->
-        handle(delivery)
-
-      is_nil(secret) and config()[:require_signature] ->
-        finish(delivery, "rejected", "webhook secret is not configured")
-        Audit.log(actor(delivery), Delivery.audit_event_rejected(delivery, "not_configured"))
-        {:error, :not_configured}
-
-      true ->
-        finish(delivery, "rejected", "signature mismatch")
-        Audit.log(actor(delivery), Delivery.audit_event_rejected(delivery, "invalid_signature"))
-        {:error, :invalid_signature}
+      {:error, reason} ->
+        payload |> store_delivery(false, secret) |> reject(reason)
     end
   end
+
+  @doc """
+  Whether a delivery has to be authenticated.
+
+  The deployment decides (`CM_WEBHOOK_REQUIRE_SIGNATURE`, or
+  `config :confluence_phx_mirror, :webhooks`), and an administrator's decision
+  on `/admin/webhooks` overrides it without a restart. The default is *not* to
+  require one: a mirror pointed at a Confluence site keeps working, and the
+  admin page says what that costs until somebody closes it.
+  """
+  @spec signature_required?() :: boolean()
+  def signature_required? do
+    case Settings.webhook_require_signature() do
+      nil -> Keyword.get(config(), :require_signature, false)
+      required? -> required?
+    end
+  end
+
+  # A valid HMAC over the raw body, a route or service token — or, when this
+  # deployment says a signature is not required, no credential at all. A
+  # signature that *is* presented always has to be good: a delivery pretending
+  # to be authenticated is worse than one that claims nothing.
+  defp authenticate(raw_body, signature, secret, opts) do
+    cond do
+      Keyword.get(opts, :token_authenticated, false) ->
+        {:ok, true}
+
+      is_binary(signature) ->
+        if signed?(raw_body, signature, secret),
+          do: {:ok, true},
+          else: {:error, failure(secret)}
+
+      signature_required?() ->
+        {:error, failure(secret)}
+
+      true ->
+        {:ok, false}
+    end
+  end
+
+  defp signed?(raw_body, signature, secret) do
+    is_binary(secret) and is_binary(signature) and verify(raw_body, signature, secret)
+  end
+
+  defp failure(secret), do: if(is_nil(secret), do: :not_configured, else: :invalid_signature)
+
+  defp reject(delivery, reason) do
+    finish(delivery, "rejected", rejection_message(reason))
+    Audit.log(actor(delivery), Delivery.audit_event_rejected(delivery, Atom.to_string(reason)))
+    {:error, reason}
+  end
+
+  defp rejection_message(:not_configured), do: "webhook secret is not configured"
+  defp rejection_message(:invalid_signature), do: "signature mismatch"
 
   @doc "Constant-time HMAC-SHA256 verification of a raw body."
   def verify(raw_body, signature, secret) do

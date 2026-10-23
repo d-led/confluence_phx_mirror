@@ -7,12 +7,17 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
   read-only block on the settings page: nothing in it can change while you
   look at it. Each row names the environment variable that changes it.
 
+  Two webhook rows are the exception: an administrator can override those on
+  `/admin/webhooks` without a restart, so they show the value in force and say
+  where it came from.
+
   Secrets are reported as present or absent and never printed: the page says
   whether a webhook secret is configured, not what it is.
   """
 
   alias ConfluencePhxMirror.Confluence.{HttpSource, Source}
-  alias ConfluencePhxMirror.Sites
+  alias ConfluencePhxMirror.{Settings, Sites, Webhooks}
+  alias ConfluencePhxMirrorWeb.Plugs.WebhookRateLimit
   alias ConfluencePhxMirrorWeb.Skins
 
   @type row :: %{label: String.t(), value: String.t(), env: String.t() | nil}
@@ -85,7 +90,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
         ),
         row(
           "Signature required",
-          toggle(webhooks[:require_signature] != false),
+          required_signatures(),
           "CM_WEBHOOK_REQUIRE_SIGNATURE"
         ),
         row("Webhook tokens", receivers(config(:webhook_tokens, %{})), "CM_WEBHOOK_TOKENS"),
@@ -115,7 +120,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
         ),
         row(
           "Webhook intake",
-          per_minute(config(:webhook_rate_limit)),
+          intake_limit(),
           "CM_WEBHOOK_RATE_LIMIT_PER_MINUTE"
         ),
         row(
@@ -129,6 +134,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
   end
 
   defp row(label, value, env), do: %{label: label, value: value, env: env}
+
+  defp required_signatures do
+    value = toggle(Webhooks.signature_required?())
+
+    if Settings.webhook_require_signature() == nil,
+      do: value,
+      else: value <> " (set on Webhooks)"
+  end
+
+  defp intake_limit do
+    {limit, period_ms} = WebhookRateLimit.config()
+    value = per_minute(limit: limit, period_ms: period_ms)
+
+    if Settings.webhook_rate_limit() == nil,
+      do: value,
+      else: value <> " (set on Webhooks)"
+  end
 
   defp config(key, default \\ nil),
     do: Application.get_env(:confluence_phx_mirror, key, default)

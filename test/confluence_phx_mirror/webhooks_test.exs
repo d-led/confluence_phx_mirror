@@ -5,6 +5,7 @@ defmodule ConfluencePhxMirror.WebhooksTest do
 
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.Page
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync.{PageWorker, SpaceWorker}
   alias ConfluencePhxMirror.Webhooks
   alias ConfluencePhxMirror.Webhooks.Delivery
@@ -70,9 +71,14 @@ defmodule ConfluencePhxMirror.WebhooksTest do
       assert failed_jobs == []
     end
 
-    test "missing signature is rejected" do
+    test "an unsigned delivery is accepted and marked unverified" do
       body = JSON.encode!(payload("page_updated", 1002))
-      assert {:error, :invalid_signature} = Webhooks.receive(JSON.decode!(body), body, [])
+
+      assert {:ok, delivery} = Webhooks.receive(JSON.decode!(body), body, [])
+
+      assert delivery.status == "queued"
+      refute delivery.signature_valid
+      assert_enqueued(worker: PageWorker, args: %{"confluence_id" => 1002})
     end
 
     test "reset events mark the page deleted" do
@@ -140,6 +146,49 @@ defmodule ConfluencePhxMirror.WebhooksTest do
     test "event types without a page are ignored" do
       assert {:ok, delivery} = deliver("user_created", 0)
       assert delivery.status == "ignored"
+    end
+  end
+
+  describe "when signatures are required" do
+    setup do
+      previous = Application.get_env(:confluence_phx_mirror, :webhooks)
+
+      Application.put_env(:confluence_phx_mirror, :webhooks,
+        secret: @secret,
+        require_signature: true
+      )
+
+      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :webhooks, previous) end)
+      :ok
+    end
+
+    test "an unsigned delivery is refused and kept for the record" do
+      body = JSON.encode!(payload("page_updated", 1002))
+
+      assert {:error, :invalid_signature} = Webhooks.receive(JSON.decode!(body), body, [])
+
+      assert Repo.one!(Delivery).status == "rejected"
+      refute_enqueued(worker: PageWorker)
+    end
+
+    test "a signed delivery still gets through" do
+      assert {:ok, delivery} = deliver("page_updated", 1002)
+      assert delivery.status == "queued"
+    end
+
+    test "an administrator's decision on the admin page overrides the deployment" do
+      :ok = Settings.put_webhook_require_signature(false, {:system, "test"})
+      body = JSON.encode!(payload("page_updated", 1002))
+
+      assert {:ok, delivery} = Webhooks.receive(JSON.decode!(body), body, [])
+      assert delivery.status == "queued"
+    end
+
+    test "without a secret, the refusal says the intake is not configured" do
+      Application.put_env(:confluence_phx_mirror, :webhooks, require_signature: true)
+      body = JSON.encode!(payload("page_updated", 1002))
+
+      assert {:error, :not_configured} = Webhooks.receive(JSON.decode!(body), body, [])
     end
   end
 end

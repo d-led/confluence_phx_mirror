@@ -65,11 +65,13 @@ config :confluence_phx_mirror, auto_admin: true
 config :confluence_phx_mirror, self_signup: true
 
 # A development-only webhook secret so the signed webhook demo works out of the
-# box. Set CM_WEBHOOK_SECRET to override it.
+# box. Set CM_WEBHOOK_SECRET to override it. Signatures are not *required* in
+# development, the way they are not required by default in production — the
+# admin page keeps asking until someone decides.
 config :confluence_phx_mirror,
   webhooks: [
     secret: System.get_env("CM_WEBHOOK_SECRET", "dev-webhook-secret"),
-    require_signature: true
+    require_signature: false
   ]
 
 config :confluence_phx_mirror, ConfluencePhxMirror.Confluence.DemoSource,

@@ -6,6 +6,7 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
   use Oban.Testing, repo: ConfluencePhxMirror.Repo
 
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync.PageWorker
   alias ConfluencePhxMirror.Webhooks.Delivery
 
@@ -50,7 +51,7 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
     assert Repo.one!(Delivery).status == "rejected"
   end
 
-  test "rejects an unsigned delivery", %{conn: conn} do
+  test "an unsigned delivery is accepted and marked unverified", %{conn: conn} do
     body = JSON.encode!(payload("page_updated", 1002))
 
     conn =
@@ -58,7 +59,36 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
       |> put_req_header("content-type", "application/json")
       |> post(~p"/webhooks/confluence", body)
 
-    assert json_response(conn, 401)["error"] == "invalid_signature"
+    assert json_response(conn, 202)["status"] == "accepted"
+    refute Repo.one!(Delivery).signature_valid
+    assert_enqueued(worker: PageWorker, args: %{"confluence_id" => 1002})
+  end
+
+  describe "when signatures are required" do
+    setup do
+      previous = Application.get_env(:confluence_phx_mirror, :webhooks)
+
+      Application.put_env(:confluence_phx_mirror, :webhooks,
+        secret: @secret,
+        require_signature: true
+      )
+
+      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :webhooks, previous) end)
+      :ok
+    end
+
+    test "an unsigned delivery is refused", %{conn: conn} do
+      body = JSON.encode!(payload("page_updated", 1002))
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post(~p"/webhooks/confluence", body)
+
+      assert json_response(conn, 401)["error"] == "invalid_signature"
+      assert Repo.one!(Delivery).status == "rejected"
+      refute_enqueued(worker: PageWorker)
+    end
   end
 
   test "page_removed marks the page deleted", %{conn: conn} do
@@ -157,11 +187,21 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
       # deliveries this file makes.
       caller = unique_address()
 
-      assert post_unsigned(caller, body).status == 401
-      assert post_unsigned(caller, body).status == 401
+      assert post_unsigned(caller, body).status == 202
+      assert post_unsigned(caller, body).status == 202
       assert post_unsigned(caller, body).status == 429
 
       assert Repo.aggregate(Delivery, :count) == 2
+    end
+
+    test "an administrator's cap overrides the configured one without a restart", %{conn: _conn} do
+      # The describe configures two a minute; the page sets one.
+      :ok = Settings.put_webhook_rate_limit(1, {:system, "test"})
+      body = JSON.encode!(payload("page_updated", 1002))
+      caller = unique_address()
+
+      assert post_unsigned(caller, body).status == 202
+      assert post_unsigned(caller, body).status == 429
     end
 
     # Loopback, but an address no other case in this file uses.
