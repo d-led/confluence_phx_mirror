@@ -40,6 +40,10 @@ defmodule ConfluencePhxMirror.Application do
 
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
+        # One log line per request, none for the health probes: Phoenix's own
+        # request logger is off in `config :phoenix, :logger`.
+        ConfluencePhxMirrorWeb.Telemetry.RequestLog.attach()
+
         # Settings an administrator changed are read from the table once, so
         # the per-request theme lookup never queries the database.
         ConfluencePhxMirror.Settings.load()

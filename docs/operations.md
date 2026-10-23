@@ -71,6 +71,49 @@ bin/confluence_phx_mirror eval "ConfluencePhxMirror.Release.migrate_manual"
 Development and test apply both directories (`mix ecto.migrate_all`), which is
 what `mix setup` and the `test` alias use.
 
+### What makes a deploy migration safe
+
+A deploy migration runs while the previous release is still serving — Fly rolls
+Machines one at a time, Kubernetes one pod at a time — so for a while old code
+reads the new schema. That leaves one rule: **a deploy migration may only add**,
+in one of these forms.
+
+| Change | Where it goes |
+| --- | --- |
+| new table, new nullable column, new column with a default | a deploy migration |
+| new index | a deploy migration, built with `CREATE INDEX CONCURRENTLY` (below) |
+| `NOT NULL`, rename, type change, column drop | expand → backfill → contract, over three deploys |
+| backfilling rows | `priv/repo/manual_migrations`, in batches |
+
+A plain `create index/3` holds a write lock for the length of the build — minutes
+on `pages` once the mirror is large — and a `CONCURRENTLY` build cannot run
+inside a transaction, so the transaction and the migration lock go with it:
+
+```elixir
+defmodule ConfluencePhxMirror.Repo.Migrations.IndexPagesCreatedAt do
+  use Ecto.Migration
+
+  @disable_ddl_transaction true
+  @disable_migration_lock true
+
+  def change do
+    execute(
+      "CREATE INDEX CONCURRENTLY IF NOT EXISTS pages_created_at_index ON pages (created_at)",
+      "DROP INDEX CONCURRENTLY IF EXISTS pages_created_at_index"
+    )
+  end
+end
+```
+
+`test/confluence_phx_mirror/migrations_safety_test.exs` enforces both rules over
+this directory: a plain index build outside a table-creating migration, a
+`modify`/`remove`/`rename`, or SQL that rewrites rows fails the suite and names
+the file. The migrations written before the rule are listed in that test as
+legacy, each next to the shape it would take today. Fly's
+[Safe Ecto Migrations](https://fly.io/phoenix-files/safe-ecto-migrations/) is the
+long version of this section — the rename is its worked example of getting the
+order wrong.
+
 ## Sizing the connection pool
 
 The pool is DBConnection's (`Ecto.Adapters.Postgres` → Postgrex →

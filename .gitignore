@@ -226,3 +226,6 @@ deploy/k8s/secret.yaml
 # Written by `mix build.info` at build time: it describes one build of one
 # checkout, so a checked-in copy would be a lie about every other build.
 priv/build_info.json
+
+# database dumps taken by scripts/fly-pg-backup.sh
+backups/

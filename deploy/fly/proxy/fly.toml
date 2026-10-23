@@ -63,7 +63,9 @@ primary_region = "ams"
   # answers 502 instead of waking the mirror behind it.
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 1
+  # The proxy keeps no Machine warm either: a reader's first request wakes it,
+  # and it wakes the mirror behind it. Everything here scales to zero.
+  min_machines_running = 0
   max_machines_per_region = 1
   processes = ["app"]
 

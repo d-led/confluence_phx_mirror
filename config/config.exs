@@ -179,6 +179,11 @@ config :logger, :default_formatter,
     :trigger
   ]
 
+# Phoenix logs every request; Fly's health probe is most of them. Its replacement,
+# `ConfluencePhxMirrorWeb.Telemetry.RequestLog`, logs one line per request and
+# skips the probes.
+config :phoenix, :logger, false
+
 # Use Elixir's built-in JSON codec (Elixir 1.18+); no Jason dependency.
 config :phoenix, :json_library, JSON
 

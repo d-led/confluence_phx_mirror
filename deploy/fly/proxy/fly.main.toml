@@ -1,0 +1,83 @@
+# fly.main.toml — the public front door of the main site.
+#
+#   confluence-mirror       this app: oauth2-proxy, public, GitHub sign-in
+#   confluence-mirror-app   the mirror, Flycast only, no public IP
+#
+# Deploy from the repository root so the build context is `deploy/fly/proxy`:
+#
+#   fly deploy deploy/fly/proxy --config deploy/fly/proxy/fly.main.toml
+#
+# Secrets it needs (none live in this file):
+#
+#   OAUTH2_PROXY_CLIENT_ID       the GitHub OAuth app's client id
+#   OAUTH2_PROXY_CLIENT_SECRET   …and its secret
+#   OAUTH2_PROXY_COOKIE_SECRET   urlsafe base64 of 32 random bytes
+#
+# The GitHub OAuth app's callback URL is
+# https://confluence-mirror.fly.dev/oauth2/callback
+#
+# The mirror behind it must trust the identity this proxy sets:
+# CM_PROXY_AUTH=true, CM_TRUST_PROXY_HEADERS=true, and — because that app
+# mirrors a real site rather than the bundled demo — MIRROR_ALLOW_UNSAFE_IDENTITY=1.
+
+app = "confluence-mirror"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  OAUTH2_PROXY_PROVIDER = "github"
+  OAUTH2_PROXY_HTTP_ADDRESS = "0.0.0.0:4180"
+  OAUTH2_PROXY_REDIRECT_URL = "https://confluence-mirror.fly.dev/oauth2/callback"
+
+  OAUTH2_PROXY_UPSTREAMS = "http://confluence-mirror-app.flycast/"
+
+  # Who may read: any GitHub account. Narrow this to a domain, or add
+  # OAUTH2_PROXY_GITHUB_ORG / OAUTH2_PROXY_GITHUB_TEAM, to make it a
+  # colleagues-only mirror.
+  OAUTH2_PROXY_EMAIL_DOMAINS = "*"
+
+  # The mirror reads the identity from these and provisions the account on
+  # first sight; the proxy strips whatever a client sent.
+  OAUTH2_PROXY_PASS_USER_HEADERS = "true"
+  OAUTH2_PROXY_SET_XAUTHREQUEST = "true"
+
+  # Trust X-Forwarded-* from Fly's edge, which is the only address that reaches
+  # this app. Without it the mirror's force_ssl redirect loops.
+  OAUTH2_PROXY_REVERSE_PROXY = "true"
+
+  OAUTH2_PROXY_COOKIE_SECURE = "true"
+  OAUTH2_PROXY_COOKIE_SAMESITE = "lax"
+  OAUTH2_PROXY_COOKIE_EXPIRE = "168h"
+  OAUTH2_PROXY_COOKIE_REFRESH = "1h"
+
+  # One provider, so no "Sign in with…" chooser; and Fly's liveness probe on
+  # /ping is not an event worth a log line.
+  OAUTH2_PROXY_SKIP_PROVIDER_BUTTON = "true"
+  OAUTH2_PROXY_SILENCE_PING_LOGGING = "true"
+
+[http_service]
+  internal_port = 4180
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  max_machines_per_region = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 250
+    hard_limit = 500
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/ping"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory_mb = 256

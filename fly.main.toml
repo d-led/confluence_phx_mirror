@@ -1,0 +1,104 @@
+# fly.main.toml — the mirror of a real Confluence site, as deployed at
+# `confluence-mirror-app`.
+#
+# Two files, one app each, because they say different things:
+#
+#   fly.toml        the self-contained demo (CM_SOURCE=demo, no credentials)
+#   fly.main.toml   this file: a real site, credentials in secrets
+#
+# Deploy from the repository root, so the build context is the whole project:
+#
+#   fly deploy . --config fly.main.toml \
+#     --build-arg VERSION="$(git describe --tags --always)" \
+#     --build-arg REVISION="$(git rev-parse --short HEAD)"
+#
+# The app has **no public IP**. Until the `confluence-mirror` oauth2-proxy app
+# exists (deploy/fly/proxy), the mirror is reachable only over the private
+# network — `fly proxy 8080:8080 -a confluence-mirror-app` from a laptop — which
+# is what makes the first deploy a safe one.
+#
+# Secrets this app needs (none of them live in this file):
+#
+#   DATABASE_URL            `fly postgres attach` sets it
+#   SECRET_KEY_BASE         openssl rand -hex 48
+#   RELEASE_COOKIE          openssl rand -hex 48 (shared by every node)
+#   CM_SOURCE               http — mirror a real site, not the bundled demo
+#   CM_CONFLUENCE_SITE      https://<site>.atlassian.net
+#   CM_ATL_EMAIL            the account the API token belongs to
+#   CM_ATL_TOKEN            https://id.atlassian.com/manage-profile/security/api-tokens
+#   CM_ADMINS               who may open /admin, comma-separated
+#
+# When the proxy is added, two more things follow: `CM_PROXY_AUTH=true` and
+# `CM_TRUST_PROXY_HEADERS=true` on this app, and `MIRROR_ALLOW_UNSAFE_IDENTITY=1`
+# as the acknowledgement `Config.IdentityGuard` demands — trusting an identity
+# header is only defensible behind a proxy that is the sole way in.
+
+app = "confluence-mirror-app"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Once per deploy, before any Machine takes traffic: the step
+  # docs/operations.md calls "migrate as a deploy step". The release overlay
+  # leaves the Machine's own command as "start the server", so a restart never
+  # races a migration.
+  release_command = "/app/bin/migrate"
+
+[env]
+  PHX_SERVER = "true"
+  # The public host, which is the proxy's — links, cookies and the canonical
+  # redirect all have to name the address a reader typed, not the internal one.
+  PHX_HOST = "confluence-mirror.fly.dev"
+  PORT = "8080"
+
+  # Connections one Machine opens. Machines × this has to fit the Postgres
+  # max_connections budget (docs/operations.md, "Sizing the connection pool").
+  POOL_SIZE = "10"
+
+  # Attachments: a path-based blob store on the mounted volume, never in the
+  # release and never in Postgres.
+  MIRROR_BLOB_ROOT = "/app/var/mirror"
+
+[http_service]
+  internal_port = 8080
+  # Flycast is HTTP-only; TLS ends at the proxy app. The mirror's production
+  # force_ssl reads X-Forwarded-Proto, which the proxy sets.
+  force_https = false
+  # Nothing here is on duty: no readers means no Machine, and the first request
+  # wakes one. The hourly pull therefore only happens while someone is reading —
+  # the mirror is opportunistic on purpose, and `Sync` is what makes the content
+  # correct whenever it does run.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  max_machines_per_region = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    # LiveView keeps a connection open, so count connections, not requests.
+    type = "connections"
+    soft_limit = 200
+    hard_limit = 250
+
+  # /health answers 200 with a database check and the mirror's counters, 503
+  # when Postgres is unreachable.
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/health"
+
+# One volume per Machine, mounted where the release keeps its blobs. A Machine
+# with attachments on ephemeral storage would lose them on the next deploy.
+[[mounts]]
+  source = "mirror_blobs"
+  destination = "/app/var/mirror"
+
+# A real site's snapshot is not the demo's forty pages: give the renderer room
+# to hold a few page bodies at once.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory_mb = 1024
