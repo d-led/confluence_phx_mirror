@@ -111,7 +111,7 @@ defmodule ConfluencePhxMirror.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate_all", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate_all --quiet", "test"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.setup": ["assets.install --if-missing"],
       "assets.build": [
         "cmd --cd assets npm ci",
         "compile",
