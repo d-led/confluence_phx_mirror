@@ -24,6 +24,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   # thousand cards with every visit.
   @space_cards 12
   @label_cards 14
+  @list_page 25
 
   def home(conn, _params) do
     spaces = readable_spaces(conn)
@@ -101,14 +102,33 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     end
   end
 
-  def recent(conn, _params) do
-    pages = visible(conn, Mirror.list_all_pages())
-    render(conn, :recent, page_title: "Recently updated", pages: pages)
+  # The list queries are paged in the database: the mirror answers "the next
+  # twenty-five" instead of loading every page and slicing the list in memory.
+  def recent(conn, params) do
+    offset = offset(params)
+    %{items: pages, more?: more?} = Catalog.recent(scope(conn), limit: @list_page, offset: offset)
+
+    render(conn, :recent,
+      page_title: "Recently updated",
+      pages: pages,
+      offset: offset,
+      more?: more?
+    )
   end
 
-  def label(conn, %{"name" => name}) do
-    pages = visible(conn, Mirror.pages_for_label(name))
-    render(conn, :label, page_title: "Label: #{name}", label: name, pages: pages)
+  def label(conn, %{"name" => name} = params) do
+    offset = offset(params)
+
+    %{items: pages, more?: more?} =
+      Catalog.pages_with_label(scope(conn), name, limit: @list_page, offset: offset)
+
+    render(conn, :label,
+      page_title: "Label: #{name}",
+      label: name,
+      pages: pages,
+      offset: offset,
+      more?: more?
+    )
   end
 
   def about(conn, _params) do
@@ -228,6 +248,13 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     Enum.filter(Mirror.spaces_with_counts(), fn {space, _count} ->
       MapSet.member?(allowed, space.id)
     end)
+  end
+
+  defp offset(params) do
+    case Integer.parse(to_string(params["offset"] || "0")) do
+      {offset, ""} when offset > 0 -> offset
+      _ -> 0
+    end
   end
 
   defp visible(conn, pages), do: Authorization.readable_pages(scope(conn), pages)

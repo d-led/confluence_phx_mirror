@@ -35,6 +35,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   # How many spaces the space menus list. The directory is `/spaces`.
   @space_window 25
   @label_window 200
+  @author_window 100
   @label_strip 12
   @type_options [{"page", "Pages and live docs"}, {"blogpost", "Blog posts"}]
   @sort_options [{"", "Best match"}, {"newest", "Newest first"}, {"oldest", "Oldest first"}]
@@ -86,7 +87,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
        page_title: "Search",
        spaces: spaces,
        spaces_more?: Mirror.stats().spaces > length(spaces),
-       authors: Mirror.authors(),
+       authors: Mirror.authors(limit: @author_window),
        label_catalog: label_catalog,
        label_highlights: label_highlights,
        recent_pages: Mirror.recent_pages(6),

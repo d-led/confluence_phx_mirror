@@ -89,7 +89,7 @@
     <.rail_section title="Outgoing links" icon="hero-arrow-top-right-on-square">
       <p :if={@outgoing_links == []} class="text-xs text-base-content/70">No links.</p>
       <ul :if={@outgoing_links != []} class="space-y-1.5">
-        <li :for={link <- Enum.take(@outgoing_links, 12)} class="truncate text-xs">
+        <li :for={link <- @outgoing_links} class="truncate text-xs">
           <a
             href={link.href}
             class="text-primary hover:underline"

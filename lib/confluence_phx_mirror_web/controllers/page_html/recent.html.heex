@@ -16,6 +16,13 @@
     </p>
   </header>
 
+  <.empty_state
+    :if={@pages == []}
+    icon="hero-clock"
+    title="Nothing mirrored yet"
+    body="Once a sync has pulled content, the newest pages appear here."
+  />
+
   <ul class="mt-6 space-y-2">
     <li :for={page <- @pages}>
       <.link
@@ -40,4 +47,13 @@
       </.link>
     </li>
   </ul>
+
+  <.page_nav
+    :if={@pages != []}
+    path={~p"/recent"}
+    offset={@offset}
+    count={length(@pages)}
+    per_page={25}
+    more?={@more?}
+  />
 </Layouts.app>

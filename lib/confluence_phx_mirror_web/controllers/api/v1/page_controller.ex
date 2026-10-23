@@ -4,30 +4,28 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
   use ConfluencePhxMirrorWeb, :controller
 
   alias ConfluencePhxMirror.Authorization
+  alias ConfluencePhxMirror.Catalog
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirrorWeb.Api.V1.Presenter
 
+  # The listing asks the database for one window and for the total; a mirror
+  # with thirty thousand pages answers a page of twenty-five without reading
+  # the other twenty-nine thousand.
   def index(conn, params) do
     {start, limit} = pagination(params)
-    space_key = params["key"] || params["spaceKey"]
+    scope = conn.assigns.current_scope
 
-    case fetch_pages(space_key) do
-      {:ok, all_pages} ->
-        pages = Authorization.readable_pages(conn.assigns.current_scope, all_pages)
-
-        items =
-          pages
-          |> Enum.drop(start)
-          |> Enum.take(limit)
-          |> Enum.map(&Presenter.summary/1)
+    case fetch_space_id(params["key"] || params["spaceKey"]) do
+      {:ok, space_id} ->
+        %{items: pages} = Catalog.recent(scope, limit: limit, offset: start, space_id: space_id)
 
         json(
           conn,
-          Presenter.list(items,
+          Presenter.list(Enum.map(pages, &Presenter.summary/1),
             start: start,
             limit: limit,
-            total: length(pages),
+            total: Catalog.count_pages(scope, space_id: space_id),
             path: request_path(conn)
           )
         )
@@ -149,11 +147,11 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
     end
   end
 
-  defp fetch_pages(nil), do: {:ok, Mirror.list_all_pages()}
+  defp fetch_space_id(nil), do: {:ok, nil}
 
-  defp fetch_pages(space_key) do
+  defp fetch_space_id(space_key) do
     case Mirror.find_space(space_key) do
-      {:ok, space} -> {:ok, Mirror.list_pages(space.id)}
+      {:ok, space} -> {:ok, space.id}
       {:error, :not_found} -> {:error, "Space #{space_key} is not mirrored."}
     end
   end

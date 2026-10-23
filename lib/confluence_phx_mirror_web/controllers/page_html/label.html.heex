@@ -12,10 +12,12 @@
     <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Label</p>
     <div class="mt-1 flex flex-wrap items-center gap-2">
       <h1 class="text-3xl font-semibold">{@label}</h1>
-      <span class="badge badge-ghost badge-sm">{length(@pages)} pages</span>
+      <span class="badge badge-ghost badge-sm">
+        {length(@pages)}{if @more?, do: "+"} pages
+      </span>
     </div>
     <p class="mt-2 text-xs">
-      <a href={"/search?label=#{@label}"} class="link link-primary">
+      <a href={"/search?labels=#{@label}"} class="link link-primary">
         Search pages with this label →
       </a>
     </p>
@@ -57,4 +59,13 @@
       </.link>
     </li>
   </ul>
+
+  <.page_nav
+    :if={@pages != []}
+    path={~p"/labels/#{@label}"}
+    offset={@offset}
+    count={length(@pages)}
+    per_page={25}
+    more?={@more?}
+  />
 </Layouts.app>

@@ -131,11 +131,16 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert body =~ "That blog post is not mirrored"
   end
 
-  test "recently updated lists the newest content first", %{conn: conn} do
+  test "recently updated lists the newest content first, a window at a time", %{conn: conn} do
     html = conn |> get(~p"/recent") |> html_response(200)
 
     assert html =~ "Recently updated"
     assert html =~ "Architecture Overview"
-    assert html =~ "Release 2.0"
+    assert html =~ "Showing 1–25 of more"
+
+    second = conn |> get(~p"/recent?offset=25") |> html_response(200)
+
+    assert second =~ "Release 2.0"
+    assert second =~ "Showing 26–"
   end
 end

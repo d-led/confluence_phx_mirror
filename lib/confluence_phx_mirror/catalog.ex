@@ -217,6 +217,69 @@ defmodule ConfluencePhxMirror.Catalog do
   end
 
   @doc """
+  A page of every page the reader may open, newest first.
+
+  The ordering, the authorization and the window are all part of the query: a
+  mirror with thirty thousand pages answers this with a dozen rows, not with
+  the whole table filtered in memory.
+  """
+  @spec recent(Scope.t(), keyword()) :: page()
+  def recent(%Scope{} = scope, opts \\ []) do
+    scope
+    |> readable_pages_query(opts)
+    |> order_by([p], desc: p.external_updated_at)
+    |> preload(:space)
+    |> page(opts)
+  end
+
+  @doc "How many pages the reader may open. Options: `:space_id`."
+  @spec count_pages(Scope.t(), keyword()) :: non_neg_integer()
+  def count_pages(%Scope{} = scope, opts \\ []) do
+    scope
+    |> readable_pages_query(opts)
+    |> select([p], count(p.id))
+    |> Repo.one()
+  end
+
+  @doc """
+  A page of the readable pages carrying one label, newest first.
+  """
+  @spec pages_with_label(Scope.t(), String.t(), keyword()) :: page()
+  def pages_with_label(%Scope{} = scope, name, opts \\ []) when is_binary(name) do
+    name = Label.normalise(name)
+
+    scope
+    |> readable_pages_query(opts)
+    |> join(:inner, [p], l in assoc(p, :label_records), as: :label)
+    |> where([label: l], l.name == ^name)
+    |> order_by([p], desc: p.external_updated_at)
+    |> preload(:space)
+    |> page(opts)
+  end
+
+  @doc """
+  A page of the readable pages one Confluence account wrote, newest first.
+  """
+  @spec pages_by_author(Scope.t(), String.t(), keyword()) :: page()
+  def pages_by_author(%Scope{} = scope, account_id, opts \\ []) when is_binary(account_id) do
+    scope
+    |> readable_pages_query(opts)
+    |> where([p], p.author_account_id == ^account_id)
+    |> order_by([p], desc: p.external_updated_at)
+    |> preload(:space)
+    |> page(opts)
+  end
+
+  defp readable_pages_query(scope, opts) do
+    from(p in Page, as: :page, where: is_nil(p.deleted_at))
+    |> where_space(opts[:space_id])
+    |> Authorization.restrict_pages(scope)
+  end
+
+  defp where_space(query, nil), do: query
+  defp where_space(query, space_id), do: where(query, [p], p.space_id == ^space_id)
+
+  @doc """
   A page of one space's content.
 
   Options: `:type` (`"page"`, `"blogpost"` or `nil` for both) and `:sort`

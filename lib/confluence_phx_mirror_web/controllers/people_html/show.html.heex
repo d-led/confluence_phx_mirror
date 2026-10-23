@@ -26,5 +26,14 @@
       Authored content
     </h2>
     <.page_list pages={@pages} empty="Nothing authored by this person." />
+
+    <.page_nav
+      :if={@pages != []}
+      path={~p"/people/#{@author.account_id}"}
+      offset={@offset}
+      count={length(@pages)}
+      per_page={25}
+      more?={@more?}
+    />
   </section>
 </Layouts.app>

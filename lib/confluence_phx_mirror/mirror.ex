@@ -784,8 +784,15 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
-  def outgoing_links(%Page{id: id}) do
+  @doc """
+  The links a page makes, oldest first.
+
+  The rail shows a handful of them, so the window is asked of the database; a
+  hub page with a thousand links is not worth a thousand rows per request.
+  """
+  def outgoing_links(%Page{id: id}, limit \\ 12) do
     from(l in Link, where: l.source_page_id == ^id, order_by: [asc: l.inserted_at])
+    |> limit_rows(limit)
     |> Repo.all()
   end
 
@@ -934,8 +941,10 @@ defmodule ConfluencePhxMirror.Mirror do
   grouping is a pass over the pages table, so the answer is remembered until
   the content moves.
   """
-  def authors do
-    Counters.fetch(:authors, fn ->
+  def authors(opts \\ []) do
+    limit = Keyword.get(opts, :limit)
+
+    Counters.fetch({:authors, limit}, fn ->
       from(p in Page,
         where: is_nil(p.deleted_at) and not is_nil(p.author_name),
         group_by: [p.author_name, p.author_account_id],
@@ -947,6 +956,7 @@ defmodule ConfluencePhxMirror.Mirror do
           updated_at: max(p.external_updated_at)
         }
       )
+      |> limit_rows(limit)
       |> Repo.all()
     end)
   end

@@ -318,6 +318,48 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     end
   end
 
+  @doc """
+  Previous/next links for a server-rendered list.
+
+  These screens are plain controller responses, so paging is a pair of links the
+  browser follows; the LiveView catalogs page with events instead.
+  """
+  attr :path, :string, required: true, doc: "the list's own path, without ?offset"
+  attr :offset, :integer, required: true
+  attr :count, :integer, required: true, doc: "rows in this window"
+  attr :per_page, :integer, required: true
+  attr :more?, :boolean, required: true
+
+  def page_nav(assigns) do
+    ~H"""
+    <div
+      :if={@more? or @offset > 0}
+      class="mt-8 flex flex-wrap items-center justify-center gap-2 border-t border-base-300/60 pt-4"
+    >
+      <.link
+        :if={@offset > 0}
+        href={offset_path(@path, max(@offset - @per_page, 0))}
+        class="btn btn-sm btn-ghost gap-2"
+      >
+        <.icon name="hero-arrow-left" class="size-4" /> Previous
+      </.link>
+      <p class="text-xs text-base-content/70">
+        Showing {@offset + 1}–{@offset + @count}{if @more?, do: " of more"}
+      </p>
+      <.link
+        :if={@more?}
+        href={offset_path(@path, @offset + @per_page)}
+        class="btn btn-sm btn-ghost gap-2"
+      >
+        Next page <.icon name="hero-arrow-right" class="size-4" />
+      </.link>
+    </div>
+    """
+  end
+
+  defp offset_path(path, 0), do: path
+  defp offset_path(path, offset), do: path <> "?offset=#{offset}"
+
   attr :pages, :list, required: true
   attr :empty, :string, default: "Nothing here yet."
 
