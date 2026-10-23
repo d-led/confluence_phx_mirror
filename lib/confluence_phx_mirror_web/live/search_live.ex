@@ -902,7 +902,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
       class={["dropdown", if(@open?, do: "dropdown-open", else: "dropdown-close")]}
       id={@id}
       phx-click-away={@open? && "close_menu"}
-      phx-keydown={@open? && "close_menu"}
+      phx-window-keydown={@open? && "close_menu"}
       phx-key="Escape"
     >
       <button

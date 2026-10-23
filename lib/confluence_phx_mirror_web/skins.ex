@@ -3,8 +3,18 @@ defmodule ConfluencePhxMirrorWeb.Skins do
   The skins a site author can offer readers.
 
   Four skins ship with the mirror (`system`, `light`, `mirror`, `dark`), defined
-  as daisyUI themes in `assets/css/app.css`. A site adds its own by declaring
-  them in config — no CSS edit, no asset rebuild:
+  as daisyUI themes in `assets/css/app.css`. Every other skin is a *declaration*
+  — a plain map, emitted into the page as a `[data-theme]` rule, so it needs no
+  CSS edit and no asset rebuild.
+
+  Declarations come from two places:
+
+    * `config :confluence_phx_mirror, :skins` — maps for this deployment;
+    * `config :confluence_phx_mirror, :skin_packs` — modules implementing
+      `ConfluencePhxMirrorWeb.Skins.Pack`, the way a skin ships as a
+      standalone extension (see `ConfluencePhxMirrorWeb.Skins.AtlassianCloud`).
+
+  A declaration looks like this:
 
       config :confluence_phx_mirror, :skins, [
         %{
@@ -26,17 +36,37 @@ defmodule ConfluencePhxMirrorWeb.Skins do
   picker, the cookie and every daisyUI component pick it up. Declaring
   `scheme: :dark` also switches native controls and the code-token palette.
 
+  A declaration may carry `dark_colors` as well. The skin then has two variants
+  under one name and follows the reader's OS preference, exactly as `system`
+  does:
+
+      %{
+        name: "brand",
+        colors: %{base_100: "#ffffff"},
+        dark_colors: %{base_100: "#111214"}
+      }
+
+  `selectable: false` keeps a skin out of the reader's picker: it is a *whole
+  skin*, chosen by the deployment rather than by each reader. Pinning one for
+  the whole site is `site_skin`:
+
+      config :confluence_phx_mirror, :site_skin, "atlassian-cloud"
+
   Anything the palette cannot express (fonts, component tweaks) goes in
   `assets/css/author.css`, which is loaded after the main stylesheet.
   """
 
   @type scheme :: :light | :dark
 
+  @typedoc "A skin as declared in config or returned by a pack."
+  @type declaration :: map()
+
   @type skin :: %{
           name: String.t(),
           label: String.t(),
           icon: String.t(),
           scheme: scheme() | nil,
+          selectable?: boolean(),
           builtin?: boolean(),
           custom?: boolean(),
           css: String.t()
@@ -62,11 +92,25 @@ defmodule ConfluencePhxMirrorWeb.Skins do
   # so anything that could close the rule or the element is refused.
   @unsafe ~r/[;{}<>"'\n\r]/
 
-  @doc "Built-in skins first, then the skins declared by the site, in config order."
+  @doc """
+  Built-in skins first, then the site's declarations in order: config, then
+  each pack. The first declaration of a name wins, so a deployment can refine
+  a pack's skin in config.
+  """
   @spec all() :: [skin()]
   def all do
-    builtin = Enum.map(@builtin, &Map.put(&1, :builtin?, true))
-    builtin ++ custom()
+    builtin_skins() ++ custom()
+  end
+
+  @doc """
+  The skins a reader may pick, in picker order.
+
+  Empty when the site pins one skin for everyone (`site_skin/0`): the picker
+  would offer choices that the site skin overrides anyway.
+  """
+  @spec reader_skins() :: [skin()]
+  def reader_skins do
+    if site_skin(), do: [], else: Enum.filter(all(), & &1.selectable?)
   end
 
   @doc "Every selectable skin name, used to validate the theme cookie."
@@ -82,6 +126,43 @@ defmodule ConfluencePhxMirrorWeb.Skins do
   def valid?(name), do: not is_nil(get(name))
 
   @doc """
+  The skin this deployment applies to every reader, or `nil` when readers
+  choose their own. Set with `config :confluence_phx_mirror, :site_skin`.
+  """
+  @spec site_skin() :: String.t() | nil
+  def site_skin do
+    case Application.get_env(:confluence_phx_mirror, :site_skin) do
+      "" -> nil
+      name when is_binary(name) -> name
+      _name -> nil
+    end
+  end
+
+  @doc """
+  Fails fast when `:site_skin` names a skin this site does not offer.
+
+  Called once at boot: a typo should stop the release, not quietly serve the
+  default theme until someone notices.
+  """
+  @spec validate_site_skin!() :: :ok
+  def validate_site_skin! do
+    name = site_skin()
+
+    cond do
+      is_nil(name) ->
+        :ok
+
+      valid?(name) ->
+        :ok
+
+      true ->
+        raise ArgumentError,
+              "site_skin #{inspect(name)} is not a skin this site offers; " <>
+                "available: #{Enum.join(names(), ", ")}"
+    end
+  end
+
+  @doc """
   The `[data-theme]` rules for site-declared skins.
 
   Built-in skins are already in the compiled stylesheet, so only custom skins
@@ -95,11 +176,22 @@ defmodule ConfluencePhxMirrorWeb.Skins do
     |> Enum.join("\n")
   end
 
+  defp builtin_skins do
+    Enum.map(@builtin, &Map.merge(&1, %{builtin?: true, selectable?: true}))
+  end
+
   defp custom do
-    :confluence_phx_mirror
-    |> Application.get_env(:skins, [])
+    declarations()
     |> Enum.map(&normalise/1)
     |> Enum.reject(&is_nil/1)
+    |> Enum.uniq_by(& &1.name)
+  end
+
+  defp declarations do
+    site = Application.get_env(:confluence_phx_mirror, :skins, [])
+    packs = Application.get_env(:confluence_phx_mirror, :skin_packs, [])
+
+    site ++ Enum.flat_map(packs, & &1.skins())
   end
 
   defp normalise(skin) when is_map(skin) do
@@ -115,9 +207,10 @@ defmodule ConfluencePhxMirrorWeb.Skins do
         label: label,
         icon: icon(skin[:icon]),
         scheme: scheme,
+        selectable?: skin[:selectable] != false,
         builtin?: false,
         custom?: true,
-        css: rule(name, scheme_css, declarations)
+        css: rule(name, scheme_css, declarations, dark_declarations(skin))
       }
     end
   end
@@ -147,6 +240,11 @@ defmodule ConfluencePhxMirrorWeb.Skins do
     colours ++ radii ++ extras
   end
 
+  # Only the colours change between variants; radii, border and depth are
+  # shared, so the media query stays small and one palette cannot drift from
+  # the other's geometry.
+  defp dark_declarations(skin), do: palette(skin[:dark_colors])
+
   defp palette(colors) when is_map(colors) do
     colors
     |> Enum.map(fn {key, value} -> {to_string(key), value} end)
@@ -169,9 +267,18 @@ defmodule ConfluencePhxMirrorWeb.Skins do
 
   defp safe_value?(value) when is_binary(value) do
     trimmed = String.trim(value)
-    trimmed != "" and String.length(trimmed) <= 120 and not Regex.match?(@unsafe, trimmed)
+    trimmed != "" and String.lengt, _dark), do: ""
+
+  defp rule(name, scheme_css, declarations, []) do
+    variant(name, scheme_css, declarations)
   end
 
+  defp rule(name, scheme_css, declarations, dark) do
+    variant(name, scheme_css, declarations) <>
+      "\n@media (prefers-color-scheme:dark){" <> variant(name, "dark", dark) <> "}"
+  end
+
+  defp variant
   defp safe_value?(_value), do: false
 
   defp rule(_name, _scheme_css, []), do: ""

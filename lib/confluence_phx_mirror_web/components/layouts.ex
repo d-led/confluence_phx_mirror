@@ -364,15 +364,21 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
     """
   end
 
-  @doc "Theme picker; built-in and site-declared skins from `ConfluencePhxMirrorWeb.Skins`."
+  @doc """
+  Theme picker; the skins a reader may choose, from `ConfluencePhxMirrorWeb.Skins`.
+
+  Renders nothing when the site pins one skin for every reader.
+  """
   def theme_menu(assigns) do
+    assigns = assign(assigns, :skins, Skins.reader_skins())
+
     ~H"""
-    <details class="dropdown dropdown-end">
+    <details :if={@skins != []} class="dropdown dropdown-end">
       <summary class="btn btn-ghost btn-sm" aria-label="Theme">
         <.icon name="hero-swatch" class="size-4" />
       </summary>
       <ul class="menu dropdown-content z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
-        <li :for={skin <- Skins.all()}>
+        <li :for={skin <- @skins}>
           <a href={~p"/theme/#{skin.name}"}>
             <.icon name={skin.icon} class="size-4" /> {skin.label}
           </a>

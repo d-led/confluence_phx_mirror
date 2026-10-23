@@ -9,6 +9,10 @@ defmodule ConfluencePhxMirror.Application do
 
   @impl true
   def start(_type, _args) do
+    # A misspelt site skin should stop the release, not quietly serve the
+    # default theme to everyone.
+    ConfluencePhxMirrorWeb.Skins.validate_site_skin!()
+
     children = [
       ConfluencePhxMirrorWeb.Telemetry,
       ConfluencePhxMirror.Repo,
