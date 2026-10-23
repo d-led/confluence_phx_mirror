@@ -4,19 +4,22 @@ defmodule ConfluencePhxMirrorWeb.Router do
   alias ConfluencePhxMirrorWeb.LiveUserAuth
   alias ConfluencePhxMirrorWeb.Plugs
 
+  # One policy for every HTML surface the application serves. Scripts may only
+  # come from the mirror itself (LiveView is bundled into assets/js/app.js);
+  # styles stay inline-friendly because Confluence's HTML carries style
+  # attributes and the palette is emitted per request.
+  @secure_browser_headers %{
+    "content-security-policy" =>
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+  }
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash
     plug :put_root_layout, html: {ConfluencePhxMirrorWeb.Layouts, :root}
     plug :protect_from_forgery
-    # Scripts may only come from the mirror itself (LiveView is bundled into
-    # assets/js/app.js); styles stay inline-friendly because Confluence's HTML
-    # carries style attributes and the palette is emitted per request.
-    plug :put_secure_browser_headers, %{
-      "content-security-policy" =>
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
-    }
+    plug :put_secure_browser_headers, @secure_browser_headers
 
     plug Plugs.FetchCurrentUser
     plug Plugs.ProxyAuth
@@ -58,9 +61,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
   # rate-limit budget. `CM_API_DOCS` decides at boot whether they are served.
   pipeline :docs do
     plug :accepts, ["html", "json"]
-    # The page is HTML like every other, so it gets the same browser headers:
-    # a policy without them would be one a reviewer has to re-derive per route.
-    plug :put_secure_browser_headers
+    # The description page is HTML like every other screen, so it wears the
+    # same policy rather than a second one nobody audits.
+    plug :put_secure_browser_headers, @secure_browser_headers
   end
 
   # ---------------------------------------------------------------------------
