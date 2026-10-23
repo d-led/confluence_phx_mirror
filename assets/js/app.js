@@ -26,6 +26,7 @@ import {hooks as colocatedHooks} from "phoenix-colocated/confluence_phx_mirror"
 import topbar from "../vendor/topbar"
 import initPagePresence from "./page_presence"
 import {highlightCode} from "./code_highlight"
+import {localizeTimes} from "./local_time"
 import "./confirm"
 import "./sidebar"
 
@@ -34,6 +35,8 @@ const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
   hooks: {...colocatedHooks},
+  // A patch re-renders the server's UTC text, so put the reader's zone back.
+  dom: {onPatchEnd: container => localizeTimes(container)},
 })
 
 // Show progress bar on live navigation and form submits
@@ -49,6 +52,9 @@ initPagePresence()
 
 // Colour the code inside Confluence's code macro after the page is parsed.
 highlightCode()
+
+// Timestamps arrive as UTC; show them on the reader's clock.
+localizeTimes()
 
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()

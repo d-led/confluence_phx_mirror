@@ -49,6 +49,33 @@ defmodule ConfluencePhxMirrorWeb.TimeTest do
       assert Time.datetime(~U[2026-10-21 09:30:00Z]) == "21 Oct 2026, 09:30 UTC"
       assert Time.datetime(nil) == "unknown"
     end
+
+    test "always read an instant on the UTC clock" do
+      # 11:30 in Berlin is 09:30 UTC, whichever way the value is stated.
+      berlin = %DateTime{
+        ~U[2026-10-21 11:30:00Z]
+        | time_zone: "Europe/Berlin",
+          zone_abbr: "CET",
+          utc_offset: 7200
+      }
+
+      assert Time.iso(berlin) == "2026-10-21T09:30:00Z"
+      assert Time.datetime(berlin) == "21 Oct 2026, 09:30 UTC"
+      assert Time.date(berlin) == "21 Oct 2026"
+    end
+
+    test "put a timestamp near midnight on the UTC day it happened" do
+      # Half past midnight in Berlin is still the evening before in UTC.
+      berlin = %DateTime{
+        ~U[2026-10-21 00:30:00Z]
+        | time_zone: "Europe/Berlin",
+          zone_abbr: "CEST",
+          utc_offset: 7200
+      }
+
+      assert Time.date(berlin) == "20 Oct 2026"
+      assert Time.datetime(berlin) == "20 Oct 2026, 22:30 UTC"
+    end
   end
 
   describe "duration/2" do

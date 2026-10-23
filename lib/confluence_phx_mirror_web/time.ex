@@ -1,5 +1,12 @@
 defmodule ConfluencePhxMirrorWeb.Time do
-  @moduledoc "Human-friendly timestamps used across the mirror UI."
+  @moduledoc """
+  Human-friendly timestamps used across the mirror UI.
+
+  The mirror keeps every instant in UTC, and so does every function here: a
+  `DateTime` that arrives in another zone is shown as the same instant in UTC.
+  What the reader sees on their own clock is
+  `ConfluencePhxMirrorWeb.TimeComponents.local_time/1`.
+  """
 
   @doc "Relative time such as `3 minutes ago` or `in 2 hours`."
   def ago(nil), do: "never"
@@ -35,15 +42,24 @@ defmodule ConfluencePhxMirrorWeb.Time do
 
   @doc "Calendar date, e.g. `21 Oct 2026`."
   def date(nil), do: "unknown"
-  def date(%DateTime{} = datetime), do: Calendar.strftime(datetime, "%-d %b %Y")
+  def date(%DateTime{} = datetime), do: datetime |> in_utc() |> Calendar.strftime("%-d %b %Y")
 
-  @doc "Date and time in UTC."
+  @doc "Date and time in UTC, e.g. `21 Oct 2026, 09:30 UTC`."
   def datetime(nil), do: "unknown"
-  def datetime(%DateTime{} = datetime), do: Calendar.strftime(datetime, "%-d %b %Y, %H:%M UTC")
 
-  @doc "ISO date for `datetime` attributes."
+  def datetime(%DateTime{} = datetime) do
+    datetime |> in_utc() |> Calendar.strftime("%-d %b %Y, %H:%M UTC")
+  end
+
+  @doc """
+  The instant as ISO 8601 in UTC, for `datetime` attributes: seconds, the
+  precision the mirror stores.
+  """
   def iso(nil), do: nil
-  def iso(%DateTime{} = datetime), do: DateTime.to_iso8601(datetime)
+
+  def iso(%DateTime{} = datetime) do
+    datetime |> in_utc() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+  end
 
   @doc "Duration between two datetimes in a compact form."
   def duration(nil, _), do: "—"
@@ -57,5 +73,14 @@ defmodule ConfluencePhxMirrorWeb.Time do
       milliseconds < 60_000 -> "#{Float.round(milliseconds / 1000, 1)} s"
       true -> "#{round(milliseconds / 60_000)} min"
     end
+  end
+
+  # A `DateTime` in any other zone is the same instant, so re-read it in UTC
+  # rather than printing its own wall clock next to the word "UTC".
+  defp in_utc(%DateTime{time_zone: "Etc/UTC", utc_offset: 0, std_offset: 0} = datetime),
+    do: datetime
+
+  defp in_utc(%DateTime{} = datetime) do
+    DateTime.from_unix!(DateTime.to_unix(datetime, :microsecond), :microsecond)
   end
 end

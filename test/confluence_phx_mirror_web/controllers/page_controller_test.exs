@@ -36,6 +36,24 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     refute html =~ "hidden levels"
   end
 
+  test "page timestamps reach the browser as UTC, ready for its own clock", %{conn: conn} do
+    space = space_fixture(%{key: "CLOCK", name: "Clock Testimonies"})
+
+    page_fixture(space, %{
+      confluence_id: 9501,
+      slug: "clocks",
+      external_updated_at: ~U[2026-10-21 09:30:00Z]
+    })
+
+    html = conn |> get(~p"/spaces/CLOCK/pages/9501/clocks") |> html_response(200)
+
+    assert html =~
+             ~r/<time[^>]*datetime="2026-10-21T09:30:00Z"[^>]*data-local-time="datetime"[^>]*title="21 Oct 2026, 09:30 UTC"/
+
+    # "Updated 3 hours ago" keeps its words; only the tooltip takes the instant.
+    assert html =~ ~s(data-local-title)
+  end
+
   test "a page named like its space keeps its own crumb", %{conn: conn} do
     space = space_fixture(%{key: "GLOSS", name: "Glossary", homepage_confluence_id: 7001})
 

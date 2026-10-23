@@ -38,13 +38,22 @@ invariants below are the ones specific to the mirror.
   declarations emitted per request by `Web.Skins` — from
   `config :confluence_phx_mirror, :skins` or from packs
   (`ConfluencePhxMirrorWeb.Skins.Pack` modules listed in `:skin_packs`, e.g.
-  `Skins.AtlassianCloud`). A declaration may carry `dark_colors`, emitted as a
+  `Skins.FreshBlue`). A declaration may carry `dark_colors`, emitted as a
   `prefers-color-scheme` override; `selectable: false` keeps a skin out of the
   reader picker so it is only usable as `:site_skin`. Deeper overrides go in
   `assets/css/author.css`.
 * **JS dependencies are real dependencies**: `assets/package.json`, `npm ci`
   wired into `assets.build` / `assets.deploy`. Syntax highlighting uses the
   highlight.js grammar chosen from Confluence's `brush:` attribute.
+* **Instants are UTC, everywhere but the screen.** Columns are
+  `:utc_datetime`, code writes `DateTime.utc_now() |> DateTime.truncate(:second)`,
+  and Confluence timestamps are parsed with `DateTime.from_iso8601/1`, which
+  yields the same instant in UTC whatever offset the source used
+  (`HttpSource.parse_time/1`). `Web.Time` renders that UTC instant and says so;
+  `Web.TimeComponents.local_time/1` emits `<time datetime="…Z">` for
+  `assets/js/local_time.js` to rewrite in the browser's zone, because only the
+  browser knows it. Never print one zone's wall clock under another's label, and
+  never store a zone the mirror cannot vouch for.
 * **Config is read at boot.** The dev code reloader does not reload
   `config/*.exs`.
 

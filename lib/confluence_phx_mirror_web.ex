@@ -87,6 +87,7 @@ defmodule ConfluencePhxMirrorWeb do
       import Phoenix.HTML
       # Core UI components
       import ConfluencePhxMirrorWeb.CoreComponents
+      import ConfluencePhxMirrorWeb.TimeComponents
 
       # Common modules used in templates
       alias ConfluencePhxMirrorWeb.Layouts

@@ -19,7 +19,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
 
   alias ConfluencePhxMirror.Confluence.Traffic
   alias ConfluencePhxMirror.Sync.Log
-  alias ConfluencePhxMirrorWeb.Time
 
   @level_options [
     {"all", "Everything"},
@@ -117,8 +116,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
       Map.update(acc, entry.level, 1, &(&1 + 1))
     end)
   end
-
-  defp time(entry), do: entry.at |> Time.datetime() |> String.replace(" UTC", "")
 
   defp level_badge(:debug), do: {"·", "text-base-content/70"}
   defp level_badge(:info), do: {"info", "text-base-content/70"}
@@ -243,12 +240,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
           id={"log-#{entry.id}"}
           class="flex flex-wrap items-baseline gap-x-2 border-b border-base-300/40 px-3 py-1.5 last:border-0"
         >
-          <time
-            class="w-16 shrink-0 tabular-nums text-base-content/70"
-            title={Time.datetime(entry.at)}
-          >
-            {time(entry)}
-          </time>
+          <.local_time
+            at={entry.at}
+            class="w-28 shrink-0 tabular-nums text-base-content/70"
+          />
           <span class={["w-10 shrink-0 lowercase", elem(level_badge(entry.level), 1)]}>
             {elem(level_badge(entry.level), 0)}
           </span>

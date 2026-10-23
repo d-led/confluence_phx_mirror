@@ -94,6 +94,25 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
              }
     end
 
+    test "keeps the instant when Confluence writes it in another offset" do
+      stub(fn conn ->
+        results =
+          if conn.query_params["type"] == "page",
+            do: [
+              page_json(%{
+                "version" => %{"number" => 2, "when" => "2026-10-02T12:00:00.000+02:00"}
+              })
+            ],
+            else: []
+
+        Req.Test.json(conn, %{"results" => results})
+      end)
+
+      assert {:ok, [page]} = HttpSource.pages("ENG", [])
+
+      assert page.updated_at == ~U[2026-10-02 10:00:00.000Z]
+    end
+
     test "fills in the defaults Confluence omits" do
       stub(fn conn ->
         results =
