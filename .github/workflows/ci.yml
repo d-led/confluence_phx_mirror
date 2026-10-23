@@ -8,7 +8,10 @@
 #           which reads the coverage the suite exported and scores every
 #           function by complexity and coverage.
 #   image   `docker build`, Trivy on the result, and a run as uid 10001.
-#           Published to GHCR from main and from version tags.
+#           Published to GHCR under the branch or tag name: `:main` (and
+#           `:latest`) for main, `:v1.2.3` for a release tag, never a commit
+#           hash. What is scanned and started here is the branch's own tag, so
+#           a later stage that pulls `:main` is testing the same image.
 #
 # The quality script that developers run (scripts/quality.sh) is the same three
 # gates in one report, so a green laptop and a green pipeline mean the same
@@ -128,19 +131,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: image
-        name: Work out the tags
+        name: Work out the tag
         run: |
           set -euo pipefail
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          ref="${image}:${GITHUB_SHA::12}"
-          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+
+          # Branch or tag name, and nothing else: `:main` moves with the
+          # branch, `:v1.2.3` is the release. A commit tag would leave a new
+          # image behind on every push and still not say which branch it came
+          # from, so there are none.
+          tag=$(printf '%s' "${GITHUB_REF_NAME}" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed 's/[^a-z0-9._-]/-/g')
+
+          echo "ref=${image}:${tag}" >> "$GITHUB_OUTPUT"
           {
             echo "tags<<TAGS"
-            echo "${ref}"
-            case "${GITHUB_REF}" in
-              refs/heads/main) echo "${image}:latest" ;;
-              refs/tags/v*) echo "${image}:${GITHUB_REF#refs/tags/}" ;;
-            esac
+            echo "${image}:${tag}"
+            # main also answers to `latest`, so a deployment can follow either
+            # the branch's name or the usual one.
+            if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+              echo "${image}:latest"
+            fi
             echo "TAGS"
           } >> "$GITHUB_OUTPUT"
       - name: Build
@@ -153,6 +165,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.image.outputs.tags }}
           build-args: |
+            # The ref, which is also the image tag: `main`, `v1.2.3`.
             VERSION=${{ github.ref_name }}
             REVISION=${{ github.sha }}
             CI_PROVIDER=github

@@ -229,8 +229,14 @@ not for the deployment.
 | **Image, scan, non-root** | `docker build`, Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), and `id -u` in the image must be `10001` |
 
 On `main` and on `v*.*.*` tags the image is published to
-`ghcr.io/d-led/confluence_phx_mirror` (commit tag, `latest`, and the release
-tag). The same two gates run locally as `mix lint` and `scripts/quality.sh`.
+`ghcr.io/d-led/confluence_phx_mirror` under the **branch or tag name**: `:main`
+(and `:latest` as well, for deployments that prefer it) for the branch,
+`:v1.2.3` for a release. There are no commit-hash tags — a tag that changes with
+every push says nothing about where the image came from, and the image already
+carries its commit in `build_info.json`. Whatever is scanned and started in CI
+is the branch's own tag, so a later stage that pulls `:main` pulls the image
+that was checked. The same two gates run locally as `mix lint` and
+`scripts/quality.sh`.
 
 `.github/dependabot.yml` opens weekly pull requests for Hex, npm,
 GitHub Actions and the proxy's image. The mirror image's base versions are build
