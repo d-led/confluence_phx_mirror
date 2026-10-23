@@ -284,9 +284,12 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
           attrs
       end
 
+    # A page can carry a dozen screenshots; lazy keeps the first paint cheap and
+    # async keeps decoding off the main thread.
     attrs
     |> put_default("alt", "")
     |> put_default("loading", "lazy")
+    |> put_default("decoding", "async")
     |> sanitise_attributes()
   end
 

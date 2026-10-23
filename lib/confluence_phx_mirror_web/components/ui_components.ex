@@ -39,8 +39,8 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
   @doc "A single metric."
   attr :label, :string, required: true
   attr :value, :any, required: true
-  attr :hint, :string, default: nil
   attr :icon, :string, default: nil
+  slot :hint, doc: "a quieter line under the value, such as when the number was measured"
 
   def stat_card(assigns) do
     ~H"""
@@ -49,7 +49,7 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
         <.icon :if={@icon} name={@icon} class="size-3.5" /> {@label}
       </p>
       <p class="mt-1 text-2xl font-semibold tabular-nums">{@value}</p>
-      <p :if={@hint} class="mt-0.5 text-[11px] text-base-content/70">{@hint}</p>
+      <p :if={@hint != []} class="mt-0.5 text-[11px] text-base-content/70">{render_slot(@hint)}</p>
     </div>
     """
   end
@@ -96,13 +96,37 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
   """
   attr :id, :string, required: true
   attr :rows, :list, required: true
-  slot :head
-  slot :row, required: true
+
+  slot :head, doc: "one `<th>` per column, used from `sm` up"
+
+  slot :row,
+    required: true,
+    doc: "one `<tr>` per row, used from `sm` up"
+
+  slot :card,
+    doc: """
+    the same row as a phone card. A table on a phone is a desktop layout in a
+    narrower box: the columns that survive are the ones nobody needs, and the
+    ones that matter are hidden. Give `:card` and the phone gets a stacked
+    record instead, with each value labelled.
+    """
+
   slot :empty
 
   def data_table(assigns) do
     ~H"""
-    <div class="overflow-x-auto rounded-xl border border-base-300/70 bg-base-100">
+    <div :if={@card != []} class="-mx-4 sm:hidden">
+      <ul class="divide-y divide-base-300/60">
+        <li :for={row <- @rows} class="px-4 py-3">{render_slot(@card, row)}</li>
+        <li :if={@rows == []} class="px-4 py-6 text-center text-xs text-base-content/70">
+          {render_slot(@empty)}
+        </li>
+      </ul>
+    </div>
+    <div class={[
+      "overflow-x-auto rounded-xl border border-base-300/70 bg-base-100",
+      @card != [] && "hidden sm:block"
+    ]}>
       <table id={@id} class="table table-sm">
         <thead>
           <tr>{render_slot(@head)}</tr>
@@ -131,7 +155,7 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
 
   def page_header(assigns) do
     ~H"""
-    <header class={["border-b border-base-300/70 pb-5", @class]}>
+    <header class={["border-b border-base-300/70 pb-4 sm:pb-5", @class]}>
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <p :if={@eyebrow} class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
@@ -140,7 +164,9 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
           <div :if={@badges != []} class="mt-1 flex flex-wrap items-center gap-1.5">
             {render_slot(@badges)}
           </div>
-          <h1 class="mt-1 text-balance text-3xl font-semibold leading-tight">{@title}</h1>
+          <h1 class="mt-1 text-balance text-2xl font-semibold leading-tight sm:text-3xl">
+            {@title}
+          </h1>
           <div
             :if={@meta != []}
             class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-base-content/70"

@@ -234,11 +234,28 @@
   color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
 }
 
+/* Images are content, sized by their own width/height attributes; the CSS only
+   stops them from leaving the column. `max-width` keeps a 2000px screenshot
+   inside a phone, `height: auto` keeps its shape, and nothing here scales a
+   small image up — Confluence already sized thumbnails at sync time. */
 .confluence-content img,
 .confluence-content .confluence-embedded-image {
   max-width: 100%;
   height: auto;
-  border-radius: 0.5rem;
+  border-radius: 0.25rem;
+  vertical-align: middle;
+}
+
+.confluence-content .confluence-embedded-image {
+  display: block;
+}
+
+/* Confluence writes pixel width/height into the export view. Honour that as a
+   ceiling, not as a target: a 256px screenshot stays 256px instead of being
+   stretched, blurred, to the width of the column. */
+.confluence-content img[width] {
+  width: auto;
+  height: auto;
 }
 
 /* Confluence wraps every attachment in a span that carries the alignment, so

@@ -136,15 +136,20 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
       rail?={false}
       page_title={@copy.page_title}
     >
-      <header class="border-b border-base-300/70 pb-4">
+      <%!-- A phone reaches the list sooner: the blurb is two lines there. --%>
+      <header class="border-b border-base-300/70 pb-3 sm:pb-4">
         <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
           {@copy.eyebrow}
         </p>
         <h1 class="mt-1 text-2xl font-semibold leading-tight sm:text-3xl">{@copy.title}</h1>
-        <p class="mt-2 max-w-2xl text-sm leading-relaxed text-base-content/70">{@copy.blurb}</p>
+        <%!-- The title already says what this screen is; a phone gets the list
+        instead of a paragraph about the list. --%>
+        <p class="mt-2 hidden max-w-2xl text-sm leading-relaxed text-base-content/70 sm:block">
+          {@copy.blurb}
+        </p>
       </header>
 
-      <div :if={@space} class="mt-4 border-b border-base-300/70">
+      <div :if={@space} class="mt-2 border-b border-base-300/70 sm:mt-4">
         <.space_tabs space={@space} active={@kind} />
       </div>
 
