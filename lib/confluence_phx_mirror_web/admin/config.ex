@@ -39,6 +39,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
         row("Spaces", spaces(http[:spaces]), "CM_SPACES"),
         row("Sync interval", every(http[:sync_interval_seconds]), "CM_SYNC_INTERVAL_SECONDS"),
         row("Sync concurrency", count(http[:sync_concurrency]), "CM_SYNC_CONCURRENCY"),
+        row(
+          "Personal spaces",
+          if(config(:sync, [])[:personal_spaces], do: "mirrored", else: "skipped"),
+          "CM_SYNC_PERSONAL_SPACES"
+        ),
         row("Requests per second", count(http[:requests_per_second]), "CM_REQUESTS_PER_SECOND"),
         row("Burst", count(http[:burst]), "CM_BURST"),
         row("Page size", count(http[:page_size]), "CM_HTTP_PAGE_SIZE")

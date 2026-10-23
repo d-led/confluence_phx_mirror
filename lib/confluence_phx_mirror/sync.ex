@@ -255,24 +255,19 @@ defmodule ConfluencePhxMirror.Sync do
   # the run moves: the row is written as the pages are counted, not only at the
   # end. The phase is what the dashboard's live strip names.
   defp record_progress(opts, counts) do
-    case opts[:run_id] do
-      nil ->
-        :ok
-
-      run_id ->
-        Repo.update_all(from(r in SyncRun, where: r.id == ^run_id),
-          set: [stats: counts |> page_counts() |> Map.put("phase", "pages")]
-        )
-    end
+    record_stats(opts, Map.put(page_counts(counts), "phase", "pages"))
   end
 
-  # Which step the run is on now. One read and one write per step, a handful per
-  # run — the counts themselves are written as they change, above.
-  defp record_phase(opts, phase) do
+  # Which step the run is on now, for the same strip.
+  defp record_phase(opts, phase), do: record_stats(opts, %{"phase" => phase})
+
+  # Stats are merged, not replaced: the trigger written when the run started has
+  # to survive every flush, or the strip loses the reason the run happened.
+  defp record_stats(opts, changes) do
     with run_id when not is_nil(run_id) <- opts[:run_id],
          %SyncRun{} = run <- Repo.get(SyncRun, run_id) do
       Repo.update_all(from(r in SyncRun, where: r.id == ^run_id),
-        set: [stats: Map.put(run.stats || %{}, "phase", phase)]
+        set: [stats: Map.merge(run.stats || %{}, changes)]
       )
     else
       _no_run -> :ok
@@ -800,7 +795,8 @@ defmodule ConfluencePhxMirror.Sync do
   # Returns how many membership rows were written and which account ids were
   # asked about, so the second pass knows who is left.
   defp sync_groups(source, opts, only \\ :everyone) do
-    refresh_memberships(source, opts, only)
+    {refreshed, stored, errors} = refresh_memberships(source, opts, only)
+    {stored, errors, refreshed}
   end
 
   # A snapshot meets a lot of people, and every one of them is a request, so the
@@ -1466,7 +1462,8 @@ defmodule ConfluencePhxMirror.Sync do
         mode: mode_to_string(mode),
         status: "running",
         started_at: now(),
-        stats: %{}
+        # The dashboard's live strip says who asked for this run.
+        stats: if(trigger, do: %{"trigger" => trigger}, else: %{})
       })
       |> Repo.insert()
 

@@ -152,7 +152,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     %{
       phase: phase_label(Map.get(stats, "phase")),
       mode: run.mode,
-      trigger: run.trigger || "the schedule",
+      trigger: Map.get(stats, "trigger") || "the schedule",
       running_for: Time.duration(run.started_at, DateTime.utc_now()),
       pages: pages,
       requests: traffic.requests,
