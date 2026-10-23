@@ -224,6 +224,14 @@ if header = System.get_env("CM_PROXY_AUTH_NAME_HEADER") do
   config :confluence_phx_mirror, :proxy_auth_name_header, String.downcase(header)
 end
 
+# An OAuth2 proxy usually sits in front of a whole Atlassian organisation, which
+# is wider than the site being mirrored. By default the mirror therefore admits
+# only administrators and identities the sync has seen on that site;
+# CM_PROXY_AUTH_MEMBERS_ONLY=false restores "whoever the proxy admits".
+if members_only = System.get_env("CM_PROXY_AUTH_MEMBERS_ONLY") do
+  config :confluence_phx_mirror, :proxy_auth_members_only, members_only in ~w(1 true yes)
+end
+
 # Webhooks accept unsigned deliveries by default: a mirror that has just been
 # pointed at a Confluence site should work, and /admin/webhooks keeps saying what
 # that costs. `CM_WEBHOOK_SECRET` plus `CM_WEBHOOK_REQUIRE_SIGNATURE=true` closes

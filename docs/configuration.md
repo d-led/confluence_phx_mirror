@@ -77,6 +77,7 @@ CM_SOURCE=synthetic CM_SYNTHETIC_SPACES=200 CM_SYNTHETIC_PAGES=500 \
 | `CM_PROXY_AUTH` | `false` | trust the reverse proxy's identity header |
 | `CM_PROXY_AUTH_HEADER` | `x-forwarded-email` | header carrying the reader's e-mail |
 | `CM_PROXY_AUTH_NAME_HEADER` | `x-forwarded-user` | header carrying the display name |
+| `CM_PROXY_AUTH_MEMBERS_ONLY` | `true` | admit only administrators and identities the sync has seen on the mirrored site |
 | `MIRROR_ALLOW_UNSAFE_IDENTITY` | `false` | acknowledge the three switches above in a production release |
 
 `MIRROR_AUTO_ADMIN`, `MIRROR_SELF_SIGNUP` and `CM_PROXY_AUTH` each hand out an
@@ -89,6 +90,16 @@ still allowed without a flag (`CM_SOURCE=demo`); anything else needs
 
 `CM_PROXY_AUTH` is only safe when the app cannot be reached except through the
 proxy.
+
+An OAuth2 proxy usually authenticates a whole Atlassian organisation, which is
+wider than the site being mirrored, so the mirror decides for itself whom to
+admit: an administrator (seeded, admin role, or a member of an admin group), or
+an identity the sync has seen — a member of a group the content mentions, or a
+user named in a space permission or page restriction
+(`Mirror.identity_known?/1`). Everyone else gets a `403` page and **no account is
+created**. Confluence Cloud has no API that lists a site's users, so "seen" is
+the strongest statement the mirror can make; `CM_PROXY_AUTH_MEMBERS_ONLY=false`
+falls back to admitting anyone the proxy authenticates.
 
 ## Webhooks
 

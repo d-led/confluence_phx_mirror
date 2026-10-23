@@ -316,6 +316,51 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Enum.uniq()
   end
 
+  @doc """
+  Whether the sync has ever seen this identity on the mirrored site.
+
+  There is no user directory to consult — Confluence Cloud does not list a
+  site's users through the API — so "a user of the site" means "the mirror has
+  evidence of this person": a member of a group the content mentions, a user
+  named in a space permission or a page restriction. Mirror administrators are
+  a separate question, answered by `ConfluencePhxMirror.Accounts.Admins`.
+
+  Identities are matched case-insensitively, like the permission checks do.
+  """
+  @spec identity_known?([String.t() | nil]) :: boolean()
+  def identity_known?(subject_keys) do
+    subjects = subject_keys |> Enum.reject(&is_nil/1) |> Enum.map(&String.downcase/1)
+
+    if subjects == [] do
+      false
+    else
+      member? =
+        from(m in GroupMember,
+          where: fragment("lower(?)", m.subject_key) in ^subjects,
+          limit: 1,
+          select: 1
+        )
+
+      space_named? =
+        from(sp in SpacePermission,
+          where:
+            sp.subject_type == "user" and
+              fragment("lower(?)", sp.subject_key) in ^subjects,
+          limit: 1,
+          select: 1
+        )
+
+      page_named? =
+        from(r in PageRestriction,
+          where: r.subject_type == "user" and fragment("lower(?)", r.subject_key) in ^subjects,
+          limit: 1,
+          select: 1
+        )
+
+      Repo.exists?(member?) or Repo.exists?(space_named?) or Repo.exists?(page_named?)
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Pages
   # ---------------------------------------------------------------------------

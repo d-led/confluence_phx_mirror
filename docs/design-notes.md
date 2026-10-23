@@ -132,6 +132,23 @@ group membership), but one person may arrive with several addresses — a Google
 account one day, a GitHub account the next. Confluence itself models this as an
 account id with one or more verified e-mail addresses.
 
+### Who a proxy identity is allowed to be
+
+An OAuth2 proxy answers "who is this?"; it does not answer "should they be
+here?". Its user directory is the Atlassian organisation, and a mirror is
+usually one site inside it, so trusting the proxy's word would hand the mirror
+to everybody in the company. The mirror therefore decides for itself, from what
+the sync knows: an administrator (seeded, role, or admin group), or an identity
+the sync has seen — a group member, or a user named by a space permission or a
+page restriction (`Mirror.identity_known?/1`). Anyone else gets a 403 and no
+account.
+
+The honest limitation: Confluence Cloud has no API that lists a site's users,
+so "a user of the site" can only mean "somebody the mirror has evidence of".
+A legitimate reader who belongs to no mentioned group and is named in no
+permission is indistinguishable from a stranger; the remedy is a group on the
+Confluence side, which the next sync then knows.
+
 The plan, when it is built:
 
 * `users` keeps the identity (display name, role, groups, Confluence account

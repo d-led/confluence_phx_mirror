@@ -79,6 +79,10 @@ config :confluence_phx_mirror,
   proxy_auth: false,
   proxy_auth_header: "x-forwarded-email",
   proxy_auth_name_header: "x-forwarded-user",
+  # The proxy says who the caller is; this says whether the mirror wants them.
+  # Only an administrator, or an identity the sync has seen on the mirrored
+  # site, is admitted; `false` restores "the proxy decides".
+  proxy_auth_members_only: true,
   # More themes for the admin's picker, on top of the built-in default and the
   # packs. The shape is documented in ConfluencePhxMirrorWeb.Skins.
   skins: [],

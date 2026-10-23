@@ -378,13 +378,26 @@ Set `MIRROR_MAIL_FROM` and the Swoosh mailer settings for production.
   (never the token). Raising the hashing policy does not invalidate issued
   tokens — each one is rewritten the next time it is used. See
   [api.md](api.md#authentication) for the client side.
-  See [api.md](api.md) for how clients present them.
 * Behind an OAuth2/SSO proxy: `CM_PROXY_AUTH=true` trusts the identity header
   the proxy sets (`CM_PROXY_AUTH_HEADER`, default `x-forwarded-email`;
-  `CM_PROXY_AUTH_NAME_HEADER`, default `x-forwarded-user`) and provisions a
-  reader account on first sight, so there is no sign-up step. Roles and groups
-  stay local. Enable it only when the app cannot be reached except through the
-  proxy.
+  `CM_PROXY_AUTH_NAME_HEADER`, default `x-forwarded-user`), so there is no
+  sign-up step. Roles and groups stay local. Enable it only when the app cannot
+  be reached except through the proxy.
+
+  A proxy usually authenticates your whole Atlassian organisation, which is
+  wider than the site being mirrored, so the mirror admits only:
+
+    * an administrator — seeded (`CM_ADMINS`), admin role, or a member of an
+      admin group; and
+    * an identity the sync has seen on the site — a member of a group the
+      content mentions, or a user named in a space permission or page
+      restriction.
+
+  Everyone else gets a `403` page, and no account is created for them. The
+  question is answered by `Mirror.identity_known?/1`, which is the best the
+  mirror can do: Confluence Cloud has no API that lists a site's users.
+  `CM_PROXY_AUTH_MEMBERS_ONLY=false` restores the older behaviour, where the
+  proxy's word was enough.
 
 ## Webhooks
 

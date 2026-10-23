@@ -4,8 +4,17 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
 
   Behind an OAuth2 proxy the proxy authenticates the reader and forwards
   `X-Forwarded-Email` (name configurable). With `CM_PROXY_AUTH=true` the mirror
-  trusts that header: an unknown address becomes an account on first sight, so
+  trusts that header: an admitted address becomes an account on first sight, so
   there is no sign-up step and no account form. Roles and groups stay local.
+
+  The proxy answers "who is this?", not "should they be here?" — an Atlassian
+  organisation is usually wider than the site being mirrored. So the mirror
+  admits an identity only when it has a reason to: a mirror administrator, or
+  somebody the sync has seen on the mirrored site (a member of a mentioned
+  group, or a user named in a space permission or page restriction, see
+  `ConfluencePhxMirror.Mirror.identity_known?/1`). Anyone else gets a 403 page
+  and no account. `CM_PROXY_AUTH_MEMBERS_ONLY=false` restores the older
+  behaviour, where the proxy's word was enough.
 
   Trusting a header means the endpoint must not be reachable except through the
   proxy; that is why the plug is off unless explicitly enabled. Without a
@@ -15,8 +24,11 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
 
   import Plug.Conn
 
+  import Phoenix.Controller, only: [put_view: 2, render: 3]
+
   alias ConfluencePhxMirror.Accounts
-  alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Accounts.{Admins, Scope, User}
+  alias ConfluencePhxMirror.Mirror
 
   def init(opts), do: opts
 
@@ -32,6 +44,14 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
   end
 
   defp sign_in(conn, email) do
+    if admitted?(email) do
+      provision(conn, email)
+    else
+      refuse(conn)
+    end
+  end
+
+  defp provision(conn, email) do
     attrs =
       case presented(conn, config(:proxy_auth_name_header, "x-forwarded-user")) do
         nil -> %{}
@@ -46,10 +66,33 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
         |> assign(:current_scope, Scope.for_user(user))
 
       {:error, _changeset} ->
-        conn
-        |> send_resp(403, "Access denied")
-        |> halt()
+        refuse(conn)
     end
+  end
+
+  # An administrator always; everybody else only when the sync can vouch for
+  # them. The account is looked up, never created, before the decision.
+  defp admitted?(email) do
+    cond do
+      not members_only?() -> true
+      Admins.seeded?(email) -> true
+      true -> admitted_as_reader?(email)
+    end
+  end
+
+  defp admitted_as_reader?(email) do
+    case Accounts.get_user_by_email(email) do
+      nil -> Mirror.identity_known?([email])
+      %User{} = user -> Admins.admin?(user) or Mirror.identity_known?(User.identity_keys(user))
+    end
+  end
+
+  defp refuse(conn) do
+    conn
+    |> put_status(403)
+    |> put_view(ConfluencePhxMirrorWeb.ErrorHTML)
+    |> render(:"403", message: nil)
+    |> halt()
   end
 
   defp presented(conn, header) do
@@ -60,6 +103,8 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
   end
 
   defp enabled?, do: config(:proxy_auth, false)
+
+  defp members_only?, do: config(:proxy_auth_members_only, true)
 
   defp config(key, default), do: Application.get_env(:confluence_phx_mirror, key, default)
 end
