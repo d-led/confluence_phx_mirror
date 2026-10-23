@@ -58,6 +58,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
   # rate-limit budget. `CM_API_DOCS` decides at boot whether they are served.
   pipeline :docs do
     plug :accepts, ["html", "json"]
+    # The page is HTML like every other, so it gets the same browser headers:
+    # a policy without them would be one a reviewer has to re-derive per route.
+    plug :put_secure_browser_headers
   end
 
   # ---------------------------------------------------------------------------
