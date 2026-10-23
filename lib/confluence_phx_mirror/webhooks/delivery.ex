@@ -1,7 +1,8 @@
 defmodule ConfluencePhxMirror.Webhooks.Delivery do
   @moduledoc """
   Every webhook delivery is stored, valid or not, so that a rejected or failed
-  event can be inspected and replayed.
+  event can be inspected and its payload sent again; the mirror has no replay
+  of its own.
   """
   use Ecto.Schema
   import Ecto.Changeset

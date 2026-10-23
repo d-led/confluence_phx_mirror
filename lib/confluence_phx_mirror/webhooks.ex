@@ -3,7 +3,8 @@ defmodule ConfluencePhxMirror.Webhooks do
   Incoming Confluence webhooks.
 
   Every delivery is stored before anything else happens, so a rejected or
-  malformed event can be audited and replayed. Signatures are verified over the
+  malformed event can be audited and its payload posted again by hand. The
+  mirror itself does not replay deliveries. Signatures are verified over the
   raw request body with HMAC-SHA256 (`X-Hub-Signature-256`, or the legacy
   `X-Hub-Signature`).
 

@@ -3,10 +3,10 @@ defmodule ConfluencePhxMirrorWeb.Plugs.WebhookRateLimit do
   Caps webhook deliveries per client address.
 
   A delivery is stored before its signature is checked, on purpose: a rejected
-  or malformed event stays auditable and replayable. That also makes the route
-  somewhere an unauthenticated caller can write rows, so it is the one intake
-  that is always metered — independently of `:reader_rate_limit`, which a
-  deployment may switch off for its readers.
+  or malformed event stays auditable. That also makes the route somewhere an
+  unauthenticated caller can write rows, so it is the one intake that is always
+  metered — independently of `:reader_rate_limit`, which a deployment may
+  switch off for its readers.
 
   Over the cap the request is refused before anything is stored; the deliveries
   that were accepted keep their audit trail.

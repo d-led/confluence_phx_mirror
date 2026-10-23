@@ -36,7 +36,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
     assign(socket,
       deliveries: Webhooks.recent(@deliveries),
       secret?: is_binary(config[:secret]),
-      signature?: config[:require_signature] != false,
       receivers: map_size(tokens)
     )
   end
@@ -78,7 +77,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
         </div>
         <div class="flex items-baseline gap-2">
           <dt class="text-base-content/70">Signature</dt>
-          <dd>{if @signature?, do: "required", else: "not required"}</dd>
+          <dd>required, or a token instead</dd>
         </div>
         <div class="flex items-baseline gap-2">
           <dt class="text-base-content/70">Fixed tokens</dt>
