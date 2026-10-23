@@ -415,11 +415,18 @@ two — but they stay apart so an operator can tell "we did this" from "the site
 did this". Switching an account off here leaves Confluence alone; the site's flag
 clears itself on the next sync that finds the account active again.
 
-Disabling takes effect immediately: an existing session is ignored, API tokens
-answer `403 account_disabled`, magic links can be neither requested nor consumed,
-and the proxy refuses the identity. Nothing is deleted, so *Enable* restores
-access as it was. A seeded or bootstrap administrator cannot be switched off here
-— the same reason they cannot be demoted: it would remove the only way back in.
+The button says *Switch off here* / *Switch on here* because it manages our flag
+only: an account the site switched off can still be switched off here, and
+switching it on here will not bring back an account Confluence disabled — the
+two badges tell you which is which.
+
+Switching off takes effect immediately: an existing session is ignored, API
+tokens answer `403 account_disabled`, magic links can be neither requested nor
+consumed, and the proxy refuses the identity. Nothing is deleted, so switching
+an account back on here restores access as it was, minus whatever the site
+decided in the meantime. A seeded or bootstrap administrator cannot be switched
+off here — the same reason they cannot be demoted: it would remove the only way
+back in.
 
 The site's flag comes from asking Confluence about the Atlassian accounts the
 mirror knows (page authors, group members, readers who signed in with an account
