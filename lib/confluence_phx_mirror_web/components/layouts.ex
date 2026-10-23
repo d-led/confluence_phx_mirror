@@ -25,6 +25,11 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   attr :mirror_url, :string, default: nil
   attr :mirror_host, :string, default: nil
   attr :mirror_source, :any, default: nil
+
+  attr :mirror_repo, :string,
+    default: nil,
+    doc: "where this software lives; config `:mirror, :repo` by default"
+
   attr :space, :any, default: nil
   attr :tree, :map, default: %{nodes: [], truncated?: false}, doc: "the sidebar branch"
   attr :current_page, :any, default: nil
@@ -43,7 +48,8 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
     assigns =
       assign(assigns,
         current_user: assigns.current_scope && assigns.current_scope.user,
-        current_admin?: Scope.admin?(assigns.current_scope)
+        current_admin?: Scope.admin?(assigns.current_scope),
+        mirror_repo: assigns.mirror_repo || mirror_repo()
       )
 
     ~H"""
@@ -312,18 +318,20 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span class="font-medium text-base-content/80">{@mirror_name}</span>
             <span aria-hidden="true">·</span>
-            <span :if={@mirror_url}>
-              Original:
+            <%!--
+              Flex, not inline text plus an inline icon: an icon with a baseline
+              taller than the text drags the words beside it out of line with
+              the rest of the row.
+            --%>
+            <span :if={@mirror_url} class="inline-flex items-center gap-1">
+              <span>Original:</span>
               <a
                 href={@mirror_url}
-                class="font-medium text-primary hover:underline"
+                class="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                {@mirror_host}<.icon
-                  name="hero-arrow-top-right-on-square"
-                  class="ml-0.5 inline size-3"
-                />
+                {@mirror_host}<.icon name="hero-arrow-top-right-on-square" class="size-3" />
               </a>
             </span>
             <span :if={is_nil(@mirror_url)}>Source: {source_label(@mirror_source)}</span>
@@ -334,6 +342,20 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             <span :if={is_nil(@last_sync_run)} class="text-warning">Never synced</span>
           </div>
           <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <a
+              :if={@mirror_repo}
+              href={@mirror_repo}
+              aria-label="Source code on GitHub"
+              class="inline-flex items-center gap-1 hover:text-primary"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <%!-- The GitHub mark, which heroicons (having no brand icons) leaves to us. --%>
+              <svg aria-hidden="true" viewBox="0 0 16 16" fill="currentColor" class="size-3.5">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+              </svg>
+              <span>Source</span>
+            </a>
             <a href={~p"/about"} class="hover:text-primary">About</a>
             <a
               :if={ConfluencePhxMirrorWeb.Api.OpenApi.enabled?()}
@@ -384,6 +406,14 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
       :demo -> "bundled demo snapshot (not a Confluence site)"
       :live -> "Confluence REST API"
     end
+  end
+
+  # Where this software lives, for the footer's source link. A fork that does
+  # not want the upstream link drops the config key.
+  defp mirror_repo do
+    :confluence_phx_mirror
+    |> Application.get_env(:mirror, [])
+    |> Keyword.get(:repo)
   end
 
   # The run that built this release, when a pipeline did. A footer link to a

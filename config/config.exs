@@ -50,7 +50,13 @@ config :confluence_phx_mirror, :skin_packs, [ConfluencePhxMirrorWeb.Skins.FreshB
 config :confluence_phx_mirror, theme: "fresh-blue"
 
 config :confluence_phx_mirror,
-  mirror: [name: "Confluence Mirror", tagline: "Read-only, always available"],
+  mirror: [
+    name: "Confluence Mirror",
+    tagline: "Read-only, always available",
+    # Where this software lives. The footer links to it with the GitHub mark; unset
+    # (or a fork that renames itself) simply drops the link.
+    repo: "https://github.com/d-led/confluence_phx_mirror"
+  ],
   # Blob storage is runtime data, never source: keep it out of priv/static so
   # the mirrored content cannot accidentally be checked in.
   blob_root: "var/mirror",

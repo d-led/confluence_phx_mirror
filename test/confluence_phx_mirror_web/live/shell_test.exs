@@ -46,4 +46,13 @@ defmodule ConfluencePhxMirrorWeb.ShellTest do
       assert html =~ ~s(id="mirror-content")
     end
   end
+
+  describe "the footer" do
+    test "links to the source of this software, marked with the GitHub logo", %{conn: conn} do
+      html = conn |> get(~p"/about") |> html_response(200)
+
+      assert html =~ ~s(aria-label="Source code on GitHub")
+      assert html =~ ~s(href="https://github.com/d-led/confluence_phx_mirror")
+    end
+  end
 end
