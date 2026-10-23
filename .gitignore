@@ -216,3 +216,4 @@ npm-debug.log
 # Temporary files, for example, from tests.
 /tmp/
 priv/static/assets/
+confluence_checkpoint_PERFSP.json
