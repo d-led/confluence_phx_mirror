@@ -50,37 +50,39 @@ Generated content exercises the mirror; it cannot exercise `HttpSource`. To
 measure pagination, retry and rate-limiting against a real Cloud instance, a
 free site is enough — [rewind-community's test data
 generator](https://github.com/rewind-community/confluence-test-data-generator)
-writes spaces and pages through the REST API, and `--content-only` keeps it to
-text, which is the part the free plan does not meter (2 GB counts attachments).
+writes spaces and pages through the REST API. `scripts/tooling/fill-confluence.sh`
+wraps it with the parts that matter for a real site — chunks, a storage-safe
+default, and a cleanup that removes everything it made.
 
 ```bash
-# --count is pages + blog posts, not pages: at the default multipliers a page is
-# ~16% of it. 20 spaces of ~95 pages each, no attachments, clearable prefix.
-CONFLUENCE_API_TOKEN=... python confluence_data_generator.py \
-  --url https://acme.atlassian.net/wiki --email you@acme.com \
-  --count 12523 --spaces 20 --content-only --prefix PERFSP --dry-run
+# Plan first: prints what it intends to create, writes nothing.
+CONFLUENCE_GENERATOR=~/src/confluence-test-data-generator \
+  scripts/tooling/fill-confluence.sh --pages 2000 --dry-run
 
-# Same command without --dry-run writes it; --cleanup --prefix PERFSP --yes
-# deletes every space whose key starts with the prefix (permanently).
+# Then fill. ~1.2 pages/s, so 2 000 pages is half an hour.
+CONFLUENCE_GENERATOR=~/src/confluence-test-data-generator \
+  CM_CONFLUENCE_SITE=https://acme.atlassian.net \
+  CM_ATL_EMAIL=you@acme.com CM_ATL_TOKEN=... \
+  scripts/tooling/fill-confluence.sh --pages 2000
+
+# Delete every space it made (permanent, no trash).
+scripts/tooling/fill-confluence.sh --cleanup
 ```
 
-What that cost, measured on a free site: **668 pages in ten minutes**
-(concurrency 5, ~1.1 pages/s) before the generator died with an empty
-`TimeoutError`; it checkpoints only after a whole phase, so `--resume` redoes the
-page phase. Treat it as an unattended job with a small `--count` and a prefix you
-can clean up: ~100 000 pages is a day of API budget, not an hour.
+The script works in chunks because the tool checkpoints per *phase*: a crash
+during the page phase otherwise loses every page that run made. It passes
+`--content-only` because pages are unlimited text while the free plan's 2 GB is
+file storage — attachments are what would cross it — and its prefixes share six
+characters, so one `--cleanup` removes the whole run.
 
-Mirroring what it created is the second measurement, and the more useful one:
+Budget it as an unattended job: **~1.2 pages a second**, the same at concurrency
+5 and at 10 — the ceiling is the API, not the client — so 100 000 pages is a day,
+not an hour.
 
-```bash
-CM_SOURCE=http CM_CONFLUENCE_SITE=https://acme.atlassian.net \
-  CM_ATL_EMAIL=you@acme.com CM_ATL_TOKEN=... CM_REQUESTS_PER_SECOND=10 \
-  mix confluence.sync --mode snapshot      # 732 pages, 21 spaces, 253 s
-```
-
-732 pages in 253 s is **2.9 pages/s** at `CM_REQUESTS_PER_SECOND=10`: the sync is
-bound by the request budget, not by Postgres, so plan a first snapshot of 100 000
-pages at ~10 hours (and watch for 429s before raising the budget).
+Mirroring is the other half of the job: the sync runs at **2.9 pages a second**
+at `CM_REQUESTS_PER_SECOND=10`, bound by the request budget rather than by
+Postgres, so a first snapshot of 100 000 pages is about ten hours (and watch for
+`429`s before raising the budget).
 
 Two things that surprise a reader on real data: page URLs carry a slug, so
 `/spaces/KEY/pages/ID` answers 302 to the canonical URL — point a load generator
