@@ -52,6 +52,32 @@ What the image promises:
   way. What remains unfixed is the base distribution's backlog, which is why CI
   scans with `ignore-unfixed: true` and fails on anything a rebuild could fix.
 
+### What the build knows about itself
+
+The image carries one extra file, `priv/build_info.json`, written by
+`mix build.info` before `mix release`:
+
+```json
+{"version": "v1.2.3", "revision": "3f2a1c9b8e7d…", "built_at": "2026-10-23T14:02:19Z",
+ "ci": {"provider": "github", "workflow": "ci", "run_number": "42", "run_url": "…/runs/42"}}
+```
+
+An administrator sees it in the admin footer as `v1.2.3+3f2a1c9`, with the run
+as a `ci #42` link when a pipeline built the image; readers do not. The boot log
+says the same in one line, so a log from a container that started for someone
+else's deploy can be identified. A checkout that no build touched — `mix
+phx.server`, the test suite — says `dev`, because that is what it is: a
+gitignored file that only a build writes.
+
+| Where | `version` | `revision` | `ci` |
+| --- | --- | --- | --- |
+| `docker build --build-arg VERSION=… --build-arg REVISION=…` | the argument | the argument | from `CI_*` build arguments |
+| `scripts/mix_release.sh` | `git describe --tags --always --dirty` | short commit | none |
+| development, tests | `dev` | none | none |
+
+`ENV` cannot stand in for this: what the footer reports is a property of the
+bytes in the image, not of how someone started it.
+
 ## Identity: what the proxy sets, what the mirror reads
 
 The proxy authenticates the reader and hands the mirror an identity header.

@@ -70,8 +70,22 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 
 WORKDIR /app
 
+# What the admin footer reports about this build. The values are build
+# arguments rather than runtime environment, because a release should know what
+# it was built from even when it starts somewhere that sets nothing —
+# `mix build.info` writes them into priv/, so they travel inside the image.
 ARG VERSION=dev
-ENV VERSION=${VERSION}
+ARG REVISION=
+ARG CI_PROVIDER=
+ARG CI_WORKFLOW=
+ARG CI_RUN_NUMBER=
+ARG CI_RUN_URL=
+ENV BUILD_VERSION=${VERSION} \
+    BUILD_REVISION=${REVISION} \
+    BUILD_CI_PROVIDER=${CI_PROVIDER} \
+    BUILD_CI_WORKFLOW=${CI_WORKFLOW} \
+    BUILD_CI_RUN_NUMBER=${CI_RUN_NUMBER} \
+    BUILD_CI_RUN_URL=${CI_RUN_URL}
 
 RUN mix local.hex --force \
   && mix local.rebar --force
@@ -100,7 +114,8 @@ RUN mix assets.setup \
   && mix assets.deploy
 
 COPY config/runtime.exs config/
-RUN mix release
+RUN mix build.info \
+  && mix release
 
 # --- what ships --------------------------------------------------------------
 FROM ${RUNNER_IMAGE} AS runtime

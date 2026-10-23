@@ -155,6 +155,10 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
             REVISION=${{ github.sha }}
+            CI_PROVIDER=github
+            CI_WORKFLOW=${{ github.workflow }}
+            CI_RUN_NUMBER=${{ github.run_number }}
+            CI_RUN_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Scan the image

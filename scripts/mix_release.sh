@@ -26,4 +26,9 @@ mix assets.deploy
 # echo "--== Removing the existing release directory ==--"
 echo "--== Building the release ==--"
 
+# What the admin footer reports: git describe and the short commit here, since
+# there is a checkout; the Dockerfile passes the same values in as build
+# arguments because a build context has no .git.
+mix build.info
+
 mix release --force --overwrite

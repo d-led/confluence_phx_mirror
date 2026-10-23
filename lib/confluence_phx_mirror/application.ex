@@ -6,6 +6,7 @@ defmodule ConfluencePhxMirror.Application do
   require Logger
 
   alias ConfluencePhxMirror.Confluence.{HttpSource, RateLimiter}
+  alias ConfluencePhxMirror.BuildInfo
 
   @impl true
   def start(_type, _args) do
@@ -33,6 +34,9 @@ defmodule ConfluencePhxMirror.Application do
 
     opts = [strategy: :one_for_one, name: ConfluencePhxMirror.Supervisor]
     log_pool_size()
+    # Said once, at boot: which build this is, so a log from a container that
+    # started for someone else's deploy can be identified.
+    log_build()
 
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
@@ -65,6 +69,10 @@ defmodule ConfluencePhxMirror.Application do
       "database pool: #{pool_size * pool_count} connections " <>
         "(#{pool_count} × #{pool_size})"
     )
+  end
+
+  defp log_build do
+    Logger.info("build: #{BuildInfo.description()}")
   end
 
   defp rate_limiter_spec do

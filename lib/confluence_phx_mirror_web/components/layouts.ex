@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   import ConfluencePhxMirrorWeb.MirrorComponents
 
   alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.BuildInfo
   alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirrorWeb.Skins
   alias ConfluencePhxMirrorWeb.Time
@@ -304,6 +305,28 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             <span class="inline-flex items-center gap-1">
               <.icon name="hero-lock-closed" class="size-3" /> Read-only
             </span>
+            <%!--
+              Only an administrator has a use for which build this is; readers
+              get the freshness above instead.
+            --%>
+            <span
+              :if={@current_admin?}
+              id="build-info"
+              class="inline-flex items-center gap-1"
+              title={BuildInfo.description()}
+            >
+              <.icon name="hero-code-bracket" class="size-3" />
+              <span class="font-mono">{BuildInfo.label()}</span>
+              <a
+                :if={ci_run_url()}
+                href={ci_run_url()}
+                class="font-mono text-primary hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {BuildInfo.ci_label()}
+              </a>
+            </span>
           </div>
         </div>
       </footer>
@@ -319,6 +342,16 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
     case Source.kind(module) do
       :demo -> "bundled demo snapshot (not a Confluence site)"
       :live -> "Confluence REST API"
+    end
+  end
+
+  # The run that built this release, when a pipeline did. A footer link to a
+  # build nobody can look at would be noise, so the label and the link come from
+  # the same value.
+  defp ci_run_url do
+    case BuildInfo.ci() do
+      %{run_url: url} when is_binary(url) -> url
+      _no_ci -> nil
     end
   end
 
