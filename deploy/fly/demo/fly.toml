@@ -1,4 +1,16 @@
-# fly.toml — the mirror itself, deployed as `confluence-mirror-demo-app`.
+# deploy/fly/demo/fly.toml — the mirror itself, deployed as
+# `confluence-mirror-demo-app` from the bundled demo snapshot (CM_SOURCE=demo).
+#
+# This is *not* the main site. The live mirror of a real Confluence site is
+# `fly.main.toml` at the repository root (app `confluence-mirror-app`), and that
+# is what `scripts/deploy-fly-main.sh` deploys. This file sits here rather than
+# at the root so a bare `fly deploy` cannot pick it up by accident: `fly deploy`
+# reads `fly.toml` from the working directory, and the wrong one would create a
+# demo app nobody asked for.
+#
+# Deploy it explicitly:
+#
+#   fly deploy . --config deploy/fly/demo/fly.toml --app confluence-mirror-demo-app
 #
 # This app has **no public IP**. The only public entry point is the
 # `confluence-mirror-demo` oauth2-proxy app in deploy/fly/proxy, and the mirror

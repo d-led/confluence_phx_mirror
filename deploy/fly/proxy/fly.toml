@@ -1,6 +1,6 @@
 # fly.toml — `confluence-mirror-demo`, the public oauth2-proxy in front of the
-# private mirror app (`confluence-mirror-demo-app`, whose fly.toml sits at the
-# repository root).
+# private mirror app (`confluence-mirror-demo-app`, whose config sits at
+# `deploy/fly/demo/fly.toml`).
 #
 # Every request to https://confluence-mirror-demo.fly.dev lands here first. The
 # proxy authenticates the reader with GitHub and forwards

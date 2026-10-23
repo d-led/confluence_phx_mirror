@@ -115,6 +115,7 @@ fi
 
 echo "deploying backend: $BACKEND_APP"
 fly deploy . \
+  --config deploy/fly/demo/fly.toml \
   --app "$BACKEND_APP" \
   --flycast \
   --no-public-ips \

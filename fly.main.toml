@@ -1,10 +1,14 @@
 # fly.main.toml — the mirror of a real Confluence site, as deployed at
 # `confluence-mirror-app`.
 #
-# Two files, one app each, because they say different things:
+# ** This is the file the main site is deployed from. ** `scripts/deploy-fly-main.sh`
+# runs `fly deploy . --config fly.main.toml`; a bare `fly deploy` deploys
+# nothing, because there is no `fly.toml` at the root any more.
 #
-#   fly.toml        the self-contained demo (CM_SOURCE=demo, no credentials)
-#   fly.main.toml   this file: a real site, credentials in secrets
+# The self-contained demo (CM_SOURCE=demo, no credentials) has its own config at
+# `deploy/fly/demo/fly.toml` (app `confluence-mirror-demo-app`), and the
+# oauth2-proxy front door at `deploy/fly/proxy/fly.main.toml` (app
+# `confluence-mirror`). One app each, because they say different things.
 #
 # Deploy from the repository root, so the build context is the whole project:
 #

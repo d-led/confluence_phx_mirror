@@ -10,13 +10,31 @@ Two deployment configurations ship with the repository, both of the same shape:
 
 | | Fly.io | Kubernetes |
 | --- | --- | --- |
-| configuration | [`fly.toml`](../fly.toml) + [`deploy/fly/proxy`](../deploy/fly/proxy) | [`deploy/k8s`](../deploy/k8s) |
-| front door | app `confluence-mirror-demo` (oauth2-proxy) | `oauth2-proxy` Deployment + Ingress |
-| the mirror | app `confluence-mirror-demo-app`, Flycast only | `confluence-mirror` Deployment + ClusterIP Service |
+| configuration | [`fly.main.toml`](../fly.main.toml) + [`deploy/fly/proxy`](../deploy/fly/proxy) | [`deploy/k8s`](../deploy/k8s) |
+| front door | app `confluence-mirror` (oauth2-proxy, the only public IP) | `oauth2-proxy` Deployment + Ingress |
+| the mirror | app `confluence-mirror-app`, Flycast only | `confluence-mirror` Deployment + ClusterIP Service |
+| database | app `confluence-mirror-db` (Postgres 18, attached) | managed Postgres |
 | migrations | `[deploy] release_command = "/app/bin/migrate"` | the `confluence-mirror-migrate` Job |
 | attachments | Fly volume `mirror_blobs` | PVC `mirror-blobs` |
 | clustering | `FLY_APP_NAME.internal` | headless Service via `DNS_CLUSTER_QUERY` |
-| deploy it | `./scripts/deploy-fly.sh` | `kubectl apply -f …` |
+| deploy it | `./scripts/deploy-fly-main.sh` | `kubectl apply -f …` |
+
+### Which Fly file is which
+
+There is **no `fly.toml` at the repository root**, deliberately: `fly deploy`
+reads `fly.toml` from the working directory, and one there would create a demo
+app nobody asked for.
+
+| file | app | what it is |
+| --- | --- | --- |
+| `fly.main.toml` | `confluence-mirror-app` | **the live mirror of a real site — this is the one that is deployed** |
+| `deploy/fly/proxy/fly.main.toml` | `confluence-mirror` | its oauth2-proxy front door (public) |
+| `deploy/fly/demo/fly.toml` | `confluence-mirror-demo-app` | the self-contained demo (`CM_SOURCE=demo`, no credentials) |
+| `deploy/fly/proxy/fly.toml` | `confluence-mirror-demo` | the demo's proxy |
+
+`scripts/deploy-fly-main.sh` deploys the first two; `scripts/deploy-fly.sh`
+deploys the demo pair. Both pass `--config` explicitly, so nothing depends on a
+file being in a particular directory.
 
 Nothing here is required by the application: it is a 12-factor release, and
 [operations.md](operations.md) describes the environment contract any process
