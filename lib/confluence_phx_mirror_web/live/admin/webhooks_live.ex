@@ -37,8 +37,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
   def handle_event("require_signatures", _params, socket) do
     Settings.put_webhook_require_signature(true, actor(socket))
 
-    {:noreply,
-     socket |> put_flash(:info, "Webhook signatures are now required.") |> load()}
+    {:noreply, socket |> put_flash(:info, "Webhook signatures are now required.") |> load()}
   end
 
   def handle_event("allow_unsigned", _params, socket) do
@@ -145,8 +144,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
             <p class="mt-1 text-xs text-base-content/80">
               A delivery without a valid signature or token is acted on as it arrives: whoever can
               reach <code class="font-mono">/webhooks/confluence</code> can make this mirror sync a
-              page or mark one deleted. Each one is still recorded, and the intake stays capped at
-              {@intake_limit} deliveries a minute per address.
+              page or mark one deleted. Each one is still recorded, and the intake stays capped at {@intake_limit} deliveries a minute per address.
             </p>
             <p class="mt-2 text-xs text-base-content/70">
               To close it, give the mirror the secret Confluence signs with
