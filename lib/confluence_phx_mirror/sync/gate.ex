@@ -26,9 +26,12 @@ defmodule ConfluencePhxMirror.Sync.Gate do
 
   # A lease short enough that a crashed node or a killed deploy frees the gate
   # within a minute and a half — which is also how long an abandoned run can
-  # look alive. It is renewed on every progress flush, so a healthy run never
-  # gets near the end of it.
+  # look alive. It is renewed by a heartbeat that runs for exactly as long as
+  # the claiming process does, so a healthy run never gets near the end of it,
+  # and a run never has to remember to say it is alive (the details pass is
+  # three requests per page and flushes no progress at all).
   @lease_seconds 90
+  @heartbeats_per_lease 3
 
   @typedoc "The caller's own result, or the news that someone else holds the gate."
   @type result(result) :: {:ok, result} | {:error, :already_running}
@@ -44,14 +47,46 @@ defmodule ConfluencePhxMirror.Sync.Gate do
     owner = Ecto.UUID.generate()
 
     if claim(owner) do
+      heartbeat = keep_alive(owner)
+
       try do
         {:ok, fun.(owner)}
       after
+        stop_sharing(heartbeat)
         release(owner)
       end
     else
       {:error, :already_running}
     end
+  end
+
+  # The claim renews itself for as long as the process that made it is alive,
+  # and stops when that process exits. A lease that depends on the workload
+  # remembering to renew it is a lease that lapses in the middle of the one
+  # phase nobody thought about; this one cannot be forgotten.
+  defp keep_alive(owner) do
+    claimant = self()
+
+    Task.start(fn ->
+      ref = Process.monitor(claimant)
+      beat(owner, ref)
+    end)
+  end
+
+  defp beat(owner, ref) do
+    receive do
+      :stop -> :ok
+      {:DOWN, ^ref, :process, _, _} -> :ok
+    after
+      heartbeat_ms() ->
+        renew(owner)
+        beat(owner, ref)
+    end
+  end
+
+  defp stop_sharing({:ok, pid}) do
+    send(pid, :stop)
+    :ok
   end
 
   @doc "Whether the gate is currently claimed by a run that is still alive."
@@ -69,8 +104,9 @@ defmodule ConfluencePhxMirror.Sync.Gate do
   @doc """
   Pushes the lease forward for the run that owns the gate.
 
-  Called from the sync's own progress flushes: a claim is only worth anything if
-  it keeps saying "alive".
+  Called by the heartbeat `exclusive/1` starts, on every progress flush would
+  also be fine but is not needed: a claim is only worth anything if it keeps
+  saying "alive", and this makes it say so without the workload's help.
   """
   @spec renew(String.t() | nil) :: :ok
   def renew(nil), do: :ok
@@ -104,7 +140,15 @@ defmodule ConfluencePhxMirror.Sync.Gate do
     |> Repo.update_all(set: [owner: nil, expires_at: nil])
   end
 
-  defp expires_at, do: DateTime.add(now(), @lease_seconds, :second)
+  defp expires_at, do: DateTime.add(now(), lease_seconds(), :second)
+
+  defp heartbeat_ms, do: div(lease_seconds() * 1000, @heartbeats_per_lease)
+
+  defp lease_seconds do
+    :confluence_phx_mirror
+    |> Application.get_env(:sync, [])
+    |> Keyword.get(:gate_lease_seconds, @lease_seconds)
+  end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 end

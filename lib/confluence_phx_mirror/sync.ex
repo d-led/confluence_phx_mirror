@@ -196,13 +196,26 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   defp abandon_run(run) do
+    reason = abandoned_reason(run)
+
     {:ok, run} =
       run
-      |> SyncRun.changeset(%{status: "failed", finished_at: now(), error: @abandoned})
+      |> SyncRun.changeset(%{status: "failed", finished_at: now(), error: reason})
       |> Repo.update()
 
-    Log.add(:warn, "sync #{run.id} was abandoned: #{@abandoned}", sync_run_id: run.id)
+    Log.add(:warn, "sync #{run.id} was abandoned: #{reason}", sync_run_id: run.id)
     Audit.log(Audit.system_actor(), SyncRun.audit_event_abandoned(run))
+  end
+
+  # A run that stopped cannot say why, so the row says what is known: the
+  # process is gone, and how long the row had been silent before anyone noticed
+  # — an hour of silence and a deploy are different incidents, and until now
+  # both read as the same sentence.
+  defp abandoned_reason(%SyncRun{updated_at: nil}), do: @abandoned
+
+  defp abandoned_reason(run) do
+    quiet_seconds = max(DateTime.diff(now(), run.updated_at, :second), 0)
+    "#{@abandoned} (#{quiet_seconds}s without progress)"
   end
 
   defp finish_cancelled(run, actor, trigger) do

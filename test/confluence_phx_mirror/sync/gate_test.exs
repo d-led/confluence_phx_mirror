@@ -69,6 +69,8 @@ defmodule ConfluencePhxMirror.SyncGateTest do
       run = Repo.get!(SyncRun, run.id)
       assert run.status == "failed"
       assert run.error =~ "stopped before it finished"
+      # How long it had been silent, so a deploy and a dead run read differently.
+      assert run.error =~ ~r/\(\d+s without progress\)/
     end
 
     test "a run that is really running is left alone" do
@@ -103,6 +105,44 @@ defmodule ConfluencePhxMirror.SyncGateTest do
       run = insert_run("succeeded")
 
       assert {:error, :not_running} = Sync.cancel(run.id, {:system, "test"})
+    end
+  end
+
+  # The lease is one and a half minutes in production, which no test can wait
+  # out. Shortened here, the same property holds: work that takes longer than a
+  # lease is still work, and the gate has to know that.
+  describe "a run slower than its lease" do
+    setup do
+      previous = Application.get_env(:confluence_phx_mirror, :sync)
+
+      Application.put_env(
+        :confluence_phx_mirror,
+        :sync,
+        Keyword.put(previous || [], :gate_lease_seconds, 1)
+      )
+
+      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :sync, previous) end)
+    end
+
+    test "still holds the gate" do
+      {:ok, held} =
+        Gate.exclusive(fn _owner ->
+          Process.sleep(1_400)
+          Gate.held?()
+        end)
+
+      assert held
+    end
+
+    test "is never mistaken for an abandoned one" do
+      run = insert_run("running")
+
+      Gate.exclusive(fn _owner ->
+        Process.sleep(1_400)
+        assert Sync.abandon_abandoned_runs() == 0
+      end)
+
+      assert Repo.get!(SyncRun, run.id).status == "running"
     end
   end
 
