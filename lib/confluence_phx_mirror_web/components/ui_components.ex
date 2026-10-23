@@ -44,12 +44,21 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
 
   def stat_card(assigns) do
     ~H"""
-    <div class="rounded-xl border border-base-300/70 bg-base-100 p-4">
-      <p class="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-base-content/70">
-        <.icon :if={@icon} name={@icon} class="size-3.5" /> {@label}
+    <%!-- A metric reads better as a row than as a tile on a phone: the label and
+    its number on one line, no half-empty box. From `sm` up it is the tile the
+    eye expects in a row of four. --%>
+    <div class="flex min-h-12 items-center justify-between gap-3 px-1 py-2 sm:block sm:min-h-0 sm:rounded-xl sm:border sm:border-base-300/70 sm:bg-base-100 sm:p-4">
+      <div class="min-w-0">
+        <p class="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-base-content/70">
+          <.icon :if={@icon} name={@icon} class="size-3.5" /> {@label}
+        </p>
+        <p :if={@hint != []} class="mt-0.5 truncate text-[11px] text-base-content/70">
+          {render_slot(@hint)}
+        </p>
+      </div>
+      <p class="shrink-0 text-lg font-semibold tabular-nums sm:mt-1 sm:text-2xl">
+        {@value}
       </p>
-      <p class="mt-1 text-2xl font-semibold tabular-nums">{@value}</p>
-      <p :if={@hint != []} class="mt-0.5 text-[11px] text-base-content/70">{render_slot(@hint)}</p>
     </div>
     """
   end

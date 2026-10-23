@@ -18,9 +18,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync.{SnapshotWorker, SpaceWorker}
   alias ConfluencePhxMirror.Sync.SyncRun
   alias ConfluencePhxMirrorWeb.Plugs
+  alias ConfluencePhxMirrorWeb.Skins
   alias ConfluencePhxMirrorWeb.Time
 
   @refresh_ms 5_000
@@ -29,11 +31,40 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   def mount(_params, _session, socket) do
     if connected?(socket), do: :timer.send_interval(@refresh_ms, self(), :refresh)
 
-    {:ok, assign(socket, page_title: "Overview") |> load()}
+    {:ok,
+     assign(socket,
+       page_title: "Overview",
+       skins: Skins.all(),
+       site_skin: Settings.site_skin(),
+       skin_dialog?: false
+     )
+     |> load()}
   end
 
   @impl true
   def handle_info(:refresh, socket), do: {:noreply, load(socket)}
+
+  @impl true
+  def handle_event("open_skin_dialog", _params, socket),
+    do: {:noreply, assign(socket, skin_dialog?: true)}
+
+  def handle_event("close_skin_dialog", _params, socket),
+    do: {:noreply, assign(socket, skin_dialog?: false)}
+
+  def handle_event("save_site_skin", %{"name" => name}, socket) do
+    name = if name in ["", nil], do: nil, else: name
+
+    if is_nil(name) or Skins.valid?(name) do
+      Settings.put_site_skin(name, {:user, socket.assigns.current_user})
+
+      {:noreply,
+       socket
+       |> assign(site_skin: Settings.site_skin(), skin_dialog?: false)
+       |> put_flash(:info, skin_saved(name))}
+    else
+      {:noreply, put_flash(socket, :error, "No skin named #{inspect(name)}.")}
+    end
+  end
 
   @impl true
   def handle_event("snapshot", _params, socket) do
@@ -144,8 +175,62 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             <.icon name="hero-arrow-path-rounded-square" class="size-4" /> Re-read everything
           </button>
           <a :if={dev_routes?()} href="/dev/dashboard" class="link text-xs">LiveDashboard</a>
+          <button
+            type="button"
+            phx-click="open_skin_dialog"
+            class="btn btn-outline btn-sm gap-1.5"
+            title="The skin every reader gets; readers keep their own choice when this is cleared"
+          >
+            <.icon name="hero-swatch" class="size-4" />
+            Site skin: {site_skin_label(@site_skin)}
+          </button>
         </:actions>
       </.admin_header>
+
+      <div
+        :if={@skin_dialog?}
+        class="modal modal-open"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="site-skin-title"
+      >
+        <div class="modal-box max-w-md">
+          <h2 id="site-skin-title" class="text-sm font-semibold">Site skin</h2>
+          <p class="mt-1 text-xs text-base-content/70">
+            A site skin applies to every reader and hides the theme picker. Clearing it puts the choice back in the header.
+          </p>
+
+          <form id="site-skin-form" phx-submit="save_site_skin" class="mt-4 space-y-2">
+            <label class="flex items-start gap-2 text-sm">
+              <input type="radio" name="name" value="" checked={is_nil(@site_skin)} class="radio radio-sm" />
+              <span>
+                Readers choose
+                <span class="block text-xs text-base-content/70">no site skin</span>
+              </span>
+            </label>
+            <label :for={skin <- @skins} class="flex items-start gap-2 text-sm">
+              <input
+                type="radio"
+                name="name"
+                value={skin.name}
+                checked={@site_skin == skin.name}
+                class="radio radio-sm"
+              />
+              <span>
+                {skin.label}
+                <span class="block text-xs text-base-content/70">{skin.name}</span>
+              </span>
+            </label>
+
+            <div class="modal-action">
+              <button type="button" phx-click="close_skin_dialog" class="btn btn-ghost btn-sm">
+                Cancel
+              </button>
+              <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            </div>
+          </form>
+        </div>
+      </div>
 
       <p
         :if={Source.demo?(@mirror_source)}
@@ -156,7 +241,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
         with site and token settings to mirror a live one.
       </p>
 
-      <section class="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <%!-- One column of rows on a phone, four tiles from `sm` up. --%>
+      <section class="mt-6 grid grid-cols-1 divide-y divide-base-300/60 rounded-xl border border-base-300/70 bg-base-100 px-3 sm:grid-cols-2 sm:divide-y-0 sm:gap-3 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-0 lg:grid-cols-4">
         <.stat_card label="Pages" value={@stats.pages} icon="hero-document-text" />
         <.stat_card label="Attachments" value={@stats.attachments} icon="hero-paper-clip" />
         <.stat_card label="Labels" value={@stats.labels} icon="hero-tag" />
@@ -260,6 +346,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     </Layouts.app>
     """
   end
+
+  defp site_skin_label(nil), do: "readers choose"
+
+  defp site_skin_label(name) do
+    case Skins.get(name) do
+      nil -> name
+      skin -> skin.label
+    end
+  end
+
+  defp skin_saved(nil), do: "Site skin cleared — the theme picker is back."
+
+  defp skin_saved(name),
+    do: "Site skin set to #{site_skin_label(name)}. Readers no longer see the picker."
 
   defp dev_routes? do
     Application.get_env(:confluence_phx_mirror, :dev_routes, false)
