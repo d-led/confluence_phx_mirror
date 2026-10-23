@@ -100,6 +100,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         type: "global",
         description: "How we build, test and run the platform.",
         homepage_id: 1000,
+        labels: ["platform"],
         url: "#{@base_url}/wiki/spaces/ENG"
       },
       %{
@@ -108,6 +109,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         type: "global",
         description: "Product plans, releases and roadmap.",
         homepage_id: 2000,
+        labels: ["product"],
         url: "#{@base_url}/wiki/spaces/PROD"
       }
     ]

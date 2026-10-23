@@ -290,6 +290,34 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
       assert space.icon == %{path: "/download/attachments/1/MFS-default"}
     end
 
+    test "keeps the space's categories and drops content and reader labels" do
+      stub(fn conn ->
+        assert conn.query_params["expand"] =~ "metadata.labels"
+
+        Req.Test.json(conn, %{
+          "results" => [
+            %{
+              "key" => "MFS",
+              "name" => "My first space",
+              "metadata" => %{
+                "labels" => %{
+                  "results" => [
+                    %{"prefix" => "my", "name" => "favourite"},
+                    %{"prefix" => "team", "name" => "teams"},
+                    %{"prefix" => "global", "name" => "api"}
+                  ]
+                }
+              },
+              "_links" => %{"webui" => "/spaces/MFS"}
+            }
+          ]
+        })
+      end)
+
+      assert {:ok, [space]} = HttpSource.spaces([])
+      assert space.labels == ["teams"]
+    end
+
     test "a space that has no icon says so" do
       stub(fn conn ->
         Req.Test.json(conn, %{

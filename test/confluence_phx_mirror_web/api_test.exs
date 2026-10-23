@@ -39,6 +39,11 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
 
       assert eng["icon"] == %{"path" => "/spaces/ENG/icon", "width" => 48, "height" => 48}
 
+      assert eng["metadata"]["labels"] == %{
+               "results" => [%{"prefix" => "team", "name" => "platform"}],
+               "size" => 1
+             }
+
       no_icon = conn |> get(~p"/api/v1/spaces/PROD") |> json_response(200)
       assert no_icon["icon"] == nil
     end

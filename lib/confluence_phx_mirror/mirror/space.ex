@@ -5,7 +5,9 @@ defmodule ConfluencePhxMirror.Mirror.Space do
   `key` is the Confluence space key; `homepage_confluence_id` points at the
   page that acts as the space home in the mirror. `icon_*` describe the space
   icon Confluence shows beside the space name: its upstream path (which carries
-  the version), and the mirrored bytes in the blob store.
+  the version), and the mirrored bytes in the blob store. `labels` are the
+  space's own labels — its Confluence *categories* — not the labels of its
+  pages.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -21,6 +23,7 @@ defmodule ConfluencePhxMirror.Mirror.Space do
     field :description, :string
     field :homepage_confluence_id, :integer
     field :external_url, :string
+    field :labels, {:array, :string}, default: []
     field :icon_path, :string
     field :icon_blob_key, :string
     field :icon_media_type, :string
@@ -39,6 +42,7 @@ defmodule ConfluencePhxMirror.Mirror.Space do
     :description,
     :homepage_confluence_id,
     :external_url,
+    :labels,
     :icon_path,
     :icon_blob_key,
     :icon_media_type,

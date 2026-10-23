@@ -629,6 +629,9 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
         <span class="mt-0.5 block truncate text-xs text-base-content/70">
           {@space.description || "No description."}
         </span>
+        <span :if={@space.labels != []} class="mt-1 flex flex-wrap gap-1">
+          <span :for={label <- @space.labels} class="badge badge-ghost badge-xs">{label}</span>
+        </span>
       </span>
       <span class="hidden shrink-0 text-right text-[11px] tabular-nums text-base-content/70 sm:block">
         {space_meta(@count, @blog_posts, @updated_at)}

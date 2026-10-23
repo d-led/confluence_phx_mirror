@@ -37,6 +37,7 @@ defmodule ConfluencePhxMirror.SyncTest do
 
       space = Repo.get_by!(Space, key: "ENG")
       assert Repo.aggregate(from(p in Page, where: p.space_id == ^space.id), :count) == 37
+      assert space.labels == ["platform"]
 
       page = Repo.get_by!(Page, confluence_id: 1002)
       assert page.title == "Architecture Overview"

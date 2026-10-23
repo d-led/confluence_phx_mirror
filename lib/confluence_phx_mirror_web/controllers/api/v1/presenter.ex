@@ -23,6 +23,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.Presenter do
       "description" => %{"plain" => %{"value" => space.description}},
       "homepage" => homepage(space),
       "icon" => icon(space),
+      "metadata" => %{"labels" => space_labels(space)},
       "_links" => %{
         "webui" => URLs.space_path(space.key),
         "self" => Endpoint.url() <> "/api/v1/spaces/#{space.key}",
@@ -38,6 +39,17 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.Presenter do
 
   defp icon(space) do
     %{"path" => URLs.space_icon_path(space.key), "width" => 48, "height" => 48}
+  end
+
+  # A space's labels are its categories, which Confluence keeps under the `team`
+  # prefix. The mirror mirrors that shape rather than inventing a flat list.
+  defp space_labels(space) do
+    labels = space.labels || []
+
+    %{
+      "results" => Enum.map(labels, &%{"prefix" => "team", "name" => &1}),
+      "size" => length(labels)
+    }
   end
 
   defp homepage(%{homepage_confluence_id: nil}), do: nil

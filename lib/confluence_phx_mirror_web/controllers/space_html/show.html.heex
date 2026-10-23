@@ -26,6 +26,7 @@
       />
       <h1 class="text-3xl font-semibold leading-tight">{@space.name}</h1>
       <span class="badge badge-ghost badge-sm">{@space.key}</span>
+      <span :for={label <- @space.labels} class="badge badge-outline badge-sm">{label}</span>
     </div>
     <p class="mt-2 max-w-3xl text-sm leading-relaxed text-base-content/70">
       {@space.description || "No description in Confluence."}

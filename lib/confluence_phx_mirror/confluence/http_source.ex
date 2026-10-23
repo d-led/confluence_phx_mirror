@@ -53,7 +53,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     with {:ok, results} <-
            paginate_json("/space", %{
              "limit" => 100,
-             "expand" => "description.plain,homepage,icon"
+             "expand" => "description.plain,homepage,icon,metadata.labels"
            }) do
       {:ok, Enum.map(results, &parse_space/1)}
     end
@@ -298,6 +298,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       description: get_in(content, ["description", "plain", "value"]),
       homepage_id: parse_id(get_in(content, ["homepage", "id"])),
       icon: parse_icon(content["icon"]),
+      labels: parse_space_labels(get_in(content, ["metadata", "labels", "results"])),
       url: public_url(content["_links"]["webui"])
     }
   end
@@ -306,6 +307,15 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   # owner's avatar there. A space without an icon answers null.
   defp parse_icon(%{"path" => path}) when is_binary(path), do: %{path: path}
   defp parse_icon(_missing), do: nil
+
+  # A space's own labels come in three prefixes: `team` (a category, shown in the
+  # directory), `global` (labels of the content in it) and `my` (the calling
+  # reader's own, e.g. their star). Only the categories belong to the space.
+  defp parse_space_labels(results) when is_list(results) do
+    for %{"prefix" => "team", "name" => name} <- results, is_binary(name), do: name
+  end
+
+  defp parse_space_labels(_missing), do: []
 
   @doc false
   def parse_restrictions(body) do

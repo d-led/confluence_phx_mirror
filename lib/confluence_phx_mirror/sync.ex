@@ -272,6 +272,7 @@ defmodule ConfluencePhxMirror.Sync do
       description: dto[:description],
       homepage_confluence_id: dto[:homepage_id],
       external_url: dto[:url],
+      labels: dto[:labels] || [],
       icon_path: get_in(dto, [:icon, :path]),
       synced_at: now()
     }

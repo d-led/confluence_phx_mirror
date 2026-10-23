@@ -33,10 +33,13 @@ defmodule ConfluencePhxMirror.Confluence.Source do
 
       %{key: "ENG", name: "Engineering", type: "global", description: "...",
         homepage_id: 1000, url: "https://site.atlassian.net/wiki/spaces/ENG",
-        icon: %{path: "/download/attachments/1/ENG-default"} | nil}
+        icon: %{path: "/download/attachments/1/ENG-default"} | nil,
+        labels: ["engineering"]}
 
   `icon.path` is the space's icon as Confluence addresses it; the sync asks for
-  the bytes with `space_icon/2`. A source without icons leaves the key out.
+  the bytes with `space_icon/2`. `labels` are the space's own labels — its
+  categories — not the labels of its pages. A source without icons leaves the
+  key out.
 
   ## Attachment DTO
 

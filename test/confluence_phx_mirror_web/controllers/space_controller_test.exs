@@ -34,6 +34,15 @@ defmodule ConfluencePhxMirrorWeb.SpaceControllerTest do
       assert conn |> get(~p"/spaces") |> html_response(200) =~ icon
       assert conn |> get(~p"/spaces/#{space.key}/overview") |> html_response(200) =~ icon
     end
+
+    test "the overview shows the space's categories beside its key", %{conn: conn} do
+      space = space_fixture(%{name: "Design System", labels: ["teams", "design"]})
+
+      html = conn |> get(~p"/spaces/#{space.key}/overview") |> html_response(200)
+
+      assert html =~ ~s(class="badge badge-outline badge-sm">teams</span>)
+      assert html =~ ~s(class="badge badge-outline badge-sm">design</span>)
+    end
   end
 
   describe "the space overview" do

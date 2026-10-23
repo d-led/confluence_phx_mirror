@@ -63,6 +63,12 @@ icon is the owner's avatar, which Confluence redirects to gravatar — not one o
 the hosts the client may download from — so personal spaces keep the key tile
 (they are skipped by default anyway).
 
+A space's **categories** come in with the listing too (`metadata.labels`): the
+mirror keeps the `team`-prefixed labels, which are what Confluence shows in the
+space directory's *Labels* column, and ignores `global` (labels of the content
+inside the space) and `my` (the calling reader's own, such as their star). They
+appear as chips beside the space name, in the directory and on the overview.
+
 ## Pulling content
 
 ```bash
