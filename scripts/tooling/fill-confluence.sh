@@ -175,11 +175,19 @@ for i in $(seq 1 "$chunks"); do
     --spaces "$SPACES_PER_CHUNK" \
     "${content_only[@]}" \
     --concurrency "$CONCURRENCY" \
-    --prefix "$chunk_prefix" >"$log" 2>&1 || true
+    --prefix "$chunk_prefix" >"$log" 2>&1 </dev/null || {
+    echo "$(date +%H:%M:%S) $chunk_prefix: the generator failed, see $log" >&2
+    tail -3 "$log" >&2
+    exit 1
+  }
 
   created=$(grep -c "Created page" "$log" || true)
   echo "$(date +%H:%M:%S) $chunk_prefix: $created pages" | tee -a "$OUT_DIR/progress.log"
 
+  if [ "$created" -eq 0 ]; then
+    echo "$chunk_prefix created nothing; stopping rather than filling 46 logs with zeros." >&2
+    exit 1
+  fi
   [ "$i" -lt "$chunks" ] && sleep "$PAUSE"
 done
 
