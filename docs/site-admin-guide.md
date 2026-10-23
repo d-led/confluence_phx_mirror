@@ -144,6 +144,13 @@ for content that changed, and a page whose version is unchanged is not
 re-rendered or asked for its attachments and comments. The run's stats say how
 much that saved (`unchanged` pages, `attachments_downloaded`).
 
+Pages are written before their bodies: the first pass records every title, tree
+position, label and property, and a second pass renders each body at the pace
+Confluence allows. Until a page's body arrives it is listed and openable, with a
+*Body not mirrored yet* notice instead of an empty article. An interrupted run
+leaves those pages where they are; the next run renders whatever is still
+missing.
+
 Two tables back the logs and are worth knowing when you query them directly:
 
 * `audit_events` – append-only: `sync.started/finished/failed`, `user.*`,

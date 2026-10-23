@@ -139,8 +139,20 @@
 
     <.label_chips labels={@page.labels} class="mt-3" />
 
-    <div class="confluence-content mt-6">
-      {Phoenix.HTML.raw(@page.body_export || "")}
+    <div :if={not is_nil(@page.body_export)} class="confluence-content mt-6">
+      {Phoenix.HTML.raw(@page.body_export)}
+    </div>
+
+    <%!-- A sync writes a page's row before it renders the body, so during a long
+    import a page is listed and openable while its content is still on its way.
+    Saying so beats an article that looks like the page is empty. --%>
+    <div :if={is_nil(@page.body_export)} class="mt-6">
+      <.empty_state
+        id="body-pending"
+        icon="hero-clock"
+        title="Body not mirrored yet"
+        body="This page is known to the mirror — its title, place in the tree and labels — but its content has not been copied yet. The next sync fills it in."
+      />
     </div>
 
     <section :if={@children != []} class="mt-10 border-t border-base-300/70 pt-6">

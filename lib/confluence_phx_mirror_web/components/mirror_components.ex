@@ -476,6 +476,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     end
   end
 
+  attr :id, :string, default: nil
   attr :icon, :string, default: "hero-magnifying-glass"
   attr :title, :string, required: true
   attr :body, :string, default: nil
@@ -484,7 +485,10 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
 
   def empty_state(assigns) do
     ~H"""
-    <div class="rounded-xl border border-dashed border-base-300 bg-base-200/30 px-6 py-12 text-center">
+    <div
+      id={@id}
+      class="rounded-xl border border-dashed border-base-300 bg-base-200/30 px-6 py-12 text-center"
+    >
       <div class="mx-auto grid size-11 place-items-center rounded-full bg-base-200 text-base-content/70">
         <.icon name={@icon} class="size-5" />
       </div>

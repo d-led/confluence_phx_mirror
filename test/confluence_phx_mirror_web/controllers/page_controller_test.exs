@@ -105,6 +105,34 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert html =~ ~s(href="/attachments/ENG/1002/9001/diagram.svg")
   end
 
+  test "a page whose body a sync has not reached yet says so", %{conn: conn} do
+    space = space_fixture(%{key: "PENDING"})
+    page_fixture(space, %{confluence_id: 9101, title: "Half imported", slug: "half-imported"})
+
+    html = conn |> get(~p"/spaces/PENDING/pages/9101/half-imported") |> html_response(200)
+
+    assert html =~ ~s(id="body-pending")
+    assert html =~ "Body not mirrored yet"
+    refute html =~ "confluence-content"
+  end
+
+  test "a page whose body arrived shows it without the pending notice", %{conn: conn} do
+    space = space_fixture(%{key: "LANDED"})
+
+    page_fixture(space, %{
+      confluence_id: 9102,
+      title: "Wholly imported",
+      slug: "wholly-imported",
+      body_export: "<p>Arrived</p>"
+    })
+
+    html = conn |> get(~p"/spaces/LANDED/pages/9102/wholly-imported") |> html_response(200)
+
+    assert html =~ "confluence-content"
+    assert html =~ "Arrived"
+    refute html =~ "Body not mirrored yet"
+  end
+
   test "a stale slug redirects to the canonical page URL", %{conn: conn} do
     conn = get(conn, ~p"/spaces/ENG/pages/1002/old-name")
     assert redirected_to(conn) == ~p"/spaces/ENG/pages/1002/architecture-overview"
