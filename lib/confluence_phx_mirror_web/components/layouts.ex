@@ -53,15 +53,22 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
       )
 
     ~H"""
+    <%!-- `data-print="hide"` is what the print stylesheet in `app.css` drops:
+    the page is the article, everything else is the screen's furniture. --%>
     <a
       href="#mirror-content"
+      data-print="hide"
       class="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-content"
     >
       Skip to content
     </a>
 
     <div class="flex min-h-screen flex-col bg-base-100 text-base-content">
-      <div :if={Source.demo?(@mirror_source)} class="border-b border-warning/50 bg-warning/15">
+      <div
+        :if={Source.demo?(@mirror_source)}
+        data-print="hide"
+        class="border-b border-warning/50 bg-warning/15"
+      >
         <div class="mx-auto flex w-full max-w-[1600px] items-center gap-2 px-3 py-1.5 text-xs text-base-content/80 sm:px-5">
           <.icon name="hero-beaker" class="size-4 shrink-0 text-warning" />
           <p>
@@ -71,7 +78,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
         </div>
       </div>
 
-      <header class="sticky top-0 z-40 border-b border-base-300/70 bg-base-100/85 backdrop-blur">
+      <header data-print="hide" class="sticky top-0 z-40 border-b border-base-300/70 bg-base-100/85 backdrop-blur">
         <div class="mx-auto flex w-full max-w-[1600px] items-center gap-2 px-3 py-2 sm:gap-3 sm:px-5">
           <button
             :if={@sidebar? and (@space || @spaces != [])}
@@ -262,6 +269,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
           :if={@sidebar? and (@space || @spaces != [])}
           id="mirror-sidebar"
           tabindex="-1"
+          data-print="hide"
           aria-label={if @space, do: "Pages in #{@space.name}", else: "Mirrored spaces"}
           class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] -translate-x-full overflow-y-auto overscroll-contain border-r border-base-300/60 bg-base-100 shadow-lg transition-transform duration-200 focus:outline-none motion-reduce:transition-none data-[open]:translate-x-0 lg:static lg:z-auto lg:w-72 lg:max-w-none lg:translate-x-0 lg:bg-base-200/25 lg:shadow-none lg:data-[collapsed]:hidden"
         >
@@ -309,14 +317,14 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
           </div>
         </main>
 
-        <aside :if={@rail?} class="hidden w-80 shrink-0 border-l border-base-300/60 xl:block">
+        <aside :if={@rail?} data-print="hide" class="hidden w-80 shrink-0 border-l border-base-300/60 xl:block">
           <div class="sticky top-[57px] max-h-[calc(100vh-57px)] space-y-5 overflow-y-auto p-5">
             {render_slot(@rail)}
           </div>
         </aside>
       </div>
 
-      <footer class="mt-auto border-t border-base-300/70 bg-base-200/30">
+      <footer data-print="hide" class="mt-auto border-t border-base-300/70 bg-base-200/30">
         <div class="mx-auto flex w-full max-w-[1600px] flex-col gap-2 px-4 py-5 text-xs text-base-content/70 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span class="font-medium text-base-content/80">{@mirror_name}</span>

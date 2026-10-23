@@ -741,8 +741,110 @@
   visibility: hidden;
 }
 
+/*
+  Print: the page is the article.
+
+  On screen the mirror is a workspace — a header, a tree of pages, a rail of
+  page facts, a footer. On paper none of that helps: what gets printed is the
+  reading column, black on white, at a size a sheet can hold, with the
+  addresses of the links that paper cannot follow.
+*/
 @media print {
-  header, footer, aside, form { display: none !important; }
-  .confluence-content { font-size: 11pt; }
+  /* The screen's furniture, marked where it is rendered. */
+  [data-print="hide"] {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  /* With the sidebars gone the reading column keeps the page's width and loses
+     the padding that only existed to sit next to them. */
+  #mirror-content > div {
+    max-width: none;
+    padding: 0;
+  }
+
+  .confluence-content {
+    font-size: 11pt;
+    line-height: 1.5;
+    color: #000;
+  }
+
+  /* A printed link cannot be clicked, so an external one carries its address. */
+  .confluence-content a {
+    color: inherit;
+    text-decoration: underline;
+  }
+
+  .confluence-content a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #444;
+    word-break: break-all;
+  }
+
+  /* Headings belong with the text they introduce, and a table broken across
+     pages stops making sense. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5 {
+    break-after: avoid;
+    break-inside: avoid;
+  }
+
+  img,
+  table,
+  pre,
+  blockquote,
+  .confluence-content details {
+    break-inside: avoid;
+  }
+
+  tr,
+  li {
+    break-inside: avoid;
+  }
+
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  table {
+    border-collapse: collapse;
+  }
+
+  .confluence-content th,
+  .confluence-content td {
+    border: 1px solid #999;
+    padding: 2pt 4pt;
+  }
+
+  h1 {
+    font-size: 20pt;
+  }
+
+  h2 {
+    font-size: 15pt;
+  }
+
+  h3 {
+    font-size: 13pt;
+  }
+
+  @page {
+    margin: 15mm;
+  }
 }
 
