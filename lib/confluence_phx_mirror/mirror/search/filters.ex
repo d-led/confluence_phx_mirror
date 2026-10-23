@@ -220,23 +220,17 @@ defmodule ConfluencePhxMirror.Mirror.Search.Filters do
     end
   end
 
-  defp cutoff("today"), do: Date.utc_today() |> Date.to_iso8601()
-  defp cutoff("yesterday"), do: Date.utc_today() |> Date.add(-1) |> Date.to_iso8601()
+  defp cutoff("today"), do: days_ago(0)
+  defp cutoff("yesterday"), do: days_ago(1)
 
   defp cutoff(value) do
     case Regex.run(~r/^(\d{1,3})d$/, value) do
-      [_, days] ->
-        Date.utc_today()
-        |> Date.add(-String.to_integer(days))
-        |> Date.to_iso8601()
-
-      nil ->
-        case Date.from_iso8601(value) do
-          {:ok, date} -> Date.to_iso8601(date)
-          _ -> nil
-        end
+      [_, days] -> days_ago(String.to_integer(days))
+      nil -> iso(value)
     end
   end
+
+  defp days_ago(days), do: Date.utc_today() |> Date.add(-days) |> Date.to_iso8601()
 
   # The tokenizer has no escape syntax; dropping quote characters is enough for
   # user input and keeps the generated CQL unambiguous.

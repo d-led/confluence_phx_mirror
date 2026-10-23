@@ -59,19 +59,21 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuth do
         {:bearer, String.trim(token)}
 
       ["Basic " <> encoded | _] ->
-        case Base.decode64(String.trim(encoded)) do
-          {:ok, decoded} ->
-            case String.split(decoded, ":", parts: 2) do
-              [email, token] -> {:basic, email, token}
-              _ -> :none
-            end
-
-          :error ->
-            :none
-        end
+        basic(encoded)
 
       _ ->
         :none
+    end
+  end
+
+  # `email:token`, base64-encoded — Confluence's own client speaks HTTP basic.
+  # A header that is not that shape carries no credentials at all.
+  defp basic(encoded) do
+    with {:ok, decoded} <- Base.decode64(String.trim(encoded)),
+         [email, token] <- String.split(decoded, ":", parts: 2) do
+      {:basic, email, token}
+    else
+      _not_basic -> :none
     end
   end
 

@@ -3,8 +3,9 @@ defmodule ConfluencePhxMirror.Sync.Scheduler do
   Enqueues periodic snapshot pulls.
 
   The interval comes from the configured source (`:sync_interval_seconds`,
-  `CM_SYNC_INTERVAL_SECONDS`); `0` disables scheduling, which is what the demo
-  and test environments use — they sync on demand or through webhooks.
+  `CM_SYNC_INTERVAL_SECONDS`) unless the caller hands one in; `0` disables
+  scheduling, which is what the demo and test environments use — they sync on
+  demand or through webhooks.
   """
 
   use GenServer
@@ -14,31 +15,38 @@ defmodule ConfluencePhxMirror.Sync.Scheduler do
   alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirror.Sync.SnapshotWorker
 
-  def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(opts \\ []) do
+    opts = Keyword.put_new_lazy(opts, :interval, &interval_seconds/0)
+
+    GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
+  end
 
   @impl true
-  def init(_opts) do
-    interval = interval_seconds()
+  def init(opts) do
+    interval = Keyword.fetch!(opts, :interval)
     schedule(interval)
     {:ok, %{interval: interval}}
   end
 
   @impl true
-  def handle_info(:snapshot, %{interval: interval} = state) do
-    if interval > 0 do
-      %{"trigger" => "the #{humanise(interval)} schedule", "mode" => "incremental"}
-      |> SnapshotWorker.new()
-      |> Oban.insert()
-      |> case do
-        {:ok, job} -> Logger.debug("scheduled snapshot", job_id: job.id)
-        {:error, reason} -> Logger.warning("could not schedule snapshot", reason: inspect(reason))
-      end
+  def handle_info(:snapshot, %{interval: interval} = state) when interval > 0 do
+    %{"trigger" => "the #{humanise(interval)} schedule", "mode" => "incremental"}
+    |> SnapshotWorker.new()
+    |> Oban.insert()
+    |> log_enqueue()
 
-      schedule(interval)
-    end
-
+    schedule(interval)
     {:noreply, state}
   end
+
+  # No interval is no timetable: the tick arrived from a schedule this node used
+  # to have, so it says nothing and asks for nothing.
+  def handle_info(:snapshot, state), do: {:noreply, state}
+
+  defp log_enqueue({:ok, job}), do: Logger.debug("scheduled snapshot", job_id: job.id)
+
+  defp log_enqueue({:error, reason}),
+    do: Logger.warning("could not schedule snapshot", reason: inspect(reason))
 
   defp schedule(interval) when interval > 0,
     do: Process.send_after(self(), :snapshot, interval * 1000)
