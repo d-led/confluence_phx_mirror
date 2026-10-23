@@ -137,9 +137,9 @@
       </:meta>
     </.page_header>
 
-    <.label_chips labels={@page.labels} class="mt-3" />
+    <.label_chips labels={@page.labels} class="mt-2" />
 
-    <div :if={not is_nil(@page.body_export)} class="confluence-content mt-6">
+    <div :if={not is_nil(@page.body_export)} class="confluence-content mt-4">
       {Phoenix.HTML.raw(@page.body_export)}
     </div>
 
@@ -158,7 +158,11 @@
     <%!-- Child pages are navigation, not part of the page's prose: a `nav`
     landmark is one a reader view or a printer can drop without losing the
     article. --%>
-    <nav :if={@children != []} aria-label="Child pages" class="mt-10 border-t border-base-300/70 pt-6">
+    <nav
+      :if={@children != []}
+      aria-label="Child pages"
+      class="mt-8 border-t border-base-300/70 pt-4"
+    >
       <h2 class="mb-3 flex items-center gap-2 text-sm font-semibold">
         <.icon name="hero-rectangle-stack" class="size-4 text-base-content/70" /> Child pages
         <span class="badge badge-ghost badge-sm">{length(@children)}</span>

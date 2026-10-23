@@ -79,7 +79,10 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
         </div>
       </div>
 
-      <header data-print="hide" class="sticky top-0 z-40 border-b border-base-300/70 bg-base-100/85 backdrop-blur">
+      <header
+        data-print="hide"
+        class="sticky top-0 z-40 border-b border-base-300/70 bg-base-100/85 backdrop-blur"
+      >
         <div class="mx-auto flex w-full max-w-[1600px] items-center gap-2 px-3 py-2 sm:gap-3 sm:px-5">
           <button
             :if={@sidebar? and (@space || @spaces != [])}
@@ -323,12 +326,16 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
           more room, and a column that stays centred only widens in both
           directions. Prose keeps a measure of its own in `app.css`; tables,
           lists and the page's own furniture take the width. --%>
-          <div class="w-full max-w-[88rem] px-4 py-4 sm:px-8 sm:py-6 lg:py-8">
+          <div class="w-full max-w-[88rem] px-4 py-3 sm:px-8 sm:py-5 lg:py-6">
             {render_slot(@inner_block)}
           </div>
         </main>
 
-        <aside :if={@rail?} data-print="hide" class="hidden w-80 shrink-0 border-l border-base-300/60 xl:block">
+        <aside
+          :if={@rail?}
+          data-print="hide"
+          class="hidden w-80 shrink-0 border-l border-base-300/60 xl:block"
+        >
           <div class="sticky top-[57px] max-h-[calc(100vh-57px)] space-y-5 overflow-y-auto p-5">
             {render_slot(@rail)}
           </div>
@@ -398,7 +405,8 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             >
               <.icon name="hero-users" class="size-3" />
               <span>
-                Users online: <span data-site-presence-count class="tabular-nums">{Presence.online_count()}</span>
+                Users online:
+                <span data-site-presence-count class="tabular-nums">{Presence.online_count()}</span>
               </span>
             </span>
             <span class="inline-flex items-center gap-1">

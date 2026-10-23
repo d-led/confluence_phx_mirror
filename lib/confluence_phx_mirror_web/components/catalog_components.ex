@@ -90,7 +90,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
     is where a description stops being readable. --%>
     <ul
       id="catalog-results"
-      class="mt-6 divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
+      class="mt-4 divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
     >
       <li :for={row <- @items}>
         <.space_card
@@ -108,7 +108,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
     ~H"""
     <ul
       id="catalog-results"
-      class="mt-6 divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
+      class="mt-4 divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
     >
       <li :for={author <- @items}>
         <.link
@@ -136,7 +136,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
 
   def catalog_body(%{kind: :labels} = assigns) do
     ~H"""
-    <div id="catalog-results" class="mt-6 flex flex-wrap gap-2">
+    <div id="catalog-results" class="mt-4 flex flex-wrap gap-2">
       <a
         :for={label <- @items}
         href={~p"/labels/#{label.name}"}
@@ -152,7 +152,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
 
   def catalog_body(%{kind: :blog} = assigns) do
     ~H"""
-    <ul id="catalog-results" class="mt-6 space-y-3">
+    <ul id="catalog-results" class="mt-4 space-y-3">
       <li :for={post <- @items}>
         <article class="group relative rounded-xl border border-base-300/70 bg-base-100 p-4 transition hover:border-primary/40 hover:shadow-sm">
           <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -398,7 +398,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
     ~H"""
     <div
       :if={@more? or @previous?}
-      class="mt-8 flex flex-wrap items-center justify-center gap-2 border-t border-base-300/60 pt-4"
+      class="mt-6 flex flex-wrap items-center justify-center gap-2 border-t border-base-300/60 pt-3"
     >
       <button
         :if={@previous?}

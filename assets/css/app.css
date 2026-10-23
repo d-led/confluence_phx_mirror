@@ -183,6 +183,16 @@
   margin: 0.75rem 0;
 }
 
+/*
+  Reading measure. The column itself takes whatever width the tree and the rail
+  leave, because a table or a screenshot wants it; the prose does not, because
+  a line longer than about eighty characters is a line the eye loses its place
+  in. Headings keep the column's width so the page still reads as one block.
+*/
+.confluence-content > :is(p, ul, ol, blockquote) {
+  max-width: 78ch;
+}
+
 .confluence-content ul { list-style: disc; padding-left: 1.4rem; }
 .confluence-content ol { list-style: decimal; padding-left: 1.4rem; }
 .confluence-content li { margin: 0.2rem 0; }

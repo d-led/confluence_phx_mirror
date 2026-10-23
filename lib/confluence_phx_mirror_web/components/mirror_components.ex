@@ -406,7 +406,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     assigns = assign(assigns, roots: roots, replies: replies)
 
     ~H"""
-    <section id="comments" class="mt-10 border-t border-base-300/70 pt-6">
+    <section id="comments" class="mt-8 border-t border-base-300/70 pt-4">
       <h2 class="mb-4 flex items-center gap-2 text-sm font-semibold">
         <.icon name="hero-chat-bubble-left-right" class="size-4 text-base-content/70" /> Comments
         <span class="badge badge-ghost badge-sm">{length(@comments)}</span>
