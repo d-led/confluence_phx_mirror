@@ -61,11 +61,52 @@ Confluence ──REST──▶ Sync (incremental, rate-limited, audited) ──�
 | measuring a reader's screens, or load-testing a server | [docs/performance.md](docs/performance.md) |
 | wondering why it is built this way, or what it does not do | [docs/design-notes.md](docs/design-notes.md) |
 
-## Quick start (demo snapshot)
+## Quick start
+
+Local services first, once:
 
 ```bash
-docker compose up -d          # Postgres, Adminer, smtp4dev — local services only
+docker compose up -d          # Postgres, Adminer, smtp4dev
 mix setup                     # deps, DB, migrations, assets, demo content
+```
+
+### Mirroring a real site
+
+Three variables are the whole contract: the site URL, and the e-mail and API
+token of an Atlassian account with Confluence access (create one at
+<https://id.atlassian.com/manage-profile/security/api-tokens>):
+
+```bash
+export CM_CONFLUENCE_SITE=https://acme.atlassian.net   # "/wiki" optional
+export CM_ATL_EMAIL=you@acme.com
+export CM_ATL_TOKEN=...
+export CM_SPACES=ENG,PROD        # optional; default is every visible space
+
+mix ecto.setup                   # create this site's database, migrate, sync once
+mix phx.server
+```
+
+`ecto.setup` takes the first snapshot because the scheduler's first pull is a
+whole interval away (`CM_SYNC_INTERVAL_SECONDS`, `3600` by default; `0` turns
+scheduled pulls off) — an empty mirror would otherwise stay empty for an hour.
+Without `ecto.setup`, `mix ecto.create && mix ecto.migrate_all` plus
+`mix confluence.sync` does the same in two steps, and the dashboard's sync
+button does it again later. `mix confluence.probe` checks the site and the
+credentials first; `mix confluence.sync --mode space --space ENG` re-pulls one
+space, `--mode snapshot` re-reads everything.
+
+Other knobs worth knowing: `CM_REQUESTS_PER_SECOND=5` and `CM_BURST=5` (the
+client's token bucket), `CM_SYNC_CONCURRENCY=4` (changed pages detailed at
+once), `PORT=4000`. The exhaustive list is in
+[configuration.md](docs/configuration.md).
+
+### Demo snapshot
+
+Unset `CM_CONFLUENCE_SITE` (or set `CM_SOURCE=demo`) and the mirror serves the
+bundled snapshot instead of calling out to anything:
+
+```bash
+mix setup                # or just `mix ecto.setup` once deps and assets are in place
 mix phx.server
 ```
 
@@ -79,12 +120,30 @@ mix phx.server
 Development and test **assume an administrator** (`MIRROR_AUTO_ADMIN`), so no
 sign-in is needed there. Reader accounts use passwordless magic links.
 
-This quick start is the local, self-contained demo; it is not the deployment
-model. The app is a 12-factor release — configuration comes from the environment
-and any process manager that can run `bin/confluence_phx_mirror` works. See
-[operations.md](docs/operations.md).
+### Switching modes, dropping content
 
-To mirror a real site, follow
+In development each source gets its own database, named after it —
+`confluence_phx_mirror_dev_demo`, `..._dev_synthetic`, `..._dev_acme_atlassian_net`
+— so switching is only a matter of changing the environment and running
+`mix ecto.setup` once for the new one. Nothing is purged, and the previous
+mode's mirror is still there when you switch back. Because the name is derived
+from the environment, dropping and recreating works the same way — with the
+environment that names that database:
+
+```bash
+CM_SOURCE=demo mix ecto.reset                             # demo back to a clean snapshot
+CM_SOURCE=http CM_CONFLUENCE_SITE=https://acme.atlassian.net mix ecto.drop
+CM_SOURCE=synthetic CM_SYNTHETIC_SPACES=200 CM_SYNTHETIC_PAGES=500 mix ecto.reset
+```
+
+`synthetic` is generated content for measuring the reader UI; see
+[configuration.md](docs/configuration.md#source-and-sync).
+
+The demo above is the local, self-contained one; none of this is the deployment
+model. The app is a 12-factor release — configuration comes from the environment
+and any process manager that can run `bin/confluence_phx_mirror` works (a
+release that mirrors a real site refuses to start with the sign-in-free
+identity switches on). See [operations.md](docs/operations.md) and
 [site-admin-guide.md](docs/site-admin-guide.md#point-the-mirror-at-your-site).
 
 ## Out of scope
