@@ -9,20 +9,32 @@ defmodule ConfluencePhxMirror.Sync.SnapshotWorker do
 
   Uniqueness coalesces overlapping schedules; a pull that is already queued
   makes the next tick a no-op instead of stacking work.
+
+  What it does with the outcome is deliberately dull: a run that finishes —
+  completely or, when individual pages failed, `partial` — is done, and the next
+  tick picks up whatever is missing. A run that *raises* has already been
+  recorded as failed by `Sync`; the raise is left to travel, because that is
+  what makes Oban retry the job.
   """
 
   use Oban.Worker, queue: :sync, max_attempts: 3, unique: [period: 300]
 
   alias ConfluencePhxMirror.Sync
 
+  @default_trigger "the sync schedule"
+  @actor {:system, "snapshot-worker"}
+
   @impl true
   def perform(%Oban.Job{args: args}) do
-    trigger = args["trigger"] || "the sync schedule"
-    mode = if args["mode"] == "snapshot", do: :snapshot, else: :incremental
-
-    case Sync.run(mode, actor: {:system, "snapshot-worker"}, trigger: trigger) do
-      {:ok, %{status: "failed"} = run} -> {:error, run.error}
-      {:ok, _run} -> :ok
-    end
+    {:ok, _run} = Sync.run(mode(args), actor: @actor, trigger: trigger(args))
+    :ok
   end
+
+  defp mode(%{"mode" => "snapshot"}), do: :snapshot
+  defp mode(_args), do: :incremental
+
+  defp trigger(%{"trigger" => trigger}) when is_binary(trigger) and trigger != "",
+    do: trigger
+
+  defp trigger(_args), do: @default_trigger
 end

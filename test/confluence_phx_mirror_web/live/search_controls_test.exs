@@ -104,6 +104,15 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
     assert has_element?(view, "input[name='label'][value='rel']")
   end
 
+  test "a label that is only whitespace filters by nothing", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/search")
+
+    view |> open_menu("#labels-filter")
+    view |> element("#label-form") |> render_submit(%{"label" => "   "})
+
+    refute has_element?(view, "#labels-filter button[phx-click='clear_labels']")
+  end
+
   test "Escape closes whichever filter is open", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search")
 
