@@ -38,6 +38,12 @@ config :confluence_phx_mirror, Oban,
 # `ConfluencePhxMirror.Confluence.HttpSource` against a real site.
 config :confluence_phx_mirror, :source, ConfluencePhxMirror.Confluence.DemoSource
 
+# Extra skins beyond the built-ins ship as standalone packs: modules
+# implementing `ConfluencePhxMirrorWeb.Skins.Pack`. The Atlassian Cloud pack is
+# the reference extension and ships with the mirror, so any deployment can set
+# `CM_SITE_SKIN=atlassian-cloud` without touching config.
+config :confluence_phx_mirror, :skin_packs, [ConfluencePhxMirrorWeb.Skins.AtlassianCloud]
+
 config :confluence_phx_mirror,
   mirror: [name: "Confluence Mirror", tagline: "Read-only, always available"],
   # Blob storage is runtime data, never source: keep it out of priv/static so

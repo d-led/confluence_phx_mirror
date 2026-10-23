@@ -34,9 +34,14 @@ invariants below are the ones specific to the mirror.
 * **Blob root outside the repo.** `var/mirror` in development,
   `tmp/mirror_test` in test; never `priv/static`.
 * **Skins without rebuild for sites.** Built-ins are daisyUI
-  `@plugin ... daisyui-theme` blocks in `assets/css/app.css`; site skins come
-  from `config :confluence_phx_mirror, :skins` and are emitted per request by
-  `Web.Skins`; deeper overrides go in `assets/css/author.css`.
+  `@plugin ... daisyui-theme` blocks in `assets/css/app.css`; other skins are
+  declarations emitted per request by `Web.Skins` — from
+  `config :confluence_phx_mirror, :skins` or from packs
+  (`ConfluencePhxMirrorWeb.Skins.Pack` modules listed in `:skin_packs`, e.g.
+  `Skins.AtlassianCloud`). A declaration may carry `dark_colors`, emitted as a
+  `prefers-color-scheme` override; `selectable: false` keeps a skin out of the
+  reader picker so it is only usable as `:site_skin`. Deeper overrides go in
+  `assets/css/author.css`.
 * **JS dependencies are real dependencies**: `assets/package.json`, `npm ci`
   wired into `assets.build` / `assets.deploy`. Syntax highlighting uses the
   highlight.js grammar chosen from Confluence's `brush:` attribute.

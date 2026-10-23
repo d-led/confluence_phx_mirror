@@ -6,6 +6,9 @@
     <meta name="robots" content="noindex" />
     <title>Slow down · Confluence Mirror</title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+    <style :if={assigns[:skin_css] not in [nil, ""]}>
+      <%= Phoenix.HTML.raw(assigns[:skin_css]) %>
+    </style>
   </head>
   <body class="flex min-h-screen items-center justify-center bg-base-100 px-4 text-base-content antialiased">
     <main class="w-full max-w-lg rounded-2xl border border-base-300/70 bg-base-100 p-8 text-center shadow-sm">

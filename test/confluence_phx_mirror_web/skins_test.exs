@@ -3,10 +3,29 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
 
   alias ConfluencePhxMirrorWeb.Skins
 
-  defp with_skins(skins) do
-    previous = Application.get_env(:confluence_phx_mirror, :skins)
-    Application.put_env(:confluence_phx_mirror, :skins, skins)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :skins, previous) end)
+  defmodule TestPack do
+    @behaviour ConfluencePhxMirrorWeb.Skins.Pack
+
+    @impl true
+    def skins do
+      [%{name: "pack-skin", label: "Pack", colors: %{primary: "#0b5fff"}}]
+    end
+  end
+
+  defp with_skins(skins), do: put_config(:skins, skins)
+  defp with_skin_packs(packs), do: put_config(:skin_packs, packs)
+  defp with_site_skin(name), do: put_config(:site_skin, name)
+
+  defp put_config(key, value) do
+    previous = Application.fetch_env(:confluence_phx_mirror, key)
+    Application.put_env(:confluence_phx_mirror, key, value)
+
+    on_exit(fn ->
+      case previous do
+        {:ok, old} -> Application.put_env(:confluence_phx_mirror, key, old)
+        :error -> Application.delete_env(:confluence_phx_mirror, key)
+      end
+    end)
   end
 
   @acme %{
@@ -19,9 +38,14 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
   }
 
   describe "the registry" do
-    test "always offers the built-in skins" do
-      assert ["system", "light", "mirror", "dark"] ==
-               Enum.map(Skins.all(), & &1.name)
+    test "offers the built-in skins" do
+      builtins = Skins.all() |> Enum.filter(& &1.builtin?) |> Enum.map(& &1.name)
+
+      assert builtins == ~w(system light mirror dark)
+    end
+
+    test "ships the Atlassian Cloud pack" do
+      assert %{label: "Atlassian Cloud"} = Skins.get("atlassian-cloud")
     end
 
     test "appends site skins and reports them in the picker" do
@@ -30,6 +54,13 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
       assert Enum.any?(Skins.all(), &(&1.name == "acme" and &1.label == "Acme"))
       assert Skins.valid?("acme")
       refute Skins.valid?("no-such-skin")
+    end
+
+    test "takes skins from a pack module" do
+      with_skin_packs([TestPack])
+
+      assert Skins.valid?("pack-skin")
+      assert Skins.style() =~ ~s([data-theme="pack-skin"])
     end
 
     test "cannot shadow a built-in skin" do
@@ -42,8 +73,8 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
     test "ignores entries with names that are not CSS-selector safe" do
       with_skins([%{name: "Acme Corp", colors: %{primary: "#0b5fff"}}])
 
-      assert Skins.names() == ~w(system light mirror dark)
-      assert Skins.style() == ""
+      refute Skins.valid?("Acme Corp")
+      refute Skins.style() =~ "Acme Corp"
     end
   end
 
@@ -80,7 +111,110 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
       with_skins([%{name: "acme", label: "Acme"}])
 
       assert Skins.valid?("acme")
-      assert Skins.style() == ""
+      refute Skins.style() =~ ~s([data-theme="acme"])
+    end
+  end
+
+  describe "a skin with a dark variant" do
+    test "keeps one name and follows the OS preference" do
+      with_skin_packs([])
+
+      with_skins([
+        %{
+          name: "brand",
+          colors: %{base_100: "#ffffff"},
+          dark_colors: %{base_100: "#111214"}
+        }
+      ])
+
+      css = Skins.style()
+
+      assert css =~ ~s([data-theme="brand"]{color-scheme:light;--color-base-100:#ffffff})
+      assert css =~ ~s|@media (prefers-color-scheme:dark){[data-theme="brand"]{color-scheme:dark|
+      assert css =~ "--color-base-100:#111214"
+    end
+
+    test "shares the geometry between the variants" do
+      with_skin_packs([])
+
+      with_skins([
+        %{
+          name: "brand",
+          colors: %{base_100: "#ffffff"},
+          dark_colors: %{base_100: "#111214"},
+          radius: %{box: "0.375rem"}
+        }
+      ])
+
+      [_light, dark] = String.split(Skins.style(), "@media (prefers-color-scheme:dark)")
+
+      assert dark =~ "--color-base-100:#111214}"
+      refute dark =~ "--radius-box"
+    end
+  end
+
+  describe "the reader's picker" do
+    test "lists the selectable skins only" do
+      with_skins([@acme, Map.merge(@acme, %{name: "whole", selectable: false})])
+
+      names = Enum.map(Skins.reader_skins(), & &1.name)
+
+      assert "acme" in names
+      refute "whole" in names
+      refute "atlassian-cloud" in names
+      assert Skins.valid?("whole")
+    end
+
+    test "is empty when the site pins one skin for everyone" do
+      with_site_skin("atlassian-cloud")
+
+      assert Skins.reader_skins() == []
+    end
+  end
+
+  describe "the site skin" do
+    test "applies to every reader, whatever the cookie says", %{conn: conn} do
+      with_site_skin("atlassian-cloud")
+
+      conn =
+        conn
+        |> Plug.Test.put_req_cookie("mirror_theme", "dark")
+        |> get(~p"/")
+
+      html = html_response(conn, 200)
+
+      assert html =~ ~s(data-theme="atlassian-cloud")
+      assert html =~ "--color-primary:#0c66e4"
+    end
+
+    test "removes the reader's picker", %{conn: conn} do
+      with_site_skin("atlassian-cloud")
+
+      html = conn |> get(~p"/") |> html_response(200)
+
+      refute html =~ ~s(href="/theme/)
+    end
+  end
+
+  describe "validate_site_skin!/0" do
+    test "accepts a skin the site offers" do
+      with_site_skin("atlassian-cloud")
+
+      assert :ok = Skins.validate_site_skin!()
+    end
+
+    test "stops the release on a typo" do
+      with_site_skin("atlasean-cloud")
+
+      assert_raise ArgumentError, ~r/is not a skin this site offers/, fn ->
+        Skins.validate_site_skin!()
+      end
+    end
+
+    test "is a no-op when readers choose" do
+      with_site_skin(nil)
+
+      assert :ok = Skins.validate_site_skin!()
     end
   end
 
@@ -113,6 +247,9 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
     end
 
     test "renders no theme rule when the site declares no skins", %{conn: conn} do
+      with_skins([])
+      with_skin_packs([])
+
       html = conn |> get(~p"/") |> html_response(200)
 
       refute html =~ "<style>[data-theme="

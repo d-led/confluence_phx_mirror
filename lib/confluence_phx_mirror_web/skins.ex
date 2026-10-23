@@ -267,7 +267,12 @@ defmodule ConfluencePhxMirrorWeb.Skins do
 
   defp safe_value?(value) when is_binary(value) do
     trimmed = String.trim(value)
-    trimmed != "" and String.lengt, _dark), do: ""
+    trimmed != "" and String.length(trimmed) <= 120 and not Regex.match?(@unsafe, trimmed)
+  end
+
+  defp safe_value?(_value), do: false
+
+  defp rule(_name, _scheme_css, [], _dark), do: ""
 
   defp rule(name, scheme_css, declarations, []) do
     variant(name, scheme_css, declarations)
@@ -278,12 +283,7 @@ defmodule ConfluencePhxMirrorWeb.Skins do
       "\n@media (prefers-color-scheme:dark){" <> variant(name, "dark", dark) <> "}"
   end
 
-  defp variant
-  defp safe_value?(_value), do: false
-
-  defp rule(_name, _scheme_css, []), do: ""
-
-  defp rule(name, scheme_css, declarations) do
+  defp variant(name, scheme_css, declarations) do
     "[data-theme=\"#{name}\"]{color-scheme:#{scheme_css};#{Enum.join(declarations, ";")}}"
   end
 end

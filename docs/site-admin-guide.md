@@ -183,6 +183,24 @@ Readers pick a skin in the header; the choice is a cookie, so the first paint is
 already correct and no JavaScript is involved. Four skins ship with the mirror:
 `system` (follows the OS), `light`, `mirror` (Atlassian-inspired) and `dark`.
 
+### One skin for the whole site
+
+A whole skin is a deployment decision, not a reader preference. Pin it and every
+reader gets it — the cookie is ignored and the header picker disappears:
+
+```elixir
+# config/runtime.exs, or CM_SITE_SKIN=atlassian-cloud in a release
+config :confluence_phx_mirror, :site_skin, "atlassian-cloud"
+```
+
+`atlassian-cloud` ships with the mirror. It is Atlassian's Cloud palette as one
+skin with two variants: the light tokens by default and the Cloud dark tokens
+when the reader's OS prefers dark, so the whole site follows the OS the way the
+`system` skin does. A name the site does not offer stops the release at boot
+rather than quietly serving the default theme.
+
+### A skin declared in config
+
 Site authors add their own skin in config — no CSS edit, no asset rebuild:
 
 ```elixir
@@ -211,6 +229,38 @@ daisyUI colour names (`base_*`, `primary`, `secondary`, `accent`, `neutral`,
 `info`, `success`, `warning`, `error`, each with `_content`), the three radii,
 plus `border`, `depth` and `noise`. Unknown keys and values that are not plain
 CSS values are ignored.
+
+Two more keys shape a skin:
+
+* **`dark_colors`** — add a second palette and the skin becomes two variants
+  under one name, following `prefers-color-scheme`. Radii, border and depth are
+  shared; only the colours change.
+* **`selectable: false`** — keep the skin out of the reader's picker. It can
+  then only be used as `:site_skin`, which is what a whole skin is for.
+
+### Skin packs: standalone extensions
+
+A skin that should ship as its own module — an internal package, a dependency,
+or a file dropped into `lib/` — is a *pack*: any module implementing
+`ConfluencePhxMirrorWeb.Skins.Pack`, listed under `:skin_packs`.
+
+```elixir
+config :confluence_phx_mirror, :skin_packs, [MyCompany.Skins]
+
+defmodule MyCompany.Skins do
+  @behaviour ConfluencePhxMirrorWeb.Skins.Pack
+
+  @impl true
+  def skins do
+    [%{name: "my-company", label: "My Company", colors: %{primary: "#0b5fff"}}]
+  end
+end
+```
+
+Pack skins take the same keys and are validated the same way; a pack cannot
+shadow a built-in skin, and a config skin wins when both declare the same name.
+`ConfluencePhxMirrorWeb.Skins.AtlassianCloud` is the reference pack — start
+there when writing your own.
 
 For anything a palette cannot express — fonts, spacing, component tweaks — edit
 `assets/css/author.css`, which is loaded after the main stylesheet. Scope rules

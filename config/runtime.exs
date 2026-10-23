@@ -232,6 +232,13 @@ if webhook_secret = System.get_env("CM_WEBHOOK_SECRET") do
     ]
 end
 
+# CM_SITE_SKIN pins one skin for the whole site — "atlassian-cloud" ships with
+# the mirror — and readers get no theme picker. Unset, readers choose (see
+# docs/site-admin-guide.md#skins). A misspelt name stops the release at boot.
+if skin = System.get_env("CM_SITE_SKIN") do
+  config :confluence_phx_mirror, :site_skin, skin
+end
+
 config :confluence_phx_mirror,
   notifications: [
     enabled: System.get_env("MIRROR_NOTIFICATIONS", "true") in ~w(1 true yes),

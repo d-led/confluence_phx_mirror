@@ -147,9 +147,14 @@ window (and a `Retry-After` header); API clients get JSON.
 
 Built-in skins are `system`, `light`, `mirror` and `dark`. Site skins are config,
 not CSS: `config :confluence_phx_mirror, :skins, [...]` with `name`, `label`,
-`icon`, `scheme`, `colors` and `radius`. The full example, the supported colour
-keys and the `assets/css/author.css` escape hatch are in
+`icon`, `scheme`, `colors`, `dark_colors` and `radius`; packs add skins as
+standalone modules (`:skin_packs`). The full example, the supported colour keys
+and the `assets/css/author.css` escape hatch are in
 [site-admin-guide.md](site-admin-guide.md#skins).
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CM_SITE_SKIN` | – | pins one skin for the whole site, e.g. `atlassian-cloud`; readers get no picker. A name the site does not offer stops the release at boot |
 
 ## Development defaults
 
