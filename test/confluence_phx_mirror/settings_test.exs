@@ -30,4 +30,35 @@ defmodule ConfluencePhxMirror.SettingsTest do
 
     assert Settings.theme() == "default"
   end
+
+  describe "webhook overrides" do
+    test "an administrator's decision outlives the cache and reads back" do
+      :ok = Settings.put_webhook_require_signature(true, {:system, "test"})
+      :ok = Settings.put_webhook_rate_limit(5, {:system, "test"})
+
+      Settings.reload()
+
+      assert Settings.webhook_require_signature()
+      assert Settings.webhook_rate_limit() == 5
+    end
+
+    test "clearing a decision hands it back to the deployment" do
+      Settings.put_webhook_require_signature(true, {:system, "test"})
+      Settings.put_webhook_require_signature(nil, {:system, "test"})
+
+      assert Settings.webhook_require_signature() == nil
+    end
+
+    test "a setting nobody touched reads as no decision at all" do
+      assert Settings.webhook_rate_limit() == nil
+      assert Settings.webhook_require_signature() == nil
+    end
+
+    test "the change is audited with the value that was chosen" do
+      Settings.put_webhook_require_signature(false, {:system, "test"})
+
+      assert [%{action: "settings.webhook_signature", metadata: metadata}] = Audit.recent(1)
+      assert metadata["required"] == false
+    end
+  end
 end
