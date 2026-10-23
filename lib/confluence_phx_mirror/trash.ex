@@ -16,7 +16,7 @@ defmodule ConfluencePhxMirror.Trash do
   """
 
   alias ConfluencePhxMirror.{Audit, Blobs.Store, Mirror}
-  alias ConfluencePhxMirror.Mirror.{Page, Space}
+  alias ConfluencePhxMirror.Mirror.{Counters, Page, Space}
 
   @doc "Spaces in the trash, newest first, with how many pages go with each."
   def spaces, do: Mirror.trashed_spaces()
@@ -39,6 +39,7 @@ defmodule ConfluencePhxMirror.Trash do
   def purge_space(actor, %Space{} = space) do
     with {:ok, %{pages: pages, blob_keys: keys}} <- Mirror.purge_space(space) do
       delete_blobs(keys)
+      Counters.clear()
       Audit.log(actor, Space.audit_event_space_purged(space, %{pages: pages}))
       {:ok, %{pages: pages}}
     end
@@ -48,6 +49,7 @@ defmodule ConfluencePhxMirror.Trash do
   def purge_page(actor, %Page{} = page) do
     with {:ok, %{blob_keys: keys}} <- Mirror.purge_page(page) do
       delete_blobs(keys)
+      Counters.clear()
       Audit.log(actor, Page.audit_event_purged(page))
       {:ok, :page}
     end

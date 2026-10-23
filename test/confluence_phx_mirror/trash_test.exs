@@ -96,6 +96,35 @@ defmodule ConfluencePhxMirror.TrashTest do
       assert Mirror.get_space_by_key("ENG")
     end
 
+    test "a page that comes back is live again" do
+      space = space_fixture()
+      page = page_fixture(space)
+
+      Mirror.mark_missing_deleted(space, [])
+      assert Repo.get(Page, page.id).deleted_at
+
+      page_fixture(space, %{confluence_id: page.confluence_id})
+
+      refute Repo.get(Page, page.id).deleted_at
+      assert Mirror.get_space_by_key(space.key)
+    end
+
+    test "a space that comes back is live again" do
+      space = space_fixture(%{key: "RETURN"})
+      page = page_fixture(space)
+
+      [{trashed, 1}] = Mirror.prune_missing_spaces([])
+      assert trashed.id == space.id
+      assert Repo.get(Space, space.id).deleted_at
+
+      space_fixture(%{key: "RETURN"})
+      page_fixture(space, %{confluence_id: page.confluence_id})
+
+      refute Repo.get(Space, space.id).deleted_at
+      refute Repo.get(Page, page.id).deleted_at
+      assert Mirror.get_space_by_key("RETURN")
+    end
+
     test "an empty space listing trashes nothing" do
       {:ok, _run} = Sync.run(:snapshot)
 

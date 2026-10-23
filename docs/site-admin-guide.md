@@ -115,6 +115,11 @@ can move between them without going back to a hub:
 * `/admin/audit` (**live**) – the audit log: decisions and changes (accounts,
   tokens, subscriptions, webhooks) and one entry per sync with its counters and
   what triggered it.
+* `/admin/trash` (**live**) – content a sync no longer finds in Confluence:
+  trashed spaces with their page counts, and trashed pages and blog posts, each
+  with a purge button. "Empty the trash" asks for a second click. Purging is the
+  only thing that deletes content, and it takes the comments and attachment
+  files with it.
 * `/admin/users` (**live**) – accounts, roles, mirrored groups and API tokens.
 * `/admin/settings` (**live**) – the setup screen. The theme every reader wears
   is a form here: pick one, save, and the whole site repaints. Below it the page

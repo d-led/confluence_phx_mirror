@@ -91,7 +91,11 @@ defmodule ConfluencePhxMirror.Mirror do
   def upsert_space(attrs) do
     key = Space.normalise_key(attrs.key)
     space = Repo.get_by(Space, key: key) || %Space{}
-    space |> Space.changeset(attrs) |> Repo.insert_or_update()
+
+    space
+    |> Space.changeset(attrs)
+    |> revive(space)
+    |> Repo.insert_or_update()
   end
 
   @doc """
@@ -371,6 +375,7 @@ defmodule ConfluencePhxMirror.Mirror do
 
     page
     |> Page.changeset(Map.put(attrs, :space_id, space.id))
+    |> revive(page)
     |> Repo.insert_or_update()
   end
 
@@ -589,46 +594,58 @@ defmodule ConfluencePhxMirror.Mirror do
   Returns the blob keys the caller must delete from the store. Refuses a space
   that is not in the trash, so a live space cannot be purged by mistake.
   """
-  def purge_space(%Space{deleted_at: nil}), do: {:error, :not_trashed}
-
   def purge_space(%Space{} = space) do
-    Repo.transaction(fn ->
-      keys =
-        from(a in Attachment,
-          join: p in assoc(a, :page),
-          where: p.space_id == ^space.id,
-          select: a.blob_key
-        )
-        |> blob_keys()
+    with %Space{deleted_at: %DateTime{}} = trashed <- Repo.get(Space, space.id) do
+      Repo.transaction(fn ->
+        keys =
+          from(a in Attachment,
+            join: p in assoc(a, :page),
+            where: p.space_id == ^trashed.id,
+            select: a.blob_key
+          )
+          |> blob_keys()
 
-      pages = Repo.aggregate(from(p in Page, where: p.space_id == ^space.id), :count)
-      Repo.delete!(space)
+        pages = Repo.aggregate(from(p in Page, where: p.space_id == ^trashed.id), :count)
+        Repo.delete!(trashed)
 
-      %{
-        pages: pages,
-        blob_keys: [space.icon_blob_key | keys] |> Enum.reject(&is_nil/1) |> Enum.uniq()
-      }
-    end)
+        %{
+          pages: pages,
+          blob_keys: [trashed.icon_blob_key | keys] |> Enum.reject(&is_nil/1) |> Enum.uniq()
+        }
+      end)
+    else
+      nil -> {:error, :not_found}
+      _live -> {:error, :not_trashed}
+    end
   end
 
   @doc """
   Removes a trashed page for good, with its comments, attachments and the rows
   that hang off it. Returns the blob keys the caller must delete.
   """
-  def purge_page(%Page{deleted_at: nil}), do: {:error, :not_trashed}
-
   def purge_page(%Page{} = page) do
-    Repo.transaction(fn ->
-      keys =
-        from(a in Attachment, where: a.page_id == ^page.id, select: a.blob_key)
-        |> blob_keys()
+    with %Page{deleted_at: %DateTime{}} = trashed <- Repo.get(Page, page.id) do
+      Repo.transaction(fn ->
+        keys =
+          from(a in Attachment, where: a.page_id == ^trashed.id, select: a.blob_key)
+          |> blob_keys()
 
-      Repo.delete!(page)
-      %{blob_keys: keys}
-    end)
+        Repo.delete!(trashed)
+        %{blob_keys: keys}
+      end)
+    else
+      nil -> {:error, :not_found}
+      _live -> {:error, :not_trashed}
+    end
   end
 
   defp blob_keys(query), do: query |> Repo.all() |> Enum.reject(&is_nil/1)
+
+  # The counterpart of trashing: something that disappeared and came back — a
+  # page restored from Confluence's trash, a space someone deleted by mistake —
+  # is live again the moment a sync sees it. Nothing revives on its own.
+  defp revive(changeset, %{deleted_at: nil}), do: changeset
+  defp revive(changeset, _trashed), do: Ecto.Changeset.put_change(changeset, :deleted_at, nil)
 
   defp trash_pages([], _now), do: 0
 
