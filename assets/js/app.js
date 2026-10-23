@@ -24,7 +24,7 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/confluence_phx_mirror"
 import topbar from "../vendor/topbar"
-import initPagePresence from "./page_presence"
+import initPresence from "./presence"
 import {highlightCode} from "./code_highlight"
 import {localizeTimes} from "./local_time"
 import "./confirm"
@@ -48,8 +48,8 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 // connect if there are any LiveViews on the page
 liveSocket.connect()
 
-// Presence for controller-rendered pages: no-op when the page has no widget.
-initPagePresence()
+// Presence: the footer's site count and, on a page, who is reading it.
+initPresence()
 
 // Colour the code inside Confluence's code macro after the page is parsed.
 highlightCode()

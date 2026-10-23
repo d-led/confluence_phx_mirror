@@ -57,6 +57,13 @@ defmodule ConfluencePhxMirrorWeb.ReaderPageTest do
     assert Enum.count(LazyHTML.query(document, "article[data-print=hide]")) == 0
   end
 
+  test "the footer says how many people have the mirror open", %{conn: conn} do
+    widget = conn |> page() |> LazyHTML.query("footer [data-site-presence=site]")
+
+    assert LazyHTML.text(widget) =~ "Users online:"
+    assert LazyHTML.query(widget, "[data-site-presence-count]") |> LazyHTML.text() =~ ~r/^\d+$/
+  end
+
   defp page(conn) do
     conn |> get(@page) |> html_response(200) |> LazyHTML.from_fragment()
   end

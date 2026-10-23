@@ -12,6 +12,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.BuildInfo
   alias ConfluencePhxMirror.Confluence.Source
+  alias ConfluencePhxMirrorWeb.Presence
   alias ConfluencePhxMirrorWeb.Skins
   alias ConfluencePhxMirrorWeb.Time
 
@@ -141,11 +142,14 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             </span>
           </.link>
 
+          <%!-- The field's bottom sits on the brand's last line, which is what
+          makes the header read as one line: bottom-aligned with the brand,
+          less the brand link's own bottom padding (`pb-1` here). --%>
           <form
             :if={@search?}
             action={~p"/search"}
             method="get"
-            class="ml-1 hidden min-w-0 flex-1 md:block"
+            class="ml-1 hidden min-w-0 flex-1 self-end pb-1 md:block"
           >
             <label class="input input-sm flex w-full items-center gap-2 rounded-lg border-base-300 bg-base-200/60">
               <.icon name="hero-magnifying-glass" class="size-4 shrink-0 opacity-50" />
@@ -160,7 +164,10 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             </label>
           </form>
 
-          <div class="ml-auto flex items-center gap-1">
+          <%!-- The whole row sits on one bottom line: the brand's last line, the
+          search field and these controls all end where that line ends (`pb-1` is
+          the brand link's own bottom padding). --%>
+          <div class="ml-auto flex items-center gap-1 self-end pb-1">
             <.link
               :if={@search?}
               navigate={~p"/search"}
@@ -312,7 +319,11 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
 
         <main id="mirror-content" tabindex="-1" class="min-w-0 flex-1 focus:outline-none">
           {render_slot(@toolbar)}
-          <div class="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8 lg:py-10">
+          <%!-- Left, not centred: collapsing the tree is how a reader asks for
+          more room, and a column that stays centred only widens in both
+          directions. Prose keeps a measure of its own in `app.css`; tables,
+          lists and the page's own furniture take the width. --%>
+          <div class="w-full max-w-[88rem] px-4 py-4 sm:px-8 sm:py-6 lg:py-8">
             {render_slot(@inner_block)}
           </div>
         </main>
@@ -376,6 +387,20 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
               API docs
             </a>
             <a href={~p"/health"} class="hover:text-primary">Health</a>
+            <%!--
+              The number is rendered fresh on every request and kept current by
+              `presence.js`, which joins the site topic from any page.
+            --%>
+            <span
+              data-site-presence={Presence.site_topic()}
+              class="inline-flex items-center gap-1"
+              title="People with the mirror open right now"
+            >
+              <.icon name="hero-users" class="size-3" />
+              <span>
+                Users online: <span data-site-presence-count class="tabular-nums">{Presence.online_count()}</span>
+              </span>
+            </span>
             <span class="inline-flex items-center gap-1">
               <.icon name="hero-lock-closed" class="size-3" /> Read-only
             </span>
