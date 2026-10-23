@@ -50,9 +50,14 @@
       </section>
 
       <section>
-        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-base-content/70">
-          Top-level pages
-        </h2>
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-base-content/70">
+            Top-level pages
+          </h2>
+          <.link navigate={~p"/spaces/#{@space.key}/pages"} class="link link-primary text-xs">
+            All pages →
+          </.link>
+        </div>
         <p :if={@root_pages == []} class="text-sm text-base-content/70">
           This space has no pages yet.
         </p>
@@ -128,7 +133,10 @@
       </section>
 
       <section class="rounded-xl border border-base-300/70 bg-base-100 p-4">
-        <h2 class="mb-2 text-sm font-semibold">Labels</h2>
+        <div class="mb-2 flex items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold">Labels</h2>
+          <.link navigate={~p"/labels"} class="link link-primary text-xs">All labels →</.link>
+        </div>
         <p :if={@labels == []} class="text-xs text-base-content/70">No labels in this space.</p>
         <ul :if={@labels != []} class="flex flex-wrap gap-1.5">
           <li :for={{name, count} <- @labels}>

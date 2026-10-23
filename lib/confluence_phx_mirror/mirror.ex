@@ -523,8 +523,11 @@ defmodule ConfluencePhxMirror.Mirror do
 
   No space preload and no bodies: the overview already holds the space, and a
   card needs a title, a link and an excerpt.
+
+  Options: `:limit`. The overview shows a handful and links to the catalog; a
+  space with three hundred root pages is not worth three hundred cards.
   """
-  def root_pages(space_id) do
+  def root_pages(space_id, opts \\ []) do
     from(p in Page,
       where: p.space_id == ^space_id and is_nil(p.parent_id) and is_nil(p.deleted_at),
       order_by: [asc: p.title],
@@ -538,6 +541,7 @@ defmodule ConfluencePhxMirror.Mirror do
         external_updated_at: p.external_updated_at
       }
     )
+    |> limit_rows(Keyword.get(opts, :limit))
     |> Repo.all()
   end
 
@@ -921,17 +925,29 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.one()
   end
 
-  @doc "Labels used in one space, with their page counts."
-  def labels_in_space(space_id) do
+  @doc """
+  Labels used in one space, with their page counts.
+
+  Options: `:limit` and `:order` (`:name`, the default, or `:popular`). Both
+  are part of the query, so the overview asks for the dozen labels it draws
+  rather than every label the space has ever used.
+  """
+  def labels_in_space(space_id, opts \\ []) do
     from(l in Label,
       join: p in assoc(l, :pages),
       where: p.space_id == ^space_id and is_nil(p.deleted_at),
       group_by: l.id,
-      order_by: [asc: l.name],
       select: {l.name, count(p.id)}
     )
+    |> order_labels_in_space(Keyword.get(opts, :order, :name))
+    |> limit_rows(Keyword.get(opts, :limit))
     |> Repo.all()
   end
+
+  defp order_labels_in_space(query, :popular),
+    do: order_by(query, [l], desc: count(l.id), asc: l.name)
+
+  defp order_labels_in_space(query, _name), do: order_by(query, [l], asc: l.name)
 
   @doc """
   People who authored mirrored content, with page counts.

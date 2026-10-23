@@ -20,6 +20,11 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirrorWeb.NotFound
 
+  # The overview is a front page, not the catalog: it shows a window of each
+  # list and links to the screen that pages through the rest.
+  @root_page_cards 6
+  @label_chips 12
+
   def show(conn, %{"key" => key}) do
     with_space(conn, key, fn conn, space ->
       case Mirror.get_space_home(space) do
@@ -40,10 +45,10 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
       space: space,
       tree: Authorization.branch(scope(conn), space.id),
       home: Mirror.get_space_home(space),
-      root_pages: Mirror.root_pages(space.id),
+      root_pages: Mirror.root_pages(space.id, limit: @root_page_cards),
       recent_pages: Mirror.recent_pages_for_space(space, 6),
       posts: Mirror.blog_posts(space.id, 3),
-      labels: Mirror.labels_in_space(space.id),
+      labels: Mirror.labels_in_space(space.id, limit: @label_chips, order: :popular),
       attachment_count: Mirror.count_attachments_in_space(space.id)
     )
   end
