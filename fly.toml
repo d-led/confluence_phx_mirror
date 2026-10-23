@@ -78,13 +78,16 @@ primary_region = "ams"
   # Flycast is HTTP-only; TLS ends at the proxy app. The mirror's production
   # force_ssl reads X-Forwarded-Proto, which the proxy sets.
   force_https = false
-  # Nothing here is on duty: no readers means no Machine, and the first request
-  # wakes one. The hourly pull therefore only happens while someone is reading —
-  # the mirror is opportunistic on purpose, and `Sync` is what makes the content
-  # correct whenever it does run.
-  auto_stop_machines = "stop"
+  # One Machine, always up. This app is not only a reader: it is also the
+  # worker that runs the sync, and a sync does not care whether anyone is
+  # reading. Stopping the Machine when the last reader leaves kills a run in
+  # the middle of writing pages, and the run can only be reported afterwards as
+  # abandoned — so the hourly pull would also never happen on a quiet site.
+  # The public front door (`deploy/fly/proxy`) still stops when nobody is
+  # reading; this one is `shared-cpu-1x`, which is what "always on" costs.
+  auto_stop_machines = false
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   max_machines_per_region = 1
   processes = ["app"]
 
