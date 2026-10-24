@@ -4,6 +4,9 @@ The mirror exposes three surfaces over the same content: the reader UI, a
 first-party JSON API under `/api/v1`, and a Confluence-compatible subset under
 `/wiki/rest/api` for tools that already speak Confluence.
 
+A fourth, `/api/mcp`, speaks the Model Context Protocol to AI assistants and
+answers with the same authorization as the two APIs — see [mcp.md](mcp.md).
+
 ## The description
 
 `/api/openapi.json` is an OpenAPI 3.1 document covering both API surfaces and

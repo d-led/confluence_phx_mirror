@@ -85,9 +85,11 @@ comment does not abort the run. Pages and blog posts missing from a snapshot are
 **trashed** (marked deleted, rows kept); attachments removed in Confluence are
 deleted from Postgres and the blob store. A space missing from a whole-site
 snapshot is trashed the same way, with its pages and their comments — and
-anything that reappears upstream is live again on the next sync. A source that
-suddenly lists no spaces, or no pages for a space, never trashes anything: the
-run is flagged `partial` instead.
+anything that reappears upstream is live again on the next sync. That makes
+`CM_SPACES` a delete as much as a filter: narrowing it trashes every space the
+new listing does not name, so purge the trash only once you are sure. A source
+that suddenly lists no spaces, or no pages for a space, never trashes anything:
+the run is flagged `partial` instead.
 
 **Personal spaces are skipped** unless `CM_SYNC_PERSONAL_SPACES=true`. Everyone
 on a Confluence site has one (`~accountid`), it holds their drafts, and it is
@@ -103,6 +105,23 @@ A run also settles **who** before **what**: the people it already knows get thei
 groups read first, then the content, then the groups the content's restrictions
 refer to. Confluence never lists its users, so a person the content names for the
 first time is picked up at the end of the same run.
+
+### Comments and attachments are content too
+
+Confluence versions each thing separately: a new comment or a replaced
+attachment bumps *its* version and never the page's. A run that only asks "which
+pages changed since" therefore cannot see either of them, so the mirror asks the
+same question of comments and attachments ("what was touched since") and treats
+a page whose comment or file changed as a page to re-read — the page's own
+version stays exactly what Confluence says it is.
+
+The mirror also keeps track of which pages it has read in full. A page that a
+listing introduced but whose details were never fetched is remembered
+(`details_synced_at`) and caught up later, at most
+`CM_SYNC_DETAIL_BACKLOG` pages per run (default `200`), so the first run after an
+upgrade works through a long-standing site without one enormous run. The run's
+counters report how many it caught up (`details_caught_up`); those pages count
+as unchanged, because their own content did not change.
 
 The mirror is **read-only**. Readers cannot edit anything; content only changes
 when a sync pulls a newer snapshot.
