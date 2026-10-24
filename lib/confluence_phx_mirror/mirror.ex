@@ -263,7 +263,8 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc "Subjects that may read a page; empty means it is unrestricted."
-  def page_restrictions(confluence_id) do    from(r in PageRestriction,
+  def page_restrictions(confluence_id) do
+    from(r in PageRestriction,
       join: p in Page,
       on: p.id == r.page_id,
       where: p.confluence_id == ^confluence_id and r.operation == "read",

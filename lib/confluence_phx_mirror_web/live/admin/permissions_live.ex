@@ -98,7 +98,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
         />
       </form>
 
-      <div :if={@space} id="space-access-panel" class="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
+      <div
+        :if={@space}
+        id="space-access-panel"
+        class="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4"
+      >
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <p class="text-xs font-semibold">
@@ -129,7 +133,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
           </div>
 
           <div :if={@grants.groups != []}>
-            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">Groups</p>
+            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
+              Groups
+            </p>
             <div class="mt-1 flex flex-wrap gap-1">
               <span
                 :for={group <- @grants.groups}
@@ -142,7 +148,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
           </div>
 
           <div :if={@grants.users != []}>
-            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">People</p>
+            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
+              People
+            </p>
             <ul class="mt-1 space-y-1">
               <li
                 :for={user <- @grants.users}
@@ -164,7 +172,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
         No space matches this filter.
       </p>
 
-      <ul :if={@spaces != []} id="space-list" class="mt-4 divide-y divide-base-300/60 rounded-xl border border-base-300/70">
+      <ul
+        :if={@spaces != []}
+        id="space-list"
+        class="mt-4 divide-y divide-base-300/60 rounded-xl border border-base-300/70"
+      >
         <li
           :for={space <- @spaces}
           id={"space-row-#{space.id}"}
