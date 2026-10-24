@@ -8,21 +8,23 @@
 #   test    Postgres service, `mix cover` (test --cover), then `mix complexity`,
 #           which reads the coverage the suite exported and scores every
 #           function by complexity and coverage. Every push and every pull
-#           request; about eight minutes of the twelve a run takes.
+#           request; about eight minutes, which is the whole run now.
 #   image   `docker build`, Trivy on the result, and a run as uid 10001, then
 #           the amd64 + arm64 index is published to GHCR under the branch or
 #           tag name: `:main` (and `:latest`) for main, `:v1.2.3` for a release,
 #           never a commit hash. It waits for the two gates above (`needs`), so
 #           nothing is published from a commit that failed them.
 #
-# The image is the expensive half — five minutes, most of it the arm64 build
-# under QEMU — and the half whose breakage a developer finds in two minutes with
-# `docker build .` at home. So it does **not** run on an ordinary push: it runs
-# for a release tag, or when someone asks for it:
+# The image is by far the expensive half — 17 minutes measured on a warm cache,
+# 14 m 41 s of it the arm64 build under QEMU — and it is the half whose breakage
+# a developer finds in a couple of minutes with `docker build .` at home. So it
+# does **not** run on an ordinary push: it runs for a release tag, or when
+# someone asks for it:
 #
 #   gh workflow run ci --ref main --field image=true
 #
-# `scripts/quality.sh --image` is the same build, scan and uid check locally.
+# `scripts/quality.sh --image` is the same build and uid check locally; the Trivy
+# scan stays here, where it is fourteen seconds rather than a database download.
 
 name: ci
 
@@ -43,10 +45,10 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  # A push that has been superseded by the next one is not worth twelve
-  # minutes of a shared runner: only the newest commit of a branch is built.
-  # Nothing is lost — the image is published from that commit, not from this
-  # run's.
+  # A push that has been superseded by the next one is not worth eight minutes
+  # of a shared runner: only the newest commit of a branch is built. Nothing is
+  # lost — a cancelled run publishes nothing (the image is a release step) and
+  # the next run is the newer commit.
   cancel-in-progress: true
 
 env:
