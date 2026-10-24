@@ -105,7 +105,7 @@ asked at two doors (`:proxy`, `:sign_in`). Two policies ship:
 | Policy | Name (`CM_USER_POLICY`) | Admits |
 | --- | --- | --- |
 | `NewUsersCanReadPublicSpaces` | `new_users_can_read_public_spaces`, alias `allow_all` | everybody who arrives |
-| `ReadersMustExistInConfluence` | `readers_must_exist_in_confluence`, alias `members_only` | only identities with a reason: a mirror administrator, a person a space permission or page restriction names, a member of a group the sync lists, or a member of a group the identity provider asserts **and** the site lists |
+| `ReadersMustExistInConfluence` | `readers_must_exist_in_confluence`, alias `members_only` | only identities with a reason: a mirror administrator, a person a space permission or page restriction names, the author of a page or a comment, a member of a group the sync lists, or a member of a group the identity provider asserts **and** the site lists |
 
 `CM_USER_POLICY` may also be `{:any_of, […]}` / `{:all_of, […]}` in config, so
 "an administrator, or anybody on the operator's allow-list, or anybody the site

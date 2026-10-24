@@ -106,13 +106,17 @@ mirror:
   sees the spaces nobody restricted. This is the audience-wider-than-the-site
   case: readers of a published handbook, a customer base, a whole organisation.
 * `readers_must_exist_in_confluence` (the default) — an administrator (seeded,
-  admin role, or a member of an admin group), or an identity the sync has seen:
-  a member of a group the content mentions, a user named in a space permission
-  or page restriction, or somebody an identity provider asserts in a group the
-  site also lists that person in. Everyone else gets a `403` page and **no
-  account is created**.
+  admin role, or a member of an admin group), or an identity the sync has read
+  about: a member of a group the content mentions, a user named in a space
+  permission or page restriction, the author of a page or a comment, or somebody
+  an identity provider asserts in a group the site also lists that person in.
+  Everyone else gets a `403` page and **no account is created**.
 
-Confluence Cloud has no API that lists a site's users, so "seen" is the
+Authorship counts because the rule is that whoever may read on Confluence may
+read the mirror: an author is on the site before any permission names them, and
+Confluence shows no user directory to ask.
+
+Confluence Cloud has no API that lists a site's users, so "read about" is the
 strongest statement the mirror can make. A deployment that names no policy keeps
 what the older switches implied: `CM_PROXY_AUTH_MEMBERS_ONLY=false` and
 `MIRROR_SELF_SIGNUP=true` each mean "anyone", for the door they belong to;

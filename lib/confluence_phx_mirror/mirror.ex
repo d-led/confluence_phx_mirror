@@ -629,70 +629,55 @@ defmodule ConfluencePhxMirror.Mirror do
   def identity_known?(subject_keys) do
     subjects = subject_keys |> Enum.reject(&is_nil/1) |> Enum.map(&String.downcase/1)
 
-    if subjects == [] do
-      false
-    else
-      member? =
-        from(m in GroupMember,
-          where: fragment("lower(?)", m.subject_key) in ^subjects,
-          limit: 1,
-          select: 1
-        )
-
-      space_named? =
-        from(sp in SpacePermission,
-          where:
-            sp.subject_type == "user" and
-              fragment("lower(?)", sp.subject_key) in ^subjects,
-          limit: 1,
-          select: 1
-        )
-
-      page_named? =
-        from(r in PageRestriction,
-          where: r.subject_type == "user" and fragment("lower(?)", r.subject_key) in ^subjects,
-          limit: 1,
-          select: 1
-        )
-
-      Repo.exists?(member?) or Repo.exists?(space_named?) or Repo.exists?(page_named?)
-    end
+    subjects != [] and (listed?(subjects) or authored?(subjects))
   end
 
-  @doc """
-  Whether the mirror has read about this identity at all: listed in a group by
-  the sync, named in a space permission or a page restriction, or the author of
-  a page or a comment.
+  # A group the sync lists, or somebody a space permission or page restriction
+  # names. Matched case-insensitively, like the permission checks do.
+  defp listed?(subjects) do
+    member? =
+      from(m in GroupMember,
+        where: fragment("lower(?)", m.subject_key) in ^subjects,
+        limit: 1,
+        select: 1
+      )
 
-  Linking asks this, not `identity_known?/1`: the admin screen offers the people
-  the *content* names, so a link to an author must not come back "the mirror has
-  never seen this identity". Whether a person may also *sign in* is the narrower
-  question, and the login policy keeps asking it with `identity_known?/1`.
-  """
-  @spec identity_seen?([String.t() | nil]) :: boolean()
-  def identity_seen?(subject_keys) do
-    identity_known?(subject_keys) or authored_by?(subject_keys)
+    space_named? =
+      from(sp in SpacePermission,
+        where:
+          sp.subject_type == "user" and
+            fragment("lower(?)", sp.subject_key) in ^subjects,
+        limit: 1,
+        select: 1
+      )
+
+    page_named? =
+      from(r in PageRestriction,
+        where: r.subject_type == "user" and fragment("lower(?)", r.subject_key) in ^subjects,
+        limit: 1,
+        select: 1
+      )
+
+    Repo.exists?(member?) or Repo.exists?(space_named?) or Repo.exists?(page_named?)
   end
 
-  # Authorship, matched case-insensitively like the permission checks do.
-  defp authored_by?(subject_keys) do
-    subjects = subject_keys |> Enum.reject(&is_nil/1) |> Enum.map(&String.downcase/1)
+  # The people the content itself names.
+  defp authored?(subjects) do
+    page =
+      from(p in Page,
+        where: fragment("lower(?)", p.author_account_id) in ^subjects,
+        limit: 1,
+        select: 1
+      )
 
-    subjects != [] and
-      (Repo.exists?(
-         from(p in Page,
-           where: fragment("lower(?)", p.author_account_id) in ^subjects,
-           limit: 1,
-           select: 1
-         )
-       ) or
-         Repo.exists?(
-           from(c in Comment,
-             where: fragment("lower(?)", c.author_account_id) in ^subjects,
-             limit: 1,
-             select: 1
-           )
-         ))
+    comment =
+      from(c in Comment,
+        where: fragment("lower(?)", c.author_account_id) in ^subjects,
+        limit: 1,
+        select: 1
+      )
+
+    Repo.exists?(page) or Repo.exists?(comment)
   end
 
   @doc """

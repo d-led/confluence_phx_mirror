@@ -284,19 +284,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
 
   # Why linking was refused, said the way an administrator can act on it: whose
   # the identity is, or that the site has not shown it yet.
-  defp link_refusal(:blank, _account_id), do: "Pick an account first."
+  @refusals %{
+    blank: "Pick an account first.",
+    already_linked: "That identity already belongs to this account.",
+    not_authorized: "Only an administrator may link identities."
+  }
 
-  defp link_refusal(:already_linked, _account_id),
-    do: "That identity already belongs to this account."
+  defp link_refusal(reason, _account_id) when is_map_key(@refusals, reason),
+    do: Map.fetch!(@refusals, reason)
 
   defp link_refusal({:linked_elsewhere, other}, account_id),
     do: "#{account_id} belongs to #{other.email}. Unlink it there first."
 
   defp link_refusal(:unknown_identity, account_id),
     do: "The mirror has not seen #{account_id} yet — run a sync."
-
-  defp link_refusal(:not_authorized, _account_id),
-    do: "Only an administrator may link identities."
 
   defp link_refusal(_reason, _account_id), do: "Could not link that identity."
 

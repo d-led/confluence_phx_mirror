@@ -597,7 +597,7 @@ defmodule ConfluencePhxMirror.Accounts do
       other = Enum.find(accounts_linked_to(account_id), &(&1.id != user.id)) ->
         {:error, {:linked_elsewhere, other}}
 
-      not Mirror.identity_seen?([account_id]) ->
+      not Mirror.identity_known?([account_id]) ->
         {:error, :unknown_identity}
 
       true ->

@@ -139,9 +139,11 @@ here?". Its user directory is the Atlassian organisation, and a mirror is
 usually one site inside it, so trusting the proxy's word would hand the mirror
 to everybody in the company. The mirror therefore decides for itself, from what
 the sync knows: an administrator (seeded, role, or admin group), or an identity
-the sync has seen — a group member, or a user named by a space permission or a
-page restriction (`Mirror.identity_known?/1`). Anyone else gets a 403 and no
-account.
+the sync has read about — a group member, a user named by a space permission or
+a page restriction, or the author of a page or a comment
+(`Mirror.identity_known?/1`). Anyone else gets a 403 and no account. Authorship
+is the one that makes the rule hold: whoever may read on Confluence may read
+here, and the content names its authors before any permission does.
 
 The honest limitation: Confluence Cloud has no API that lists a site's users,
 so "a user of the site" can only mean "somebody the mirror has evidence of".

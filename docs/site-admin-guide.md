@@ -429,9 +429,11 @@ Set `MIRROR_MAIL_FROM` and the Swoosh mailer settings for production.
 
     * an administrator — seeded (`CM_ADMINS`), admin role, or a member of an
       admin group; and
-    * an identity the sync has seen on the site — a member of a group the
-      content mentions, or a user named in a space permission or page
-      restriction.
+    * an identity the sync has read about — a member of a group the content
+      mentions, a user named in a space permission or page restriction, or the
+      author of a page or a comment. Authorship counts: an author is on the site
+      before any permission names them, and the rule is that whoever may read on
+      Confluence may read here.
 
   Everyone else gets a `403` page, and no account is created for them. The
   question is answered by `Mirror.identity_known?/1`, which is the best the

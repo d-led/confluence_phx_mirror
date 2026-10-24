@@ -8,8 +8,10 @@ defmodule ConfluencePhxMirror.Accounts.UserPolicy.ReadersMustExistInConfluence d
 
     * it administers this mirror — a role here, a seeded administrator, or
       membership of an administration group;
-    * the site names it: a member of a group the sync lists, or somebody named in
-      a space permission or a page restriction;
+    * the site names it: a member of a group the sync lists, somebody named in a
+      space permission or a page restriction, or the author of a page or a
+      comment — whoever may read on Confluence may read here, and an author is on
+      the site before any permission has listed them;
     * the identity provider asserts a group, and the site lists that person in a
       group of that name — the one claim the mirror can actually check.
 
