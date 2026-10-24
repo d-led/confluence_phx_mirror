@@ -1463,6 +1463,47 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
+  Every page below `page`, transitively, one level at a time.
+
+  `ancestors` is the trail the sync denormalises onto each page, so a descendant
+  is a row that names the page in that array: one statement backed by the GIN
+  index answers a subtree of any size, however deep. A branch can be hundreds of
+  pages, so the window (`:start`, `:limit`) and the total are read the way every
+  other catalogue reads them, instead of loading the subtree to count it.
+
+  Options: `:start` — rows to skip (default 0); `:limit`; `:filter` — an
+  authorization narrowing over the `:page` binding.
+
+  Returns `%{items: [%Page{}], total: count}` in level order — every page before
+  the pages below it, siblings by title — with each row's `ancestors` intact, so
+  a caller can say how far below `page` it sits (`Mirror.Page.depth_below/2`).
+  """
+  def descendants(%Page{confluence_id: id}, opts \\ []) do
+    query =
+      from(p in Page,
+        as: :page,
+        where: is_nil(p.deleted_at),
+        where: fragment("? = ANY(?)", ^id, p.ancestors)
+      )
+      |> filtered(opts)
+
+    %{
+      items:
+        query
+        |> order_by([p],
+          asc: fragment("cardinality(?)", p.ancestors),
+          asc: p.title,
+          asc: p.confluence_id
+        )
+        |> offset(^max(Keyword.get(opts, :start, 0), 0))
+        |> limit_rows(Keyword.get(opts, :limit))
+        |> preload(:space)
+        |> Repo.all(),
+      total: query |> select([p], count(p.id)) |> Repo.one()
+    }
+  end
+
+  @doc """
   Every page of a space as the fields a page tree needs.
 
   The sidebar learned this the expensive way: a tree needs ids, titles and

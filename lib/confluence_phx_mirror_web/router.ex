@@ -31,6 +31,13 @@ defmodule ConfluencePhxMirrorWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    # The caller may already be known: the proxy in front of the mirror
+    # authenticates the browser and passes the reader in `X-Forwarded-Email`,
+    # and a magic-link session is just as good on a read-only API. `ApiAuth`
+    # falls back to a token, then to the demo administrator.
+    plug :fetch_session
+    plug Plugs.FetchCurrentUser
+    plug Plugs.ProxyAuth
     plug Plugs.ApiAuth
     plug Plugs.ReaderRateLimit, scope: :api
   end
@@ -116,6 +123,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/spaces/:space_key/pages/:id/export.md", ExportController, :page
     get "/spaces/:space_key/pages/:id/:slug", PageController, :show
     get "/spaces/:key/export.zip", ExportController, :space
+    # The space as a static site: HTML, Markdown and attachments, cross-linked
+    # inside the archive. See ExportController.site/2.
+    get "/spaces/:key/site.zip", ExportController, :site
     get "/people/:account_id", PeopleController, :show
     get "/recent", PageController, :recent
     get "/labels/:name", PageController, :label
@@ -166,6 +176,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
       live "/", DashboardLive, :index
       live "/webhooks", WebhooksLive, :index
       live "/users", UsersLive, :index
+      live "/identities", IdentitiesLive, :index
       live "/permissions", PermissionsLive, :index
       live "/audit", AuditLive, :index
       live "/trash", TrashLive, :index
@@ -181,6 +192,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
     pipe_through :browser
 
     get "/audit/export", AuditExportController, :index
+    get "/export/site.zip", SiteExportController, :index
   end
 
   # ---------------------------------------------------------------------------
@@ -214,6 +226,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
 
     get "/pages/:id", PageController, :show
     get "/pages/:id/children", PageController, :children
+    get "/pages/:id/descendants", PageController, :descendants
     get "/pages/:id/ancestors", PageController, :ancestors
     get "/pages/:id/labels", PageController, :labels
     get "/pages/:id/attachments", PageController, :attachments
@@ -224,6 +237,17 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/labels", LabelController, :index
     get "/search", SearchController, :index
     get "/stats", StatsController, :show
+
+    # The Confluence identities the content names, and standing an account on
+    # one. Administrator-only; the only writes the v1 API accepts, because the
+    # mirror is read-only everywhere else. A token is the credential here, so
+    # there is no session for a cross-site request to ride — which is the whole
+    # of what CSRF would protect.
+    get "/identities", IdentityController, :index
+    # sobelow_skip ["Config.CSRF"]
+    post "/identities/:account_id/link", IdentityController, :link
+    # sobelow_skip ["Config.CSRF"]
+    delete "/identities/:account_id/link", IdentityController, :unlink
   end
 
   # Confluence-compatible subset: existing bots keep working against the mirror.
@@ -244,6 +268,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/content", PageController, :index
     get "/content/:id", PageController, :show
     get "/content/:id/child/page", PageController, :children
+    get "/content/:id/descendant/page", PageController, :descendants
     get "/content/:id/child/attachment", PageController, :attachments
     get "/content/:id/child/comment", PageController, :comments
     get "/content/:id/label", PageController, :labels
@@ -269,12 +294,13 @@ defmodule ConfluencePhxMirrorWeb.Router do
     post "/confluence", WebhookController, :create
   end
 
-  # The OpenAPI document and the page rendered from it. Served without a token
+  # The OpenAPI document and the pages rendered from it. Served without a token
   # and without touching the database; `CM_API_DOCS=false` answers 404.
   scope "/api", ConfluencePhxMirrorWeb do
     pipe_through :browser
 
     get "/docs", ApiDocsController, :index
+    get "/docs/swagger", ApiDocsController, :swagger
   end
 
   scope "/api", ConfluencePhxMirrorWeb do

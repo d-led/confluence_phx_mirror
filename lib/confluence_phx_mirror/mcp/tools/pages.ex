@@ -13,6 +13,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Pages do
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mcp.{Args, Links, Markdown, PageRef}
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Mirror.Page
 
   # A malformed `parent_id` chain would otherwise recurse until the process
   # dies; the sync resolves parents into a tree, so this is a guard, not a rule.
@@ -68,6 +69,28 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Pages do
          structured: %{
            "page" => summary(page),
            "ancestors" => Enum.map(ancestors, &summary/1)
+         }
+       }}
+    end
+  end
+
+  @doc "`confluence_get_page_descendants`: every page below one, level by level."
+  def descendants(args, scope) do
+    with {:ok, page} <- resolve(args, scope),
+         {:ok, start} <- Args.integer(args, "start", default: 0, min: 0, max: 10_000),
+         {:ok, limit} <- Args.integer(args, "limit", default: 25, min: 1, max: 100) do
+      %{items: items, total: total} =
+        Mirror.descendants(page, start: start, limit: limit, filter: restrict(scope))
+
+      {:ok,
+       %{
+         text: descendants_text(page, items, total, start, limit),
+         structured: %{
+           "page" => summary(page),
+           "descendants" => Enum.map(items, &subtree_entry(&1, page)),
+           "total" => total,
+           "start" => start,
+           "limit" => limit
          }
        }}
     end
@@ -145,6 +168,23 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Pages do
   @spec iso(DateTime.t() | nil) :: String.t() | nil
   def iso(nil), do: nil
   def iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
+
+  # A row of a subtree listing: the summary plus where it sits below the page
+  # the call named. `depth` is what the text indents by and `parent` lets a
+  # client rebuild the branch from a window that starts midway.
+  defp subtree_entry(page, root) do
+    Map.merge(summary(page), %{
+      "depth" => Page.depth_below(page, root),
+      "parent" => parent_content_id(page)
+    })
+  end
+
+  defp parent_content_id(page) do
+    case Page.parent_confluence_id(page) do
+      nil -> nil
+      id -> to_string(id)
+    end
+  end
 
   defp by_reference(reference, scope, key) do
     case PageRef.parse(reference) do
@@ -272,6 +312,36 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Pages do
       Enum.map_join(Enum.with_index(ancestors, 1), "\n", fn {ancestor, index} ->
         "#{index}. #{ancestor.title} (id #{ancestor.confluence_id})\n   #{Links.page(ancestor)}"
       end)
+  end
+
+  defp descendants_text(page, [], _total, _start, _limit) do
+    "No pages below #{page.title} (id #{page.confluence_id}) that you may read."
+  end
+
+  defp descendants_text(page, items, total, start, limit) do
+    "Pages below #{page.title} (id #{page.confluence_id}) — #{total} in all, " <>
+      window(items, total, start, limit) <>
+      ":\n\n" <> Enum.map_join(items, "\n", &descendant_line(&1, page))
+  end
+
+  # An indented line per page: the indentation is the depth the payload also
+  # carries, so the model reads the shape without decoding numbers.
+  defp descendant_line(item, root) do
+    indent = String.duplicate("  ", Page.depth_below(item, root) - 1)
+    indent <> "- #{item.title} (id #{item.confluence_id})\n" <> indent <> "  " <> Links.page(item)
+  end
+
+  # A branch is as long as the docs under it, so every answer says how much of
+  # it this window holds and how to ask for the rest.
+  defp window(items, total, start, limit) do
+    shown = "showing #{start + 1}–#{start + length(items)}"
+    remaining = total - start - length(items)
+
+    if remaining > 0 do
+      "#{shown}, #{remaining} more — call again with start=#{start + limit}"
+    else
+      shown
+    end
   end
 
   defp backlinks_text(page, []) do

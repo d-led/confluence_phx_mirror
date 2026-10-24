@@ -168,6 +168,59 @@ defmodule ConfluencePhxMirror.Mcp.ToolsTest do
       assert text =~ ~r/1\. Engineering Handbook.*2\. Getting Started/s
     end
 
+    test "descendants cover the whole branch, and the answer says how to page", %{scope: scope} do
+      {:ok, %{text: text, structured: structured}} =
+        call("confluence_get_page_descendants", %{"page_id" => "1000", "limit" => 5}, scope)
+
+      # Thirty-six pages below the home page, one of them the page this reader
+      # may not open.
+      assert structured["total"] == 35
+      assert length(structured["descendants"]) == 5
+      assert text =~ "35 in all"
+      assert text =~ "call again with start=5"
+    end
+
+    test "a descendant says how deep it is and what it hangs below", %{scope: scope} do
+      {:ok, %{structured: %{"descendants" => descendants}}} =
+        call(
+          "confluence_get_page_descendants",
+          %{"page_id" => "1000", "start" => 25, "limit" => 100},
+          scope
+        )
+
+      revocation = Enum.find(descendants, &(&1["title"] == "Emergency Revocation"))
+      assert revocation["depth"] == 7
+      assert revocation["parent"] == "1204"
+    end
+
+    test "descendants are indented by depth", %{scope: scope} do
+      {:ok, %{text: text}} =
+        call("confluence_get_page_descendants", %{"page_id" => "1010", "limit" => 100}, scope)
+
+      assert text =~ "\n- Service: API Gateway (id 1100)"
+      assert text =~ "\n  - Networking (id 1201)"
+    end
+
+    test "a page with nothing below it says so", %{scope: scope} do
+      {:ok, %{text: text, structured: structured}} =
+        call("confluence_get_page_descendants", %{"page_id" => Demo.open_page()}, scope)
+
+      assert structured["total"] == 0
+      assert text =~ "No pages below"
+    end
+
+    test "the restricted branch is not listed", %{scope: scope} do
+      {:ok, %{structured: %{"descendants" => descendants}}} =
+        call(
+          "confluence_get_page_descendants",
+          %{"page_id" => Demo.open_page_parent(), "limit" => 100},
+          scope
+        )
+
+      assert Enum.map(descendants, & &1["title"]) == ["Architecture Overview"]
+      refute Enum.any?(descendants, &(&1["id"] == Demo.restricted_page()))
+    end
+
     test "a space's tree is indented by depth", %{scope: scope} do
       {:ok, %{text: text, structured: structured}} =
         call("confluence_get_space_page_tree", %{"space_key" => "eng"}, scope)

@@ -161,6 +161,28 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.Presenter do
   end
 
   @doc """
+  A page in a subtree listing: the summary, plus how it hangs below the page the
+  request named.
+
+  `depth` counts levels below that page — a direct child is 1 — and `parent` is
+  the content id above it, so a client can draw a window as a tree even when the
+  rows above it were left to an earlier page of the listing.
+  """
+  def descendant(page, root) do
+    page
+    |> summary()
+    |> Map.put("depth", Mirror.Page.depth_below(page, root))
+    |> Map.put("parent", parent_content_id(page))
+  end
+
+  defp parent_content_id(page) do
+    case Mirror.Page.parent_confluence_id(page) do
+      nil -> nil
+      id -> to_string(id)
+    end
+  end
+
+  @doc """
   Confluence-style result envelope.
 
   `total` is nil when the source cannot count cheaply; `next` is then omitted.

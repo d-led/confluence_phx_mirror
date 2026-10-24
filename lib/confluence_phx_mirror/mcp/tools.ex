@@ -195,6 +195,40 @@ defmodule ConfluencePhxMirror.Mcp.Tools do
       "annotations" => @read_only
     },
     %{
+      "name" => "confluence_get_page_descendants",
+      "title" => "Get every page below a page",
+      "description" =>
+        "Mirror-only: the whole branch below a page, transitively, as an indented list " <>
+          "with each page's id, link and depth. Use the children tool for one level and " <>
+          "the space tree tool for the shape of a whole space. A branch can be hundreds " <>
+          "of pages, so results are windowed: `limit` defaults to 25, and the answer says " <>
+          "how many there are and which `start` continues.",
+      "inputSchema" => %{
+        "type" => "object",
+        "properties" => %{
+          "page_id" => %{
+            "type" => "string",
+            "description" => "A Confluence content id or page URL."
+          },
+          "start" => %{
+            "type" => "integer",
+            "minimum" => 0,
+            "default" => 0,
+            "description" => "How many descendants to skip; the answer names the next start."
+          },
+          "limit" => %{
+            "type" => "integer",
+            "minimum" => 1,
+            "maximum" => 100,
+            "default" => 25,
+            "description" => "How many descendants to return."
+          }
+        },
+        "required" => ["page_id"]
+      },
+      "annotations" => @read_only
+    },
+    %{
       "name" => "confluence_get_space_page_tree",
       "title" => "Get a space's page tree",
       "description" =>
@@ -394,6 +428,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools do
     "confluence_get_page" => {Pages, :get},
     "confluence_get_page_children" => {Pages, :children},
     "confluence_get_page_ancestors" => {Pages, :ancestors},
+    "confluence_get_page_descendants" => {Pages, :descendants},
     "confluence_get_space_page_tree" => {Pages, :tree},
     "confluence_get_backlinks" => {Pages, :backlinks},
     "confluence_get_comments" => {Discussion, :comments},

@@ -1,5 +1,5 @@
 defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
-  @moduledoc "Page endpoints: listing, single page, children, labels, attachments, comments, backlinks."
+  @moduledoc "Page endpoints: listing, single page, children, descendants, labels, attachments, comments, backlinks."
 
   use ConfluencePhxMirrorWeb, :controller
 
@@ -71,6 +71,25 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
           start: 0,
           limit: length(items),
           total: length(items),
+          path: request_path(conn)
+        )
+      )
+    end)
+  end
+
+  def descendants(conn, %{"id" => id} = params) do
+    with_page(conn, id, fn page ->
+      {start, limit} = pagination(params)
+
+      %{items: pages, total: total} =
+        Mirror.descendants(page, start: start, limit: limit, filter: readable_pages(conn))
+
+      json(
+        conn,
+        Presenter.list(Enum.map(pages, &Presenter.descendant(&1, page)),
+          start: start,
+          limit: limit,
+          total: total,
           path: request_path(conn)
         )
       )

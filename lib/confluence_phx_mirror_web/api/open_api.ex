@@ -45,6 +45,11 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
         "Structured search (`q` plus filters). Raw CQL stays on the Confluence-compatible surface."
     },
     %{"name" => "Stats", "description" => "Content counters and the last sync."},
+    %{
+      "name" => "Identities",
+      "description" =>
+        "The Confluence accounts the content names, and pairing one with an account here. Administrator-only."
+    },
     %{"name" => "Health", "description" => "Liveness and readiness; needs no token."},
     %{
       "name" => "Confluence-compatible",
@@ -53,8 +58,13 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
     }
   ]
 
-  # The one route that matters to clients but is not under an API prefix.
-  @extra_routes [{"get", "/health"}]
+  # The routes that matter to clients but are not `GET`s under an API prefix:
+  # `/health`, and the two writes an administrator may make on an identity.
+  @extra_routes [
+    {"get", "/health"},
+    {"post", "/api/v1/identities/{account_id}/link"},
+    {"delete", "/api/v1/identities/{account_id}/link"}
+  ]
 
   # ---------------------------------------------------------------------------
   # Public interface
@@ -167,6 +177,7 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
             Map.new(described.responses, fn {status, body} -> {to_string(status), body} end)
         }
         |> put_description(Map.get(described, :description))
+        |> put_body(Map.get(described, :body))
         |> put_security(Map.get(described, :auth, true))
 
       # Generated from the router so the document never silently loses an
@@ -187,6 +198,17 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
   # null, so it is left out entirely. (Redocly caught this one.)
   defp put_description(operation, nil), do: operation
   defp put_description(operation, text), do: Map.put(operation, "description", text)
+
+  # A write names its body's schema; the document says so once, so a client
+  # generator has something to build a request object from.
+  defp put_body(operation, nil), do: operation
+
+  defp put_body(operation, schema) do
+    Map.put(operation, "requestBody", %{
+      "required" => true,
+      "content" => %{@json => %{"schema" => ref(schema)}}
+    })
+  end
 
   defp put_security(operation, false), do: operation
 
@@ -293,6 +315,31 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
           404 => error("The page is not mirrored, or not readable.")
         }
       },
+      {"get", "/api/v1/pages/{id}/descendants"} => %{
+        tag: "Pages",
+        summary: "Every page below a page, level by level",
+        description:
+          "Transitive descendants, not just children: the whole branch below the page. A " <>
+            "branch can be hundreds of pages, so it is windowed like any listing — `limit` " <>
+            "is 25 by default and `_links.next` continues. Order is level order: every page " <>
+            "before the pages below it, siblings by title. `depth` says how far below the " <>
+            "named page a result sits (a direct child is 1) and `parent` names the row above " <>
+            "it. Pages the caller may not read are left out, so a row's `parent` can name a " <>
+            "page this listing does not contain.",
+        params: [
+          path_param("id", %{"type" => "integer"}, "The Confluence content id."),
+          query_param("start", %{"type" => "integer", "minimum" => 0}, "Offset, default 0."),
+          query_param(
+            "limit",
+            %{"type" => "integer", "minimum" => 1, "maximum" => 100},
+            "Window size, default 25, at most 100."
+          )
+        ],
+        responses: %{
+          200 => ok("DescendantList"),
+          404 => error("The page is not mirrored, or not readable.")
+        }
+      },
       {"get", "/api/v1/pages/{id}/labels"} => %{
         tag: "Pages",
         summary: "The labels of a page",
@@ -392,6 +439,73 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
         summary: "Content counters and the last sync",
         responses: %{200 => ok("Stats")}
       },
+      {"get", "/api/v1/identities"} => %{
+        tag: "Identities",
+        summary: "The Confluence accounts the content names",
+        description:
+          "Administrator-only. A mirror is not a user directory: Confluence Cloud lists no site users, so these " <>
+            "are the identities the content itself names — authors of pages and comments, and the account ids " <>
+            "permissions carry. Each comes with the groups the last sync read and the account it already stands " <>
+            "for. One person often holds two Atlassian accounts; `POST …/link` is how an administrator says they " <>
+            "are one person.",
+        params: [
+          query_param(
+            "q",
+            %{"type" => "string"},
+            "Name or account id, matched case-insensitively."
+          ),
+          query_param("offset", %{"type" => "integer", "minimum" => 0}, "Offset, default 0."),
+          query_param(
+            "limit",
+            %{"type" => "integer", "minimum" => 1, "maximum" => 100},
+            "Window size, default 25, at most 100."
+          )
+        ],
+        responses: %{
+          200 => ok("IdentityList"),
+          403 => error("The token does not belong to an administrator.")
+        }
+      },
+      {"post", "/api/v1/identities/{account_id}/link"} => %{
+        tag: "Identities",
+        summary: "Stand an account on an identity",
+        description:
+          "Administrator-only. What the identity carries — its group memberships, the pages and spaces it is " <>
+            "named in — becomes the account's, because every permission rule asks the union of an account's " <>
+            "identities. Two things are refused: an identity the mirror has never seen, and one another account " <>
+            "already holds.",
+        params: [
+          path_param("account_id", %{"type" => "string"}, "The Confluence account id.")
+        ],
+        body: "IdentityLink",
+        responses: %{
+          200 => ok("IdentityLinkResult"),
+          403 => error("The token does not belong to an administrator."),
+          404 =>
+            error(
+              "The mirror has never seen this identity, or no account here has that id or e-mail."
+            ),
+          409 => error("Already that account's, or already another account's."),
+          422 => error("Neither `user_id` nor `email` was given.")
+        }
+      },
+      {"delete", "/api/v1/identities/{account_id}/link"} => %{
+        tag: "Identities",
+        summary: "Take an identity away from its account",
+        description:
+          "Administrator-only. What the identity carries stops being the account's. The identity an account " <>
+            "signs in with is not a link and is refused here — taking it away would lock the reader out of their " <>
+            "own account, not narrow what it may read.",
+        params: [
+          path_param("account_id", %{"type" => "string"}, "The Confluence account id.")
+        ],
+        responses: %{
+          200 => ok("IdentityLinkResult", "The identity, now standing for nobody."),
+          403 => error("The token does not belong to an administrator."),
+          404 => error("No account here stands on this identity."),
+          409 => error("That identity is the account's own sign-in identity, not a link.")
+        }
+      },
       {"get", "/health"} => %{
         tag: "Health",
         summary: "Liveness and readiness",
@@ -448,6 +562,26 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
         params: [path_param("id", %{"type" => "integer"}, "The Confluence content id.")],
         responses: %{
           200 => ok("PageList"),
+          404 => error("The page is not mirrored, or not readable.")
+        }
+      },
+      {"get", "/wiki/rest/api/content/{id}/descendant/page"} => %{
+        tag: "Confluence-compatible",
+        summary: "Descendants, Confluence style",
+        description:
+          "Confluence's own route for the branch below a page: every page below it, not " <>
+            "just its children, in level order and windowed — `limit` is 25 by default.",
+        params: [
+          path_param("id", %{"type" => "integer"}, "The Confluence content id."),
+          query_param("start", %{"type" => "integer", "minimum" => 0}, "Offset, default 0."),
+          query_param(
+            "limit",
+            %{"type" => "integer", "minimum" => 1, "maximum" => 100},
+            "Window size, default 25, at most 100."
+          )
+        ],
+        responses: %{
+          200 => ok("DescendantList"),
           404 => error("The page is not mirrored, or not readable.")
         }
       },
@@ -624,6 +758,23 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
           ~w(id title space)
         ),
       "PageList" => list_of("PageSummary"),
+      "PageDescendant" => %{
+        "description" => "A `PageSummary` with where it sits below the page the request named.",
+        "allOf" => [
+          ref("PageSummary"),
+          object(
+            %{
+              "depth" => integer("Levels below the named page; a direct child is 1."),
+              "parent" => %{
+                "type" => ["string", "null"],
+                "description" => "The content id of the page above this one."
+              }
+            },
+            ~w(depth)
+          )
+        ]
+      },
+      "DescendantList" => list_of("PageDescendant"),
       "Page" =>
         object(
           %{
@@ -726,6 +877,73 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
             "source" => string()
           },
           ~w(status database)
+        ),
+      "Account" =>
+        object(
+          %{
+            "id" => integer("The account's id in this mirror."),
+            "email" => string("The address it signs in with."),
+            "displayName" => string(),
+            "role" => string("`admin` or `user`.")
+          },
+          ~w(id email)
+        ),
+      "Identity" =>
+        object(
+          %{
+            "accountId" => string("The Confluence account id the permissions carry."),
+            "displayName" => string("The name the content shows, when it shows one."),
+            "groups" => array_of(string("A group the last sync read for this identity.")),
+            "linkedTo" => %{
+              "description" =>
+                "The account that stands for this identity, or null when none does.",
+              "oneOf" => [ref("Account"), %{"type" => "null"}]
+            }
+          },
+          ~w(accountId),
+          "One Confluence identity — a person's account on the site, as the content names it."
+        ),
+      "IdentityList" =>
+        object(
+          %{
+            "items" => array_of(ref("Identity")),
+            "total" => integer("How many identities match, across every window."),
+            "limit" => integer("Window size that was asked for."),
+            "offset" => integer("Offset of the first item.")
+          },
+          ~w(items total
+             limit
+             offset),
+          "A page of identities. A site can name a hundred thousand of them, so this list is searched and paged rather than drawn whole."
+        ),
+      "IdentityLink" =>
+        object(
+          %{
+            "userId" => integer("The account's id here."),
+            "email" => string("Or the address it uses, when the id is not at hand.")
+          },
+          [],
+          "Name the account one way or the other; `userId` wins when both are given."
+        ),
+      "IdentityLinkResult" =>
+        object(
+          %{
+            "identity" =>
+              object(
+                %{
+                  "accountId" => string("The Confluence account id."),
+                  "groups" => array_of(string("The groups the last sync read for it.")),
+                  "linkedTo" => %{
+                    "description" => "The account it stands for, or null after an unlink.",
+                    "oneOf" => [ref("Account"), %{"type" => "null"}]
+                  }
+                },
+                ~w(accountId)
+              ),
+            "account" => ref("Account")
+          },
+          ~w(identity account),
+          "The identity as it stands after the change, beside the account it belongs to."
         )
     }
   end

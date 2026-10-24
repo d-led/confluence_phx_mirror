@@ -122,6 +122,7 @@ carries it in `_meta` as `confluence-mirror/origin`, and the mirror's own say
 | `confluence_get_attachments` | atlassian | files: name, type, size, download URL | `page_id` |
 | `confluence_advanced_search` | mirror | the reader UI's advanced form | `q`, `phrase`, `any`, `none`, `space(s)`, `label`, `type`, `creator`, `ancestor`, `updated`, `from`, `to`, `sort`, `limit`, `start` |
 | `confluence_get_page_ancestors` | mirror | the trail down to a page, root first | `page_id` |
+| `confluence_get_page_descendants` | mirror | every page below a page, level by level, a window at a time | `page_id`, `start`, `limit` |
 | `confluence_get_backlinks` | mirror | pages linking to a page | `page_id`, `limit` |
 | `confluence_list_spaces` | mirror | the spaces the reader may read | `query`, `limit` |
 | `confluence_get_space` | mirror | one space: description, home page, readable count | `space_key` |

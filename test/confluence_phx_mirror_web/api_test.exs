@@ -85,6 +85,31 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
              ]
     end
 
+    test "lists the whole branch below a page, one window at a time", %{conn: conn} do
+      first = conn |> get(~p"/api/v1/pages/1000/descendants") |> json_response(200)
+
+      assert first["size"] == 25
+      assert first["_links"]["next"] =~ "start=25"
+
+      operations = Enum.find(first["results"], &(&1["title"] == "Operations"))
+      assert operations["depth"] == 1
+      assert operations["parent"] == "1000"
+    end
+
+    test "a deep descendant says how far below the named page it sits", %{conn: conn} do
+      rest =
+        conn
+        |> get(~p"/api/v1/pages/1000/descendants?start=25&limit=100")
+        |> json_response(200)
+
+      assert rest["size"] == 11
+      refute Map.has_key?(rest["_links"], "next")
+
+      revocation = Enum.find(rest["results"], &(&1["title"] == "Emergency Revocation"))
+      assert revocation["depth"] == 7
+      assert revocation["parent"] == "1204"
+    end
+
     test "lists the pages that link to a page", %{conn: conn} do
       backlinks = conn |> get(~p"/api/v1/pages/1002/backlinks") |> json_response(200)
 
@@ -158,6 +183,16 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       assert page["id"] == "1002"
       assert page["space"]["key"] == "ENG"
       assert page["version"]["number"] == 15
+    end
+
+    test "descendants answer on Confluence's own descendant route", %{conn: conn} do
+      body =
+        conn
+        |> get(~p"/wiki/rest/api/content/1000/descendant/page?limit=100")
+        |> json_response(200)
+
+      assert body["size"] == 36
+      assert body["limit"] == 100
     end
 
     test "content search uses the same CQL engine", %{conn: conn} do

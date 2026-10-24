@@ -139,6 +139,24 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     |> String.trim()
   end
 
+  @doc """
+  How many levels below `root` this page sits — 1 for a direct child.
+
+  Both subtree listings (the JSON API's `/pages/:id/descendants` and the MCP
+  tool) report it, and both read it from the same denormalised trail, so the
+  rule is stated once.
+  """
+  @spec depth_below(t(), t()) :: non_neg_integer()
+  def depth_below(%__MODULE__{ancestors: trail}, %__MODULE__{ancestors: root_trail}) do
+    length(trail || []) - length(root_trail || [])
+  end
+
+  @doc "The Confluence id of the page directly above this one, when the trail names it."
+  @spec parent_confluence_id(t()) :: integer() | nil
+  def parent_confluence_id(%__MODULE__{ancestors: trail}) do
+    trail |> List.wrap() |> List.last()
+  end
+
   def audit_event_purged(%__MODULE__{} = page) do
     Entry.new("page.purged", "page", to_string(page.confluence_id), %{
       title: page.title,
