@@ -1,6 +1,6 @@
 defmodule ConfluencePhxMirrorWeb.Live.Admin.IdentityRefusalTest do
   @moduledoc """
-  What the identity picker says when a link is refused, in the words an
+  What the identities page says when a link is refused, in the words an
   administrator can act on: whose the identity already is, or that the site has
   not shown it yet.
 
@@ -23,7 +23,7 @@ defmodule ConfluencePhxMirrorWeb.Live.Admin.IdentityRefusalTest do
     known_identity("acc-taken")
     {:ok, _holder} = Accounts.link_identity(holder, "acc-taken", {:user, admin})
 
-    {:ok, view, _html} = live(conn, ~p"/admin/users")
+    {:ok, view, _html} = live(conn, ~p"/admin/identities")
 
     html =
       render_submit(view, "confirm_link", %{
@@ -37,7 +37,7 @@ defmodule ConfluencePhxMirrorWeb.Live.Admin.IdentityRefusalTest do
   test "an identity the mirror has never seen asks for a sync", %{conn: conn} do
     picker = user_fixture(%{email: "picker@example.com"})
 
-    {:ok, view, _html} = live(conn, ~p"/admin/users")
+    {:ok, view, _html} = live(conn, ~p"/admin/identities")
 
     html =
       render_submit(view, "confirm_link", %{
@@ -55,7 +55,7 @@ defmodule ConfluencePhxMirrorWeb.Live.Admin.IdentityRefusalTest do
     known_identity("acc-known")
     {:ok, _picker} = Accounts.link_identity(picker, "acc-known", {:user, admin})
 
-    {:ok, view, _html} = live(conn, ~p"/admin/users")
+    {:ok, view, _html} = live(conn, ~p"/admin/identities")
 
     html =
       render_submit(view, "confirm_link", %{

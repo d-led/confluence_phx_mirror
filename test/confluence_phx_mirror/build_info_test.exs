@@ -113,7 +113,11 @@ defmodule ConfluencePhxMirror.BuildInfoTest do
   end
 
   defp empty_dir do
+    # `unique_integer/1` counts from one in every run, and the temp directory
+    # outlives the run: without clearing it, "empty" is a directory some earlier
+    # run already wrote `build_info.json` into, and the test reads that build.
     dir = Path.join(System.tmp_dir!(), "build-info-#{System.unique_integer([:positive])}")
+    File.rm_rf!(dir)
     File.mkdir_p!(dir)
     dir
   end
