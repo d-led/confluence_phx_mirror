@@ -111,9 +111,17 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLive do
     %{
       path: URLs.page_path(result.space.key, result.page.confluence_id, result.page.slug),
       title: result.page.title,
-      space: result.space.key,
+      key: key_badge(result.space),
+      space_name: result.space.name,
+      updated_at: result.page.external_updated_at,
       blogpost?: result.page.type == "blogpost"
     }
+  end
+
+  # A personal space is keyed by its owner's account id, which tells a reader
+  # nothing: its name is the whole identification it needs.
+  defp key_badge(space) do
+    if Authorization.personal_space?(space), do: nil, else: space.key
   end
 
   @impl true
@@ -155,6 +163,19 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLive do
         data-hits
         class="absolute inset-x-0 z-50 mt-1 overflow-hidden rounded-box border border-base-300 bg-base-100 shadow-lg"
       >
+        <%!-- The count first, the way Confluence opens its list: how much is
+        behind the words before any of it is read. --%>
+        <p
+          :if={@hits != []}
+          id="header-search-count"
+          class="flex items-center gap-2 px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-base-content/60"
+        >
+          Content
+          <span class="badge badge-ghost badge-xs font-normal normal-case tracking-normal">
+            {length(@hits)}
+          </span>
+        </p>
+
         <ul
           role="listbox"
           aria-label="Search suggestions"
@@ -170,14 +191,24 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLive do
               data-value={hit.path}
               phx-value-path={hit.path}
               phx-click="open_page"
-              class="min-w-0"
+              class="min-w-0 items-start"
             >
               <.icon
                 name={if hit.blogpost?, do: "hero-newspaper", else: "hero-document-text"}
-                class="size-4 shrink-0 opacity-60"
+                class="mt-0.5 size-4 shrink-0 opacity-60"
               />
-              <span class="truncate">{hit.title}</span>
-              <span class="badge badge-ghost badge-xs shrink-0">{hit.space}</span>
+              <%!-- Two lines, as Confluence shows them: the title is what was
+              found, the line under it is where it lives and how stale it is —
+              the two things that tell one similarly named page from another. --%>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate">{hit.title}</span>
+                <span class="block truncate text-[11px] font-normal text-base-content/60">
+                  {hit.space_name} · Updated {ConfluencePhxMirrorWeb.Time.ago(hit.updated_at)}
+                </span>
+              </span>
+              <span :if={hit.key} class="badge badge-ghost badge-xs mt-0.5 shrink-0">
+                {hit.key}
+              </span>
             </button>
           </li>
           <li :if={@hits == []} role="presentation">

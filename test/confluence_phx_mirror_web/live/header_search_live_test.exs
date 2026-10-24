@@ -29,6 +29,28 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLiveTest do
     assert has_element?(view, "[role=option]")
   end
 
+  test "a suggestion says where the page lives and how stale it is" do
+    {:ok, view, _html} = search()
+    type(view, "certificate")
+
+    row = view |> element("[role=option]") |> render()
+
+    # The title is what matched; the line under it is what tells two similarly
+    # named pages apart — the space, and when Confluence last changed it.
+    assert row =~ "Certificate Rotation"
+    assert row =~ "Engineering Handbook"
+    assert row =~ "Updated"
+  end
+
+  test "the list opens with how much content is behind the words" do
+    {:ok, view, _html} = search()
+    refute has_element?(view, "#header-search-count")
+
+    type(view, "certificate")
+
+    assert has_element?(view, "#header-search-count", "Content 1")
+  end
+
   test "a query nothing matches says so instead of offering something else" do
     {:ok, view, _html} = search()
 
