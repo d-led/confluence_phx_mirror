@@ -1057,10 +1057,12 @@ defmodule ConfluencePhxMirror.Mirror do
   """
   def root_pages(space_id, opts \\ []) do
     from(p in Page,
+      as: :page,
       where: p.space_id == ^space_id and is_nil(p.parent_id) and is_nil(p.deleted_at),
       order_by: [asc: p.title],
       select: %{
         id: p.id,
+        space_id: p.space_id,
         confluence_id: p.confluence_id,
         type: p.type,
         title: p.title,
@@ -1070,17 +1072,20 @@ defmodule ConfluencePhxMirror.Mirror do
       }
     )
     |> limit_rows(Keyword.get(opts, :limit))
+    |> filtered(opts)
     |> Repo.all()
   end
 
   @doc "The pages directly below `page`, by title; `:limit` takes a window."
   def children(page, opts \\ []) do
     from(p in Page,
+      as: :page,
       where: p.parent_id == ^page.id and is_nil(p.deleted_at),
       order_by: [asc: p.title],
       limit: ^Keyword.get(opts, :limit),
       preload: [:space]
     )
+    |> filtered(opts)
     |> Repo.all()
   end
 
@@ -1091,11 +1096,10 @@ defmodule ConfluencePhxMirror.Mirror do
   that lists all of them is a page nobody scrolls. The count lets the page show
   a window and say how much is behind it.
   """
-  def count_children(%Page{} = page) do
-    Repo.aggregate(
-      from(p in Page, where: p.parent_id == ^page.id and is_nil(p.deleted_at)),
-      :count
-    )
+  def count_children(%Page{} = page, opts \\ []) do
+    from(p in Page, as: :page, where: p.parent_id == ^page.id and is_nil(p.deleted_at))
+    |> filtered(opts)
+    |> Repo.aggregate(:count)
   end
 
   @doc """
@@ -1247,7 +1251,7 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc "Breadcrumb trail (space included) in Confluence order."
-  def breadcrumbs(%Page{} = page) do
+  def breadcrumbs(%Page{} = page, opts \\ []) do
     [
       %{
         title: page.space.name,
@@ -1255,17 +1259,19 @@ defmodule ConfluencePhxMirror.Mirror do
         homepage_confluence_id: page.space.homepage_confluence_id,
         kind: :space
       }
-    ] ++ Enum.map(ancestor_crumbs(page.ancestors), &Map.put(&1, :kind, :page))
+    ] ++ Enum.map(ancestor_crumbs(page.ancestors, opts), &Map.put(&1, :kind, :page))
   end
 
   # A crumb needs a title and a link to a page, not a page: three columns and no
   # space preload keep the trail to one statement instead of two.
-  defp ancestor_crumbs(ids) when is_list(ids) do
+  defp ancestor_crumbs(ids, opts) when is_list(ids) do
     pages =
       from(p in Page,
+        as: :page,
         where: p.confluence_id in ^ids and is_nil(p.deleted_at),
         select: %{title: p.title, confluence_id: p.confluence_id, slug: p.slug}
       )
+      |> filtered(opts)
       |> Repo.all()
 
     by_id = Map.new(pages, &{&1.confluence_id, &1})
@@ -1273,19 +1279,23 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc "Ancestor pages in Confluence order (root first)."
-  def ancestor_pages(%Page{ancestors: ids}) when is_list(ids) do
+  def ancestor_pages(page, opts \\ [])
+
+  def ancestor_pages(%Page{ancestors: ids}, opts) when is_list(ids) do
     pages =
-      Repo.all(
-        from p in Page,
-          where: p.confluence_id in ^ids and is_nil(p.deleted_at),
-          preload: [:space]
+      from(p in Page,
+        as: :page,
+        where: p.confluence_id in ^ids and is_nil(p.deleted_at),
+        preload: [:space]
       )
+      |> filtered(opts)
+      |> Repo.all()
 
     by_id = Map.new(pages, &{&1.confluence_id, &1})
     Enum.flat_map(ids, fn id -> List.wrap(by_id[id]) end)
   end
 
-  def ancestor_pages(_page), do: []
+  def ancestor_pages(_page, _opts), do: []
 
   @doc "Most recent sync run (any status)."
   def last_sync_run do
@@ -1302,33 +1312,39 @@ defmodule ConfluencePhxMirror.Mirror do
     )
   end
 
-  def get_space_home(%Space{homepage_confluence_id: nil}), do: nil
+  def get_space_home(space, opts \\ [])
+  def get_space_home(%Space{homepage_confluence_id: nil}, _opts), do: nil
 
-  def get_space_home(%Space{homepage_confluence_id: id}) do
+  def get_space_home(%Space{homepage_confluence_id: id}, opts) do
     # The overview and the redirect both know the space: the card needs a title,
     # a link and an excerpt, so the row is read without its body or its space.
-    Repo.one(
-      from p in Page,
-        where: p.confluence_id == ^id and is_nil(p.deleted_at),
-        select: %{
-          id: p.id,
-          confluence_id: p.confluence_id,
-          type: p.type,
-          title: p.title,
-          slug: p.slug,
-          body_text: p.body_text
-        }
+    from(p in Page,
+      as: :page,
+      where: p.confluence_id == ^id and is_nil(p.deleted_at),
+      select: %{
+        id: p.id,
+        space_id: p.space_id,
+        confluence_id: p.confluence_id,
+        type: p.type,
+        title: p.title,
+        slug: p.slug,
+        body_text: p.body_text
+      }
     )
+    |> filtered(opts)
+    |> Repo.one()
   end
 
   @doc "Blog posts of a space, newest first, as the overview's rail lists them."
-  def blog_posts(space_id \\ nil, limit \\ 20) do
+  def blog_posts(space_id \\ nil, limit \\ 20, opts \\ []) do
     from(p in Page,
+      as: :page,
       where: p.type == "blogpost" and is_nil(p.deleted_at),
       order_by: [desc: p.external_updated_at],
       limit: ^limit,
       select: %{
         id: p.id,
+        space_id: p.space_id,
         confluence_id: p.confluence_id,
         type: p.type,
         title: p.title,
@@ -1338,29 +1354,44 @@ defmodule ConfluencePhxMirror.Mirror do
       }
     )
     |> where_space(space_id)
+    |> filtered(opts)
     |> Repo.all()
   end
 
-  def backlinks(%Page{id: id}) do
+  def backlinks(%Page{id: id}, opts \\ []) do
     from(p in Page,
+      as: :page,
       join: l in assoc(p, :outgoing_links),
       where: l.target_page_id == ^id and is_nil(p.deleted_at),
       distinct: true,
       order_by: [asc: p.title],
       preload: [:space]
     )
+    |> filtered(opts)
     |> Repo.all()
   end
 
   @doc """
-  The links a page makes, oldest first.
+  The links a page draws, in the order they appear.
 
   The rail shows a handful of them, so the window is asked of the database; a
   hub page with a thousand links is not worth a thousand rows per request.
+
+  Options: `:limit` (default 12) and `:filter` — the restriction is applied to
+  the page a link points at, through the `:page` binding on that left join, so a
+  link whose target this reader may not open is never returned and the title it
+  carries never leaves the database. A link with no target keeps its row: there
+  is no page behind it to ask about.
   """
-  def outgoing_links(%Page{id: id}, limit \\ 12) do
-    from(l in Link, where: l.source_page_id == ^id, order_by: [asc: l.inserted_at])
-    |> limit_rows(limit)
+  def outgoing_links(%Page{id: id}, opts \\ []) do
+    from(l in Link,
+      left_join: t in assoc(l, :target_page),
+      as: :page,
+      where: l.source_page_id == ^id,
+      order_by: [asc: l.inserted_at]
+    )
+    |> filtered(opts)
+    |> limit_rows(Keyword.get(opts, :limit, 12))
     |> Repo.all()
   end
 
@@ -1422,13 +1453,15 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
-  def recent_pages_for_space(%Space{id: space_id}, limit) do
+  def recent_pages_for_space(%Space{id: space_id}, limit, opts \\ []) do
     from(p in Page,
+      as: :page,
       where: p.space_id == ^space_id and is_nil(p.deleted_at),
       order_by: [desc: p.external_updated_at],
       limit: ^limit,
       select: %{
         id: p.id,
+        space_id: p.space_id,
         confluence_id: p.confluence_id,
         type: p.type,
         title: p.title,
@@ -1436,6 +1469,7 @@ defmodule ConfluencePhxMirror.Mirror do
         external_updated_at: p.external_updated_at
       }
     )
+    |> filtered(opts)
     |> Repo.all()
   end
 
@@ -1542,10 +1576,17 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc "How many files a space holds, without reading them."
-  def count_attachments_in_space(space_id) do
+  def count_attachments_in_space(space_id, opts \\ []) do
+    pages =
+      from(p in Page,
+        as: :page,
+        where: p.space_id == ^space_id and is_nil(p.deleted_at),
+        select: p.id
+      )
+      |> filtered(opts)
+
     from(a in Attachment,
-      join: p in assoc(a, :page),
-      where: p.space_id == ^space_id and is_nil(p.deleted_at),
+      where: a.page_id in subquery(pages),
       select: count(a.id)
     )
     |> Repo.one()
@@ -1554,14 +1595,23 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc """
   Labels used in one space, with their page counts.
 
-  Options: `:limit` and `:order` (`:name`, the default, or `:popular`). Both
-  are part of the query, so the overview asks for the dozen labels it draws
-  rather than every label the space has ever used.
+  Options: `:limit`, `:order` (`:name`, the default, or `:popular`) and
+  `:filter`. Both the labels and their counts are computed over the pages the
+  filter keeps, so a label that only a page the reader may not open carries does
+  not appear — and a count does not include what its reader cannot read.
   """
   def labels_in_space(space_id, opts \\ []) do
+    pages =
+      from(p in Page,
+        as: :page,
+        where: p.space_id == ^space_id and is_nil(p.deleted_at),
+        select: p.id
+      )
+      |> filtered(opts)
+
     from(l in Label,
       join: p in assoc(l, :pages),
-      where: p.space_id == ^space_id and is_nil(p.deleted_at),
+      where: p.id in subquery(pages),
       group_by: l.id,
       select: {l.name, count(p.id)}
     )

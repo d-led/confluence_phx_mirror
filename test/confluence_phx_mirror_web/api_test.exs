@@ -332,6 +332,58 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       assert Enum.any?(insider["results"], &(&1["id"] == Demo.restricted_page()))
     end
 
+    test "a page's children leave out the sibling the reader may not open", %{conn: conn} do
+      children =
+        conn
+        |> as_reader(user_fixture())
+        |> get(~p"/api/v1/pages/#{Demo.open_page_parent()}/children")
+        |> json_response(200)
+
+      titles = Enum.map(children["results"], & &1["title"])
+
+      assert titles == [Demo.open_page_title()]
+    end
+
+    test "a page's backlinks leave out a page the reader may not open", %{conn: conn} do
+      backlinks =
+        conn
+        |> as_reader(user_fixture())
+        |> get(~p"/api/v1/pages/#{Demo.open_page()}/backlinks")
+        |> json_response(200)
+
+      titles = Enum.map(backlinks["results"], & &1["title"])
+
+      assert "Engineering Handbook" in titles
+      refute Demo.restricted_page_title() in titles
+    end
+
+    test "a reader in the restricting group sees both", %{conn: _conn} do
+      children =
+        build_conn()
+        |> as_reader(reader_in_group(Demo.page_readers()))
+        |> get(~p"/api/v1/pages/#{Demo.open_page_parent()}/children")
+        |> json_response(200)
+
+      titles = Enum.map(children["results"], & &1["title"])
+
+      assert Demo.restricted_page_title() in titles
+    end
+
+    test "an administrator sees both", %{conn: conn} do
+      admin = user_fixture(%{email: "api-admin@example.com", role: "admin"})
+      {:ok, plain, _} = Accounts.create_api_token(admin, "admin", {:system, "test"})
+
+      children =
+        conn
+        |> put_req_header("authorization", "Bearer " <> plain)
+        |> get(~p"/api/v1/pages/#{Demo.open_page_parent()}/children")
+        |> json_response(200)
+
+      titles = Enum.map(children["results"], & &1["title"])
+
+      assert Demo.restricted_page_title() in titles
+    end
+
     test "label counts cover only pages the reader may open", %{conn: conn} do
       outsider =
         conn |> as_reader(user_fixture()) |> get(~p"/api/v1/labels") |> json_response(200)

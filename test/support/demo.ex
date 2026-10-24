@@ -19,6 +19,17 @@ defmodule ConfluencePhxMirror.Demo do
   @restricted_page_title "Macros Gallery"
   @page_readers "confluence-users"
 
+  # "Getting Started" — the parent of the open page and of the restricted one, so
+  # a child list and its count can be asserted to hold exactly the half a reader
+  # may open.
+  @open_page_parent "1001"
+  @open_page_parent_title "Getting Started"
+
+  # "Cross-links and Backlinks" — an open page that links to the restricted one,
+  # so its outgoing rail has something to leave out.
+  @crosslinks_page "1006"
+  @crosslinks_page_title "Cross-links and Backlinks"
+
   # A label only the restricted page carries: nothing about it may show up in a
   # catalogue a reader outside the group browses.
   @restricted_page_label "macros"
@@ -48,6 +59,9 @@ defmodule ConfluencePhxMirror.Demo do
   @doc "Slug of the open page, for its reader URL."
   def open_page_slug, do: Page.slugify(@open_page_title)
 
+  @doc "Title of the open page, as the mirror renders it."
+  def open_page_title, do: @open_page_title
+
   @doc "A page restricted to the readers in `page_readers/0`."
   def restricted_page, do: @restricted_page
 
@@ -62,6 +76,27 @@ defmodule ConfluencePhxMirror.Demo do
 
   @doc "The group that may read the restricted page."
   def page_readers, do: @page_readers
+
+  @doc "The page whose children are the open page and the restricted one."
+  def open_page_parent, do: @open_page_parent
+
+  @doc "Title of that parent, as the mirror renders it."
+  def open_page_parent_title, do: @open_page_parent_title
+
+  @doc "Slug of that parent, for its reader URL."
+  def open_page_parent_slug, do: Page.slugify(@open_page_parent_title)
+
+  @doc "The same page as a number, for topic names and id comparisons."
+  def open_page_parent_number, do: String.to_integer(@open_page_parent)
+
+  @doc "An open page that links to the restricted page."
+  def crosslinks_page, do: @crosslinks_page
+
+  @doc "Title of that page, as the mirror renders it."
+  def crosslinks_page_title, do: @crosslinks_page_title
+
+  @doc "Slug of that page, for its reader URL."
+  def crosslinks_page_slug, do: Page.slugify(@crosslinks_page_title)
 
   @doc "A label only the restricted page carries."
   def restricted_page_label, do: @restricted_page_label

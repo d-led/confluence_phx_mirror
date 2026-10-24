@@ -28,7 +28,9 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
 
   def show(conn, %{"key" => key}) do
     with_space(conn, key, fn conn, space ->
-      case Mirror.get_space_home(space) do
+      # A home page this reader may not open is not their home: showing them the
+      # overview of the space is the honest answer.
+      case Mirror.get_space_home(space, filter: readable_pages(conn)) do
         nil -> render_overview(conn, space)
         home -> redirect(conn, to: URLs.page_path(space.key, home.confluence_id, home.slug))
       end
@@ -116,20 +118,29 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
   defp put_space_etag(conn, _space), do: conn
 
   defp render_overview(conn, space) do
+    # Every list on this page names pages, so every list asks the same question
+    # the page itself would: a reader who may see the space still may not see a
+    # page in it, and a card, a rail entry or a count that said otherwise would
+    # be telling them about content they cannot open.
+    filter = readable_pages(conn)
+
     render(conn, :show,
       page_title: space.name,
       active: :overview,
       space: space,
       tree: Authorization.branch(scope(conn), space.id),
-      home: Mirror.get_space_home(space),
-      root_pages: Mirror.root_pages(space.id, limit: @root_page_cards),
-      recent_pages: Mirror.recent_pages_for_space(space, 6),
-      posts: Mirror.blog_posts(space.id, 3),
-      labels: Mirror.labels_in_space(space.id, limit: @label_chips, order: :popular),
-      attachment_count: Mirror.count_attachments_in_space(space.id),
+      home: Mirror.get_space_home(space, filter: filter),
+      root_pages: Mirror.root_pages(space.id, limit: @root_page_cards, filter: filter),
+      recent_pages: Mirror.recent_pages_for_space(space, 6, filter: filter),
+      posts: Mirror.blog_posts(space.id, 3, filter: filter),
+      labels:
+        Mirror.labels_in_space(space.id, limit: @label_chips, order: :popular, filter: filter),
+      attachment_count: Mirror.count_attachments_in_space(space.id, filter: filter),
       grants: space_grants(conn, space)
     )
   end
+
+  defp readable_pages(conn), do: &Authorization.restrict_pages(&1, scope(conn))
 
   # Who may read a space is administrative information: the sync mirrors it from
   # Confluence, and an administrator is the one who needs to see whether the

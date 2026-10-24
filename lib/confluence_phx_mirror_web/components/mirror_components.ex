@@ -343,12 +343,16 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   attr :title, :string, required: true
   attr :icon, :string, default: "hero-information-circle"
   attr :class, :any, default: nil
+  attr :id, :string, default: nil
 
   slot :inner_block, required: true
 
   def rail_section(assigns) do
     ~H"""
-    <section class={["rounded-xl border border-base-300/70 bg-base-100/60 p-4", @class]}>
+    <section
+      id={@id}
+      class={["rounded-xl border border-base-300/70 bg-base-100/60 p-4", @class]}
+    >
       <h2 class="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-base-content/70">
         <.icon name={@icon} class="size-3.5" /> {@title}
       </h2>

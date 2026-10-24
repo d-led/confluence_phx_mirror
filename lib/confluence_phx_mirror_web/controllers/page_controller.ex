@@ -60,7 +60,9 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   end
 
   defp redirect_to_space_home(conn, space) do
-    case Mirror.get_space_home(space) do
+    # A home page this reader may not open is not their home: the overview of
+    # the space is the honest answer.
+    case Mirror.get_space_home(space, filter: readable_pages(conn)) do
       nil -> redirect(conn, to: URLs.space_overview_path(space.key))
       home -> redirect(conn, to: URLs.page_path(space.key, home.confluence_id, home.slug))
     end
@@ -243,10 +245,11 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     space = page.space
     user = conn.assigns[:current_user]
     watching = watched(user, [{"page", page.id}, {"space", space.id}])
+    filter = readable_pages(conn)
 
     breadcrumbs =
       case kind do
-        :page -> page |> Mirror.breadcrumbs() |> crumb_paths(space)
+        :page -> page |> Mirror.breadcrumbs(filter: filter) |> crumb_paths(space)
         :blog -> [space_crumb(space), %{title: "Blog", path: URLs.space_blog_path(space.key)}]
       end
 
@@ -258,17 +261,23 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       tree: tree_for(scope(conn), space, page, kind),
       breadcrumbs: breadcrumbs,
       children: children_window(scope(conn), page),
-      child_count: Mirror.count_children(page),
+      child_count: Mirror.count_children(page, filter: filter),
       attachments: Mirror.attachments(page),
       comments: Mirror.comments(page),
-      backlinks: Mirror.backlinks(page),
-      outgoing_links: Mirror.outgoing_links(page),
+      backlinks: Mirror.backlinks(page, filter: filter),
+      outgoing_links: Mirror.outgoing_links(page, filter: filter),
       subscribed?: MapSet.member?(watching, {"page", page.id}),
       space_subscribed?: MapSet.member?(watching, {"space", space.id}),
       admin?: Scope.admin?(scope(conn)),
       resync_path: URLs.page_resync_path(space.key, page.confluence_id)
     )
   end
+
+  # A page's own lists name other pages: a backlink names the page that links
+  # here, a crumb names an ancestor, an outgoing link names what this page
+  # points at. None of them may name a page its reader cannot open, so the same
+  # filter the sidebar uses is applied to each.
+  defp readable_pages(conn), do: &Authorization.restrict_pages(&1, scope(conn))
 
   # A front page in a big space has hundreds of children, and a page that lists
   # them all is a page nobody scrolls: the view shows a window, the count says

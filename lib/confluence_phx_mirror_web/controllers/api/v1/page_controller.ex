@@ -41,7 +41,10 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
 
   def children(conn, %{"id" => id}) do
     with_page(conn, id, fn page ->
-      items = page |> Mirror.children() |> Enum.map(&Presenter.summary/1)
+      items =
+        page
+        |> Mirror.children(filter: readable_pages(conn))
+        |> Enum.map(&Presenter.summary/1)
 
       json(
         conn,
@@ -57,7 +60,10 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
 
   def ancestors(conn, %{"id" => id}) do
     with_page(conn, id, fn page ->
-      items = page |> Mirror.ancestor_pages() |> Enum.map(&Presenter.summary/1)
+      items =
+        page
+        |> Mirror.ancestor_pages(filter: readable_pages(conn))
+        |> Enum.map(&Presenter.summary/1)
 
       json(
         conn,
@@ -123,7 +129,10 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
 
   def backlinks(conn, %{"id" => id}) do
     with_page(conn, id, fn page ->
-      items = page |> Mirror.backlinks() |> Enum.map(&Presenter.summary/1)
+      items =
+        page
+        |> Mirror.backlinks(filter: readable_pages(conn))
+        |> Enum.map(&Presenter.summary/1)
 
       json(
         conn,
@@ -168,7 +177,12 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.PageController do
 
   # The API answers as the caller: a page the reader may not open is not
   # mirrored as far as that reader is concerned, exactly like the HTML view.
+  # Every list below is filtered the same way, because a page that may be read
+  # can still name children, ancestors or backlinks that may not.
   defp readable?(conn, page), do: Authorization.can_read_page?(conn.assigns.current_scope, page)
+
+  defp readable_pages(conn),
+    do: &Authorization.restrict_pages(&1, conn.assigns.current_scope)
 
   defp pagination(params) do
     start = parse_int(params["start"], 0)

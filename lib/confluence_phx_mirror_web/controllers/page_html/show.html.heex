@@ -87,11 +87,15 @@
       <% end %>
     </.rail_section>
 
-    <.rail_section title="Linked from" icon="hero-arrow-uturn-left">
+    <.rail_section id="backlinks" title="Linked from" icon="hero-arrow-uturn-left">
       <.page_list pages={@backlinks} empty="No other mirrored page links here yet." />
     </.rail_section>
 
-    <.rail_section title="Outgoing links" icon="hero-arrow-top-right-on-square">
+    <.rail_section
+      id="outgoing-links"
+      title="Outgoing links"
+      icon="hero-arrow-top-right-on-square"
+    >
       <p :if={@outgoing_links == []} class="text-xs text-base-content/70">No links.</p>
       <ul :if={@outgoing_links != []} class="space-y-1.5">
         <li :for={link <- @outgoing_links} class="truncate text-xs">
