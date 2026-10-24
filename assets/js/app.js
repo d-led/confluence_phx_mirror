@@ -30,6 +30,7 @@ import "./confirm"
 import "./sidebar"
 import "./heading_anchors"
 import "./page_tree"
+import "./topbar_menus"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

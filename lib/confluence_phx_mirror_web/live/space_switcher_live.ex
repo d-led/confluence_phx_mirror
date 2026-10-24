@@ -171,9 +171,23 @@ defmodule ConfluencePhxMirrorWeb.SpaceSwitcherLive do
               this.pushEvent("close_switcher", {})
             }
             document.addEventListener("click", this.clickAway)
+
+            // Escape closes a menu the reader opened. The menu is wide and the
+            // find box has focus, so this is the key a keyboard reader reaches
+            // for first, and every other popup on the site answers it.
+            this.closeOnEscape = event => {
+              if (event.key !== "Escape") return
+              if (!this.el.querySelector("[data-switcher-menu]")) return
+              event.preventDefault()
+              this.pushEvent("close_switcher", {})
+              const button = this.el.querySelector("#space-switcher-button")
+              if (button) button.focus()
+            }
+            this.el.addEventListener("keydown", this.closeOnEscape)
           },
           destroyed() {
             document.removeEventListener("click", this.clickAway)
+            this.el.removeEventListener("keydown", this.closeOnEscape)
           },
           updated() {
             // Opening this menu closes the native ones, the way they close each

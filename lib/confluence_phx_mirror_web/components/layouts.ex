@@ -184,16 +184,22 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             </.link>
 
             <%!-- One `name` for every top-bar menu: opening one closes the other,
-            which is the native accordion behaviour of <details> and needs no
-            JavaScript. The space switcher is the exception — it is a LiveView
-            that keeps its own open state, because a streaming page re-renders
-            and would take an `open` attribute away again. --%>
+            which is the native accordion behaviour of <details>. `.TopbarMenu`
+            adds what <details> leaves out — a click elsewhere and Escape close
+            it — and keeps the reader's own `open` across a re-render, which a
+            streaming page performs every second. The space switcher is the
+            exception: it is a LiveView that keeps its state on the server. --%>
             {space_switcher(@live)}
 
             <.theme_menu />
 
             <%= if @current_user do %>
-              <details name="topbar-menu" class="dropdown dropdown-end">
+              <details
+                id="account-menu"
+                name="topbar-menu"
+                phx-hook=".TopbarMenu"
+                class="dropdown dropdown-end"
+              >
                 <summary class="btn btn-ghost btn-sm gap-1.5" aria-label="Account">
                   <span class="grid size-6 place-items-center rounded-full bg-secondary text-[11px] font-semibold text-secondary-content">
                     {initials(@current_user.display_name || @current_user.email)}
@@ -504,7 +510,12 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   """
   def theme_menu(assigns) do
     ~H"""
-    <details name="topbar-menu" class="dropdown dropdown-end">
+    <details
+      id="theme-menu"
+      name="topbar-menu"
+      phx-hook=".TopbarMenu"
+      class="dropdown dropdown-end"
+    >
       <summary class="btn btn-ghost btn-sm" aria-label="Theme">
         <.icon name="hero-swatch" class="size-4" />
       </summary>
@@ -515,6 +526,27 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
           </a>
         </li>
       </ul>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".TopbarMenu">
+        export default {
+          mounted() {
+            // `open` is the reader's state, not the server's: LiveView keeps the
+            // attributes it renders, and a streaming page patches its own DOM
+            // every second — which is how a menu used to shut in the reader's
+            // face. Remember what they chose and put it back after a patch.
+            //
+            // Closing it — a click elsewhere, Escape — is `topbar_menus.js`: the
+            // layout is also rendered by controllers, and a hook in a page no
+            // LiveView owns never runs.
+            this.wasOpen = this.el.open
+            this.el.addEventListener("toggle", () => {
+              this.wasOpen = this.el.open
+            })
+          },
+          updated() {
+            if (this.el.open !== this.wasOpen) this.el.open = this.wasOpen
+          }
+        }
+      </script>
     </details>
     """
   end
