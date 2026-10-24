@@ -12,6 +12,9 @@
 #           `:latest`) for main, `:v1.2.3` for a release tag, never a commit
 #           hash. What is scanned and started here is the branch's own tag, so
 #           a later stage that pulls `:main` is testing the same image.
+#           It waits for the two gates above (`needs`), so nothing is published
+#           from a commit that failed them — otherwise `:main` would mean "the
+#           last push", not "the last commit that passed".
 #
 # The quality script that developers run (scripts/quality.sh) is the same three
 # gates in one report, so a green laptop and a green pipeline mean the same
@@ -31,7 +34,11 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # A push that has been superseded by the next one is not worth twelve
+  # minutes of a shared runner: only the newest commit of a branch is built.
+  # Nothing is lost — the image is published from that commit, not from this
+  # run's.
+  cancel-in-progress: true
 
 env:
   MIX_ENV: test
@@ -41,7 +48,11 @@ env:
 jobs:
   lint:
     name: Static analysis
-    runs-on: ubuntu-latest
+    # Pinned, not `ubuntu-latest`: the label now moves to Ubuntu 26 on its own
+    # schedule, and a toolchain that changes under a green pipeline is not a
+    # gate.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -64,7 +75,10 @@ jobs:
 
   test:
     name: Suite and complexity
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # The suite is 4 minutes on a laptop and can take 12 on a cold runner. A
+    # hung VM should fail the gate, not occupy it for GitHub's six-hour default.
+    timeout-minutes: 40
     # Matches the development database version, so a migration that only works
     # on one Postgres fails here rather than in production.
     services:
@@ -116,7 +130,13 @@ jobs:
 
   image:
     name: Image, scan, non-root, publish
-    runs-on: ubuntu-latest
+    # The point of a gate is that the thing behind it cannot be reached before
+    # it opens: the image is built, scanned and pushed only for a commit that
+    # passed static analysis and the suite.
+    needs: [lint, test]
+    runs-on: ubuntu-24.04
+    # The arm64 half is built under QEMU, which is the slow part.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
