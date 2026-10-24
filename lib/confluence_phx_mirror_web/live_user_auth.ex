@@ -38,7 +38,7 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
   # identity and the site context. Only a websocket mount — which has no request
   # behind it — has to load them, and `assign_new` is where both flavours meet.
   defp assign_scope(socket, session) do
-    socket = assign_new(socket, :current_user, fn -> identity(session) end)
+    socket = assign_new(socket, :current_user, fn -> reader(session) end)
 
     case socket.assigns do
       %{current_scope: %Scope{}} ->
@@ -49,7 +49,13 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
     end
   end
 
-  defp identity(session) do
+  @doc """
+  The user a LiveView session belongs to.
+
+  Public because the presence widgets are rendered into pages the router never
+  mounted, and they must recognize a reader exactly as the pages around them do.
+  """
+  def reader(session) do
     case session["user_id"] do
       nil ->
         if Application.get_env(:confluence_phx_mirror, :auto_admin, false),

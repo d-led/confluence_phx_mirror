@@ -126,6 +126,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
+      live={@socket}
       spaces={@spaces}
       last_sync_run={@last_sync_run}
       mirror_name={@mirror_name}

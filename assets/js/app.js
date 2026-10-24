@@ -24,7 +24,6 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/confluence_phx_mirror"
 import topbar from "../vendor/topbar"
-import initPresence from "./presence"
 import {highlightCode} from "./code_highlight"
 import {localizeTimes} from "./local_time"
 import "./confirm"
@@ -66,9 +65,6 @@ window.addEventListener("pageshow", () => topbar.hide())
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()
-
-// Presence: the footer's site count and, on a page, who is reading it.
-initPresence()
 
 // Colour the code inside Confluence's code macro after the page is parsed.
 highlightCode()

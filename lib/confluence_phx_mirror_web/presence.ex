@@ -9,25 +9,54 @@ defmodule ConfluencePhxMirrorWeb.Presence do
   A reader is keyed by their account when signed in — two tabs are one person —
   and by their connection otherwise, since nothing else tells anonymous readers
   apart.
+
+  The readers are tracked by the two LiveViews rendered into the pages
+  (`PagePresenceLive`, `SitePresenceLive`): the pages themselves are controller
+  responses, and a LiveView is the process that lives exactly as long as the
+  reader has the page open.
   """
 
   use Phoenix.Presence,
     otp_app: :confluence_phx_mirror,
     pubsub_server: ConfluencePhxMirror.PubSub
 
-  @site_topic "site"
+  alias ConfluencePhxMirror.Accounts.User
 
-  @doc "Topic used by the page channel and the presence widget."
+  @site_topic "site"
+  @anonymous "Anonymous reader"
+
+  @doc "Topic used by a page's readers."
   def topic(confluence_id), do: "page:#{confluence_id}"
 
   @doc "The topic every reader joins, whatever they are looking at."
   def site_topic, do: @site_topic
 
-  @doc "Number of readers on a page."
-  def count(confluence_id), do: confluence_id |> topic() |> reader_count()
+  @doc "The key a reader is tracked under."
+  def key(%User{id: id}), do: "user:#{id}"
+
+  def key(nil),
+    do: "reader:" <> Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
+
+  @doc "The name the other readers of a page see."
+  def name(%User{display_name: nil, email: email}), do: email
+  def name(%User{display_name: name}), do: name
+  def name(nil), do: @anonymous
+
+  @doc """
+  Asks for a topic's changes, which arrive as `presence_diff` broadcasts.
+  """
+  def subscribe(topic), do: Phoenix.PubSub.subscribe(ConfluencePhxMirror.PubSub, topic)
+
+  @doc "The names of the readers on a topic, one per person, in order."
+  def readers(topic) do
+    topic
+    |> list()
+    |> Enum.map(fn {_key, %{metas: [meta | _]}} -> meta[:user] end)
+    |> Enum.sort()
+  end
 
   @doc "Number of readers with the mirror open."
-  def online_count, do: @site_topic |> reader_count()
+  def online_count, do: @site_topic |> list() |> map_size()
 
   @doc """
   The site topic's key for a reader.
@@ -47,8 +76,4 @@ defmodule ConfluencePhxMirrorWeb.Presence do
     |> Base.url_encode64(padding: false)
     |> binary_part(0, 22)
   end
-
-  # Presence keeps one entry per key with one meta per tab; a count asks how
-  # many people, so it counts the entries, not the metas.
-  defp reader_count(topic), do: topic |> list() |> map_size()
 end

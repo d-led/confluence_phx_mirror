@@ -91,7 +91,7 @@ ones specific to the mirror.
 | Blobs | `Blobs.Store` / `Blobs.LocalStore` | path-based; S3 can implement the behaviour |
 | Jobs | Oban | `Sync.SnapshotWorker`, `Sync.PageWorker`, notification workers |
 | Web | controllers + LiveView | reader UI, admin dashboard, REST API, webhooks |
-| Presence | `Web.Presence` + `PageChannel` / `SiteChannel` | who is reading a page, and how many readers are online, over one socket |
+| Presence | `Web.Presence` + `PagePresenceLive` / `SitePresenceLive` | who is reading a page, and how many readers are online; each is a LiveView rendered into the page, since the page itself is a controller response |
 | Accounts | `Accounts` | magic links, proxy auth, API tokens, Phoenix 1.8 `Scope` |
 | Audit | `Audit` | append-only; syncs, webhooks, accounts, attachments |
 

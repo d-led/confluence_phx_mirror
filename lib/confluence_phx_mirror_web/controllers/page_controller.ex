@@ -19,7 +19,6 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   alias ConfluencePhxMirror.Sync.PageWorker
   alias ConfluencePhxMirror.Webhooks
   alias ConfluencePhxMirrorWeb.NotFound
-  alias ConfluencePhxMirrorWeb.Presence
 
   # The directory is `/spaces`, which pages in the database. The home page shows
   # a window of it: a mirror with a thousand spaces would otherwise send a
@@ -266,7 +265,6 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       outgoing_links: Mirror.outgoing_links(page),
       subscribed?: MapSet.member?(watching, {"page", page.id}),
       space_subscribed?: MapSet.member?(watching, {"space", space.id}),
-      readers: Presence.count(page.confluence_id),
       admin?: Scope.admin?(scope(conn)),
       resync_path: URLs.page_resync_path(space.key, page.confluence_id)
     )

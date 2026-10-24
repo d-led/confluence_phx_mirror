@@ -12,17 +12,14 @@
   current_page={@page}
   breadcrumbs={@breadcrumbs}
   page_title={@page_title}
+  live={@conn}
   rail?={true}
 >
   <:rail>
     <.rail_section title="Reading now" icon="hero-users">
-      <div data-presence-topic={ConfluencePhxMirrorWeb.Presence.topic(@page.confluence_id)}>
-        <p class="flex items-baseline gap-1.5">
-          <span data-presence-count class="text-2xl font-semibold tabular-nums">{@readers}</span>
-          <span class="text-xs text-base-content/70">reading this page</span>
-        </p>
-        <ul data-presence-list class="mt-2 space-y-1 text-xs text-base-content/70"></ul>
-      </div>
+      {live_render(@conn, ConfluencePhxMirrorWeb.PagePresenceLive,
+        session: %{"presence_page" => @page.confluence_id}
+      )}
     </.rail_section>
 
     <.rail_section title="Page info" icon="hero-information-circle">

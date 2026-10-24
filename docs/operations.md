@@ -222,11 +222,12 @@ instead, the fix is the query, not the pool.
 
 **What a reader costs in RAM.** Two different shapes, and this application is
 the cheap one. Reader pages — home, space, page, blog, search results, people —
-are ordinary controller renders: no socket, no process per visitor, memory held
-only while the response is assembled and released afterwards. The admin console,
-the sync log and the advanced search panel are LiveViews, and every open page
-holds a `PageChannel` process for the reader-count widget, so a browser tab does
-keep a few tens of kilobytes on the server — but not the content.
+are ordinary controller renders, so the content is assembled while the response
+is built and released afterwards. What outlives the request is small: a socket
+and two LiveView processes per open tab — the footer's reader count, and on a
+page the list of who is reading it — a few tens of kilobytes, never the
+content. The admin console, the sync log and the advanced search panel are
+LiveViews in their own right.
 
 A burst of 400 concurrent requests against one page moved the VM from 224 MB to
 ~320 MB RSS and back when it ended: about **190 KB per request in flight**,

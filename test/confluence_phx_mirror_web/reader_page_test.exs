@@ -58,10 +58,25 @@ defmodule ConfluencePhxMirrorWeb.ReaderPageTest do
   end
 
   test "the footer says how many people have the mirror open", %{conn: conn} do
-    widget = conn |> page() |> LazyHTML.query("footer [data-site-presence=site]")
+    document = page(conn)
 
-    assert LazyHTML.text(widget) =~ "Users online:"
-    assert LazyHTML.query(widget, "[data-site-presence-count]") |> LazyHTML.text() =~ ~r/^\d+$/
+    assert document |> LazyHTML.query("footer") |> LazyHTML.text() =~ "Users online:"
+
+    assert document
+           |> LazyHTML.query("#site-presence-count")
+           |> LazyHTML.text()
+           |> String.trim() =~ ~r/^\d+$/
+  end
+
+  test "the rail says who is reading the page", %{conn: conn} do
+    document = page(conn)
+
+    assert document |> LazyHTML.query("aside") |> LazyHTML.text() =~ "reading this page"
+
+    assert document
+           |> LazyHTML.query("#page-presence-count")
+           |> LazyHTML.text()
+           |> String.trim() =~ ~r/^\d+$/
   end
 
   defp page(conn) do

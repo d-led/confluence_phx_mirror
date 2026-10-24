@@ -12,7 +12,6 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.BuildInfo
   alias ConfluencePhxMirror.Confluence.Source
-  alias ConfluencePhxMirrorWeb.Presence
   alias ConfluencePhxMirrorWeb.Skins
   alias ConfluencePhxMirrorWeb.Time
 
@@ -40,6 +39,10 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   attr :search?, :boolean, default: true, doc: "render the header search field"
   attr :search_query, :string, default: ""
   attr :page_title, :string, default: nil
+
+  attr :live, :any,
+    required: true,
+    doc: "the conn or socket this page is rendered from, where the footer's LiveViews live"
 
   slot :inner_block, required: true
   slot :rail
@@ -395,20 +398,11 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             </a>
             <a href={~p"/health"} class="hover:text-primary">Health</a>
             <%!--
-              The number is rendered fresh on every request and kept current by
-              `presence.js`, which joins the site topic from any page.
+              The count is its own LiveView, rendered into this page: a
+              controller-rendered page has no process for Presence to track,
+              so the widget brings one.
             --%>
-            <span
-              data-site-presence={Presence.site_topic()}
-              class="inline-flex items-center gap-1"
-              title="People with the mirror open right now"
-            >
-              <.icon name="hero-users" class="size-3" />
-              <span>
-                Users online:
-                <span data-site-presence-count class="tabular-nums">{Presence.online_count()}</span>
-              </span>
-            </span>
+            {site_presence(@live)}
             <span class="inline-flex items-center gap-1">
               <.icon name="hero-lock-closed" class="size-3" /> Read-only
             </span>
@@ -442,6 +436,13 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
     </div>
     """
   end
+
+  # A LiveView rendered from a conn makes its own DOM id; one rendered inside
+  # another LiveView is a child and has to be told which it is.
+  defp site_presence(%Phoenix.LiveView.Socket{} = socket),
+    do: live_render(socket, ConfluencePhxMirrorWeb.SitePresenceLive, id: "site-presence")
+
+  defp site_presence(conn), do: live_render(conn, ConfluencePhxMirrorWeb.SitePresenceLive)
 
   defp source_label(nil), do: "not configured"
 
