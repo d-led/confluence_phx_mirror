@@ -191,39 +191,40 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                 <.icon name="hero-rectangle-stack" class="size-4" />
                 <span class="hidden lg:inline">Spaces</span>
               </summary>
-              <ul class="menu dropdown-content z-50 mt-2 w-60 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
-                <li :for={space <- @spaces}>
-                  <.link
-                    navigate={~p"/spaces/#{space.key}"}
-                    class="flex items-center justify-between gap-2"
-                  >
-                    <span class="truncate">{space.name}</span>
-                    <span class="badge badge-ghost badge-xs">{space.key}</span>
-                  </.link>
-                </li>
-                <li :if={@spaces == []} class="menu-disabled"><span>No spaces mirrored yet</span></li>
-                <li class="menu-title text-[10px] uppercase tracking-wider">Browse</li>
-                <li>
-                  <.link navigate={~p"/spaces"} class="gap-2">
-                    <.icon name="hero-rectangle-stack" class="size-4" /> All spaces
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate={~p"/labels"} class="gap-2">
-                    <.icon name="hero-tag" class="size-4" /> Labels
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate={~p"/people"} class="gap-2">
-                    <.icon name="hero-users" class="size-4" /> People
-                  </.link>
-                </li>
-                <li>
-                  <.link navigate={~p"/recent"} class="gap-2">
-                    <.icon name="hero-clock" class="size-4" /> Recently updated
-                  </.link>
-                </li>
-              </ul>
+              <%!-- A mirror can have more spaces than a menu is tall, so the
+              panel scrolls. The cap sits on this box, not on the menu: a
+              height-constrained `.menu` wraps its items into columns. --%>
+              <div class="dropdown-content z-50 mt-2 max-h-[70vh] w-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-lg">
+                <ul class="menu w-full p-2">
+                  <li :for={space <- @spaces}>
+                    <.space_link space={space} />
+                  </li>
+                  <li :if={@spaces == []} class="menu-disabled">
+                    <span>No spaces mirrored yet</span>
+                  </li>
+                  <li class="menu-title text-[10px] uppercase tracking-wider">Browse</li>
+                  <li>
+                    <.link navigate={~p"/spaces"} class="gap-2">
+                      <.icon name="hero-rectangle-stack" class="size-4" /> All spaces
+                    </.link>
+                  </li>
+                  <li>
+                    <.link navigate={~p"/labels"} class="gap-2">
+                      <.icon name="hero-tag" class="size-4" /> Labels
+                    </.link>
+                  </li>
+                  <li>
+                    <.link navigate={~p"/people"} class="gap-2">
+                      <.icon name="hero-users" class="size-4" /> People
+                    </.link>
+                  </li>
+                  <li>
+                    <.link navigate={~p"/recent"} class="gap-2">
+                      <.icon name="hero-clock" class="size-4" /> Recently updated
+                    </.link>
+                  </li>
+                </ul>
+              </div>
             </details>
 
             <.theme_menu />
@@ -288,14 +289,14 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
         >
           <div class="p-4 lg:sticky lg:top-[57px] lg:max-h-[calc(100vh-57px)] lg:overflow-y-auto">
             <%= if @space do %>
-              <div class="mb-3 flex items-center justify-between gap-2">
+              <div class="mb-3 flex items-center gap-2">
                 <.link
                   navigate={~p"/spaces/#{@space.key}"}
-                  class="truncate text-xs font-semibold uppercase tracking-wider text-base-content/70 hover:text-primary"
+                  class="min-w-0 flex-1 truncate text-xs font-semibold uppercase tracking-wider text-base-content/70 hover:text-primary"
                 >
                   {@space.name}
                 </.link>
-                <span class="badge badge-ghost badge-xs">{@space.key}</span>
+                <.space_key :if={named?(@space)} key={@space.key} />
               </div>
               <.page_tree nodes={@tree.nodes} space_key={@space.key} current={@current_page} />
               <p :if={@tree.truncated?} class="mt-2 px-2 text-[11px] text-base-content/70">
@@ -313,10 +314,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
               </p>
               <ul class="menu menu-sm gap-1 p-0">
                 <li :for={space <- @spaces}>
-                  <.link navigate={~p"/spaces/#{space.key}"} class="flex items-center justify-between">
-                    <span class="truncate">{space.name}</span>
-                    <span class="badge badge-ghost badge-xs">{space.key}</span>
-                  </.link>
+                  <.space_link space={space} />
                 </li>
               </ul>
             <% end %>
@@ -538,4 +536,38 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
     </details>
     """
   end
+
+  attr :space, :map, required: true, doc: "a space, with at least its name and key"
+
+  # A space in a list: its name, because that is what a reader looks for, and
+  # its key, because that is what tells LOAD01 Test Space 1 apart from LOAD01
+  # Test Space 2. The key is a small column of its own rather than a badge
+  # hugging the name: badges do not shrink, and one wide key pushed every row of
+  # the switcher out of the menu.
+  defp space_link(assigns) do
+    ~H"""
+    <.link navigate={~p"/spaces/#{@space.key}"} class="flex items-center gap-2">
+      <span class="min-w-0 flex-1 truncate">{@space.name}</span>
+      <.space_key :if={named?(@space)} key={@space.key} />
+    </.link>
+    """
+  end
+
+  attr :key, :string, required: true
+
+  defp space_key(assigns) do
+    ~H"""
+    <span class={["w-16 shrink-0 truncate text-right", key_text()]}>{@key}</span>
+    """
+  end
+
+  # A personal space is named after its owner and keyed by an account id
+  # (`~5F057CBE0B38B10022628D68`): the name is the whole story, and the key is a
+  # truncated id that names nothing.
+  defp named?(%{type: "personal"}), do: false
+  defp named?(_space), do: true
+
+  # A key is an identifier, not prose: monospaced, small, and quiet enough that
+  # it never competes with the name it belongs to.
+  defp key_text, do: "font-mono text-[10px] font-normal text-base-content/60"
 end
