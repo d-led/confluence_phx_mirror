@@ -40,6 +40,33 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
   end
 
   @doc """
+  One sidebar node's children, as the `<li>`s the tree draws.
+
+  The sidebar is collapsed except for the trail to the page being read, so this
+  is how a branch opens: one request per branch a reader actually expands, and
+  never the whole space. Rows the reader may not open are not in the answer.
+  """
+  def tree(conn, %{"key" => key, "page_id" => page_id}) do
+    with_space(conn, key, fn conn, space ->
+      with {id, ""} <- Integer.parse(page_id),
+           {:ok, page} <- Mirror.find_page_by_local_id(id),
+           true <- page.space_id == space.id do
+        nodes =
+          space.id
+          |> Mirror.tree_children(page, filter: &Authorization.restrict_pages(&1, scope(conn)))
+          |> Enum.map(&%{page: &1, children: []})
+
+        conn
+        |> put_root_layout(false)
+        |> put_resp_content_type("text/html")
+        |> render(:tree, nodes: nodes, space_key: space.key, layout: false)
+      else
+        _not_here -> NotFound.call(conn, "No such page in #{space.key}.")
+      end
+    end)
+  end
+
+  @doc """
   Serves the space icon from the blob store.
 
   The icon says which space a row is about, so it is content: a reader who may

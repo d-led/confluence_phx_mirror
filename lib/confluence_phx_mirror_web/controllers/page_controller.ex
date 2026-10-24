@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   alias ConfluencePhxMirror.Mirror.Page
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Notifications
+  alias ConfluencePhxMirror.Sync.PageWorker
   alias ConfluencePhxMirror.Webhooks
   alias ConfluencePhxMirrorWeb.NotFound
   alias ConfluencePhxMirrorWeb.Presence
@@ -26,15 +27,19 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   @space_cards 12
   @label_cards 14
   @list_page 25
+  # The home page shows a window of what changed, not the feed: "see all" is
+  # one click away, and the query behind the window is the same paged one.
+  @recent_changes 8
 
   def home(conn, _params) do
     spaces = readable_spaces(conn)
+    %{items: changes} = Catalog.recent(scope(conn), limit: @recent_changes)
 
     render(conn, :home,
       page_title: "Home",
       spaces: Enum.take(spaces, @space_cards),
       space_total: length(spaces),
-      recent_pages: visible(conn, Mirror.recent_pages(8)),
+      recent_pages: changes,
       labels: Catalog.label_counts(scope(conn), limit: @label_cards),
       stats: Mirror.stats(),
       last_webhook: List.first(Webhooks.recent(1))
@@ -91,6 +96,43 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     else
       _ -> NotFound.call(conn, "That page is not mirrored.")
     end
+  end
+
+  @doc """
+  Re-reads one mirrored page from Confluence, on an administrator's request.
+
+  Everything that hangs off a page — its attachments, its comments, its labels
+  and its permissions — is fetched while the page itself is read, so one page
+  sync refreshes all of it. The read happens in the background: the reader gets
+  the page back immediately and the sync queue reports the outcome.
+  """
+  def resync(conn, %{"space_key" => space_key, "id" => id}) do
+    with {id, ""} <- Integer.parse(id),
+         {:ok, page} <- Mirror.find_page_by_path(space_key, id),
+         true <- may_resync?(conn, page) do
+      enqueue_resync(conn, page)
+    else
+      # A reader who may not resync learns nothing a stranger would not: the
+      # answer is the one an unknown page gets.
+      _ -> NotFound.call(conn, "That page is not mirrored.")
+    end
+  end
+
+  defp may_resync?(conn, page) do
+    Scope.admin?(scope(conn)) and readable?(conn, page)
+  end
+
+  defp enqueue_resync(conn, page) do
+    %{
+      "confluence_id" => page.confluence_id,
+      "trigger" => "the page view, by #{conn.assigns[:current_user].email}"
+    }
+    |> PageWorker.new()
+    |> Oban.insert()
+
+    conn
+    |> put_flash(:info, "Re-reading “#{page.title}”, its attachments and its comments.")
+    |> redirect(to: URLs.content_path(page.space.key, page))
   end
 
   def blog_post(conn, %{"key" => space_key, "id" => id} = params) do
@@ -157,7 +199,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   # mirrored; rendering it raw is the whole point of the mirror.
   # sobelow_skip ["XSS.Raw"]
   defp render_page(conn, page, kind \\ :page) do
-    etag = page_etag(page, kind)
+    etag = page_etag(conn, page, kind)
     conn = conn |> put_reader_cache(etag)
 
     if requested_etag?(conn, etag) do
@@ -169,8 +211,13 @@ defmodule ConfluencePhxMirrorWeb.PageController do
 
   # A mirrored page only changes when the sync rewrites it, so a reader who
   # already has it can be answered with an empty 304 instead of a re-render.
-  defp page_etag(page, kind) do
-    ~s("#{page.confluence_id}-#{page.version_number}-#{kind}-#{DateTime.to_unix(page.updated_at)}")
+  # A page carries an administrator-only action and a tree of only the pages
+  # this reader may open, so the tag names the viewer as well as the version: a
+  # cached copy is only ever offered back to the viewer it was rendered for.
+  defp page_etag(conn, page, kind) do
+    viewer = if Scope.admin?(scope(conn)), do: "admin", else: "reader"
+
+    ~s("#{page.confluence_id}-#{page.version_number}-#{kind}-#{viewer}-#{DateTime.to_unix(page.updated_at)}")
   end
 
   defp put_reader_cache(conn, etag) do
@@ -211,15 +258,28 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       space: space,
       tree: tree_for(scope(conn), space, page, kind),
       breadcrumbs: breadcrumbs,
-      children: Mirror.children(page),
+      children: children_window(scope(conn), page),
+      child_count: Mirror.count_children(page),
       attachments: Mirror.attachments(page),
       comments: Mirror.comments(page),
       backlinks: Mirror.backlinks(page),
       outgoing_links: Mirror.outgoing_links(page),
       subscribed?: MapSet.member?(watching, {"page", page.id}),
       space_subscribed?: MapSet.member?(watching, {"space", space.id}),
-      readers: Presence.count(page.confluence_id)
+      readers: Presence.count(page.confluence_id),
+      admin?: Scope.admin?(scope(conn)),
+      resync_path: URLs.page_resync_path(space.key, page.confluence_id)
     )
+  end
+
+  # A front page in a big space has hundreds of children, and a page that lists
+  # them all is a page nobody scrolls: the view shows a window, the count says
+  # how much is behind it, and the space's catalog pages through the rest.
+  @child_window 10
+
+  defp children_window(scope, page) do
+    pages = Mirror.children(page, limit: @child_window)
+    Authorization.readable_pages(scope, pages)
   end
 
   # The sidebar follows the reader: the trail to this page, its siblings and its
@@ -270,6 +330,4 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       _ -> 0
     end
   end
-
-  defp visible(conn, pages), do: Authorization.readable_pages(scope(conn), pages)
 end

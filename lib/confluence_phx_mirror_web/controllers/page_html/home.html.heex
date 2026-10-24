@@ -83,18 +83,24 @@
 
   <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
     <section>
-      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-base-content/70">
-        Recently updated
-      </h2>
+      <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-base-content/70">
+          Latest changes
+        </h2>
+        <.link navigate={~p"/recent"} class="link link-primary text-xs">
+          See all changes →
+        </.link>
+      </div>
       <p :if={@recent_pages == []} class="text-xs text-base-content/70">No pages yet.</p>
       <ul
         :if={@recent_pages != []}
+        id="latest-changes"
         class="divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
       >
         <li :for={page <- @recent_pages}>
           <.link
             navigate={ConfluencePhxMirror.Mirror.URLs.content_path(page.space.key, page)}
-            class="group flex items-center gap-3 px-4 py-3 transition hover:bg-base-200/40"
+            class="group flex items-center gap-3 px-4 py-2.5 transition hover:bg-base-200/40"
           >
             <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-base-200 text-base-content/70">
               <.icon
@@ -108,12 +114,14 @@
               <span class="block truncate text-sm font-medium group-hover:text-primary">
                 {page.title}
               </span>
-              <span class="block text-[11px] text-base-content/70">
-                {page.space.name} · {Time.ago(page.external_updated_at)}
+              <%!-- Who and where: a change without a name is a change nobody
+              recognises. --%>
+              <span class="block truncate text-[11px] text-base-content/70">
+                {page.space.name} · {page.author_name || "unknown author"}
               </span>
             </span>
-            <span class="hidden shrink-0 text-[10px] text-base-content/70 sm:block">
-              {page.space.key}
+            <span class="shrink-0 whitespace-nowrap text-[10px] uppercase tracking-wide text-base-content/70">
+              {change_kind(page)} {Time.ago(page.external_updated_at)}
             </span>
           </.link>
         </li>

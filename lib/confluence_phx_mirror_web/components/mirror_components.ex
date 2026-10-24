@@ -139,7 +139,13 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     end
   end
 
-  @doc "Recursive page tree for the sidebar."
+  @doc """
+  Recursive page tree for the sidebar.
+
+  The trail to the page the reader is on arrives expanded and everything else
+  arrives closed; a chevron asks the mirror for one node's children
+  (`/spaces/:key/tree/:page_id`) instead of the tree shipping the space.
+  """
   attr :nodes, :list, required: true, doc: "list of %{page: page, children: [...]}"
   attr :space_key, :string, required: true
   attr :current, :any, default: nil
@@ -149,18 +155,52 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     ~H"""
     <ul
       id={@depth == 0 && "page-tree"}
+      data-tree-space={@space_key}
       class={[
         "menu menu-sm w-full gap-0.5 p-0",
         @depth > 0 && "ml-3 border-l border-base-300/70 pl-2"
       ]}
     >
-      <li :for={node <- @nodes}>
+      <.page_tree_items nodes={@nodes} space_key={@space_key} current={@current} depth={@depth} />
+    </ul>
+    <p :if={@nodes == [] and @depth == 0} class="px-2 py-3 text-xs text-base-content/70">
+      No pages in this space yet.
+    </p>
+    """
+  end
+
+  attr :nodes, :list, required: true
+  attr :space_key, :string, required: true
+  attr :current, :any, default: nil
+  attr :depth, :integer, default: 0
+
+  # The items on their own: the tree wraps them in a list, and the endpoint that
+  # expands one node returns exactly these `li`s to put inside it.
+  def page_tree_items(assigns) do
+    ~H"""
+    <li :for={node <- @nodes}>
+      <div class="flex items-center gap-0.5">
+        <button
+          :if={node.page.has_children}
+          type="button"
+          data-tree-toggle={node.page.id}
+          aria-expanded={to_string(node.children != [])}
+          aria-label={"Show child pages of #{node.page.title}"}
+          title={"Child pages of #{node.page.title}"}
+          class="group grid size-7 shrink-0 place-items-center rounded text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
+        >
+          <.icon
+            name="hero-chevron-right"
+            class="size-4 transition-transform group-aria-expanded:rotate-90"
+          />
+        </button>
+        <span :if={!node.page.has_children} class="size-7 shrink-0"></span>
         <.link
           navigate={URLs.content_path(@space_key, node.page)}
           aria-current={@current && @current.id == node.page.id && "page"}
           title={node.page.title}
           class={[
-            "flex min-h-9 items-center gap-2 rounded-md py-1.5 pr-2 text-[13px]",
+            "flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md py-1.5 pr-2 text-[13px]",
             @current && @current.id == node.page.id && "bg-primary/5 font-semibold text-primary"
           ]}
         >
@@ -170,18 +210,26 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
           />
           <span class="truncate">{node.page.title}</span>
         </.link>
-        <.page_tree
+      </div>
+      <%!-- Empty and hidden until the chevron asks for it; `data-tree-children`
+      is the node whose children it holds. --%>
+      <ul
+        :if={node.page.has_children}
+        data-tree-children={node.page.id}
+        class={[
+          "menu menu-sm w-full gap-0.5 p-0 ml-3 border-l border-base-300/70 pl-2",
+          node.children == [] && "hidden"
+        ]}
+      >
+        <.page_tree_items
           :if={node.children != []}
           nodes={node.children}
           space_key={@space_key}
           current={@current}
           depth={@depth + 1}
         />
-      </li>
-    </ul>
-    <p :if={@nodes == [] and @depth == 0} class="px-2 py-3 text-xs text-base-content/70">
-      No pages in this space yet.
-    </p>
+      </ul>
+    </li>
     """
   end
 
@@ -203,8 +251,26 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     """
   end
 
+  @doc """
+  What happened to a page in a feed of changes.
+
+  Confluence counts versions, so a page still at version one was created and
+  one past it was edited. "Created" and "updated 2 hours ago" tell a reader
+  different things, so the feed says which.
+  """
+  def change_kind(%{version_number: version}) when is_integer(version) and version <= 1,
+    do: "created"
+
+  def change_kind(_page), do: "updated"
+
   @doc "Author, timestamps, version, labels and the backlink to Confluence."
   attr :page, :map, required: true
+
+  attr :admin?, :boolean,
+    default: false,
+    doc: "an administrator sees the resync action; a reader never does"
+
+  attr :resync_path, :string, default: nil
 
   def page_meta(assigns) do
     ~H"""
@@ -231,6 +297,24 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
       >
         <.icon name="hero-arrow-top-right-on-square" class="size-3.5" /> View original
       </a>
+      <%!-- An administrator can ask for a fresh read; a reader never sees the
+      action, and the controller refuses it as well. --%>
+      <form
+        :if={@admin? and @resync_path}
+        action={@resync_path}
+        method="post"
+        class="inline-flex"
+        data-confirm="Re-read this page, its attachments and its comments from Confluence?"
+      >
+        <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+        <button
+          type="submit"
+          class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-base-content/60 transition hover:bg-base-200 hover:text-primary"
+          title="Administrators only: re-read this page, all of its attachments and its comments from Confluence"
+        >
+          <.icon name="hero-arrow-path-rounded-square" class="size-3.5" /> Resync
+        </button>
+      </form>
     </div>
     """
   end

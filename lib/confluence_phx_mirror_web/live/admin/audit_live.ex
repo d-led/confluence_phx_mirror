@@ -114,7 +114,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
         current={:audit}
         title="Audit log"
         subtitle="Every change the mirror made or saw — newest first, append-only."
-      />
+      >
+        <:actions>
+          <%!-- Newest first is right for reading, wrong for reaching the other
+          end of a busy log: the anchor is the whole mechanism, no script. --%>
+          <.link
+            href="#audit-log-end"
+            id="audit-jump-to-end"
+            class="btn btn-ghost btn-sm gap-1 rounded-lg"
+          >
+            <.icon name="hero-arrow-down" class="size-4" /> Jump to the end
+          </.link>
+        </:actions>
+      </.admin_header>
 
       <form id="audit-filter" phx-change="filter" class="mt-5 flex flex-wrap items-center gap-2">
         <label class="input input-sm flex min-w-0 flex-1 items-center gap-2 rounded-lg border-base-300 bg-base-200/50">
@@ -187,6 +199,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
           Load older events
         </button>
       </div>
+
+      <%!-- Where "Jump to the end" lands: past the oldest event on the page, so
+      the reader arrives at the top of what comes next. --%>
+      <div id="audit-log-end" class="scroll-mt-24"></div>
     </Layouts.app>
     """
   end

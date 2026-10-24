@@ -76,9 +76,13 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/", PageController, :home
     get "/spaces/:key", PageController, :space
     get "/spaces/:key/overview", SpaceController, :overview
+    # A sidebar branch opens on demand; see `SpaceController.tree/2`.
+    get "/spaces/:key/tree/:page_id", SpaceController, :tree
     get "/spaces/:key/blog/:id/:slug", PageController, :blog_post
     get "/spaces/:key/blog/:id", PageController, :blog_post
     get "/spaces/:space_key/pages/:id", PageController, :show
+    # An administrator re-reads one page from Confluence; see PageController.resync/2.
+    post "/spaces/:space_key/pages/:id/resync", PageController, :resync
     get "/spaces/:space_key/pages/:id/export.md", ExportController, :page
     get "/spaces/:space_key/pages/:id/:slug", PageController, :show
     get "/spaces/:key/export.zip", ExportController, :space

@@ -133,7 +133,7 @@
         <.badges status={@page.status} type={@page.type} />
       </:badges>
       <:meta>
-        <.page_meta page={@page} />
+        <.page_meta page={@page} admin?={@admin?} resync_path={@resync_path} />
       </:meta>
     </.page_header>
 
@@ -157,17 +157,21 @@
 
     <%!-- Child pages are navigation, not part of the page's prose: a `nav`
     landmark is one a reader view or a printer can drop without losing the
-    article. --%>
+    article. A front page in a big space has hundreds of children, so what is
+    drawn is a window; the badge and the catalog link say what is behind it. --%>
     <nav
-      :if={@children != []}
+      :if={@child_count > 0}
       aria-label="Child pages"
       class="mt-8 border-t border-base-300/70 pt-4"
     >
       <h2 class="mb-3 flex items-center gap-2 text-sm font-semibold">
         <.icon name="hero-rectangle-stack" class="size-4 text-base-content/70" /> Child pages
-        <span class="badge badge-ghost badge-sm">{length(@children)}</span>
+        <span class="badge badge-ghost badge-sm">{@child_count}</span>
       </h2>
-      <ul class="divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100">
+      <ul
+        :if={@children != []}
+        class="divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
+      >
         <li :for={child <- @children}>
           <.link
             navigate={
@@ -184,6 +188,18 @@
           </.link>
         </li>
       </ul>
+      <p
+        :if={@child_count > length(@children)}
+        class="mt-2 flex flex-wrap items-center gap-2 text-xs"
+      >
+        <span class="text-base-content/70">
+          {length(@children)} of {@child_count} shown
+        </span>
+        <span aria-hidden="true" class="text-base-content/40">·</span>
+        <.link navigate={~p"/spaces/#{@space.key}/pages"} class="link link-primary">
+          Browse all pages in {@space.key} →
+        </.link>
+      </p>
     </nav>
 
     <.comment_thread page={@page} comments={@comments} />

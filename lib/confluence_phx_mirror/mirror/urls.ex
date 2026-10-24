@@ -33,6 +33,16 @@ defmodule ConfluencePhxMirror.Mirror.URLs do
   @doc "Attachments of every page in a space."
   def space_attachments_path(space_key), do: space_path(space_key) <> "/attachments"
 
+  @doc """
+  Where an administrator asks the mirror to re-read one page.
+
+  It serves no page of its own: it starts a sync and goes straight back to the
+  page it names, which is why it carries no slug.
+  """
+  def page_resync_path(space_key, confluence_id) do
+    "/spaces/#{encode_segment(space_key)}/pages/#{confluence_id}/resync"
+  end
+
   @doc "A single blog post, mirroring Confluence's blog URL shape."
   def blog_post_path(space_key, confluence_id, slug) do
     with_slug(space_blog_path(space_key) <> "/#{confluence_id}", slug)
