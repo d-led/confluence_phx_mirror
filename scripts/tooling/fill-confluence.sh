@@ -172,6 +172,10 @@ for i in $(seq 1 "$chunks"); do
   echo "$(date +%H:%M:%S) $chunk_prefix: creating ~$PAGES_PER_CHUNK pages" |
     tee -a "$OUT_DIR/progress.log"
 
+  # `--resume` exists but cannot be used: it restores the chunk's spaces as keys
+  # and then posts pages with `spaceId: "LOAD062"`, which the API rejects with a
+  # 400. A half-made chunk is therefore kept as it is (see the "spaces already
+  # exist" branch below) rather than topped up.
   run_generator \
     --count "$chunk_count" \
     --spaces "$SPACES_PER_CHUNK" \
