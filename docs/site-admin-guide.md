@@ -293,6 +293,25 @@ LiveView answer as the caller does: their results pass through the same
 `Authorization` checks, so a reader cannot find in them what the reader-side
 directory hides.
 
+### Checking it: *Admin* → *Permissions*
+
+Because access is replayed and not invented, the question an administrator
+actually has is "who can read this?", and the answer has to be checkable. The
+*Permissions* screen lists the mirrored spaces with a summary on each row —
+`open`, a count of groups, a count of people, `anonymous` — filters by name or
+key in the database, and opens a space to name its groups, its people (with "no
+account here yet" where the mirror has none), or to say in a word that nothing
+is mirrored for it and nothing narrows it.
+
+It answers the second half too: a space's panel lists the pages that carry
+restrictions of their own, and a page's panel names the subjects those
+restrictions allow. The two are not added together — a restricted page is
+readable only by what it lists, whatever the space allows, which is why the
+screen shows them as two decisions rather than one list.
+
+The screen only reads. Nothing here changes what Confluence decides, and nothing
+here grants access; it is the mirror's account of the last sync.
+
 ## Themes and variants
 
 Two decisions, kept apart:
