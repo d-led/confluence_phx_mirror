@@ -163,11 +163,15 @@ can move between them without going back to a hub:
   only thing that deletes content, and it takes the comments and attachment
   files with it.
 * `/admin/users` (**live**) – accounts, roles, mirrored groups and the tokens an
-  account has, plus the people Confluence's content names, the groups the sync
-  read for each of them, and the account each identity is linked to. Tokens are
-  *not* minted here: they belong to their owner and are created on
-  [the reader's own account page](#accounts-tokens-and-identities). An
-  administrator can still revoke one — revoking only takes access away.
+  account has. Tokens are *not* minted here: they belong to their owner and are
+  created on [the reader's own account page](#accounts-tokens-and-identities).
+  An administrator can still revoke one — revoking only takes access away. Each
+  account lists the Confluence identities it stands for, read-only, and points at
+  the page where that is changed.
+* `/admin/identities` (**live**) – the people Confluence's content names, the
+  groups the sync read for each of them, and the account each identity is linked
+  to (or that none is). Searching and linking live here; see
+  [Linking a Confluence identity to an account](#linking-a-confluence-identity-to-an-account).
 * `/admin/settings` (**live**) – the setup screen, in two halves. The top is
   what you can change while the mirror runs: the theme every reader wears, the
   per-reader request limits, and whether notification mail goes out (with the
@@ -616,19 +620,23 @@ in the top bar. It has two tabs:
 ### Linking a Confluence identity to an account
 
 One person often holds two Atlassian accounts — a personal one and a guest or
-contractor one — and Confluence's content and permissions may name either. Under
-*Users & tokens*, such an identity can be **linked** to a mirror account, and
-unlinked again.
+contractor one — and Confluence's content and permissions may name either.
+*Admin* → *Identities* is where an identity is **linked** to a mirror account,
+and unlinked again. It is the only place that decides who a person is; the
+account rows on *Users & tokens* only say what an account already holds.
 
 A site can name a hundred thousand people, so neither side of the screen lists
-them: both are searched, and a link is a click.
+them: both are searched, and a link is a click. The filter is a URL parameter
+(`/admin/identities?q=…`), so a colleague can send a link to the identity they
+mean.
 
-* From the *People from Confluence* panel: filter by the name Confluence shows or
-  by the account id, then **Link to an account…** opens a picker that searches
-  the mirror's accounts. Clicking one makes the link.
-* From an account: **Add an identity** opens a picker of the people no account
-  holds yet. An identity another account already holds is listed with whose it
-  is and offers no button, because moving one is a decision about two accounts.
+* From an identity: filter by the name Confluence shows or by the account id,
+  then **Link to an account…** opens a picker that searches the mirror's
+  accounts. Clicking one makes the link.
+* From an account: the *Add an identity to an account* panel searches the
+  account first, then offers the people no account holds yet. An identity
+  another account already holds is listed with whose it is and offers no
+  button, because moving one is a decision about two accounts.
 
 What the identity carries becomes the account's: its group memberships, the
 spaces and pages it is named in, and the content it authored. The rule is the
@@ -643,6 +651,10 @@ administrator's decision and are enforced in `Accounts.link_identity/3`, not in
 the screen, so an API or MCP caller passing a member's account gets
 `{:error, :not_authorized}`. Both appear in the audit log as
 `user.identity_linked` / `user.identity_unlinked`.
+
+Scripts can do the same thing with an administrator's token —
+`GET /api/v1/identities`, `POST /api/v1/identities/:account_id/link` and
+`DELETE /api/v1/identities/:account_id/link`; see [the API guide](api.md#json-api).
 
 ### Groups granted here
 

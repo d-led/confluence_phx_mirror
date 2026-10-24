@@ -68,6 +68,9 @@ GET /api/v1/pages/:id/{children,ancestors,descendants,labels,attachments,comment
 GET /api/v1/labels
 GET /api/v1/search?cql=...
 GET /api/v1/stats
+GET /api/v1/identities
+POST /api/v1/identities/:account_id/link
+DELETE /api/v1/identities/:account_id/link
 GET /health
 ```
 
@@ -86,6 +89,40 @@ page, GIN-indexed — answers it in one statement, without walking the tree.
 `type`, `creator`, `ancestor`, `updated`) for the reader UI, and `cql` for raw
 Confluence query language. Default and maximum result counts are
 `CM_SEARCH_DEFAULT_LIMIT` (25) and `CM_SEARCH_MAX_RESULTS` (100).
+
+### Identities: the only writes
+
+`GET /api/v1/identities?q=&limit=&offset=` lists the Confluence accounts the
+mirror knows — the authors of pages and comments, and the account ids the
+permissions carry — each with the groups the last sync read and the account it
+already stands for (`linkedTo`, or `null`). A site names more people than a page
+can draw, so it is searched and windowed like everything else.
+
+`POST /api/v1/identities/:account_id/link` links one to an account:
+
+```json
+{"user_id": 4}
+```
+
+`email` is accepted instead of `user_id` when the id is not at hand. The answer
+is the identity as it now stands beside the account. `DELETE` on the same path
+takes it away again.
+
+What the identity carries — its group memberships, the pages and spaces it is
+named in — becomes the account's, because every permission rule asks the union
+of an account's identities. All three calls are an **administrator's**: another
+token gets `403 not_authorized`. The refusals are named rather than swallowed:
+
+| status | `error` | meaning |
+| --- | --- | --- |
+| 404 | `unknown_identity` | the mirror has read nothing about it — a typo must not become a grant |
+| 404 | `not_linked` | nothing stands on it, so there is nothing to take away |
+| 409 | `linked_elsewhere` | another account already holds it |
+| 409 | `not_a_link` | that is the identity the account signs in with, not a link |
+| 422 | `missing_account` | neither `user_id` nor `email` was given |
+
+These are the only writes the v1 API accepts; the rest of the mirror stays
+read-only.
 
 ## Confluence-compatible subset
 
