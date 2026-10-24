@@ -139,9 +139,12 @@ can move between them without going back to a hub:
   with a purge button. "Empty the trash" asks for a second click. Purging is the
   only thing that deletes content, and it takes the comments and attachment
   files with it.
-* `/admin/users` (**live**) – accounts, roles, mirrored groups and API tokens,
-  plus the people Confluence's content names and the groups the sync read for
-  each of them.
+* `/admin/users` (**live**) – accounts, roles, mirrored groups and the tokens an
+  account has, plus the people Confluence's content names, the groups the sync
+  read for each of them, and the account each identity is linked to. Tokens are
+  *not* minted here: they belong to their owner and are created on
+  [the reader's own account page](#accounts-tokens-and-identities). An
+  administrator can still revoke one — revoking only takes access away.
 * `/admin/settings` (**live**) – the setup screen, in two halves. The top is
   what you can change while the mirror runs: the theme every reader wears, the
   per-reader request limits, and whether notification mail goes out (with the
@@ -406,10 +409,12 @@ Set `MIRROR_MAIL_FROM` and the Swoosh mailer settings for production.
   (`CM_ADMIN_GROUPS`, default `confluence-admins`) or seeded e-mails
   (`CM_ADMINS`). Seeded addresses can always request a sign-in link, even with
   self sign-up closed, so a fresh deployment has a way in.
-* API tokens: admin → *Users & tokens*; shown once, stored as an Argon2id digest
-  (never the token). Raising the hashing policy does not invalidate issued
-  tokens — each one is rewritten the next time it is used. See
-  [api.md](api.md#authentication) for the client side.
+* API tokens: the reader creates their own under `/profile` (*API tokens*);
+  shown once, stored as an Argon2id digest (never the token). Raising the
+  hashing policy does not invalidate issued tokens — each one is rewritten the
+  next time it is used. Nobody else can create one for them: an administrator
+  can revoke a leaked token from *Users & tokens*, which only removes access.
+  See [api.md](api.md#authentication) for the client side.
 * Behind an OAuth2/SSO proxy: `CM_PROXY_AUTH=true` trusts the identity header
   the proxy sets (`CM_PROXY_AUTH_HEADER`, default `x-forwarded-email`;
   `CM_PROXY_AUTH_NAME_HEADER`, default `x-forwarded-user`), so there is no
@@ -503,11 +508,58 @@ an hourly run does not fill the log with "still active".
 ### Never lock yourself out
 
 The mirror always keeps one administrator. Seeded (`CM_ADMINS`) and bootstrap
-accounts cannot be demoted or switched off, and neither can whoever is left: if
-an account is the last one that can administer the mirror, both the role select
-and the switch are locked, and the page says *Last admin*. Stepping down works
-again as soon as somebody else can take over — another `admin` account, a member
-of an `CM_ADMIN_GROUPS` group, or a seeded address that has not signed in yet.
+accounts cannot be demoted, switched off, banned **or deleted** — the rule is
+about the row, not about how many administrators there are. Neither can whoever
+is left: if an account is the last one that can administer the mirror, the role
+select, the switch, the ban and the delete are all locked, and the page says
+which rule applies. Stepping down works again as soon as somebody else can take
+over — another `admin` account, a member of an `CM_ADMIN_GROUPS` group, or a
+seeded address that has not signed in yet.
+
+Deleting a seeded administrator would not stick anyway: the next boot seeds that
+address again, and the row would come back with none of its history. So it is
+refused rather than undone.
+
+## Accounts, tokens and identities
+
+Every reader has an account page at `/profile`, reachable from the avatar menu
+in the top bar. It has two tabs:
+
+* **Profile** — the e-mail and role the mirror knows, how the account is an
+  administrator (role, admin group or seeded), when it last signed in, and the
+  groups it is in, split into what the last sync read and what an administrator
+  granted here.
+* **API tokens** — the reader's own tokens. One is created here, shown once, and
+  revocable here. A token acts as its owner, so **no administrator can create
+  one for somebody else**; what *Users & tokens* keeps is a list of the tokens
+  an account has and the *Revoke* action, which only takes access away.
+
+### Linking a Confluence identity to an account
+
+One person often holds two Atlassian accounts — a personal one and a guest or
+contractor one — and Confluence's content and permissions may name either. Under
+*Users & tokens* → *People from Confluence*, each identity the sync has seen can
+be **linked** to a mirror account by its e-mail address, and unlinked again.
+
+What the identity carries becomes the account's: its group memberships, the
+spaces and pages it is named in, and the content it authored. The rule is the
+union — `Accounts.identity_keys/1` answers with every linked identity, so what a
+reader may open is everything any of their identities may open, whether they
+arrived by a page or by an API token.
+
+Two things are refused: an identity the mirror has never seen (a typo would
+otherwise be a grant that silently does nothing — run a sync first), and an
+identity another account already holds (two accounts claiming one identity would
+be two readers sharing every permission it carries). Linking and unlinking are
+in the audit log as `user.identity_linked` / `user.identity_unlinked`.
+
+### Groups granted here
+
+`/admin/users` can grant a group on top of what the sync says — an incident
+rotation, a group Confluence does not have. The picker offers the group names
+the last sync actually read, so a grant is a name that exists; a free field is
+there for a group no sync has seen yet. A grant here is never taken away by a
+sync, and it never removes a group Confluence reports.
 
 ## People the site names
 

@@ -50,41 +50,32 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
     assert Accounts.get_user(reader.id).role == "admin"
   end
 
-  test "an admin issues an API token and sees it exactly once", %{conn: conn} do
+  test "the screen offers no way to mint a token for somebody else", %{conn: conn} do
     reader = user_fixture(%{email: "token.reader@example.com"})
-    {:ok, view, _html} = live(conn, ~p"/admin/users")
+    {:ok, view, html} = live(conn, ~p"/admin/users")
 
-    html =
-      view
-      |> element("#new-token-#{reader.id}")
-      |> render_submit(%{"user_id" => reader.id, "name" => "deck"})
-
-    assert html =~ "New token for token.reader@example.com"
-    assert [%{name: "deck"}] = Accounts.list_api_tokens(reader)
-  end
-
-  test "a token without a name is refused", %{conn: conn} do
-    reader = user_fixture(%{email: "blank.reader@example.com"})
-    {:ok, view, _html} = live(conn, ~p"/admin/users")
-
-    html =
-      view
-      |> element("#new-token-#{reader.id}")
-      |> render_submit(%{"user_id" => reader.id, "name" => "  "})
-
-    assert html =~ "Could not create token"
+    # A token acts as its owner, so creating one is that person's own act: the
+    # admin screen lists theirs and can revoke, and points at /profile for the
+    # rest. A `create_token` event here is what this test exists to prevent.
+    refute has_element?(view, "#new-token-#{reader.id}")
+    refute has_element?(view, "form[phx-submit=create_token]")
+    assert html =~ "creates their own tokens"
     assert Accounts.list_api_tokens(reader) == []
   end
 
-  test "dismissing the new token hides it again", %{conn: conn} do
-    reader = user_fixture(%{email: "dismiss.reader@example.com"})
+  test "the screen still lets an administrator revoke a leaked token", %{conn: conn} do
+    reader = user_fixture(%{email: "leaked.reader@example.com"})
+    {:ok, _plain, token} = Accounts.create_api_token(reader, "leaked", {:system, "test"})
     {:ok, view, _html} = live(conn, ~p"/admin/users")
 
-    view
-    |> element("#new-token-#{reader.id}")
-    |> render_submit(%{"user_id" => reader.id, "name" => "deck"})
+    html =
+      render_submit(view, "revoke_token", %{
+        "user_id" => to_string(reader.id),
+        "token_id" => to_string(token.id)
+      })
 
-    refute render_click(view, "dismiss_token") =~ "New API token"
+    assert html =~ "Token revoked."
+    assert Accounts.list_api_tokens(reader) == []
   end
 
   test "an admin revokes a token", %{conn: conn} do
@@ -115,18 +106,46 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
     assert html =~ "Token not found."
   end
 
-  test "an admin grants extra groups by hand", %{conn: conn} do
+  test "an admin grants one group at a time, from the synced names", %{conn: conn} do
     reader = user_fixture(%{email: "groups.reader@example.com"})
+    {:ok, _} = Mirror.replace_group_members("incident-responders", [])
     {:ok, view, _html} = live(conn, ~p"/admin/users")
 
     html =
-      render_submit(view, "update_groups", %{
+      view
+      |> element("#group-picker-form-#{reader.id}")
+      |> render_submit(%{"user_id" => to_string(reader.id), "group" => "incident-responders"})
+
+    assert html =~ "incident-responders is granted here."
+    assert Accounts.get_user(reader.id).groups == ["incident-responders"]
+
+    html =
+      render_submit(view, "remove_group", %{
         "user_id" => to_string(reader.id),
-        "groups" => "incident-responders, on-call"
+        "group" => "incident-responders"
       })
 
-    assert html =~ "Groups updated."
-    assert Accounts.get_user(reader.id).groups == ["incident-responders", "on-call"]
+    assert html =~ "no longer granted here"
+    assert Accounts.get_user(reader.id).groups == []
+  end
+
+  test "a group no sync has read can still be granted, and a blank is refused", %{conn: conn} do
+    reader = user_fixture(%{email: "free.group.reader@example.com"})
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    html =
+      render_submit(view, "add_group", %{
+        "user_id" => to_string(reader.id),
+        "group" => "  On-Call  "
+      })
+
+    assert html =~ "on-call is granted here."
+    assert Accounts.get_user(reader.id).groups == ["on-call"]
+
+    html = render_submit(view, "add_group", %{"user_id" => to_string(reader.id), "group" => " "})
+
+    assert html =~ "Choose a group first."
+    assert Accounts.get_user(reader.id).groups == ["on-call"]
   end
 
   test "an admin issues a service token and sees it exactly once", %{conn: conn} do
@@ -170,7 +189,78 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
     assert Accounts.get_user(admin.id).role == "admin"
   end
 
+  describe "identity linking" do
+    @guest "5f057cbe0b38b10022628d68"
+
+    test "an administrator links a Confluence identity to an account, and unlinks it", %{
+      conn: conn
+    } do
+      reader = user_fixture(%{email: "linked.reader@example.com"})
+      a_person_named(@guest)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      html =
+        view
+        |> element("#link-1")
+        |> render_submit(%{"account_id" => @guest, "email" => reader.email})
+
+      assert html =~ "is now linked.reader@example.com"
+      assert html =~ "linked to"
+      assert Accounts.get_user(reader.id).identity_account_ids == [@guest]
+
+      html = view |> element("#unlink-1") |> render_submit()
+
+      assert html =~ "is no longer"
+      assert Accounts.get_user(reader.id).identity_account_ids == []
+    end
+
+    test "linking to an address that is not an account says so", %{conn: conn} do
+      a_person_named(@guest)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      html =
+        view
+        |> element("#link-1")
+        |> render_submit(%{"account_id" => @guest, "email" => "nobody@example.com"})
+
+      assert html =~ "No mirror account has that e-mail address."
+    end
+
+    # A person is somebody the content or a group names; the party line here is
+    # "this identity exists and is linkable".
+    defp a_person_named(account_id) do
+      space = space_fixture()
+      page_fixture(space, %{author_name: "Guest Ledentsov", author_account_id: account_id})
+
+      {:ok, _} =
+        Mirror.replace_group_members("confluence-users", [
+          %{account_id: account_id, display_name: "Guest Ledentsov"}
+        ])
+    end
+  end
+
   describe "moderation" do
+    test "a seeded administrator's row offers no Delete, and no event deletes it", %{conn: conn} do
+      previously = Application.get_env(:confluence_phx_mirror, :admins)
+      Application.put_env(:confluence_phx_mirror, :admins, ["boss@example.com"])
+      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :admins, previously) end)
+
+      boss = user_fixture(%{email: "boss@example.com", role: "admin"})
+      # A second administrator, so being "the last one" is not what protects it.
+      user_fixture(%{email: "colleague@example.com", role: "admin"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      assert has_element?(view, "button#delete-#{boss.id}[disabled]")
+
+      html = render_submit(view, "delete_user", %{"user_id" => to_string(boss.id)})
+
+      assert html =~ "seeded or bootstrap administrator"
+      assert Accounts.get_user(boss.id)
+    end
+
     test "an administrator bans a reader, and a banned reader cannot be deleted", %{conn: conn} do
       reader = user_fixture(%{email: "banned.reader@example.com"})
       {:ok, view, _html} = live(conn, ~p"/admin/users")

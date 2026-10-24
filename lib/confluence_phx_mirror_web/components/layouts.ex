@@ -204,6 +204,16 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                   <li>
                     <span class="text-xs uppercase tracking-wide text-base-content/70">{@current_user.role}</span>
                   </li>
+                  <li>
+                    <.link navigate={~p"/profile"} id="account-profile-link">
+                      <.icon name="hero-user" class="size-4" /> Your account
+                    </.link>
+                  </li>
+                  <li>
+                    <.link navigate={~p"/profile?tab=tokens"} id="account-tokens-link">
+                      <.icon name="hero-key" class="size-4" /> API tokens
+                    </.link>
+                  </li>
                   <li :if={@current_admin?}>
                     <.link navigate={~p"/admin"}><.icon name="hero-cog-6-tooth" class="size-4" />
                     Admin</.link>

@@ -64,9 +64,18 @@ defmodule ConfluencePhxMirror.Accounts.Admins do
     seeded?(user.email) or User.normalise_email(user.email) == bootstrap_email()
   end
 
-  defp bootstrap_email do
+  @doc """
+  The local bootstrap administrator's address, normalised.
+
+  A deployment that configures nothing still needs one way in, so the default
+  is part of the rule rather than of the lookup: `nil` (a key present with no
+  value) means "use the default", not "protect nobody".
+  """
+  @spec bootstrap_email() :: String.t()
+  def bootstrap_email do
     :confluence_phx_mirror
-    |> Application.get_env(:auto_admin_email, "admin@localhost")
+    |> Application.get_env(:auto_admin_email)
+    |> Kernel.||("admin@localhost")
     |> User.normalise_email()
   end
 

@@ -16,6 +16,22 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
     {:cont, attach_site_context(assign_scope(socket, session))}
   end
 
+  @doc """
+  Mounts a screen that belongs to one reader: no identity, no screen.
+
+  Anonymous readers are sent to sign in rather than shown an empty page, and a
+  disabled account counts as no identity here as it does everywhere else.
+  """
+  def on_mount(:signed_in, _params, session, socket) do
+    socket = assign_scope(socket, session)
+
+    if Scope.signed_in?(socket.assigns.current_scope) do
+      {:cont, attach_site_context(socket)}
+    else
+      {:halt, socket |> put_flash(:error, "Please sign in.") |> redirect(to: "/session")}
+    end
+  end
+
   def on_mount(:admin, _params, session, socket) do
     socket = assign_scope(socket, session)
 

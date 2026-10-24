@@ -86,18 +86,13 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
     assert has_element?(view, "#sync-runs time[data-local-title]")
   end
 
-  test "users page lists the assumed admin and creates tokens", %{conn: conn} do
+  test "users page lists the assumed admin and points at the account page", %{conn: conn} do
     {:ok, view, html} = live(conn, ~p"/admin/users")
 
-    admin = ConfluencePhxMirror.Accounts.get_user_by_email("admin@localhost")
     assert html =~ "Users"
     assert html =~ "admin@localhost"
 
-    html =
-      view
-      |> element("#new-token-#{admin.id}", "Token name")
-      |> render_submit(%{"user_id" => admin.id, "name" => "demo"})
-
-    assert html =~ "New token"
+    # Tokens are minted by their owner on /profile; the admin row links there.
+    assert has_element?(view, "a[href='/profile?tab=tokens']")
   end
 end

@@ -32,7 +32,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   def handle_event("filter", params, socket), do: filter(params, socket)
   def handle_event("set_disabled", params, socket), do: set_disabled(params, socket)
   def handle_event("change_role", params, socket), do: change_role(params, socket)
-  def handle_event("update_groups", params, socket), do: update_groups(params, socket)
+  def handle_event("add_group", params, socket), do: add_group(params, socket)
+  def handle_event("remove_group", params, socket), do: remove_group(params, socket)
+  def handle_event("link_identity", params, socket), do: link_identity(params, socket)
+  def handle_event("unlink_identity", params, socket), do: unlink_identity(params, socket)
   def handle_event("unban", params, socket), do: unban(params, socket)
   def handle_event("ban", params, socket), do: ban(params, socket)
   def handle_event("delete_user", params, socket), do: delete_user(params, socket)
@@ -43,7 +46,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   def handle_event("revoke_service_token", params, socket),
     do: revoke_service_token(params, socket)
 
-  def handle_event("create_token", params, socket), do: create_token(params, socket)
   def handle_event("revoke_token", params, socket), do: revoke_token(params, socket)
   def handle_event("dismiss_token", params, socket), do: dismiss_token(params, socket)
 
@@ -118,13 +120,93 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
     end
   end
 
-  defp update_groups(%{"user_id" => user_id, "groups" => groups}, socket) do
-    user = Accounts.get_user(String.to_integer(user_id))
-    groups = String.split(groups, ",", trim: true)
+  defp add_group(%{"user_id" => user_id, "group" => group}, socket) do
+    grant(socket, user_id, group, fn granted ->
+      if granted == "", do: "Choose a group first.", else: "#{granted} is granted here."
+    end)
+  end
 
-    case Accounts.update_groups(user, groups, actor(socket)) do
-      {:ok, _} -> {:noreply, socket |> put_flash(:info, "Groups updated.") |> load()}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not update the groups.")}
+  defp remove_group(%{"user_id" => user_id, "group" => group}, socket) do
+    grant(socket, user_id, group, fn removed ->
+      if removed == "",
+        do: "That group was not granted here.",
+        else: "#{removed} is no longer granted here."
+    end)
+  end
+
+  # One group at a time, added or taken away, so the screen says which name it
+  # changed — the old comma list made "saved" the only feedback, and a typo
+  # looked exactly like a grant.
+  defp grant(socket, user_id, group, message) do
+    with_user(socket, user_id, fn user ->
+      granted = user.groups || []
+      normalised = group |> to_string() |> String.trim() |> String.downcase()
+      next = if normalised in granted, do: granted -- [normalised], else: [normalised | granted]
+
+      case Accounts.update_groups(user, next, actor(socket)) do
+        {:ok, _} -> socket |> put_flash(:info, message.(normalised)) |> load()
+        {:error, _} -> put_flash(socket, :error, "Could not change the groups.")
+      end
+    end)
+  end
+
+  # "This Confluence identity is this person." The admin names the account by its
+  # e-mail: a person who never gets an account here can be linked later, when one
+  # exists.
+  defp link_identity(%{"account_id" => account_id, "email" => email}, socket) do
+    case Accounts.get_user_by_email(email) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "No mirror account has that e-mail address.")}
+
+      user ->
+        link_identity(socket, user, account_id)
+    end
+  end
+
+  defp link_identity(socket, %User{} = user, account_id) do
+    case Accounts.link_identity(user, account_id, actor(socket)) do
+      {:ok, user} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "#{account_id} is now #{user.email} — one person, one account.")
+         |> load()}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, link_refusal(reason, account_id))}
+    end
+  end
+
+  # Why linking was refused, said the way an administrator can act on it: whose
+  # the identity is, or that the site has not shown it yet.
+  defp link_refusal(:blank, _account_id), do: "Give the e-mail of a mirror account."
+
+  defp link_refusal(:already_linked, _account_id),
+    do: "That identity already belongs to this account."
+
+  defp link_refusal({:linked_elsewhere, other}, account_id),
+    do: "#{account_id} belongs to #{other.email}. Unlink it there first."
+
+  defp link_refusal(:unknown_identity, account_id),
+    do: "The mirror has not seen #{account_id} yet — run a sync."
+
+  defp link_refusal(_reason, _account_id), do: "Could not link that identity."
+
+  defp unlink_identity(%{"account_id" => account_id}, socket) do
+    case Accounts.accounts_linked_to(account_id) do
+      [user | _] ->
+        case Accounts.unlink_identity(user, account_id, actor(socket)) do
+          {:ok, user} ->
+            {:noreply,
+             socket
+             |> put_flash(:info, "#{account_id} is no longer #{user.email}'s.")
+             |> load()}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Could not unlink that identity.")}
+        end
+
+      [] ->
+        {:noreply, put_flash(socket, :error, "No account stands for that identity.")}
     end
   end
 
@@ -173,6 +255,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
           |> put_flash(:info, "#{user.email} is deleted, with its tokens and subscriptions.")
           |> load()
 
+        {:error, :protected_admin} ->
+          put_flash(socket, :error, "#{user.email} is a seeded or bootstrap administrator.")
+
         {:error, :banned} ->
           put_flash(socket, :error, "A banned account cannot be deleted — lift the ban first.")
 
@@ -203,22 +288,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
     case Accounts.revoke_service_token(String.to_integer(token_id), actor(socket)) do
       :ok -> {:noreply, socket |> put_flash(:info, "Service token revoked.") |> load()}
       _ -> {:noreply, put_flash(socket, :error, "Service token not found.")}
-    end
-  end
-
-  defp create_token(%{"user_id" => user_id, "name" => name}, socket) do
-    user = Accounts.get_user(String.to_integer(user_id))
-
-    case Accounts.create_api_token(user, String.trim(name), actor(socket)) do
-      {:ok, plain, _token} ->
-        {:noreply,
-         socket
-         |> assign(new_token: %{user: user.email, token: plain})
-         |> put_flash(:info, "Token created — copy it now, it is shown once.")
-         |> load()}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Could not create token: #{inspect(reason)}")}
     end
   end
 
@@ -261,6 +330,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
           user: user,
           tokens: Accounts.list_api_tokens(user),
           synced_groups: Mirror.groups_of(User.identity_keys(user)),
+          identities: user.identity_account_ids || [],
           guard: guard(user)
         }
       end)
@@ -381,22 +451,28 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   defp delete_note(%User{} = user) do
     case Accounts.deletion_blocked(user) do
       nil -> nil
+      {:error, :protected_admin} -> "A seeded or bootstrap administrator cannot be deleted"
       {:error, :banned} -> "A banned account cannot be deleted — lift the ban first"
       {:error, :last_admin} -> guard_note(:last_admin)
     end
   end
 
   # The people Confluence's content names, marked when they have an account
-  # here. The site lists no users: the content says who wrote it, and the sync
-  # asks the site which groups each of them is in.
+  # here and which account stands for them. The site lists no users: the content
+  # says who wrote it, and the sync asks the site which groups each of them is
+  # in.
   defp people(page_number) do
     offset = (page_number - 1) * @page_size
 
     page = Mirror.people(limit: @page_size, offset: offset)
-    accounts = Accounts.accounts_among(Enum.map(page, & &1.account_id))
+    accounts = Accounts.accounts_by_identity(Enum.map(page, & &1.account_id))
 
     page
-    |> Enum.map(&Map.put(&1, :account?, MapSet.member?(accounts, &1.account_id)))
+    |> Enum.map(fn person ->
+      person
+      |> Map.put(:account_email, Map.get(accounts, person.account_id))
+      |> Map.put(:account?, Map.has_key?(accounts, person.account_id))
+    end)
     |> Enum.with_index(offset + 1)
     |> Enum.map(fn {person, index} -> Map.put(person, :index, index) end)
   end
@@ -478,7 +554,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
           </p>
 
           <article
-            :for={%{user: user, tokens: tokens, synced_groups: synced_groups, guard: guard} <- @users}
+            :for={
+              %{
+                user: user,
+                tokens: tokens,
+                synced_groups: synced_groups,
+                identities: identities,
+                guard: guard
+              } <- @users
+            }
             class="border-b border-base-300/60 px-5 py-4 last:border-b-0"
           >
             <div class="flex flex-wrap items-start justify-between gap-3">
@@ -693,52 +777,117 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               </span>
             </div>
 
-            <div class="mt-3 grid gap-3 sm:grid-cols-2">
-              <form phx-submit="update_groups" class="flex items-end gap-1.5">
-                <input type="hidden" name="user_id" value={user.id} />
-                <label class="min-w-0 flex-1">
-                  <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/70">
-                    Extra groups (granted here)
-                  </span>
-                  <input
-                    type="text"
-                    name="groups"
-                    value={Enum.join(user.groups || [], ", ")}
-                    placeholder="e.g. incident-responders"
-                    class="input input-sm mt-1 min-h-11 w-full rounded-lg sm:min-h-0"
-                    aria-label={"Extra groups of #{user.email}"}
-                  />
-                </label>
-                <button type="submit" class="btn btn-ghost btn-sm min-h-11 sm:min-h-0">
-                  Save
-                </button>
-              </form>
-
-              <form
-                id={"new-token-#{user.id}"}
-                phx-submit="create_token"
-                class="flex items-end gap-1.5"
-              >
-                <input type="hidden" name="user_id" value={user.id} />
-                <label class="min-w-0 flex-1">
-                  <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/70">
-                    Token name
-                  </span>
-                  <input
-                    type="text"
-                    name="name"
-                    placeholder="token name"
-                    class="input input-sm mt-1 min-h-11 w-full rounded-lg sm:min-h-0"
-                    required
-                  />
-                </label>
-                <button type="submit" class="btn btn-outline btn-sm min-h-11 sm:min-h-0">
-                  Create
-                </button>
-              </form>
+            <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/70">
+                Linked identities
+              </span>
+              <span :for={identity <- identities} class="badge badge-outline badge-xs">
+                {identity}
+              </span>
+              <span :if={identities == []} class="text-[11px] text-base-content/70">
+                only the identity it signed in with
+              </span>
             </div>
 
-            <ul :if={tokens != []} class="mt-3 flex flex-wrap gap-2">
+            <%!-- Groups granted here sit on top of what the sync says: a
+            membership Confluence does not have (an incident rotation, say),
+            kept across syncs. The picker offers what the last sync read, so a
+            grant is a name that exists rather than a typo that quietly does
+            nothing; the free field is for a group no sync has seen yet. --%>
+            <div class="mt-3">
+              <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/70">
+                Extra groups (granted here)
+              </span>
+              <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span
+                  :for={group <- user.groups || []}
+                  class="badge badge-outline badge-sm gap-1"
+                >
+                  {group}
+                  <form phx-submit="remove_group" class="inline">
+                    <input type="hidden" name="user_id" value={user.id} />
+                    <input type="hidden" name="group" value={group} />
+                    <button
+                      type="submit"
+                      id={"remove-group-#{user.id}-#{group}"}
+                      class="text-base-content/60 hover:text-error"
+                      aria-label={"Stop granting #{group} to #{user.email}"}
+                      title="Stop granting this group here"
+                    >
+                      ×
+                    </button>
+                  </form>
+                </span>
+                <span :if={user.groups in [nil, []]} class="text-[11px] text-base-content/70">
+                  none
+                </span>
+              </div>
+
+              <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                <form
+                  phx-submit="add_group"
+                  id={"group-picker-form-#{user.id}"}
+                  class="flex items-center gap-1.5"
+                >
+                  <input type="hidden" name="user_id" value={user.id} />
+                  <select
+                    name="group"
+                    id={"group-picker-#{user.id}"}
+                    class="select select-sm min-h-11 rounded-lg sm:min-h-0"
+                    aria-label={"Grant a synced group to #{user.email}"}
+                  >
+                    <option value="">grant a synced group…</option>
+                    <option
+                      :for={group <- @synced_groups -- (user.groups || [])}
+                      value={group}
+                    >
+                      {group}
+                    </option>
+                  </select>
+                  <button type="submit" class="btn btn-ghost btn-sm min-h-11 sm:min-h-0">
+                    Grant
+                  </button>
+                </form>
+
+                <form
+                  phx-submit="add_group"
+                  id={"group-free-form-#{user.id}"}
+                  class="flex items-center gap-1.5"
+                >
+                  <input type="hidden" name="user_id" value={user.id} />
+                  <input
+                    type="text"
+                    name="group"
+                    id={"group-free-#{user.id}"}
+                    placeholder="a group no sync has read"
+                    class="input input-sm min-h-11 rounded-lg sm:min-h-0"
+                    aria-label={"Grant another group to #{user.email}"}
+                  />
+                  <button type="submit" class="btn btn-ghost btn-sm min-h-11 sm:min-h-0">
+                    Grant
+                  </button>
+                </form>
+              </div>
+              <p class="mt-1 text-[11px] text-base-content/70">
+                Granted here only, and never taken away by a sync. It never removes a group
+                Confluence says this person is in.
+              </p>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center gap-1.5">
+              <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/70">
+                API tokens
+              </span>
+              <span :if={tokens == []} class="text-[11px] text-base-content/70">
+                none
+              </span>
+            </div>
+
+            <%!-- A token acts as its owner, so an administrator cannot mint one:
+            that would be this reader acting under somebody else's hand. The
+            owner creates their own under /profile; what is left here is the
+            emergency remedy — a leaked token can be revoked. --%>
+            <ul :if={tokens != []} id={"tokens-#{user.id}"} class="mt-2 flex flex-wrap gap-2">
               <li
                 :for={token <- tokens}
                 class="flex items-center gap-2 rounded-lg border border-base-300/70 bg-base-200/40 px-2.5 py-1.5 text-[11px]"
@@ -748,11 +897,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                 <span :if={token.last_used_at} class="text-base-content/70">
                   used {Time.ago(token.last_used_at)}
                 </span>
-                <form phx-submit="revoke_token">
+                <form phx-submit="revoke_token" id={"revoke-token-form-#{token.id}"}>
                   <input type="hidden" name="user_id" value={user.id} />
                   <input type="hidden" name="token_id" value={token.id} />
                   <button
                     type="submit"
+                    id={"revoke-token-#{token.id}"}
                     class="btn btn-ghost btn-xs min-h-11 text-error sm:min-h-0"
                     data-confirm={
                       "Revoke token “#{token.name}”? Anything using it stops working immediately."
@@ -763,8 +913,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                 </form>
               </li>
             </ul>
-            <p :if={tokens == []} class="mt-3 text-[11px] text-base-content/70">
-              No personal tokens.
+            <p class="mt-2 text-[11px] text-base-content/70">
+              {user.email} creates their own tokens under
+              <.link navigate={~p"/profile?tab=tokens"} class="link link-primary">their account</.link>
+              — a token is that person's secret.
             </p>
           </article>
         </section>
@@ -878,10 +1030,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                   {person.account_id}
                 </p>
                 <p class="mt-0.5 text-[11px] text-base-content/70">
-                  {if person.account?,
-                    do: "A mirror account: this person can sign in here.",
+                  {if person.account_email,
+                    do: "This identity is #{person.account_email}: what it may read is theirs.",
                     else:
-                      "No mirror account, and none can be made: Confluence does not share an e-mail address for this identity, so there is nothing to sign in with. The content still names them as its author."}
+                      "No account stands for this identity yet. Link it to one below and what it may read becomes that account's — including the groups it is in."}
                 </p>
                 <div class="mt-1 flex flex-wrap gap-1">
                   <span :for={group <- person.groups} class="badge badge-ghost badge-xs">
@@ -890,6 +1042,51 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                   <span :if={person.groups == []} class="text-[11px] text-base-content/70">
                     no groups synced
                   </span>
+                </div>
+
+                <%!-- One person, several Atlassian accounts: the personal one
+                and the guest one are two identities and the content may name
+                either. Linking says "this identity is this account", and what
+                the identity may read becomes the account's. --%>
+                <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <span :if={person.account_email} class="text-[11px] text-base-content/70">
+                    linked to <span class="font-medium">{person.account_email}</span>
+                  </span>
+                  <form
+                    :if={person.account_email}
+                    phx-submit="unlink_identity"
+                    id={"unlink-#{person.index}"}
+                  >
+                    <input type="hidden" name="account_id" value={person.account_id} />
+                    <button
+                      type="submit"
+                      class="btn btn-ghost btn-xs min-h-11 text-error sm:min-h-0"
+                      data-confirm={
+                        "Unlink #{person.account_id} from #{person.account_email}? What this identity may read stops being theirs."
+                      }
+                    >
+                      Unlink
+                    </button>
+                  </form>
+
+                  <form
+                    :if={is_nil(person.account_email)}
+                    phx-submit="link_identity"
+                    id={"link-#{person.index}"}
+                    class="flex items-center gap-1.5"
+                  >
+                    <input type="hidden" name="account_id" value={person.account_id} />
+                    <input
+                      type="text"
+                      name="email"
+                      placeholder="link to an account e-mail"
+                      class="input input-xs min-h-11 w-56 rounded-lg sm:min-h-0"
+                      aria-label={"Link #{person.account_id} to a mirror account"}
+                    />
+                    <button type="submit" class="btn btn-ghost btn-xs min-h-11 sm:min-h-0">
+                      Link
+                    </button>
+                  </form>
                 </div>
               </li>
             </ul>

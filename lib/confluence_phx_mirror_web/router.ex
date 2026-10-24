@@ -122,6 +122,16 @@ defmodule ConfluencePhxMirrorWeb.Router do
     end
   end
 
+  live_session :account, on_mount: [{LiveUserAuth, :signed_in}] do
+    scope "/", ConfluencePhxMirrorWeb do
+      pipe_through :browser
+
+      # A reader's own account, and the only place a personal API token is
+      # minted: a token is the reader's secret, so nobody else may create one.
+      live "/profile", ProfileLive, :index
+    end
+  end
+
   live_session :admin, on_mount: [{LiveUserAuth, :admin}] do
     scope "/admin", ConfluencePhxMirrorWeb.Admin do
       pipe_through :browser

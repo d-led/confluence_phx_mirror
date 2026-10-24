@@ -22,6 +22,10 @@ defmodule ConfluencePhxMirror.Accounts.User do
     field :provisioned_at, :utc_datetime
     # Confluence identity used when evaluating mirrored permissions.
     field :confluence_account_id, :string
+    # Further Confluence identities an administrator linked to this account:
+    # one person, several Atlassian accounts. What may be read is the union, so
+    # every permission rule asks `identity_keys/1` rather than this field.
+    field :identity_account_ids, {:array, :string}, default: []
     # Groups an administrator granted here, kept across syncs. Confluence group
     # memberships come from the mirror itself (`Mirror.GroupMember`).
     field :groups, {:array, :string}, default: []
@@ -61,19 +65,25 @@ defmodule ConfluencePhxMirror.Accounts.User do
   Kept out of `changeset/2` so a reader can never grant themselves a group.
   """
   def identity_changeset(user, attrs) do
-    cast(user, attrs, [:confluence_account_id, :groups])
+    cast(user, attrs, [:confluence_account_id, :identity_account_ids, :groups])
   end
 
   @doc "Whether the sync made this account, rather than somebody claiming it here."
   def provisioned?(%__MODULE__{provisioned_at: at}), do: not is_nil(at)
 
   @doc """
-  The identifiers Confluence can name this account by: its e-mail address and,
-  when known, its account id.
+  The identifiers Confluence can name this account by: its e-mail address, the
+  identity it signed in with, and every identity an administrator linked.
+
+  The union is deliberate. A person with a personal account and a guest account
+  is one person here; a group membership or a page restriction naming either of
+  them is a permission for that person, and asking only one of them would hide
+  the other half of their own space.
   """
   def identity_keys(%__MODULE__{} = user) do
-    [normalise_email(user.email), user.confluence_account_id]
-    |> Enum.reject(&is_nil/1)
+    [normalise_email(user.email), user.confluence_account_id | user.identity_account_ids || []]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.uniq()
   end
 
   def admin?(%__MODULE__{role: "admin"}), do: true
@@ -144,6 +154,30 @@ defmodule ConfluencePhxMirror.Accounts.User do
       email: user.email,
       from: Enum.join(previous_groups || [], ", "),
       to: Enum.join(user.groups || [], ", ")
+    })
+  end
+
+  @doc """
+  Audit entry for a Confluence identity linked to this account.
+
+  Linking is an access decision — the identity brings its group memberships and
+  its page restrictions — so it is recorded with the identity named, not only
+  with the count.
+  """
+  def audit_event_identity_linked(%__MODULE__{} = user, account_id) do
+    Entry.new("user.identity_linked", "user", user.id, %{
+      email: user.email,
+      identity: account_id,
+      identities: Enum.join(user.identity_account_ids || [], ", ")
+    })
+  end
+
+  @doc "Audit entry for a Confluence identity unlinked from this account."
+  def audit_event_identity_unlinked(%__MODULE__{} = user, account_id) do
+    Entry.new("user.identity_unlinked", "user", user.id, %{
+      email: user.email,
+      identity: account_id,
+      identities: Enum.join(user.identity_account_ids || [], ", ")
     })
   end
 

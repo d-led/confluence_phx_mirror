@@ -63,24 +63,32 @@ defmodule ConfluencePhxMirror.Accounts do
   end
 
   @doc """
-  Which of `account_ids` already have an account here.
+  Which of `account_ids` have an account here, and whose it is.
 
   Asked for one page of people, not for the whole site: a mirror with a hundred
-  thousand identities must not read every account to decide a badge.
+  thousand identities must not read every account to decide a badge. The answer
+  is a map from the identity to the e-mail of the account that stands for it —
+  the identity the account signed in with and the ones an administrator linked
+  alike, because to the permission rules they are the same person.
   """
-  def accounts_among(account_ids) do
+  def accounts_by_identity(account_ids) do
     keys = Enum.reject(account_ids, &is_nil/1)
 
-    from(u in User,
-      where:
-        u.confluence_account_id in ^keys or
-          fragment("lower(?)", u.email) in ^keys,
-      select: {u.confluence_account_id, fragment("lower(?)", u.email)}
-    )
-    |> Repo.all()
-    |> Enum.flat_map(fn {id, email} -> [id, email] end)
-    |> Enum.reject(&is_nil/1)
-    |> MapSet.new()
+    if keys == [] do
+      %{}
+    else
+      from(u in User,
+        where:
+          u.confluence_account_id in ^keys or
+            fragment("? && ?", u.identity_account_ids, ^keys),
+        select: {u.email, u.confluence_account_id, u.identity_account_ids}
+      )
+      |> Repo.all()
+      |> Enum.flat_map(fn {email, primary, linked} ->
+        [primary | linked || []] |> Enum.reject(&is_nil/1) |> Enum.map(&{&1, email})
+      end)
+      |> Map.new()
+    end
   end
 
   defp limit_if(query, nil), do: query
@@ -469,8 +477,9 @@ defmodule ConfluencePhxMirror.Accounts do
   Deletes an account and everything that hangs off it — tokens, subscriptions,
   login tokens.
 
-  Refused for a banned account, because the ban has to outlive the row, and for
-  the last administrator, because the mirror must keep one.
+  Refused for a banned account, because the ban has to outlive the row, for a
+  protected administrator, because a deployment always has to have a way in,
+  and for the last administrator, because the mirror must keep one.
   """
   def delete_user(%User{} = user, actor) do
     case deletion_blocked(user) do
@@ -487,13 +496,18 @@ defmodule ConfluencePhxMirror.Accounts do
   Why deleting this account would be refused, or `nil` when it may go.
 
   As with `ban_blocked/1`: one rule, asked by `delete_user/2` and by the screen
-  that draws the button. The label a row happens to show is not the answer — a
-  seeded administrator is also often the last one, and the delete rule only
-  cares about the second.
+  that draws the button, so the button cannot promise what the event refuses.
+
+  A protected administrator (seeded, or the bootstrap account) is refused before
+  anything else is considered. Being the last administrator is not the reason:
+  deleting a seeded administrator who happens to have company would take away an
+  account the deployment states must exist, and the next boot seeds it again —
+  so the row would come back as a stranger with no claim to what it used to own.
   """
-  @spec deletion_blocked(User.t()) :: {:error, :banned | :last_admin} | nil
+  @spec deletion_blocked(User.t()) :: {:error, :banned | :protected_admin | :last_admin} | nil
   def deletion_blocked(%User{} = user) do
     cond do
+      Admins.protected?(user) -> {:error, :protected_admin}
       User.banned?(user) -> {:error, :banned}
       last_admin?(user) -> {:error, :last_admin}
       true -> nil
@@ -521,6 +535,83 @@ defmodule ConfluencePhxMirror.Accounts do
     end
   end
 
+  @doc """
+  The accounts a Confluence identity is linked to, if any.
+
+  A mirror account stands for one person; a person can hold two Confluence
+  identities. One identity belongs to one account — two accounts claiming the
+  same identity would be two readers sharing every permission it carries — so
+  linking asks this first.
+  """
+  def accounts_linked_to(account_id) when is_binary(account_id) do
+    from(u in User,
+      where:
+        u.confluence_account_id == ^account_id or
+          fragment("? && ?", u.identity_account_ids, ^[account_id]),
+      order_by: [asc: u.email]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Links a Confluence identity to an account: this Atlassian account is this
+  person.
+
+  What the identity carries — its group memberships, its page restrictions, the
+  content it authors — becomes this account's, because `User.identity_keys/1`
+  answers with every linked identity. Two things are refused: an identity the
+  mirror has never seen (a typo would otherwise be a grant that silently does
+  nothing), and an identity another account already holds.
+
+  The identity the account signs in with is not touched; this is the *further*
+  identities a person holds.
+  """
+  def link_identity(%User{} = user, account_id, actor) when is_binary(account_id) do
+    account_id = String.trim(account_id)
+
+    linked = user.identity_account_ids || []
+
+    cond do
+      account_id == "" ->
+        {:error, :blank}
+
+      account_id in linked or account_id == user.confluence_account_id ->
+        {:error, :already_linked}
+
+      other = Enum.find(accounts_linked_to(account_id), &(&1.id != user.id)) ->
+        {:error, {:linked_elsewhere, other}}
+
+      not Mirror.identity_known?([account_id]) ->
+        {:error, :unknown_identity}
+
+      true ->
+        with {:ok, user} <-
+               user
+               |> User.identity_changeset(%{identity_account_ids: [account_id | linked]})
+               |> Repo.update() do
+          Audit.log(actor, User.audit_event_identity_linked(user, account_id))
+          {:ok, user}
+        end
+    end
+  end
+
+  @doc "Unlinks a Confluence identity: what it carries is no longer this account's."
+  def unlink_identity(%User{} = user, account_id, actor) when is_binary(account_id) do
+    linked = user.identity_account_ids || []
+
+    if account_id in linked do
+      with {:ok, user} <-
+             user
+             |> User.identity_changeset(%{identity_account_ids: linked -- [account_id]})
+             |> Repo.update() do
+        Audit.log(actor, User.audit_event_identity_unlinked(user, account_id))
+        {:ok, user}
+      end
+    else
+      {:error, :not_linked}
+    end
+  end
+
   @doc "The administrator assumed in development and test."
   def ensure_admin!(email \\ admin_email()) do
     user = ensure_user!(email, %{role: "admin"})
@@ -542,7 +633,7 @@ defmodule ConfluencePhxMirror.Accounts do
   end
 
   defp admin_email do
-    Application.get_env(:confluence_phx_mirror, :auto_admin_email, "admin@localhost")
+    Admins.bootstrap_email()
   end
 
   defp display_name_for(email) do
