@@ -415,8 +415,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             <th>Mode</th>
             <th>Status</th>
             <th>Duration</th>
-            <th>Pages</th>
-            <th>Skipped</th>
+            <th title="What the site listed for this run's window — not the mirror's size">
+              Listed
+            </th>
+            <th title="Of those, the ones that had to be fetched and rendered">Changed</th>
+            <th title="Of those, the ones already up to date and not fetched again">Unchanged</th>
             <th>Attachments</th>
             <th>Errors</th>
             <th><span class="sr-only">Queue</span></th>
@@ -428,10 +431,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             <td class="text-xs">{row.mode}</td>
             <td><span class={["badge badge-sm", status_class(row.status)]}>{row.status}</span></td>
             <td class="text-xs tabular-nums">{row.duration}</td>
-            <td class="text-xs tabular-nums">{row.pages}</td>
-            <%!-- Listed upstream but unchanged, so not fetched again: the point
-            of an incremental mirror, and the number that shows it working. --%>
-            <td class="text-xs tabular-nums">{row.skipped}</td>
+            <td class="text-xs tabular-nums">{row.listed}</td>
+            <td class="text-xs tabular-nums">{row.changed}</td>
+            <td class="text-xs tabular-nums">{row.unchanged}</td>
             <td class="text-xs tabular-nums">{row.attachments}</td>
             <td class="max-w-[18rem] truncate text-xs text-error" title={row.error}>
               {row.error || "—"}
@@ -535,11 +537,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       mode: job_mode(job),
       status: queued_status(job.state),
       duration: "—",
-      pages: "—",
-      skipped: "—",
+      listed: "—",
+      changed: "—",
+      unchanged: "—",
       attachments: "—",
       error: nil,
-      job_id: job.id
+      job_id: job.id,
+      dom_id: "queued-#{job.id}"
     }
   end
 
@@ -549,11 +553,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       mode: run.mode,
       status: run.status,
       duration: Time.duration(run.started_at, run.finished_at),
-      pages: run.stats["pages"] || 0,
-      skipped: run.stats["unchanged"] || 0,
+      # What the site listed for this run's window, and of those, what had to be
+      # fetched and what was already up to date. A run's numbers are its window,
+      # not the mirror: the mirror's size is `Mirror.stats/0`, printed above.
+      listed: run.stats["pages"] || 0,
+      changed: run.stats["changed"] || 0,
+      unchanged: run.stats["unchanged"] || 0,
       attachments: run.stats["attachments"] || 0,
       error: run.error,
-      job_id: nil
+      job_id: nil,
+      dom_id: "sync-run-#{run.id}"
     }
   end
 

@@ -105,7 +105,6 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
   """
   attr :id, :string, required: true
   attr :rows, :list, required: true
-
   slot :head, doc: "one `<th>` per column, used from `sm` up"
 
   slot :row,
@@ -123,6 +122,9 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
   slot :empty
 
   def data_table(assigns) do
+    # A table without a phone card is a table with no `<:card>` slot at all.
+    assigns = assign_new(assigns, :card, fn -> [] end)
+
     ~H"""
     <div :if={@card != []} class="-mx-4 sm:hidden">
       <ul class="divide-y divide-base-300/60">
@@ -141,7 +143,9 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
           <tr>{render_slot(@head)}</tr>
         </thead>
         <tbody>
-          <tr :for={row <- @rows} class="hover:bg-base-200/40">{render_slot(@row, row)}</tr>
+          <tr :for={row <- @rows} id={row_id(row)} class="hover:bg-base-200/40">
+            {render_slot(@row, row)}
+          </tr>
           <tr :if={@rows == []}>
             <td colspan="99" class="py-8 text-center text-xs text-base-content/70">
               {render_slot(@empty)}
@@ -152,6 +156,11 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
     </div>
     """
   end
+
+  # A row may name itself (`:dom_id`), which is what lets a test or a hook
+  # address one line of the table.
+  defp row_id(row) when is_map(row), do: row[:dom_id]
+  defp row_id(_row), do: nil
 
   @doc "Page title, eyebrow and metadata/action slots."
   attr :title, :string, required: true

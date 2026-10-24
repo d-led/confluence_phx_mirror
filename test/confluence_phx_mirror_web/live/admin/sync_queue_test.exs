@@ -27,6 +27,29 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncQueueTest do
     assert render(view) =~ "space MFS"
   end
 
+  test "a finished run says what it listed, what it fetched and what it skipped", %{conn: conn} do
+    {:ok, run} =
+      %ConfluencePhxMirror.Sync.SyncRun{}
+      |> ConfluencePhxMirror.Sync.SyncRun.changeset(%{
+        source: "confluence-demo",
+        mode: "incremental",
+        status: "succeeded",
+        started_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        finished_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        stats: %{"pages" => 10, "changed" => 3, "unchanged" => 7}
+      })
+      |> Repo.insert()
+
+    {:ok, view, _html} = live(conn, ~p"/admin")
+
+    # A run's numbers are its own window, not the mirror's size — and "listed"
+    # is the two others added up, which is what a reader checks them by.
+    row = view |> element("#sync-run-#{run.id}") |> render()
+    assert row =~ ">10<"
+    assert row =~ ">3<"
+    assert row =~ ">7<"
+  end
+
   test "dropping a waiting sync cancels the job and takes its line away", %{conn: conn} do
     job = queued_space_sync("MFS")
     {:ok, view, _html} = live(conn, ~p"/admin")
