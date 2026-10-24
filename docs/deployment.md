@@ -285,7 +285,7 @@ third when it is worth it:
 
 | Job | Runs | What it is |
 | --- | --- | --- |
-| **Static analysis** | every push, every PR | `mix lint`: `compile --warnings-as-errors`, `deps.unlock --check-unused`, `format --check-formatted`, `credo --strict`, `sobelow --config`. About half a minute |
+| **Static analysis** | every push, every PR | `mix lint`: `compile --warnings-as-errors`, `deps.unlock --check-unused`, `format --check-formatted`, `credo --strict`, `lint.sobelow --config` (sobelow, with the quoted-key warning it provokes from `mix.lock` attributed rather than printed). About half a minute |
 | **Suite and complexity** | every push, every PR | Postgres 17 service, `mix cover` (the suite with coverage), then `mix complexity` (CRAP per function, threshold 30). Seven to eight minutes, and the gate that matters |
 | **Image, scan, non-root** | a release tag, or a dispatch that asks | `docker build` (amd64), Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), `id -u` must be `10001`, then the amd64 + arm64 index is published. The expensive half, mostly the arm64 build under QEMU |
 

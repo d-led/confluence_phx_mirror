@@ -81,6 +81,10 @@ defmodule ConfluencePhxMirror.MixProject do
       {:argon2_elixir, "~> 4.1"},
       {:req, "~> 0.5"},
       {:floki, "~> 0.38"},
+      # Converted page bodies, for the MCP server and its repeated reads of one
+      # page. Entries are keyed by content, so a sync that changes a body
+      # simply misses rather than needs invalidating.
+      {:cachex, "~> 4.1"},
       {:hammer, "~> 7.5"},
       {:oban, "~> 2.20"},
       {:telemetry_metrics, "~> 1.0"},
@@ -131,7 +135,7 @@ defmodule ConfluencePhxMirror.MixProject do
         "deps.unlock --check-unused",
         "format --check-formatted",
         "credo --strict",
-        "sobelow --config"
+        "lint.sobelow --config"
       ],
       # Tests with the coverage data the complexity gate needs.
       cover: ["test --cover --export-coverage default"],

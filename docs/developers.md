@@ -168,8 +168,15 @@ The script is read-only: it runs `format --check-formatted` and
 
 `mix lint` needs no database and no test run (about two seconds), so it is the
 one to keep in a file-watcher or a pre-commit hook. `mix format
---check-formatted`, `mix credo --strict` and `mix sobelow --config` can of
+--check-formatted`, `mix credo --strict` and `mix lint.sobelow --config` can of
 course be run on their own.
+
+`mix lint.sobelow` is sobelow with one thing taken out: sobelow reads `mix.lock`
+with `Code.string_to_quoted/1` to compare locked versions against its advisory
+list, and Elixir 1.20 warns about every quoted key in that file — sixty-nine
+lines, one per dependency, none of them actionable. The task drops exactly that
+block when it names a package this project locks, says how many it dropped, and
+passes everything else through, so a warning from our own source still prints.
 
 Sobelow runs with `skip: true`, so every accepted finding is either a
 `# sobelow_skip [...]` comment with its reason at the call site (sanitised HTML,
