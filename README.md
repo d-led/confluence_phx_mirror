@@ -95,19 +95,27 @@ mix setup                     # first run: deps, database, migrations, assets, f
 
 ### Mirroring a real site
 
-Three variables are the whole contract: the site URL, and the e-mail and API
-token of an Atlassian account with Confluence access (create one at
-<https://id.atlassian.com/manage-profile/security/api-tokens>):
+Three environment variables are the whole contract: the site URL, and the
+e-mail and API token — a personal access token (PAT) — of an Atlassian account
+that can read the spaces you want. The token is created at
+<https://id.atlassian.com/manage-profile/security/api-tokens> ("Create API
+token"; it is shown once, so copy it straight into the variable):
 
 ```bash
 export CM_CONFLUENCE_SITE=https://acme.atlassian.net   # "/wiki" optional
 export CM_ATL_EMAIL=you@acme.com
-export CM_ATL_TOKEN=...
+export CM_ATL_TOKEN=...          # the PAT from the page above
 export CM_SPACES=ENG,PROD        # optional; default is every visible space
 
 mix ecto.setup                   # create this site's database, migrate, sync once
-mix phx.server
+scripts/start-mirrored.sh        # serve that site; output goes to /tmp/mirror_server.log
 ```
+
+The three variables are read by `scripts/start-mirrored.sh`, which starts the
+app with `CM_SOURCE=http` against the site you named — the same thing as
+`mix phx.server` with those variables exported, but it keeps the server's log
+in one file instead of the terminal. Reading a PAT from the environment rather
+than a file is deliberate: nothing about the token is written to the repo.
 
 `ecto.setup` takes the first snapshot because the scheduler's first pull is an
 interval away (`CM_SYNC_INTERVAL_SECONDS`, `3600` by default; `0` disables it).

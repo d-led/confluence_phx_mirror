@@ -405,6 +405,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           <:head>
             <th>When</th>
             <th title="How the run was asked for, and by whom">Mode</th>
+            <th title="What the run covered: the whole site, one space or one page">Scope</th>
             <th>Status</th>
             <th>Duration</th>
             <th title="What the site listed for this run's window — not the mirror's size">
@@ -432,6 +433,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
                 {row.trigger}
               </span>
             </td>
+            <td class="text-xs" title={row.scope}>{row.scope}</td>
             <td><span class={["badge badge-sm", status_class(row.status)]}>{row.status}</span></td>
             <td class="text-xs tabular-nums">{row.duration}</td>
             <td class="text-xs tabular-nums">{row.listed}</td>
@@ -540,6 +542,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       at: job.inserted_at,
       mode: job_mode(job),
       trigger: Map.get(job.args, "trigger"),
+      scope: job_scope(job),
       status: queued_status(job.state),
       duration: "—",
       listed: "—",
@@ -554,44 +557,63 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   end
 
   defp run_row(run) do
+    # The same numbers the audit entry records — one function, so the table and
+    # the log cannot disagree about what a run did.
+    numbers = SyncRun.summary(run)
+
     %{
       at: run.started_at,
       mode: run.mode,
       # Who asked, when the run was asked for by someone: written at the start
       # and kept through the numbers that replace the run's stats.
       trigger: Map.get(run.stats || %{}, "trigger"),
+      # Runs recorded before the scope column existed only have their mode; a
+      # snapshot or an incremental pull of that age was always the whole site.
+      scope: run.scope || scope_from_mode(run.mode),
       status: run.status,
       duration: Time.duration(run.started_at, run.finished_at),
       # What the site listed for this run's window, and of those, what had to be
       # fetched and what was already up to date. A run's numbers are its window,
       # not the mirror: the mirror's size is `Mirror.stats/0`, printed above.
-      listed: run.stats["pages"] || 0,
-      changed: run.stats["changed"] || 0,
-      unchanged: run.stats["unchanged"] || 0,
-      total: run.stats["total"] || 0,
-      attachments: run.stats["attachments"] || 0,
+      listed: numbers.listed,
+      changed: numbers.changed,
+      unchanged: numbers.unchanged,
+      total: numbers.in_mirror,
+      attachments: numbers.attachments,
       error: run.error,
       job_id: nil,
       dom_id: "sync-run-#{run.id}"
     }
   end
 
-  # A queued job has no run to describe it, so its arguments say what it will do.
+  # `mode` says how the job was asked for; `scope` says what it will touch, and
+  # the two are separate columns so a finished run reads like a queued one.
   defp job_mode(%Oban.Job{worker: worker, args: args}) do
     cond do
       worker == inspect(SnapshotWorker) ->
         if args["mode"] == "snapshot", do: "snapshot", else: "incremental"
 
       worker == inspect(SpaceWorker) ->
-        "space #{args["space_key"]}"
+        "incremental"
 
       worker == inspect(PageWorker) ->
-        "page #{args["confluence_id"]}"
+        "webhook"
 
       true ->
         "sync"
     end
   end
+
+  defp job_scope(%Oban.Job{args: args}) do
+    cond do
+      args["space_key"] -> "space #{args["space_key"]}"
+      args["confluence_id"] -> "page #{args["confluence_id"]}"
+      true -> "whole site"
+    end
+  end
+
+  defp scope_from_mode("webhook"), do: "one page"
+  defp scope_from_mode(_whole_site_or_incremental), do: "whole site"
 
   # Oban's own states are scheduling vocabulary ("available" means "waiting for
   # a free slot", "retryable" means "waiting for the next attempt"); the table
