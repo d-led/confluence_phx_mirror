@@ -2,7 +2,7 @@ defmodule ConfluencePhxMirror.Authorization do
   @moduledoc """
   Who may read what, replayed from what the sync learned from Confluence.
 
-  Two levels, in Confluence's own precedence:
+  Three levels, in Confluence's own precedence:
 
     1. a page with read restrictions is readable only by the listed users and
        groups;
@@ -10,9 +10,18 @@ defmodule ConfluencePhxMirror.Authorization do
     3. a space without synced permissions is open — the mirror already shows
        only what the sync account can read, and there is nothing else to go on.
 
-  Mirror administrators always see everything. Identity is matched on e-mail or
-  Confluence account id; groups come from the membership the sync reads from
-  Confluence (plus any group an administrator granted here).
+  One space type overrides all three: a personal space belongs to the person
+  whose account id keys it (`~5F057CBE0B38B10022628D68), and nobody else may
+  read it, whatever permissions it has or lacks. A mirror usually skips personal
+  spaces, but `CM_SYNC_PERSONAL_SPACES=true` mirrors them and a one-space sync
+  may bring one in, and neither is a reason to show one person's drafts to the
+  office.
+
+  Mirror administrators always see everything — including personal spaces, which
+  an administrator may have to look at to decide whether to keep mirroring them.
+  Identity is matched on e-mail or Confluence account id; groups come from the
+  membership the sync reads from Confluence (plus any group an administrator
+  granted here).
 
 
   The decision is a pure function of the `Scope` and the mirror's tables, which
@@ -30,15 +39,28 @@ defmodule ConfluencePhxMirror.Authorization do
   @doc "Whether the reader may see a space (and therefore its catalogue entry)."
   @spec can_read_space?(Scope.t(), ConfluencePhxMirror.Mirror.Space.t()) :: boolean()
   def can_read_space?(%Scope{} = scope, space) do
-    Scope.admin?(scope) or space_allows?(scope, space.id)
+    Scope.admin?(scope) or owns?(scope, space) or
+      (not personal_space?(space) and space_allows?(scope, space.id))
   end
 
   @doc "Whether the reader may open a page or blog post."
   @spec can_read_page?(Scope.t(), ConfluencePhxMirror.Mirror.Page.t()) :: boolean()
   def can_read_page?(%Scope{} = scope, page) do
     Scope.admin?(scope) or
-      (space_allows?(scope, page.space_id) and page_allows?(scope, page.confluence_id))
+      (space_readable?(scope, page.space_id) and page_allows?(scope, page.confluence_id))
   end
+
+  @doc """
+  Whether a space is somebody's own.
+
+  Confluence keys a personal space by its owner's account id
+  (`~5F057CBE0B38B10022628D68`), and only that account — and an administrator —
+  may read it. Nothing else narrows a space this completely, so the rule lives
+  here rather than in the space's permissions.
+  """
+  @spec personal_space?(map()) :: boolean()
+  def personal_space?(%{type: "personal"}), do: true
+  def personal_space?(_space), do: false
 
   @doc """
   Every space the reader may see, by name.
@@ -51,10 +73,19 @@ defmodule ConfluencePhxMirror.Authorization do
     * `:limit` — how many to return. The switcher is a menu, not a directory:
       it takes a window and leaves "all spaces" to `/spaces`, which pages in
       the database.
+    * `:query` — narrows to the spaces whose name or key matches, on the same
+      rule the directory uses, so typing "LOAD01" in the switcher finds what
+      the directory would.
   """
   @spec readable_spaces(Scope.t(), keyword()) :: [Space.t()]
   def readable_spaces(%Scope{} = scope, opts \\ []) do
-    from(s in Space, as: :space, order_by: [asc: s.name], limit: ^Keyword.get(opts, :limit))
+    from(s in Space,
+      as: :space,
+      where: is_nil(s.deleted_at),
+      order_by: [asc: s.name],
+      limit: ^Keyword.get(opts, :limit)
+    )
+    |> Mirror.named_like(Keyword.get(opts, :query, ""))
     |> restrict_spaces(scope)
     |> Repo.all()
   end
@@ -79,7 +110,9 @@ defmodule ConfluencePhxMirror.Authorization do
       where(
         query,
         [s],
-        not exists(read_permissions()) or exists(read_permissions_for(scope))
+        (s.type != "personal" and
+           (not exists(read_permissions()) or exists(read_permissions_for(scope)))) or
+          (s.type == "personal" and fragment("lower(?)", s.key) == ^owner_key(scope))
       )
     end
   end
@@ -117,7 +150,10 @@ defmodule ConfluencePhxMirror.Authorization do
       where(
         query,
         [p],
-        (not exists(page_space_permissions()) or exists(page_space_permissions_for(scope))) and
+        ((not exists(personal_space_of_page()) and
+            (not exists(page_space_permissions()) or
+               exists(page_space_permissions_for(scope)))) or
+           exists(own_space_of_page(scope))) and
           (not exists(page_read_restrictions()) or exists(page_read_restrictions_for(scope)))
       )
     end
@@ -136,6 +172,25 @@ defmodule ConfluencePhxMirror.Authorization do
     from(sp in SpacePermission,
       where: sp.operation == "read" and sp.space_id == parent_as(:page).space_id,
       where: ^subjects,
+      select: 1
+    )
+  end
+
+  # A page in a personal space is its owner's, whatever permissions the space
+  # carries — and a personal space usually carries none, which without these two
+  # would make it the most open space in the mirror.
+  defp personal_space_of_page do
+    from(s in Space,
+      where: s.id == parent_as(:page).space_id and s.type == "personal",
+      select: 1
+    )
+  end
+
+  defp own_space_of_page(scope) do
+    from(s in Space,
+      where:
+        s.id == parent_as(:page).space_id and s.type == "personal" and
+          fragment("lower(?)", s.key) == ^owner_key(scope),
       select: 1
     )
   end
@@ -197,9 +252,9 @@ defmodule ConfluencePhxMirror.Authorization do
   Narrows an already-loaded list of pages to the ones the reader may see.
 
   Offline cousins of `restrict_spaces/2`: a caller that has pages in hand (an
-  archive, a page of search results) asks once, and the answer costs two
-  queries no matter how many pages there are — one for the spaces' permissions
-  and one for the pages' restrictions.
+  archive, a page of search results) asks once, and the answer costs a fixed
+  three queries no matter how many pages there are — the spaces' permissions,
+  which of those spaces are personal, and the pages' restrictions.
   """
   @spec readable_pages(Scope.t(), [ConfluencePhxMirror.Mirror.Page.t()]) ::
           [ConfluencePhxMirror.Mirror.Page.t()]
@@ -207,9 +262,11 @@ defmodule ConfluencePhxMirror.Authorization do
     if Scope.admin?(scope) do
       pages
     else
-      spaces = space_permissions_by(Enum.map(pages, & &1.space_id))
+      space_ids = Enum.map(pages, & &1.space_id)
+      spaces = space_permissions_by(space_ids)
+      owners = personal_spaces_by(space_ids)
       restrictions = page_restrictions_by(Enum.map(pages, & &1.id))
-      Enum.filter(pages, &visible?(scope, &1, spaces, restrictions))
+      Enum.filter(pages, &visible?(scope, &1, spaces, owners, restrictions))
     end
   end
 
@@ -217,13 +274,14 @@ defmodule ConfluencePhxMirror.Authorization do
   Whether every reader sees the same pages.
 
   An administrator does, and so does everybody on a mirror with no space
-  permissions and no page restrictions — which is most of them. A screen that
-  counts or lists content can then compute one answer for the whole mirror
-  instead of one per reader; when this is false it has to ask per reader.
+  permissions, no page restrictions and no personal space — which is most of
+  them. A screen that counts or lists content can then compute one answer for
+  the whole mirror instead of one per reader; when this is false it has to ask
+  per reader.
   """
   @spec uniform_readership?(Scope.t()) :: boolean()
   def uniform_readership?(%Scope{} = scope) do
-    Scope.admin?(scope) or not Mirror.any_permissions?()
+    Scope.admin?(scope) or (not Mirror.any_permissions?() and not Mirror.any_personal_spaces?())
   end
 
   @doc """
@@ -258,9 +316,16 @@ defmodule ConfluencePhxMirror.Authorization do
     end
   end
 
-  defp visible?(scope, page, spaces, restrictions) do
-    allows?(scope, Map.get(spaces, page.space_id, [])) and
+  defp visible?(scope, page, spaces, owners, restrictions) do
+    space_visible?(scope, page.space_id, spaces, owners) and
       allows?(scope, Map.get(restrictions, page.id, []))
+  end
+
+  defp space_visible?(scope, space_id, spaces, owners) do
+    case Map.fetch(owners, space_id) do
+      {:ok, key} -> owns_key?(scope, key)
+      :error -> allows?(scope, Map.get(spaces, space_id, []))
+    end
   end
 
   @doc """
@@ -276,28 +341,38 @@ defmodule ConfluencePhxMirror.Authorization do
   @spec readable_alongside(Mirror.Page.t(), [ConfluencePhxMirror.Mirror.Page.t()]) ::
           [ConfluencePhxMirror.Mirror.Page.t()]
   def readable_alongside(%Mirror.Page{} = host, pages) do
-    spaces = space_permissions_by([host.space_id | Enum.map(pages, & &1.space_id)])
+    space_ids = [host.space_id | Enum.map(pages, & &1.space_id)]
+    spaces = space_permissions_by(space_ids)
+    owners = personal_spaces_by(space_ids)
     restrictions = page_restrictions_by([host.id | Enum.map(pages, & &1.id)])
-    host_subjects = effective_subjects(host, spaces, restrictions)
+    host_subjects = effective_subjects(host, spaces, owners, restrictions)
 
     Enum.filter(pages, fn page ->
-      at_least_as_wide?(effective_subjects(page, spaces, restrictions), host_subjects)
+      at_least_as_wide?(effective_subjects(page, spaces, owners, restrictions), host_subjects)
     end)
   end
 
   # A page's own restrictions decide before its space does, and no named subject
   # means everybody may read it.
-  defp effective_subjects(page, spaces, restrictions) do
+  defp effective_subjects(page, spaces, owners, restrictions) do
     case Map.get(restrictions, page.id, []) do
-      [] -> space_subjects(page, spaces)
+      [] -> space_subjects(page, spaces, owners)
       subjects -> MapSet.new(subjects, &{&1.subject_type, &1.subject_key})
     end
   end
 
-  defp space_subjects(page, spaces) do
-    case Map.get(spaces, page.space_id, []) do
-      [] -> :everyone
-      subjects -> MapSet.new(subjects, &{&1.subject_type, &1.subject_key})
+  # A personal space's audience is its owner, and only its owner: a page in one
+  # may not be listed on any page open to more people than that.
+  defp space_subjects(page, spaces, owners) do
+    case Map.fetch(owners, page.space_id) do
+      {:ok, key} ->
+        MapSet.new([{"user", owner_identity(key)}])
+
+      :error ->
+        case Map.get(spaces, page.space_id, []) do
+          [] -> :everyone
+          subjects -> MapSet.new(subjects, &{&1.subject_type, &1.subject_key})
+        end
     end
   end
 
@@ -347,6 +422,48 @@ defmodule ConfluencePhxMirror.Authorization do
       subjects -> Enum.any?(subjects, &subject_matches?(scope, &1))
     end
   end
+
+  # A page is readable when its space is, so the rule for personal spaces has to
+  # be asked of the space the page lives in — the page itself says nothing but
+  # its space's local id.
+  defp space_readable?(scope, space_id) do
+    case Mirror.find_space_by_id(space_id) do
+      {:ok, space} -> can_read_space?(scope, space)
+      {:error, :not_found} -> false
+    end
+  end
+
+  # The spaces among `space_ids` that are somebody's own, by the account id
+  # their key names. A space whose key is not an account id cannot be one.
+  defp personal_spaces_by(space_ids) do
+    ids = ids(space_ids)
+
+    from(s in Space, where: s.id in ^ids and s.type == "personal", select: {s.id, s.key})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  defp owns?(scope, %{key: key}), do: owns_key?(scope, key)
+  defp owns?(_scope, _space), do: false
+
+  defp owns_key?(%Scope{user: %User{confluence_account_id: account}}, key)
+       when is_binary(account) and is_binary(key) do
+    String.downcase(key) == "~" <> String.downcase(account)
+  end
+
+  defp owns_key?(_scope, _key), do: false
+
+  # The key a personal space would have for this reader, lower case like every
+  # other identity comparison. A reader without a Confluence account id owns no
+  # personal space, and "" matches no key.
+  defp owner_key(%Scope{user: %User{confluence_account_id: account}}) when is_binary(account),
+    do: "~" <> String.downcase(account)
+
+  defp owner_key(_scope), do: ""
+
+  # A personal space's key is `~` and its owner's account id.
+  defp owner_identity(key) when is_binary(key),
+    do: key |> String.trim_leading("~") |> String.downcase()
 
   defp page_allows?(scope, confluence_id) do
     case Mirror.page_restrictions(confluence_id) do

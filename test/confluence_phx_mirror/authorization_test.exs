@@ -2,11 +2,13 @@ defmodule ConfluencePhxMirror.AuthorizationTest do
   use ConfluencePhxMirror.DataCase, async: false
 
   import ConfluencePhxMirror.Fixtures
+  import Ecto.Query, only: [from: 2]
 
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Mirror.Page
   alias ConfluencePhxMirror.Repo
 
   setup do
@@ -82,7 +84,76 @@ defmodule ConfluencePhxMirror.AuthorizationTest do
     assert Authorization.can_read_page?(reader(outsider), page)
   end
 
+  describe "a personal space" do
+    setup do
+      personal =
+        space_fixture(%{key: "~557058ABCDEF", name: "Space Owner", type: "personal"})
+
+      draft = page_fixture(personal, %{confluence_id: 9001, title: "My draft"})
+      %{personal: personal, draft: draft}
+    end
+
+    test "belongs to the account its key names, whoever else asks", %{personal: personal} do
+      assert Authorization.can_read_space?(owner(), personal)
+      refute Authorization.can_read_space?(reader("someone@example.com"), personal)
+      refute Authorization.can_read_space?(anonymous(), personal)
+    end
+
+    test "is offered to its owner alone", %{personal: personal} do
+      assert personal in Authorization.readable_spaces(owner())
+      refute personal in Authorization.readable_spaces(reader("someone@example.com"))
+    end
+
+    test "keeps its pages, which carry no permission of their own", %{
+      personal: personal,
+      draft: draft
+    } do
+      # The space has no permission rows, so without the ownership rule its pages
+      # would be as open as any other space's.
+      outsider = reader("someone@example.com")
+
+      refute Authorization.can_read_page?(outsider, draft)
+      assert Authorization.readable_pages(outsider, [draft]) == []
+      assert Authorization.readable_pages(owner(), [draft]) == [draft]
+
+      drafts =
+        from(p in Page, as: :page, where: p.space_id == ^personal.id, select: p.confluence_id)
+
+      assert Repo.all(Authorization.restrict_pages(drafts, outsider)) == []
+      assert Repo.all(Authorization.restrict_pages(drafts, owner())) == [9001]
+    end
+
+    test "is never listed on a page open to more people", %{personal: personal, draft: draft} do
+      open = Mirror.get_page!(1002)
+      sibling = page_fixture(personal, %{confluence_id: 9002, title: "My other draft"})
+
+      assert Authorization.readable_alongside(open, [draft]) == []
+      assert Authorization.readable_alongside(draft, [sibling]) == [sibling]
+    end
+
+    test "is still there for an administrator", %{personal: personal, draft: draft} do
+      admin = user_fixture(%{email: "admin@confluence-mirror.test", role: "admin"})
+      scope = Scope.for_user(admin)
+
+      assert Authorization.can_read_space?(scope, personal)
+      assert Authorization.can_read_page?(scope, draft)
+    end
+  end
+
   defp anonymous, do: Scope.for_user(nil)
+
+  # The account the personal key names, signed in. Confluence hands out account
+  # ids in lower case and the space key keeps the case it was stored with.
+  defp owner do
+    user = user_fixture(%{email: "owner@demo.atlassian.net"})
+
+    {:ok, user} =
+      user
+      |> User.identity_changeset(%{confluence_account_id: "557058abcdef"})
+      |> Repo.update()
+
+    Scope.for_user(user)
+  end
 
   defp reader(email, groups \\ []) do
     user = user_fixture(%{email: email})

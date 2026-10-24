@@ -148,6 +148,25 @@ defmodule ConfluencePhxMirror.Mirror do
     end)
   end
 
+  @doc """
+  Whether a personal space is mirrored.
+
+  A personal space belongs to one person and is invisible to everybody else even
+  though it usually carries no permissions at all, so "nothing is restricted
+  here" is not the same question as "everybody sees the same content".
+  """
+  def any_personal_spaces? do
+    Counters.fetch(:personal_spaces?, fn ->
+      Repo.exists?(
+        from(s in Space,
+          where: s.type == "personal" and is_nil(s.deleted_at),
+          select: 1,
+          limit: 1
+        )
+      )
+    end)
+  end
+
   @doc "Subjects that may read a space; empty means the space is open."
   def space_permissions(space_id) do
     from(c in SpacePermission,
