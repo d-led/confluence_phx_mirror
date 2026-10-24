@@ -207,6 +207,32 @@ defmodule ConfluencePhxMirror.Mirror do
     }
   end
 
+  @doc """
+  How access is reported for a page of spaces: subject counts per space, in one
+  statement rather than one per row.
+
+  A space the answer does not name has no mirrored permissions, which means
+  nothing narrows it — the screen can say that in a word instead of drawing an
+  empty list next to "everybody can read this".
+  """
+  def space_access_by(space_ids) when is_list(space_ids) do
+    from(p in SpacePermission,
+      where: p.operation == "read" and p.space_id in ^space_ids,
+      select: {p.space_id, p.subject_type, p.subject_key}
+    )
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &{elem(&1, 1), elem(&1, 2)})
+    |> Map.new(fn {space_id, subjects} -> {space_id, access_summary(subjects)} end)
+  end
+
+  defp access_summary(subjects) do
+    %{
+      groups: subjects |> Enum.filter(&(elem(&1, 0) == "group")) |> Enum.uniq() |> length(),
+      users: subjects |> Enum.filter(&(elem(&1, 0) == "user")) |> Enum.uniq() |> length(),
+      anonymous: Enum.any?(subjects, &(elem(&1, 0) == "anonymous"))
+    }
+  end
+
   defp user_grants(subjects) do
     keys = for %{subject_type: "user", subject_key: key} <- subjects, do: key
 
