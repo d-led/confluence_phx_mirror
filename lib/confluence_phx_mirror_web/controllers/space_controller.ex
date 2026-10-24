@@ -126,8 +126,16 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
       recent_pages: Mirror.recent_pages_for_space(space, 6),
       posts: Mirror.blog_posts(space.id, 3),
       labels: Mirror.labels_in_space(space.id, limit: @label_chips, order: :popular),
-      attachment_count: Mirror.count_attachments_in_space(space.id)
+      attachment_count: Mirror.count_attachments_in_space(space.id),
+      grants: space_grants(conn, space)
     )
+  end
+
+  # Who may read a space is administrative information: the sync mirrors it from
+  # Confluence, and an administrator is the one who needs to see whether the
+  # mirror agrees with the site.
+  defp space_grants(conn, space) do
+    if Scope.admin?(scope(conn)), do: Mirror.space_grants(space.id)
   end
 
   defp with_space(conn, key, fun) do
