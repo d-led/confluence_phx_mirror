@@ -160,8 +160,12 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   missing a comment forever. Sources that cannot answer leave the callback
   out; the run then reports that details were not re-checked rather than
   pretending they were.
+
+  `nil` asks the same question without a window — which pages have children at
+  all — and is how an upgraded mirror finds what it never knew to look for.
   """
-  @callback touched_since(DateTime.t(), keyword()) :: {:ok, touched()} | {:error, term()}
+  @callback touched_since(DateTime.t() | nil, keyword()) ::
+              {:ok, touched()} | {:error, term()}
 
   @doc """
   Read restrictions of one page.

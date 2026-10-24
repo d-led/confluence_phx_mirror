@@ -106,6 +106,30 @@ defmodule ConfluencePhxMirror.Sync.ChildChangesTest do
     end
   end
 
+  describe "a page whose details were never read but which has children" do
+    test "is caught up because the index names it, not by walking every page" do
+      # The cheap question: ask what has comments or files at all, then read the
+      # pages among those whose details are missing. On a real site that is a
+      # handful of pages instead of a hundred thousand.
+      demo_snapshot!()
+
+      page = page!(CommentedSource.page_id())
+
+      Repo.update_all(from(p in Page, where: p.id == ^page.id), set: [details_synced_at: nil])
+
+      assert {:ok, run} =
+               Sync.run(:incremental,
+                 source: CommentedSource,
+                 since: empty_window(),
+                 comment_window: :past
+               )
+
+      assert run.stats["details_relisted"] == 0
+      assert run.stats["details_caught_up"] == 1
+      assert Repo.get_by(Comment, confluence_id: CommentedSource.comment_id())
+    end
+  end
+
   describe "what a run says about itself" do
     test "names the page it listed and how big the mirror is" do
       demo_snapshot!()

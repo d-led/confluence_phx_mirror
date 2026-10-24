@@ -1440,6 +1440,25 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
+  @doc """
+  The pages among `confluence_ids` whose details have never been read.
+
+  This is the backlog narrowed to what the site says actually has comments or
+  files, so an upgrade re-reads the pages that can be missing something instead
+  of every page in the mirror.
+  """
+  def pages_awaiting_details_among(confluence_ids, limit) do
+    from(p in Page,
+      where:
+        p.confluence_id in ^confluence_ids and is_nil(p.deleted_at) and
+          is_nil(p.details_synced_at),
+      order_by: [asc: p.id],
+      limit: ^limit,
+      select: p.confluence_id
+    )
+    |> Repo.all()
+  end
+
   # ---------------------------------------------------------------------------
   # Catalogs (the Confluence-style browse views)
   # ---------------------------------------------------------------------------

@@ -376,7 +376,12 @@ config :confluence_phx_mirror,
              Keyword.get(sync_defaults, :lookback_seconds, 3600)
            ),
          personal_spaces:
-           System.get_env("CM_SYNC_PERSONAL_SPACES", "false") in ["true", "1", "yes"]
+           System.get_env("CM_SYNC_PERSONAL_SPACES", "false") in ["true", "1", "yes"],
+         detail_backlog:
+           env_integer.(
+             "CM_SYNC_DETAIL_BACKLOG",
+             Keyword.get(sync_defaults, :detail_backlog, 200)
+           )
        )
 
 if smtp_relay = System.get_env("SMTP_RELAY") do

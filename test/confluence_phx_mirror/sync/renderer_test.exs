@@ -93,13 +93,14 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
                ~s(src="https://dled.atlassian.net/wiki/download/attachments/999/other.png")
     end
 
-    test "resolves a file pasted into a comment and serves it under its page" do
-      # Confluence addresses a file pasted into a comment by the comment's id,
-      # and a reader of the mirror is allowed to see the page, not the id.
+    test "resolves a file that lives in a comment, served under its page" do
+      # Observed on a real site: Confluence's export view rewrites an image
+      # pasted into a comment to the *page's* download path, so the page is the
+      # owner the markup claims.
       comment_file =
         context(%{
           attachments: %{
-            {300, "screenshot.png"} => %{
+            {100, "screenshot.png"} => %{
               confluence_id: 9101,
               page_confluence_id: 100,
               space_key: "ENG",
@@ -108,15 +109,13 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
           }
         })
 
-      html = ~s(<img src="/wiki/download/thumbnails/300/screenshot.png?version=1" />)
+      html = ~s(<img src="/wiki/download/attachments/100/screenshot.png?api=v2" />)
 
       assert Renderer.render(html, comment_file).html =~
                ~s(src="/attachments/ENG/100/9101/screenshot.png")
     end
 
-    test "a file of the same name owned by someone else is not the page's file" do
-      # The page has a `diagram.svg`; a comment's `diagram.svg` is a different
-      # file and must not be served as the page's.
+    test "a file of the same name on another page is not this page's file" do
       html = ~s(<img src="/wiki/download/attachments/300/diagram.svg" />)
 
       assert Renderer.render(html, context()).html =~

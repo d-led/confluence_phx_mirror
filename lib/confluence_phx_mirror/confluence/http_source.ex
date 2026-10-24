@@ -370,11 +370,13 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   says who owns it. A file pasted into a comment hangs off the *comment*, so the
   comment's own container is asked for. Files a space holds for its own layout
   have no page to belong to here; they are counted, not dropped in silence.
+
+  `since` may be `nil`, which asks the same question without a window: that is
+  how an upgraded mirror finds the pages that had children all along.
   """
   @impl true
   def touched_since(since, _opts) do
-    cql = ~s[lastmodified >= "#{format_cql_time(since)}" and type in (comment, attachment)]
-    params = %{"cql" => cql, "limit" => page_limit(), "expand" => "container"}
+    params = %{"cql" => touched_cql(since), "limit" => page_limit(), "expand" => "container"}
 
     with {:ok, results} <- paginate_json("/content/search", params) do
       resolve_owners(results, %{
@@ -393,6 +395,15 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
         type in @page_types,
         into: %{},
         do: {to_string(id), parse_id(page)}
+  end
+
+  # `nil` asks the same question about all of time: what has children at all.
+  # That is how an upgraded mirror finds the pages that had comments and files
+  # before it knew to look for them.
+  defp touched_cql(nil), do: "type in (comment, attachment)"
+
+  defp touched_cql(since) do
+    ~s[lastmodified >= "#{format_cql_time(since)}" and type in (comment, attachment)]
   end
 
   defp resolve_owners([], acc),

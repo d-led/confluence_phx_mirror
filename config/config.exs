@@ -66,7 +66,7 @@ config :confluence_phx_mirror,
   # Passwordless sign-in links.
   accounts: [login_token_minutes: 15],
   # How far back an incremental pull starts when the source has no cursor.
-  sync: [lookback_seconds: 3600, personal_spaces: false],
+  sync: [lookback_seconds: 3600, personal_spaces: false, detail_backlog: 200],
   # Simulated / production users get auto-provisioned in dev and test.
   auto_admin: false,
   self_signup: false,

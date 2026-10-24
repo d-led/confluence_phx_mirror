@@ -18,7 +18,9 @@ defmodule ConfluencePhxMirror.Confluence.CommentedSource do
   @attachment_id "att7002"
   @filename "screenshot.png"
   @bytes <<137, 80, 78, 71, 13, 10, 26, 10>>
-  @body ~s(<p>Looks good to me</p><img src="/wiki/download/thumbnails/7001/screenshot.png?version=1" />)
+  # Confluence's export view rewrites a comment's image to the page's download
+  # path, not the comment's — observed on a real site.
+  @body ~s(<p>Looks good to me</p><img src="/wiki/download/attachments/1002/screenshot.png?api=v2" />)
 
   @doc "The page the comment was left on."
   def page_id, do: @page_id
@@ -67,8 +69,20 @@ defmodule ConfluencePhxMirror.Confluence.CommentedSource do
   @impl true
   def changed_since(since, _opts) when is_struct(since, DateTime), do: {:ok, []}
 
+  # `comment_window: :recent` (the default) says the comment is inside the
+  # window; `:past` says it predates it, which is the case an upgrade has to
+  # catch up on — the page is only found when the question has no window.
   @impl true
-  def touched_since(_since, _opts), do: {:ok, %{pages: [@page_id], space_attachments: 0}}
+  def touched_since(since, opts) do
+    pages =
+      case {Keyword.get(opts, :comment_window, :recent), since} do
+        {:recent, _since} -> [@page_id]
+        {:past, nil} -> [@page_id]
+        {:past, _since} -> []
+      end
+
+    {:ok, %{pages: pages, space_attachments: 0}}
+  end
 
   @impl true
   def comments(@page_id, _opts) do

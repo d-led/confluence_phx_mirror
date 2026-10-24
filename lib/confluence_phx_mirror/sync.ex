@@ -684,32 +684,59 @@ defmodule ConfluencePhxMirror.Sync do
 
   # A page whose details were never read — a mirror upgraded to this rule, or a
   # run that died between the page and its comments — has nothing pointing back
-  # at it: its own version will not move again. A bounded slice of that backlog
-  # is read on every run, so it drains instead of sitting there.
+  # at it: its own version will not move again. Rather than walking every page
+  # in the mirror, the index is asked which pages have comments or files at all,
+  # and the ones whose details are missing are read; a source that cannot answer
+  # is walked in id order instead. Either way the work per run is bounded and
+  # what happened is reported.
   defp catch_up_details(source, opts) do
-    case Mirror.pages_awaiting_details(detail_backlog()) do
-      [] ->
-        {%{}, []}
-
-      ids ->
-        {dtos, fetch_errors} = fetch_pages(source, ids, opts)
-        {spaces, icon_errors} = ensure_spaces_for(source, dtos, opts)
-
-        {entries, _counts, upsert_errors} =
-          upsert_entries(dtos, spaces, Keyword.put(opts, :force, MapSet.new(ids)))
-
-        resolve_trees(spaces)
-        {stats, detail_errors} = sync_details(source, entries, Mirror.page_index(), opts)
-
-        Log.add(
-          :info,
-          "caught up on #{length(entries)} page(s) whose details had never been read",
-          pages: length(entries)
-        )
-
-        {Map.put(stats, "details_caught_up", length(entries)),
-         fetch_errors ++ icon_errors ++ upsert_errors ++ detail_errors}
+    if Mirror.pages_awaiting_details(1) == [] do
+      # The common case: one query and no requests to Confluence.
+      {%{}, []}
+    else
+      {ids, errors} = backlog_of(source, detail_backlog(), opts)
+      detail_backlog_pages(source, ids, errors, opts)
     end
+  end
+
+  defp backlog_of(source, limit, opts) do
+    if function_exported?(source, :touched_since, 2) do
+      case source.touched_since(nil, opts) do
+        {:ok, touched} ->
+          case Mirror.pages_awaiting_details_among(touched.pages, limit) do
+            [] -> {Mirror.pages_awaiting_details(limit), []}
+            ids -> {ids, []}
+          end
+
+        {:error, reason} ->
+          # Reported, not swallowed: the id walk still runs, and the operator
+          # sees that the cheap question was not answered.
+          Log.add(:warn, "could not ask which pages have comments or files: #{inspect(reason)}")
+          {Mirror.pages_awaiting_details(limit), [error("comments", :backlog, reason)]}
+      end
+    else
+      {Mirror.pages_awaiting_details(limit), []}
+    end
+  end
+
+  defp detail_backlog_pages(_source, [], errors, _opts), do: {%{}, errors}
+
+  defp detail_backlog_pages(source, ids, errors, opts) do
+    {dtos, fetch_errors} = fetch_pages(source, ids, opts)
+    {spaces, icon_errors} = ensure_spaces_for(source, dtos, opts)
+
+    {entries, _counts, upsert_errors} =
+      upsert_entries(dtos, spaces, Keyword.put(opts, :force, MapSet.new(ids)))
+
+    resolve_trees(spaces)
+    {stats, detail_errors} = sync_details(source, entries, Mirror.page_index(), opts)
+
+    Log.add(:info, "caught up on #{length(entries)} page(s) whose details had never been read",
+      pages: length(entries)
+    )
+
+    {Map.put(stats, "details_caught_up", length(entries)),
+     errors ++ fetch_errors ++ icon_errors ++ upsert_errors ++ detail_errors}
   end
 
   defp detail_backlog do
@@ -1295,7 +1322,7 @@ defmodule ConfluencePhxMirror.Sync do
   defp render_entry(source, %{space: space, dto: dto, page: page, change: change}, index) do
     {attachments, attachment_errors} = mirror_attachments(source, space, page)
     restriction_errors = mirror_page_restrictions(source, page)
-    attachment_map = Map.new(attachments, &attachment_ref(space, page, &1, page.confluence_id))
+    attachment_map = Map.new(attachments, &attachment_ref(space, page, &1))
 
     context = %{
       page: page,
@@ -1425,13 +1452,13 @@ defmodule ConfluencePhxMirror.Sync do
     |> Enum.join(" ")
   end
 
-  # A reference is keyed by the content that owns the file — the page for a page
-  # attachment, the comment for a file pasted into a comment — and by its name,
-  # so two files called `image.png` in the same page cannot shadow each other.
-  # Both are served under the page they belong to, because that is what a reader
-  # is allowed to see.
-  defp attachment_ref(space, page, attachment, owner_confluence_id) do
-    {{owner_confluence_id, attachment.filename},
+  # A reference is keyed by the page and the filename, because that is what a
+  # download URL names — even for a file that lives in a comment: Confluence's
+  # export view rewrites a comment's image to
+  # `/download/attachments/<page id>/<file>`, so the page is the owner the
+  # markup claims and the id the mirror has to match.
+  defp attachment_ref(space, page, attachment) do
+    {{page.confluence_id, attachment.filename},
      %{
        confluence_id: attachment.confluence_id,
        page_confluence_id: page.confluence_id,
@@ -1616,16 +1643,16 @@ defmodule ConfluencePhxMirror.Sync do
     {Enum.reject(files, &is_nil/1), errors}
   end
 
-  # Confluence addresses a file pasted into a comment by the comment's id, so
-  # that is the owner the reference is keyed by — while the mirror serves it
-  # under the page, which is what a reader is allowed to open.
+  # A comment's files are resolved the same way its own markup resolves them:
+  # under the page. The page's own file of the same name wins, which is what
+  # Confluence's download route answers for the page too.
   defp store_comment_body(comment, dto, files, context, space, page) do
-    refs = Map.new(files, &attachment_ref(space, page, &1, comment.confluence_id))
+    refs = Map.new(files, &attachment_ref(space, page, &1))
 
     rendered =
       Renderer.render(dto.body_export, %{
         context
-        | attachments: Map.merge(context.attachments, refs)
+        | attachments: Map.merge(refs, context.attachments)
       })
 
     {:ok, _} =
