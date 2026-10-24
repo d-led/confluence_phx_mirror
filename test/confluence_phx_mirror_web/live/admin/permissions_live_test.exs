@@ -38,10 +38,10 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/admin/permissions")
 
-    view |> element("#inspect-space-#{space.key}") |> render_click()
+    view |> element("#inspect-space-#{space.id}") |> render_click()
 
     assert has_element?(view, "#space-access-group-confluence-users")
-    assert has_element?(view, "#space-access-user-known@example.com")
+    assert has_element?(view, subject_row("known@example.com"))
     assert render(view) =~ Accounts.get_user(reader.id).email
     assert has_element?(view, "#space-access-anonymous")
   end
@@ -51,7 +51,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/admin/permissions")
 
-    html = view |> element("#inspect-space-#{space.key}") |> render_click()
+    html = view |> element("#inspect-space-#{space.id}") |> render_click()
 
     assert html =~ "no.account@example.com"
     assert html =~ "no account here yet"
@@ -64,7 +64,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/admin/permissions")
 
-    view |> element("#inspect-space-#{space.key}") |> render_click()
+    view |> element("#inspect-space-#{space.id}") |> render_click()
 
     assert has_element?(view, "#space-access-open")
     refute has_element?(view, "#space-access-group-confluence-users")
@@ -82,6 +82,10 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
     assert html =~ "Alpha handbook"
     refute html =~ "Beta handbook"
   end
+
+  # A subject key can be an e-mail or "557058:…", neither of which a CSS
+  # selector takes raw, so the row is found by its attribute.
+  defp subject_row(key), do: ~s{[id="space-access-user-#{key}"]}
 
   defp a_space_read_by(email, opts \\ []) do
     space = space_fixture(%{key: "READ#{System.unique_integer([:positive])}"})
