@@ -16,6 +16,10 @@ defmodule ConfluencePhxMirror.Accounts.User do
     field :display_name, :string
     field :role, :string, default: "member"
     field :last_sign_in_at, :utc_datetime
+    # When the sync made this account because the site named the person. Null
+    # for an account someone claimed here (magic link, proxy, bootstrap): that
+    # row is the mirror's own, and no sync may take it away.
+    field :provisioned_at, :utc_datetime
     # Confluence identity used when evaluating mirrored permissions.
     field :confluence_account_id, :string
     # Groups an administrator granted here, kept across syncs. Confluence group
@@ -59,6 +63,9 @@ defmodule ConfluencePhxMirror.Accounts.User do
   def identity_changeset(user, attrs) do
     cast(user, attrs, [:confluence_account_id, :groups])
   end
+
+  @doc "Whether the sync made this account, rather than somebody claiming it here."
+  def provisioned?(%__MODULE__{provisioned_at: at}), do: not is_nil(at)
 
   @doc """
   The identifiers Confluence can name this account by: its e-mail address and,

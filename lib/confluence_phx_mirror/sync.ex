@@ -388,7 +388,8 @@ defmodule ConfluencePhxMirror.Sync do
         Accounts.reconcile_site_status(
           account_id,
           Map.get(status, :email),
-          site_state(Map.get(status, :account_status))
+          site_state(Map.get(status, :account_status)),
+          display_name: Map.get(status, :display_name)
         )
 
         {checked + 1, errors}

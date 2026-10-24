@@ -93,16 +93,60 @@ defmodule ConfluencePhxMirror.Accounts do
   account that belongs to it takes the site's state — `:active`, `:disabled`
   (the site switched them off) or `:deleted` (the site no longer has them).
 
+  When the site is the first to name someone — an author, a group member — and
+  the site will share an e-mail, the person gets an account here, because the
+  mirror's own list is the only place an administrator can see them or prepare a
+  ban. An identity the site keeps private (no e-mail) is not invented: there is
+  nothing to sign in with and nothing to match a reader against.
+
   Only transitions are written and audited — a sync that runs every hour must
   not fill the log with "still active". Returns how many accounts changed.
   """
-  @spec reconcile_site_status(String.t() | nil, String.t() | nil, :active | :disabled | :deleted) ::
+  @spec reconcile_site_status(
+          String.t() | nil,
+          String.t() | nil,
+          :active | :disabled | :deleted,
+          keyword()
+        ) ::
           non_neg_integer()
-  def reconcile_site_status(account_id, email, state)
+  def reconcile_site_status(account_id, email, state, opts \\ [])
       when state in [:active, :disabled, :deleted] do
-    account_id
-    |> site_accounts(email)
-    |> Enum.count(&mirror_site_state(&1, state))
+    accounts =
+      case site_accounts(account_id, email) do
+        [] -> provision_site_person(account_id, email, state, opts)
+        existing -> existing
+      end
+
+    Enum.count(accounts, &mirror_site_state(&1, state))
+  end
+
+  defp provision_site_person(_account_id, _email, :deleted, _opts), do: []
+  defp provision_site_person(_account_id, email, _state, _opts) when email in [nil, ""], do: []
+
+  defp provision_site_person(account_id, email, _state, opts) do
+    changeset =
+      %User{}
+      |> User.changeset(%{
+        email: email,
+        display_name: Keyword.get(opts, :display_name) || display_name_for(email)
+      })
+      |> User.identity_changeset(%{confluence_account_id: account_id})
+      |> Ecto.Changeset.put_change(:provisioned_at, now())
+
+    # `on_conflict: :nothing` because a sign-in may have inserted the same
+    # address a moment earlier; whoever won, the row is the person the site
+    # named. An address the schema rejects cannot sign in either, so it is not
+    # turned into an account.
+    case Repo.insert(changeset, on_conflict: :nothing) do
+      {:ok, %User{id: nil}} -> site_accounts(account_id, email)
+      {:ok, user} -> audit_created(user)
+      {:error, _rejected} -> []
+    end
+  end
+
+  defp audit_created(user) do
+    Audit.log(Audit.system_actor(), User.audit_event_created(user))
+    [user]
   end
 
   defp site_accounts(account_id, email) do

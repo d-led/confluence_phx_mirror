@@ -111,6 +111,51 @@ defmodule ConfluencePhxMirror.Accounts.ModerationTest do
     assert User.disabled?(Accounts.get_user(user.id))
   end
 
+  test "the site naming someone creates their account, so they can be seen and banned" do
+    assert Accounts.reconcile_site_status("557058:jane", "jane@acme.com", :active,
+             display_name: "Jane Doe"
+           ) == 0
+
+    jane = Accounts.get_user_by_email("jane@acme.com")
+
+    assert jane.display_name == "Jane Doe"
+    assert jane.confluence_account_id == "557058:jane"
+    assert jane.role == "member"
+    assert User.provisioned?(jane), "the sync made this row, not a sign-in"
+  end
+
+  test "an account that exists only on this mirror is not the site's to touch" do
+    local = user_fixture(%{email: "local@example.com"})
+
+    assert Accounts.reconcile_site_status("557058:elsewhere", "other@example.com", :deleted) == 0
+
+    kept = Accounts.get_user(local.id)
+    refute User.deleted_on_site?(kept)
+    assert kept.email == "local@example.com"
+  end
+
+  test "a person the site no longer has keeps the row: the sync flags, nobody deletes" do
+    user = user_fixture(%{email: "gone@example.com"})
+
+    assert Accounts.reconcile_site_status("557058:gone", "gone@example.com", :deleted) == 1
+
+    kept = Accounts.get_user(user.id)
+    assert User.deleted_on_site?(kept)
+    refute User.provisioned?(kept), "this row came from here, not from the sync"
+  end
+
+  test "an identity the site keeps private is not invented" do
+    assert Accounts.reconcile_site_status("557058:secret", nil, :active) == 0
+    assert Accounts.list_users() == []
+  end
+
+  test "a twice-named person stays one account" do
+    Accounts.reconcile_site_status("557058:jane", "jane@acme.com", :active)
+
+    assert Accounts.reconcile_site_status("557058:jane", "jane@acme.com", :active) == 0
+    assert length(Accounts.list_users()) == 1
+  end
+
   test "a deployment may admit the readers the site switched off, but not the ones it lost" do
     with_env(:allow_site_disabled_readers, true)
     switched_off = user_fixture(%{email: "off@example.com"})
