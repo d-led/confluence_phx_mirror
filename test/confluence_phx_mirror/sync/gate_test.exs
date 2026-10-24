@@ -3,6 +3,8 @@ defmodule ConfluencePhxMirror.SyncGateTest do
   # purpose, and only a shared owner lets a spawned task query the database.
   use ExUnit.Case, async: false
 
+  import Ecto.Query
+
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.{Gate, SyncRun}
@@ -110,7 +112,13 @@ defmodule ConfluencePhxMirror.SyncGateTest do
 
   # The lease is one and a half minutes in production, which no test can wait
   # out. Shortened here, the same property holds: work that takes longer than a
-  # lease is still work, and the gate has to know that.
+  # lease is still work, and the gate has to say so.
+  #
+  # `expires_at` is whole seconds, so a one-second lease has no resolution left:
+  # `held?` at the moment a lease is written and at the last instant of it both
+  # compare seconds that can be equal. That is why the test asks whether the
+  # lease *moved* rather than whether it is currently in the future, and why the
+  # abandonment guard is checked while the claim is fresh.
   describe "a run slower than its lease" do
     setup do
       previous = Application.get_env(:confluence_phx_mirror, :sync)
@@ -124,26 +132,28 @@ defmodule ConfluencePhxMirror.SyncGateTest do
       on_exit(fn -> Application.put_env(:confluence_phx_mirror, :sync, previous) end)
     end
 
-    test "still holds the gate" do
-      {:ok, held} =
-        Gate.exclusive(fn _owner ->
-          Process.sleep(1_400)
-          Gate.held?()
-        end)
+    test "keeps pushing its lease forward while it works" do
+      Gate.exclusive(fn owner ->
+        first = expires_at(owner)
+        Process.sleep(1_300)
 
-      assert held
+        assert NaiveDateTime.compare(expires_at(owner), first) == :gt
+      end)
     end
 
     test "is never mistaken for an abandoned one" do
       run = insert_run("running")
 
       Gate.exclusive(fn _owner ->
-        Process.sleep(1_400)
         assert Sync.abandon_abandoned_runs() == 0
       end)
 
       assert Repo.get!(SyncRun, run.id).status == "running"
     end
+  end
+
+  defp expires_at(owner) do
+    Repo.one(from g in "sync_gate", where: g.owner == ^owner, select: g.expires_at)
   end
 
   defp insert_run(status) do
