@@ -541,8 +541,18 @@ in the top bar. It has two tabs:
 
 One person often holds two Atlassian accounts — a personal one and a guest or
 contractor one — and Confluence's content and permissions may name either. Under
-*Users & tokens* → *People from Confluence*, each identity the sync has seen can
-be **linked** to a mirror account by its e-mail address, and unlinked again.
+*Users & tokens*, such an identity can be **linked** to a mirror account, and
+unlinked again.
+
+A site can name a hundred thousand people, so neither side of the screen lists
+them: both are searched, and a link is a click.
+
+* From the *People from Confluence* panel: filter by the name Confluence shows or
+  by the account id, then **Link to an account…** opens a picker that searches
+  the mirror's accounts. Clicking one makes the link.
+* From an account: **Add an identity** opens a picker of the people no account
+  holds yet. An identity another account already holds is listed with whose it
+  is and offers no button, because moving one is a decision about two accounts.
 
 What the identity carries becomes the account's: its group memberships, the
 spaces and pages it is named in, and the content it authored. The rule is the
@@ -550,11 +560,13 @@ union — `User.identity_keys/1` answers with every linked identity, so what a
 reader may open is everything any of their identities may open, whether they
 arrived by a page or by an API token.
 
-Two things are refused: an identity the mirror has never seen (a typo would
-otherwise be a grant that silently does nothing — run a sync first), and an
-identity another account already holds (two accounts claiming one identity would
-be two readers sharing every permission it carries). Linking and unlinking are
-in the audit log as `user.identity_linked` / `user.identity_unlinked`.
+Two things are refused: an identity the mirror has read nothing about (a typo
+would otherwise be a grant that silently does nothing — run a sync first), and
+an identity another account already holds. Linking and unlinking are an
+administrator's decision and are enforced in `Accounts.link_identity/3`, not in
+the screen, so an API or MCP caller passing a member's account gets
+`{:error, :not_authorized}`. Both appear in the audit log as
+`user.identity_linked` / `user.identity_unlinked`.
 
 ### Groups granted here
 
