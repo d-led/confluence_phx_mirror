@@ -3,7 +3,16 @@ defmodule ConfluencePhxMirror.Repo.Migrations.AddCommentAttachmentsAndDetailSync
 
   # A deploy migration runs while the previous release is still serving, so it
   # only adds: new nullable columns, and index builds that do not block writes.
+  #
+  # Both flags are needed for `CREATE INDEX CONCURRENTLY`. `disable_ddl_transaction`
+  # keeps the build out of a transaction; `disable_migration_lock` keeps the
+  # migrator's own advisory-lock transaction off the second connection, because
+  # CONCURRENTLY waits for every open transaction — including the one that is
+  # waiting for this migration to return. Without it a fresh database sits on the
+  # index build until the pool's ownership timeout kills the run (measured: 119.5s,
+  # then `{:error, :rollback}`), which is how CI fails on an empty schema.
   @disable_ddl_transaction true
+  @disable_migration_lock true
 
   # A file can hang off a page or off one of its comments — a screenshot pasted
   # into a comment belongs to the comment, and Confluence's own download path

@@ -83,6 +83,7 @@ defmodule ConfluencePhxMirror.MigrationsSafetyTest do
     test "a concurrent index build is what we want" do
       source = """
       @disable_ddl_transaction true
+      @disable_migration_lock true
 
       def change do
         execute("CREATE INDEX CONCURRENTLY IF NOT EXISTS i ON pages (a)")
@@ -90,6 +91,22 @@ defmodule ConfluencePhxMirror.MigrationsSafetyTest do
       """
 
       assert offences_in("concurrent.exs", source) == []
+    end
+
+    test "a concurrent index build that keeps the migration lock" do
+      # The lock is a transaction on a second connection that stays open until
+      # this migration returns, and CONCURRENTLY waits for every open
+      # transaction: a fresh database waits on itself.
+      source = """
+      @disable_ddl_transaction true
+
+      def change do
+        execute("CREATE INDEX CONCURRENTLY IF NOT EXISTS i ON pages (a)")
+      end
+      """
+
+      assert [message] = offences_in("locked.exs", source)
+      assert message =~ "@disable_migration_lock"
     end
 
     test "a rollback is not a deploy step" do
@@ -111,6 +128,8 @@ defmodule ConfluencePhxMirror.MigrationsSafetyTest do
   defp offences_in(name, source) do
     [
       {index_builds(source), "builds an index without CONCURRENTLY — see docs/operations.md"},
+      {concurrently_without_lock_off(source),
+       "builds an index CONCURRENTLY under the migration lock — add `@disable_migration_lock true`"},
       {in_place_column_changes(source), "changes a column in place — expand, backfill, contract"},
       {row_rewrites(source), "rewrites rows — move it to priv/repo/manual_migrations"}
     ]
@@ -133,6 +152,17 @@ defmodule ConfluencePhxMirror.MigrationsSafetyTest do
           source,
           ~r/create(_if_not_exists)?\s+(unique_)?index\s*\(|\bCREATE\s+(UNIQUE\s+)?INDEX\b/i
         )
+    end
+  end
+
+  # CONCURRENTLY waits for every open transaction to finish, and the migration
+  # lock is one: it stays open on a second connection until the migration
+  # returns, so the build waits for the transaction that waits for the build.
+  defp concurrently_without_lock_off(source) do
+    cond do
+      not (source =~ ~r/CONCURRENTLY/i) -> []
+      source =~ ~r/@disable_migration_lock\s+true/ -> []
+      true -> ["@disable_migration_lock"]
     end
   end
 
