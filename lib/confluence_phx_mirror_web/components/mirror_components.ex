@@ -272,6 +272,9 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
 
   attr :resync_path, :string, default: nil
 
+  slot :presence,
+    doc: "drawn after the sync stamp; the page's readers, on screens too narrow for the rail"
+
   def page_meta(assigns) do
     ~H"""
     <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/70">
@@ -288,6 +291,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
       <.local_time at={@page.synced_at} class="inline-flex items-center gap-1">
         <.icon name="hero-arrow-path" class="size-3.5" /> Synced {Time.ago(@page.synced_at)}
       </.local_time>
+      {render_slot(@presence)}
       <a
         :if={@page.external_url}
         href={@page.external_url}

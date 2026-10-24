@@ -134,7 +134,19 @@
         <.badges status={@page.status} type={@page.type} />
       </:badges>
       <:meta>
-        <.page_meta page={@page} admin?={@admin?} resync_path={@resync_path} />
+        <.page_meta page={@page} admin?={@admin?} resync_path={@resync_path}>
+          <%!-- The rail carries the readers of this page, and it is hidden on a
+          narrow screen; the count stays, as an icon and a number after the
+          sync stamp. --%>
+          <:presence>
+            {live_render(@conn, ConfluencePhxMirrorWeb.PagePresenceLive,
+              session: %{
+                "presence_page" => @page.confluence_id,
+                "presence_variant" => "compact"
+              }
+            )}
+          </:presence>
+        </.page_meta>
       </:meta>
     </.page_header>
 

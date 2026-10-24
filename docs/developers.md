@@ -92,7 +92,7 @@ ones specific to the mirror.
 | Export | `Export` + `Export.Site` | Markdown per page, a streaming ZIP per space, and the mirror as a static website (`Site.Content` rewrites links, `Site.HTML` is the shell, `Site.Search` is the offline index) |
 | Jobs | Oban | `Sync.SnapshotWorker`, `Sync.PageWorker`, notification workers |
 | Web | controllers + LiveView | reader UI, admin dashboard, REST API, webhooks |
-| Presence | `Web.Presence` + `PagePresenceLive` / `SitePresenceLive` | who is reading a page, and how many readers are online; each is a LiveView rendered into the page, since the page itself is a controller response |
+| Presence | `Web.Presence` + `PagePresenceLive` / `SitePresenceLive` | who is reading a page, and how many readers are online; each is a LiveView rendered into the page, since the page itself is a controller response. `PagePresenceLive` is rendered twice — the rail names the readers and owns the tracking, the metadata row repeats only the count where the rail is hidden (`presence_variant: "compact"`, subscribe without track) |
 | Accounts | `Accounts` | magic links, proxy auth, API tokens, Phoenix 1.8 `Scope` |
 | Audit | `Audit` | append-only; syncs, webhooks, accounts, attachments |
 

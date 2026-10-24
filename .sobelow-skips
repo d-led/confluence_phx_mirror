@@ -1,7 +1,7 @@
 Config.CSRF: Missing CSRF Protections,lib/confluence_phx_mirror_web/router.ex:32,55495C7
 Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/confluence_phx_mirror/build_info.ex:112,62944
 Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/build_info.ex:151,2A1A70
-Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/export/site.ex:148,7EE3C76
+Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/export/site.ex:153,5A9BB26
 Traversal.FileModule: Directory Traversal in `File.write!`,lib/confluence_phx_mirror/build_info.ex:114,80D4C9
 XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:235,6A4A264
 XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:363,32D2FC6
@@ -10,4 +10,4 @@ XSS.Raw: XSS,lib/confluence_phx_mirror_web/components/layouts/root.html.heex:22,
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/error_html/403.html.heex:10,1C73E04
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/error_html/404.html.heex:10,156654E
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/error_html/429.html.heex:10,67A0DFF
-XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/page_html/show.html.heex:144,BDC784
+XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/page_html/show.html.heex:156,16ED750
