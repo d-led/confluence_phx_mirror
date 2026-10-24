@@ -186,6 +186,8 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLive do
         </ul>
 
         <a
+          id="header-search-all"
+          data-search-all
           href={~p"/search?#{[q: @query]}"}
           class="flex items-center gap-2 border-t border-base-300/60 px-3 py-2 text-xs font-medium text-primary transition hover:bg-base-200/50"
         >
@@ -229,20 +231,35 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLive do
             // the form — the full search page — when there is not.
             if (event.key === "Enter" && this.cursor >= 0) {
               event.preventDefault()
-              this.options()[this.cursor].click()
+              this.walk()[this.cursor].click()
             }
           },
+          // Arrow keys walk the suggestions and then the row that leaves for the
+          // full search page: with five matches on screen the sixth stop is
+          // "see all of them", which is what a reader looking for the tail of a
+          // long result list wants.
           move(delta) {
-            const count = this.options().length
+            const count = this.walk().length
             if (count === 0) return
             this.paint((this.cursor + delta + count) % count)
           },
           paint(cursor) {
             this.cursor = cursor
-            this.options().forEach((option, index) => {
-              option.classList.toggle("menu-active", index === cursor)
-              option.setAttribute("aria-selected", index === cursor ? "true" : "false")
+            this.walk().forEach((row, index) => {
+              const active = index === cursor
+              row.classList.toggle("menu-active", active)
+              row.classList.toggle("bg-base-200/70", active)
+              // `aria-selected` belongs to an option, not to a link that leaves
+              // the list; the link announces itself as current instead.
+              if (row.getAttribute("role") === "option") {
+                row.setAttribute("aria-selected", active ? "true" : "false")
+              } else {
+                row.setAttribute("aria-current", active ? "true" : "false")
+              }
             })
+          },
+          walk() {
+            return [...this.el.querySelectorAll("[role=option], [data-search-all]")]
           },
           options() {
             return [...this.el.querySelectorAll("[role=option]")]

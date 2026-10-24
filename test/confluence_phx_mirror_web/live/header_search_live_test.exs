@@ -63,6 +63,15 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLiveTest do
     assert html =~ "Certificate Rotation"
   end
 
+  test "the last stop of the walk is the row that leaves for the full search" do
+    {:ok, view, _html} = search()
+    type(view, "certificate")
+
+    # The keyboard walks the suggestions and then this row, so a reader who
+    # ignored the list still gets Enter → every result.
+    assert has_element?(view, ~s{a[data-search-all][href="/search?q=certificate"]})
+  end
+
   test "a destination the server never offered is not followed" do
     {:ok, view, _html} = search()
     type(view, "certificate")
