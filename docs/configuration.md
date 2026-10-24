@@ -32,7 +32,7 @@ Configuration is read at boot; a running development server does **not** reload
 | `CM_ATL_EMAIL` / `CM_ATL_TOKEN` | – | API credentials |
 | `CM_SYNTHETIC_SPACES` / `CM_SYNTHETIC_PAGES` | `10` / `100` | generated spaces, and pages per space, when `CM_SOURCE=synthetic` |
 | `CM_SYNTHETIC_BRANCHING` | `10` | children per page in the generated tree |
-| `CM_SPACES` | all | comma-separated space keys |
+| `CM_SPACES` | all | comma-separated space keys. Narrowing it is not a filter over the same mirror: a snapshot trashes every mirrored space the listing does not contain (see [pulling content](site-admin-guide.md#pulling-content)) |
 | `CM_REQUESTS_PER_SECOND` / `CM_BURST` | `5` / `5` | client rate limit (token bucket) |
 | `CM_HTTP_RETRIES` | `3` | attempts per Confluence request |
 | `CM_HTTP_PAGE_SIZE` | `50` | content page size when paginating |

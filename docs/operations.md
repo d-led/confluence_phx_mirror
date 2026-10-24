@@ -270,11 +270,32 @@ with loaded associations in a socket's assigns.
 
 ## State and backups
 
-Two things must be backed up together:
+Two things must be backed up together, and restored together:
 
 * **Postgres** — rows point at blob keys.
 * **The blob root** — attachment bytes; restoring one without the other leaves
-  broken attachments.
+  broken attachments (or a mirror whose attachment links answer `404`).
+
+`scripts/fly-pg-backup.sh` and `scripts/fly-pg-restore.sh` do this over
+`fly proxy`, and they exist because two things are easy to get wrong:
+
+* **The client must match the server's major version.** `pg_dump` refuses a
+  newer server and no flag makes that safe, so the script asks the database
+  machine which version it runs and looks for that `pg_dump` (PATH,
+  `postgresql@N` from Homebrew, Debian's `/usr/lib/postgresql/N`).
+* **The connection string is the app's own.** It is read out of the Machine
+  that has `DATABASE_URL` rather than pasted into a shell, so nobody has to hold
+  the database password to take a backup.
+
+A restore is not finished when `pg_restore` exits: the blob volume has to be
+restored to the same point (`fly volumes` snapshots, or your own copy of
+`MIRROR_BLOB_ROOT`), and then a `/health` call — which counts pages, spaces and
+attachments — should show the numbers you expect before the mirror is put back
+behind the proxy.
+
+Everything that is *not* in those two places is rebuildable: a snapshot
+re-creates content, permissions and icons from the source, at the cost of the
+requests it takes.
 
 ## Watching it
 
