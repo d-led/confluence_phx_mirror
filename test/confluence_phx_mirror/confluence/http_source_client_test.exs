@@ -621,6 +621,87 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
     end
   end
 
+  describe "touched_since/2" do
+    # A child's version does not bump its page's, so a window over pages alone
+    # never sees a new comment or file. The search index answers with the child
+    # and its container, and the answer has to end up as "these pages to read
+    # again".
+    test "answers which pages the changed children belong to" do
+      test_process = self()
+
+      stub(fn conn ->
+        send(test_process, {:requested, conn.request_path})
+
+        case conn.request_path do
+          "/wiki/rest/api/content/search" ->
+            Req.Test.json(conn, %{
+              "results" => [
+                comment_on_page("2001", "1002"),
+                file_in_comment("att7001", "2001"),
+                file_in_comment("att7002", "9306117"),
+                file_in_a_space("att7003")
+              ]
+            })
+
+          "/wiki/rest/api/content/9306117" ->
+            Req.Test.json(conn, %{
+              "id" => "9306117",
+              "container" => %{"type" => "page", "id" => "4456832"}
+            })
+        end
+      end)
+
+      assert {:ok, %{pages: pages, space_attachments: 1}} =
+               HttpSource.touched_since(~U[2026-10-20 00:00:00Z], [])
+
+      assert pages == [1002, 4_456_832]
+
+      # The comment in the window already names its page, so its files cost no
+      # request; the comment outside the window is the one that has to be asked.
+      assert_received {:requested, "/wiki/rest/api/content/9306117"}
+      refute_received {:requested, "/wiki/rest/api/content/2001"}
+    end
+
+    # A run that cannot place a child must say so: a file quietly dropped is a
+    # page whose screenshot never updates again.
+    test "content whose owner cannot be placed is an error, not a silent skip" do
+      for {result, reason} <- [
+            {%{"id" => "att7004", "container" => %{"type" => "attachment", "id" => "5"}},
+             {:unexpected_container, "attachment"}},
+            {%{"id" => "att7005"}, :no_container}
+          ] do
+        stub(fn conn -> Req.Test.json(conn, %{"results" => [result]}) end)
+
+        assert {:error, {:unresolved_owner, id, ^reason}} = HttpSource.touched_since(nil, [])
+        assert id == result["id"]
+      end
+    end
+
+    defp comment_on_page(comment_id, page_id) do
+      %{
+        "id" => comment_id,
+        "type" => "comment",
+        "container" => %{"type" => "page", "id" => page_id}
+      }
+    end
+
+    defp file_in_comment(attachment_id, comment_id) do
+      %{
+        "id" => attachment_id,
+        "type" => "attachment",
+        "container" => %{"type" => "comment", "id" => comment_id}
+      }
+    end
+
+    defp file_in_a_space(attachment_id) do
+      %{
+        "id" => attachment_id,
+        "type" => "attachment",
+        "container" => %{"type" => "global", "id" => "9470147"}
+      }
+    end
+  end
+
   describe "group membership" do
     # Cloud no longer answers "who is in this group"; it answers this instead,
     # so a live sync learns membership one person at a time.
