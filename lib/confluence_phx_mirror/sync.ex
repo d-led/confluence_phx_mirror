@@ -1699,6 +1699,11 @@ defmodule ConfluencePhxMirror.Sync do
   # Sync run bookkeeping
   # ---------------------------------------------------------------------------
 
+  # A trigger is not a counter, but the run keeps it beside them: it is what a
+  # reader asks a sync first, and a run nobody asked for has none to show.
+  defp trigger_stats(nil), do: %{}
+  defp trigger_stats(trigger), do: %{"trigger" => trigger}
+
   defp start_run(source, mode, actor, trigger, opts) do
     # The traffic account covers one run: every call this run makes is counted
     # here and reported when it ends, so a reader never sees yesterday's totals.
@@ -1712,8 +1717,7 @@ defmodule ConfluencePhxMirror.Sync do
         scope: scope_of(mode, opts),
         status: "running",
         started_at: now(),
-        # The dashboard's live strip says who asked for this run.
-        stats: if(trigger, do: %{"trigger" => trigger}, else: %{})
+        stats: trigger_stats(trigger)
       })
       |> Repo.insert()
 
@@ -1733,10 +1737,14 @@ defmodule ConfluencePhxMirror.Sync do
 
     # The run's own numbers are its window; this is the mirror those numbers
     # were compared against, so "1 listed" can be read next to its real size.
+    # These numbers replace `stats` wholesale, which would take the trigger
+    # written at the start with them, so it is put back: the table says who
+    # asked for a run after it has finished, not only while it runs.
     stats =
       stats
       |> Map.put("total", Mirror.count_pages())
       |> Map.put("errors", normalize_errors(errors))
+      |> Map.merge(trigger_stats(trigger))
 
     {:ok, run} =
       run

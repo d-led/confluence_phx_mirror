@@ -404,7 +404,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
         <.data_table id="sync-runs" rows={@rows}>
           <:head>
             <th>When</th>
-            <th>Mode</th>
+            <th title="How the run was asked for, and by whom">Mode</th>
             <th>Status</th>
             <th>Duration</th>
             <th title="What the site listed for this run's window — not the mirror's size">
@@ -423,7 +423,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             <td class="whitespace-nowrap text-xs">
               <.local_time at={row.at}>{Time.ago(row.at)}</.local_time>
             </td>
-            <td class="text-xs">{row.mode}</td>
+            <td class="text-xs">
+              {row.mode}
+              <%!-- A mode alone can read as a contradiction: the one-page runs are
+              stored as "webhook", and one of them asked for on the command line
+              would look like a delivery. The trigger beside it says who asked. --%>
+              <span :if={row.trigger} class="block text-[11px] text-base-content/70">
+                {row.trigger}
+              </span>
+            </td>
             <td><span class={["badge badge-sm", status_class(row.status)]}>{row.status}</span></td>
             <td class="text-xs tabular-nums">{row.duration}</td>
             <td class="text-xs tabular-nums">{row.listed}</td>
@@ -531,6 +539,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     %{
       at: job.inserted_at,
       mode: job_mode(job),
+      trigger: Map.get(job.args, "trigger"),
       status: queued_status(job.state),
       duration: "—",
       listed: "—",
@@ -548,6 +557,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     %{
       at: run.started_at,
       mode: run.mode,
+      # Who asked, when the run was asked for by someone: written at the start
+      # and kept through the numbers that replace the run's stats.
+      trigger: Map.get(run.stats || %{}, "trigger"),
       status: run.status,
       duration: Time.duration(run.started_at, run.finished_at),
       # What the site listed for this run's window, and of those, what had to be

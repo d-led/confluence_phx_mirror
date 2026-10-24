@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncQueueTest do
   import Phoenix.LiveViewTest
 
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.SpaceWorker
 
   setup %{conn: conn} do
@@ -48,6 +49,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncQueueTest do
     assert row =~ ">10<"
     assert row =~ ">3<"
     assert row =~ ">7<"
+  end
+
+  test "a finished run still says who asked for it", %{conn: conn} do
+    {:ok, run} = Sync.run(:snapshot, trigger: "the admin dashboard, by ops@example.com")
+
+    {:ok, view, _html} = live(conn, ~p"/admin")
+
+    assert view |> element("#sync-run-#{run.id}") |> render() =~
+             "the admin dashboard, by ops@example.com"
   end
 
   test "dropping a waiting sync cancels the job and takes its line away", %{conn: conn} do
