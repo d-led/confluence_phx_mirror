@@ -34,11 +34,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
 
     refute html =~ "attachment pruned"
 
-    Phoenix.PubSub.broadcast(
-      ConfluencePhxMirror.PubSub,
-      Log.topic(),
-      {:sync_log, entry(:warn, "attachment pruned: diagram.svg")}
-    )
+    write(:warn, "attachment pruned: diagram.svg")
 
     assert render(view) =~ "attachment pruned: diagram.svg"
   end
@@ -50,21 +46,40 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
     {:ok, view, html} = live(conn, ~p"/admin/sync-log")
     assert html =~ "page created: Budget"
 
-    html = view |> element("#sync-log-level") |> render_change(%{"level" => "warn"})
+    html = filter(view, "warn")
 
     refute html =~ "page created: Budget"
     assert html =~ "page failed: Broken"
   end
 
+  test "the words narrow the lines already held and the ones that arrive", %{conn: conn} do
+    Log.add(:info, "page created: Budget")
+    Log.add(:info, "attachment pruned: diagram.svg")
+
+    {:ok, view, html} = live(conn, ~p"/admin/sync-log")
+    assert html =~ "attachment pruned: diagram.svg"
+
+    html = filter(view, "all", "budget")
+
+    refute html =~ "attachment pruned: diagram.svg"
+    assert html =~ "page created: Budget"
+
+    write(:info, "page renamed: Budget 2027")
+    assert render(view) =~ "page renamed: Budget 2027"
+
+    write(:info, "attachment pruned: another.svg")
+    refute render(view) =~ "attachment pruned: another.svg"
+  end
+
   test "a filter decides what arrives after it is set", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
 
-    view |> element("#sync-log-level") |> render_change(%{"level" => "warn"})
+    filter(view, "warn")
 
-    broadcast(entry(:info, "page created: Budget"))
+    write(:info, "page created: Budget")
     refute render(view) =~ "page created: Budget"
 
-    broadcast(entry(:warn, "page failed: Broken"))
+    write(:warn, "page failed: Broken")
     assert render(view) =~ "page failed: Broken"
   end
 
@@ -75,10 +90,27 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
     {:ok, mine, _html} = live(conn, ~p"/admin/sync-log")
     {:ok, theirs, _html} = live(conn, ~p"/admin/sync-log")
 
-    mine |> element("#sync-log-level") |> render_change(%{"level" => "warn"})
+    mine |> element("#sync-log-filter") |> render_change(%{"q" => "", "level" => "warn"})
 
     refute render(mine) =~ "page created: Budget"
     assert render(theirs) =~ "page created: Budget"
+  end
+
+  test "changing the filter puts a following reader on the newest line again", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
+
+    filter(view, "warn")
+
+    assert_push_event(view, "sync-log:new", _)
+  end
+
+  test "a paused reader is not moved when the filter changes", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
+
+    view |> element("#sync-log-follow") |> render_click()
+    filter(view, "warn")
+
+    refute_push_event(view, "sync-log:new", _)
   end
 
   test "the page follows new lines until the reader pauses it", %{conn: conn} do
@@ -98,11 +130,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
 
     view |> element("#sync-log-follow") |> render_click()
 
-    Phoenix.PubSub.broadcast(
-      ConfluencePhxMirror.PubSub,
-      Log.topic(),
-      {:sync_log, entry(:info, "line while paused")}
-    )
+    write(:info, "line while paused")
 
     assert render(view) =~ "line while paused"
     assert has_element?(view, "#sync-log[data-follow=false]")
@@ -186,18 +214,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
     assert html =~ "answers=200×3"
   end
 
-  defp broadcast(entry) do
-    Phoenix.PubSub.broadcast(ConfluencePhxMirror.PubSub, Log.topic(), {:sync_log, entry})
+  defp write(level, message) do
+    Log.add(level, message)
+    # The log takes a line as a cast and broadcasts it to this page's process
+    # before it answers a call, so reading the ring waits for both.
+    Log.entries()
   end
 
-  defp entry(level, message) do
-    %{
-      id: System.unique_integer([:monotonic, :positive]),
-      at: DateTime.utc_now(),
-      level: level,
-      message: message,
-      run_id: nil,
-      details: %{}
-    }
+  # The reader sets the level and the words in one form, and the page reports it
+  # as one change.
+  defp filter(view, level, words \\ "") do
+    view |> element("#sync-log-filter") |> render_change(%{"q" => words, "level" => level})
   end
 end

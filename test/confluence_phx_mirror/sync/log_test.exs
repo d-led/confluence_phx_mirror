@@ -18,11 +18,12 @@ defmodule ConfluencePhxMirror.Sync.LogTest do
 
     Log.add(:info, "page created: Budget", page: 42)
 
-    assert_receive {:sync_log, entry}
+    assert_receive {:sync_log, entry, %{counts: counts, held: 1}}
     assert entry.message == "page created: Budget"
     assert entry.level == :info
     assert entry.run_id == 7
     assert entry.details[:page] == 42
+    assert counts == %{debug: 0, info: 1, warn: 0, error: 0}
     assert [^entry] = Log.entries()
   end
 
@@ -53,10 +54,22 @@ defmodule ConfluencePhxMirror.Sync.LogTest do
     assert hd(entries).message == "line 21"
   end
 
+  test "the counts follow every line in and out, without walking the log" do
+    for _ <- 1..390, do: Log.add(:info, "line")
+    for _ <- 1..10, do: Log.add(:warn, "warning")
+
+    assert %{held: 400, counts: %{info: 390, warn: 10}} = Log.snapshot()
+
+    # The ring is full now: ten more warnings push ten info lines out of it.
+    for _ <- 1..10, do: Log.add(:warn, "warning")
+
+    assert %{held: 400, counts: %{info: 380, warn: 20, error: 0}} = Log.snapshot()
+  end
+
   test "clearing forgets the lines but keeps the service running" do
     Log.add(:info, "something")
     Log.clear()
 
-    assert Log.entries() == []
+    assert %{entries: [], held: 0, counts: %{info: 0}} = Log.snapshot()
   end
 end

@@ -244,9 +244,10 @@ were — and 2 GB of `shared_buffers` for a mirror whose whole corpus is a few
 megabytes is already generous.
 
 If you do grow the LiveView side (the sync log is the candidate), keep its
-memory flat: streams for long lists (the log is a 400-entry ring, not an
-assign), `temporary_assigns` for results that only need one render, and no
-Ecto structs with loaded associations in a socket's assigns.
+memory flat: streams for long lists (the sync log streams its rows — the
+400-entry ring lives in `Sync.Log` and an open page holds none of it),
+`temporary_assigns` for results that only need one render, and no Ecto structs
+with loaded associations in a socket's assigns.
 
 ## Attached resources
 

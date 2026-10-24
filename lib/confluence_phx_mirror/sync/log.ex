@@ -69,9 +69,21 @@ defmodule ConfluencePhxMirror.Sync.Log do
   @spec current_run(integer() | nil) :: :ok
   def current_run(run_id), do: GenServer.cast(__MODULE__, {:run, run_id})
 
+  @type counts :: %{level() => non_neg_integer()}
+
+  @typedoc """
+  What an open page needs to draw the log: the lines themselves, how many the
+  ring holds, and how many of each level are among them.
+  """
+  @type tally :: %{counts: counts(), held: non_neg_integer()}
+
   @doc "The entries kept in memory, newest last."
   @spec entries() :: [entry()]
   def entries, do: GenServer.call(__MODULE__, :entries)
+
+  @doc "The entries kept in memory with their counts, in one call."
+  @spec snapshot() :: %{entries: [entry()], counts: counts(), held: non_neg_integer()}
+  def snapshot, do: GenServer.call(__MODULE__, :snapshot)
 
   @doc "How many lines the log keeps; a page showing the tail shows this many."
   @spec limit() :: pos_integer()
@@ -82,7 +94,8 @@ defmodule ConfluencePhxMirror.Sync.Log do
   def clear, do: GenServer.cast(__MODULE__, :clear)
 
   @impl true
-  def init(_opts), do: {:ok, %{entries: [], run_id: nil}}
+  def init(_opts),
+    do: {:ok, %{entries: :queue.new(), counts: empty_counts(), held: 0, run_id: nil}}
 
   @impl true
   def handle_cast({:append, level, message, details}, state) do
@@ -98,16 +111,43 @@ defmodule ConfluencePhxMirror.Sync.Log do
       details: Map.drop(details, [:sync_run_id, :message])
     }
 
-    Phoenix.PubSub.broadcast(ConfluencePhxMirror.PubSub, @topic, {:sync_log, entry})
+    state = keep(state, entry)
+    Phoenix.PubSub.broadcast(ConfluencePhxMirror.PubSub, @topic, {:sync_log, entry, tally(state)})
 
-    {:noreply, %{state | entries: Enum.take(state.entries ++ [entry], -@limit)}}
+    {:noreply, state}
   end
 
   def handle_cast({:run, run_id}, state), do: {:noreply, %{state | run_id: run_id}}
-  def handle_cast(:clear, state), do: {:noreply, %{state | entries: []}}
+
+  def handle_cast(:clear, state) do
+    {:noreply, %{state | entries: :queue.new(), counts: empty_counts(), held: 0}}
+  end
 
   @impl true
-  def handle_call(:entries, _from, state), do: {:reply, state.entries, state}
+  def handle_call(:entries, _from, state), do: {:reply, :queue.to_list(state.entries), state}
+
+  def handle_call(:snapshot, _from, state) do
+    {:reply, Map.put(tally(state), :entries, :queue.to_list(state.entries)), state}
+  end
+
+  defp tally(state), do: %{counts: state.counts, held: state.held}
+
+  # A ring with its counts kept as lines come in and go out: a page watching the
+  # log asks "how many warnings so far?" on every line, and counting four
+  # hundred entries each time is how a log becomes the expensive part of a sync.
+  defp keep(state, entry) do
+    counts = Map.update!(state.counts, entry.level, &(&1 + 1))
+    entries = :queue.in(entry, state.entries)
+
+    if state.held < @limit do
+      %{state | entries: entries, counts: counts, held: state.held + 1}
+    else
+      {{:value, leaving}, entries} = :queue.out(entries)
+      %{state | entries: entries, counts: Map.update!(counts, leaving.level, &(&1 - 1))}
+    end
+  end
+
+  defp empty_counts, do: %{debug: 0, info: 0, warn: 0, error: 0}
 
   defp logger_level(:debug), do: :debug
   defp logger_level(:info), do: :info

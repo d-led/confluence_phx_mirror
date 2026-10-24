@@ -13,13 +13,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   the tail is on by default and is a toggle: pressing it, or scrolling back to
   read, stops the page from pulling the reader down while the lines keep coming.
 
-  Each open page is its own watcher: it subscribes for itself and keeps its own
-  copy of the lines, its own filter and its own follow toggle, so two admins
-  watching the same sync see what each of them asked for. The filter is a live
-  filter over that copy — it decides what arrives from now on and re-reads the
-  lines already held when it changes; it never searches the log on the server.
-  Clearing is the one action that reaches past one page: it empties the shared
-  ring every page seeds itself from.
+  Each open page is its own watcher: it subscribes for itself and owns its own
+  filter and follow toggle, so two admins watching the same sync see what each of
+  them asked for. The lines themselves are a LiveView stream — the page keeps no
+  copy of them, and a line arriving is one row inserted into the browser, not a
+  re-render of the log. Changing the filter re-reads the ring once and replaces
+  the rows; it never searches the log on the server. Clearing is the one action
+  that reaches past one page: it empties the shared ring every page seeds itself
+  from.
   """
 
   use ConfluencePhxMirrorWeb, :live_view
@@ -36,49 +37,44 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
     {"error", "Errors only"}
   ]
 
+  @everything ~w(debug info warn error)a
   @levels %{"info" => ~w(info warn error)a, "warn" => ~w(warn error)a, "error" => ~w(error)a}
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: Phoenix.PubSub.subscribe(ConfluencePhxMirror.PubSub, Log.topic())
 
-    entries = Log.entries()
+    %{entries: entries, counts: counts, held: held} = Log.snapshot()
+    shown = filter_entries(entries, "all", "")
 
     {:ok,
-     assign(socket,
-       entries: entries,
-       visible: filter_entries(entries, "all", ""),
+     socket
+     |> assign(
        level: "all",
        query: "",
        follow?: true,
        level_options: @level_options,
-       counts: count(entries),
+       counts: counts,
+       held: held,
+       shown: length(shown),
+       newest_id: newest_id(entries),
        traffic: Traffic.summary(),
        page_title: "Sync log"
-     )}
+     )
+     |> stream(:log, shown, limit: -Log.limit())}
   end
 
   @impl true
-  def handle_event("set_level", %{"level" => level}, socket) do
-    entries = socket.assigns.entries
-    level = if level in Map.keys(@levels) or level == "all", do: level, else: "all"
+  # The level and the words are one filter, so they are one form and one event:
+  # LiveView only reports a change for an input that lives in a form.
+  def handle_event("filter", %{"q" => query, "level" => level}, socket) do
+    socket =
+      assign(socket,
+        level: if(level in Map.keys(@levels) or level == "all", do: level, else: "all"),
+        query: String.trim(query || "")
+      )
 
-    {:noreply,
-     assign(socket,
-       level: level,
-       visible: filter_entries(entries, level, socket.assigns.query)
-     )}
-  end
-
-  def handle_event("filter", %{"q" => query}, socket) do
-    query = String.trim(query || "")
-    entries = socket.assigns.entries
-
-    {:noreply,
-     assign(socket,
-       query: query,
-       visible: filter_entries(entries, socket.assigns.level, query)
-     )}
+    {:noreply, refilter(socket)}
   end
 
   # The tail is followed by default. Pressing the button (or scrolling back, which
@@ -101,37 +97,70 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   def handle_event("clear", _params, socket) do
     Log.clear()
 
-    {:noreply, assign(socket, entries: [], visible: [], counts: count([]))}
+    {:noreply, refilter(socket)}
   end
 
   @impl true
-  def handle_info({:sync_log, entry}, socket) do
-    entries = Enum.take(socket.assigns.entries ++ [entry], -Log.limit())
-
+  def handle_info({:sync_log, entry, %{counts: counts, held: held}}, socket) do
     socket =
-      socket
-      |> assign(entries: entries, counts: count(entries), traffic: Traffic.summary())
-      |> assign(:visible, filter_entries(entries, socket.assigns.level, socket.assigns.query))
-      |> push_event("sync-log:new", %{count: length(socket.assigns.visible)})
+      if entry.id > socket.assigns.newest_id do
+        socket
+        |> add_line(entry)
+        |> assign(counts: counts, held: held, newest_id: entry.id)
+        |> announce_new_line()
+      else
+        # A line written between the page subscribing and seeding itself: the
+        # seed already has it.
+        socket
+      end
 
     {:noreply, socket}
   end
 
-  defp filter_entries(entries, level, query) do
-    levels = Map.get(@levels, level, ~w(debug info warn error)a)
-    needle = String.downcase(query)
-
-    Enum.filter(entries, fn entry ->
-      entry.level in levels and
-        (needle == "" or String.contains?(String.downcase(entry.message), needle) or
-           String.contains?(String.downcase(inspect(entry.details)), needle))
-    end)
+  # One line is one insert: the lines already in the browser are not rendered
+  # again, not re-counted, and not sent.
+  defp add_line(socket, entry) do
+    if passes?(entry, socket.assigns.level, socket.assigns.query) do
+      socket
+      |> stream_insert(:log, entry, at: -1, limit: -Log.limit())
+      |> assign(:shown, min(socket.assigns.shown + 1, Log.limit()))
+    else
+      socket
+    end
   end
 
-  defp count(entries) do
-    Enum.reduce(entries, %{info: 0, debug: 0, warn: 0, error: 0}, fn entry, acc ->
-      Map.update(acc, entry.level, 1, &(&1 + 1))
-    end)
+  # Changing the filter is the one time the whole tail is re-read and the
+  # browser is handed a fresh set of lines. A reader who is following lands on
+  # the newest of them: the container was replaced, so the browser could not
+  # keep its place anyway.
+  defp refilter(socket) do
+    %{entries: entries, counts: counts, held: held} = Log.snapshot()
+    shown = filter_entries(entries, socket.assigns.level, socket.assigns.query)
+
+    socket
+    |> assign(counts: counts, held: held, shown: length(shown), newest_id: newest_id(entries))
+    |> stream(:log, shown, reset: true, limit: -Log.limit())
+    |> announce_new_line()
+  end
+
+  # Scrolling is the browser's business, and it only needs to hear about a line
+  # it is following: a paused page is left where the reader put it.
+  defp announce_new_line(socket) do
+    if socket.assigns.follow?, do: push_event(socket, "sync-log:new", %{}), else: socket
+  end
+
+  defp newest_id([]), do: 0
+  defp newest_id(entries), do: entries |> List.last() |> Map.fetch!(:id)
+
+  defp filter_entries(entries, level, query), do: Enum.filter(entries, &passes?(&1, level, query))
+
+  defp passes?(entry, level, query) do
+    needle = String.downcase(query)
+    levels = Map.get(@levels, level, @everything)
+
+    entry.level in levels and
+      (needle == "" or String.contains?(String.downcase(entry.message), needle) or
+         String.contains?(String.downcase(inspect(entry.details)), needle))
   end
 
   defp level_badge(:debug), do: {"·", "text-base-content/70"}
@@ -220,19 +249,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
               autocomplete="off"
             />
           </label>
-        </form>
 
-        <select
-          id="sync-log-level"
-          name="level"
-          phx-change="set_level"
-          class="select select-sm rounded-lg border-base-300"
-          aria-label="Level"
-        >
-          <option :for={{value, label} <- @level_options} value={value} selected={value == @level}>
-            {label}
-          </option>
-        </select>
+          <select
+            id="sync-log-level"
+            name="level"
+            class="select select-sm shrink-0 rounded-lg border-base-300"
+            aria-label="Level"
+          >
+            <option :for={{value, label} <- @level_options} value={value} selected={value == @level}>
+              {label}
+            </option>
+          </select>
+        </form>
 
         <button
           id="sync-log-follow"
@@ -261,7 +289,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
         <span>{@counts.warn} warnings</span>
         <span>{@counts.error} errors</span>
         <span>·</span>
-        <span>{length(@visible)} of {length(@entries)} shown</span>
+        <span>{@shown} of {@held} shown</span>
       </p>
 
       <p
@@ -290,10 +318,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
             <thead>
               <.log_columns edge={:top} />
             </thead>
-            <tbody>
+            <tbody id="sync-log-rows" phx-update="stream">
               <tr
-                :for={entry <- @visible}
-                id={"log-#{entry.id}"}
+                :for={{dom_id, entry} <- @streams.log}
+                id={dom_id}
                 class="border-b border-base-300/40 align-baseline"
               >
                 <td class="whitespace-nowrap px-3 py-1 align-baseline text-base-content/70">
@@ -317,7 +345,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
                   {entry.run_id && "##{entry.run_id}"}
                 </td>
               </tr>
-              <tr :if={@visible == []}>
+            </tbody>
+            <tbody :if={@shown == 0}>
+              <tr>
                 <td colspan="4" class="px-4 py-10 text-center font-sans text-sm text-base-content/70">
                   Nothing yet. Lines appear here as soon as a sync starts, including every call it makes.
                 </td>
