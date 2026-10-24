@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
   schema "sync_runs" do
     field :source, :string
     field :mode, :string
+    field :scope, :string
     field :status, :string, default: "running"
     field :started_at, :utc_datetime
     field :finished_at, :utc_datetime
@@ -31,6 +32,7 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
     |> cast(attrs, [
       :source,
       :mode,
+      :scope,
       :status,
       :started_at,
       :finished_at,
@@ -63,8 +65,34 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
       "sync.started",
       "sync_run",
       run.id,
-      metadata(mode: mode, source: source_name, site: opts[:site], trigger: opts[:trigger])
+      metadata(
+        mode: mode,
+        scope: run.scope,
+        source: source_name,
+        site: opts[:site],
+        trigger: opts[:trigger]
+      )
     )
+  end
+
+  @doc """
+  What the run did, in the numbers the dashboard's sync table prints.
+
+  One function for the table and the audit entry, so the two cannot drift: a
+  run's numbers are its own window (what the site listed and what of it needed
+  fetching), with the mirror's size beside them for scale.
+  """
+  def summary(%__MODULE__{} = run) do
+    stats = run.stats || %{}
+
+    %{
+      listed: stats["pages"] || 0,
+      changed: stats["changed"] || 0,
+      unchanged: stats["unchanged"] || 0,
+      in_mirror: stats["total"] || 0,
+      attachments: stats["attachments"] || 0,
+      errors: length(stats["errors"] || [])
+    }
   end
 
   @doc "Audit entry for a run that finished, successfully or partially."
@@ -75,9 +103,12 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
       run.id,
       metadata(
         mode: run.mode,
+        scope: run.scope,
         status: run.status,
-        stats: run.stats,
-        trigger: opts[:trigger]
+        duration_ms: duration(run),
+        trigger: opts[:trigger],
+        indexed: summary(run),
+        stats: run.stats
       )
     )
   end
@@ -88,7 +119,13 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
       "sync.failed",
       "sync_run",
       run.id,
-      metadata(error: message, mode: run.mode, trigger: opts[:trigger])
+      metadata(
+        error: message,
+        mode: run.mode,
+        scope: run.scope,
+        duration_ms: duration(run),
+        trigger: opts[:trigger]
+      )
     )
   end
 

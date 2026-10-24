@@ -81,7 +81,7 @@ defmodule ConfluencePhxMirror.Sync do
     trigger = Keyword.get(opts, :trigger)
     # One mirror holds one site's content; never let a sync write across sites.
     Sites.verify!()
-    run = start_run(source, mode, actor, trigger)
+    run = start_run(source, mode, actor, trigger, opts)
     # The loops ask the row whether someone asked them to stop.
     opts = Keyword.put(opts, :run_id, run.id)
 
@@ -1699,7 +1699,7 @@ defmodule ConfluencePhxMirror.Sync do
   # Sync run bookkeeping
   # ---------------------------------------------------------------------------
 
-  defp start_run(source, mode, actor, trigger) do
+  defp start_run(source, mode, actor, trigger, opts) do
     # The traffic account covers one run: every call this run makes is counted
     # here and reported when it ends, so a reader never sees yesterday's totals.
     Traffic.reset()
@@ -1709,6 +1709,7 @@ defmodule ConfluencePhxMirror.Sync do
       |> SyncRun.changeset(%{
         source: source.name(),
         mode: mode_to_string(mode),
+        scope: scope_of(mode, opts),
         status: "running",
         started_at: now(),
         # The dashboard's live strip says who asked for this run.
@@ -1834,6 +1835,13 @@ defmodule ConfluencePhxMirror.Sync do
   defp mode_to_string(:incremental), do: "incremental"
   defp mode_to_string(:space), do: "incremental"
   defp mode_to_string(:page), do: "webhook"
+
+  # What a run covers. `mode` is how it was asked for, and it cannot tell a space
+  # pull from a site pull — both are incremental — so the dashboard needs this to
+  # say which space a run touched.
+  defp scope_of(:space, opts), do: "space #{Keyword.fetch!(opts, :space_key)}"
+  defp scope_of(:page, opts), do: "page #{Keyword.fetch!(opts, :confluence_id)}"
+  defp scope_of(_mode, _opts), do: "whole site"
 
   defp default_since(source) do
     interval =

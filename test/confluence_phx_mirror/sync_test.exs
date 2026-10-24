@@ -96,7 +96,7 @@ defmodule ConfluencePhxMirror.SyncTest do
     end
 
     test "audits the run, not every page it mirrors" do
-      {:ok, run} = Sync.run(:snapshot)
+      {:ok, run} = Sync.run(:snapshot, trigger: "a test, by hand")
 
       assert Repo.exists?(
                from e in Event,
@@ -110,6 +110,43 @@ defmodule ConfluencePhxMirror.SyncTest do
 
       refute Repo.exists?(from e in Event, where: e.action == "page.created")
       refute Repo.exists?(from e in Event, where: e.action == "attachment.mirrored")
+    end
+
+    test "the finished entry says what was indexed, and who asked for it" do
+      {:ok, run} = Sync.run(:snapshot, trigger: "the admin dashboard, by ops@acme.com")
+
+      entry =
+        Repo.one!(
+          from e in Event,
+            where: e.action == "sync.finished" and e.entity_id == ^to_string(run.id)
+        )
+
+      # The same numbers the sync table prints, from the same function.
+      assert entry.metadata["indexed"] == %{
+               "listed" => run.stats["pages"],
+               "changed" => run.stats["changed"],
+               "unchanged" => run.stats["unchanged"],
+               "in_mirror" => run.stats["total"],
+               "attachments" => run.stats["attachments"],
+               "errors" => 0
+             }
+
+      assert entry.metadata["scope"] == "whole site"
+      assert entry.metadata["trigger"] == "the admin dashboard, by ops@acme.com"
+      assert is_integer(entry.metadata["duration_ms"])
+      assert entry.actor_label
+    end
+
+    test "a run of one space says which space it covered" do
+      {:ok, run} = Sync.run(:space, space_key: "ENG")
+
+      entry =
+        Repo.one!(
+          from e in Event,
+            where: e.action == "sync.finished" and e.entity_id == ^to_string(run.id)
+        )
+
+      assert entry.metadata["scope"] == "space ENG"
     end
   end
 

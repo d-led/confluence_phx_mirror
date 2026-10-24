@@ -83,6 +83,12 @@ defmodule ConfluencePhxMirror.AuditDescriptionTest do
            }) ==
              "Finished a snapshot sync: 2 pages · 0 errors, " <>
                "triggered by the admin dashboard, by ops@acme.com"
+
+    assert sentence("sync.finished", %{
+             "mode" => "incremental",
+             "scope" => "space ENG",
+             "stats" => %{"pages" => 1, "errors" => []}
+           }) == "Finished an incremental sync of space ENG: 1 page · 0 errors"
   end
 
   test "credentials, subscriptions and webhooks read in their own words" do
