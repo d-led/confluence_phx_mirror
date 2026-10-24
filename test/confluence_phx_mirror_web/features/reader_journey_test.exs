@@ -12,7 +12,8 @@ defmodule ConfluencePhxMirrorWeb.Features.ReaderJourneyTest do
     conn
     |> visit(~p"/spaces")
     |> within("main", &click_link(&1, "Engineering Handbook"))
-    |> assert_path("/spaces/ENG/pages/1000/Engineering+Handbook")
+    # A space link is the space's home page, answered where it was asked for.
+    |> assert_path("/spaces/ENG")
     |> assert_has("h1", "Engineering Handbook")
     |> within("#page-tree", &click_link(&1, "Getting Started"))
     |> assert_path("/spaces/ENG/pages/1001/Getting+Started")

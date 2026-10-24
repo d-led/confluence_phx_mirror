@@ -19,6 +19,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   alias ConfluencePhxMirror.Sync.PageWorker
   alias ConfluencePhxMirror.Webhooks
   alias ConfluencePhxMirrorWeb.NotFound
+  alias ConfluencePhxMirrorWeb.PageHTML
 
   # The directory is `/spaces`, which pages in the database. The home page shows
   # a window of it: a mirror with a thousand spaces would otherwise send a
@@ -43,29 +44,6 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       stats: Mirror.stats(),
       last_webhook: List.first(Webhooks.recent(1))
     )
-  end
-
-  def space(conn, %{"key" => key}) do
-    case Mirror.find_space(key) do
-      {:ok, space} ->
-        if Authorization.can_read_space?(scope(conn), space) do
-          redirect_to_space_home(conn, space)
-        else
-          NotFound.call(conn, "Space #{key} is not mirrored.")
-        end
-
-      {:error, :not_found} ->
-        NotFound.call(conn, "Space #{key} is not mirrored.")
-    end
-  end
-
-  defp redirect_to_space_home(conn, space) do
-    # A home page this reader may not open is not their home: the overview of
-    # the space is the honest answer.
-    case Mirror.get_space_home(space, filter: readable_pages(conn)) do
-      nil -> redirect(conn, to: URLs.space_overview_path(space.key))
-      home -> redirect(conn, to: URLs.page_path(space.key, home.confluence_id, home.slug))
-    end
   end
 
   def show(conn, %{"space_key" => space_key, "id" => id, "slug" => slug}) do
@@ -195,11 +173,24 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     )
   end
 
+  @doc """
+  One mirrored page, whole: the page itself, its rail and its sidebar.
+
+  Public because a page is not only reached by its own URL: `/spaces/:key` is a
+  space's landing page, and when the space has a home page this reader may open
+  that is the page it renders — the same screen, answered in one request
+  instead of a redirect followed by a second request for the same bytes. See
+  `ConfluencePhxMirrorWeb.SpaceController.show/2`.
+
+  A mirrored page only changes when the sync rewrites it, so the answer carries
+  an ETag and a reader who already has this version is answered with an empty
+  304.
+  """
   # The page body is Confluence's export_view after Sync.Renderer sanitised it
-  # (scripts, event handlers and javascript: URLs removed) when the page was
+  # (scripts, event handlers, javascript: URLs removed) when the page was
   # mirrored; rendering it raw is the whole point of the mirror.
   # sobelow_skip ["XSS.Raw"]
-  defp render_page(conn, page, kind \\ :page) do
+  def render_page(conn, page, kind \\ :page) do
     etag = page_etag(conn, page, kind)
     conn = conn |> put_reader_cache(etag)
 
@@ -253,7 +244,9 @@ defmodule ConfluencePhxMirrorWeb.PageController do
         :blog -> [space_crumb(space), %{title: "Blog", path: URLs.space_blog_path(space.key)}]
       end
 
-    render(conn, :show,
+    conn
+    |> put_view(PageHTML)
+    |> render(:show,
       page_title: page.title,
       page: page,
       kind: kind,

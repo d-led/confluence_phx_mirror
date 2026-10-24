@@ -1,15 +1,17 @@
 defmodule ConfluencePhxMirrorWeb.SpaceController do
   @moduledoc """
-  Confluence-style space browsing: the space overview.
+  Confluence-style space browsing: a space's landing page and its overview.
 
   The space directory and the per-space catalogs (pages, blog, attachments) are
   `ConfluencePhxMirrorWeb.CatalogLive` because they are filtered and paged;
-  what stays here is the overview, the space icon and the redirect from a space
-  link to the space home page, which is what readers expect from a space link.
+  what stays here is the landing page, the overview, one sidebar branch and the
+  space icon.
 
-  `/spaces/:key` redirects to the space home page when Confluence has one (that
-  is what readers expect from a space link); the overview lives at
-  `/spaces/:key/overview`, mirroring Confluence's own URL shape.
+  `/spaces/:key` is what a space card, a breadcrumb, the space switcher and a
+  Confluence space link all point at, so it is answered in one request: the
+  space's home page when it has one this reader may open, the overview when it
+  has not. The overview also keeps its own URL, `/spaces/:key/overview`,
+  mirroring Confluence's own shape for that tab.
   """
 
   use ConfluencePhxMirrorWeb, :controller
@@ -18,23 +20,46 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Blobs.LocalStore
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirrorWeb.NotFound
+  alias ConfluencePhxMirrorWeb.PageController
 
   # The overview is a front page, not the catalog: it shows a window of each
   # list and links to the screen that pages through the rest.
   @root_page_cards 6
   @label_chips 12
 
+  @doc """
+  The space's landing page: its home page, or the overview behind it.
+
+  A space link is followed from the directory, a breadcrumb, a space card and
+  Confluence itself, so it is rendered where it is asked for: a redirect to the
+  page's own URL would cost a second request, with its own pipeline, for bytes
+  this one already has. The page is drawn by `PageController.render_page/3`, so
+  both URLs answer with the identical screen, ETag included.
+
+  A home page this reader may not open is not their home, and a space without
+  one still has something to show: both get the overview.
+  """
   def show(conn, %{"key" => key}) do
     with_space(conn, key, fn conn, space ->
-      # A home page this reader may not open is not their home: showing them the
-      # overview of the space is the honest answer.
-      case Mirror.get_space_home(space, filter: readable_pages(conn)) do
+      case readable_home(conn, space) do
         nil -> render_overview(conn, space)
-        home -> redirect(conn, to: URLs.page_path(space.key, home.confluence_id, home.slug))
+        page -> PageController.render_page(conn, page)
       end
     end)
+  end
+
+  # The space's own home page, when this reader may open it. Read by id rather
+  # than through `Mirror.get_space_home/2`: that one answers with the fields a
+  # card needs, and here the whole page is about to be drawn.
+  defp readable_home(conn, space) do
+    with id when is_integer(id) <- space.homepage_confluence_id,
+         {:ok, page} <- Mirror.find_page_by_path(space.key, id),
+         true <- Authorization.can_read_page?(scope(conn), page) do
+      page
+    else
+      _no_readable_home -> nil
+    end
   end
 
   def overview(conn, %{"key" => key}) do

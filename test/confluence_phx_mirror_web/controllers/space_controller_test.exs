@@ -142,13 +142,55 @@ defmodule ConfluencePhxMirrorWeb.SpaceControllerTest do
       assert html =~ ~s(href="/labels/release")
     end
 
-    test "a space link redirects to the space home page", %{conn: conn} do
+    test "a space link shows the space's home page", %{conn: conn} do
+      space = space_fixture(%{name: "Engineering Handbook"})
+
+      home =
+        page_fixture(space, %{
+          title: "Space home",
+          slug: "Space+home",
+          body_export: "<p>the handbook begins</p>"
+        })
+
+      {:ok, _space} =
+        Mirror.upsert_space(%{
+          key: space.key,
+          name: space.name,
+          homepage_confluence_id: home.confluence_id
+        })
+
+      html = conn |> get(~p"/spaces/#{space.key}") |> html_response(200)
+
+      assert html =~ "the handbook begins"
+    end
+
+    test "a home page this reader may not open leaves them on the overview", %{conn: conn} do
       {space, home} = space_with_home("Engineering Handbook")
+      reader = user_fixture(%{email: "outsider@example.com"})
 
-      conn = get(conn, ~p"/spaces/#{space.key}")
+      {:ok, _restrictions} =
+        Mirror.replace_page_restrictions(home, [
+          %{subject_type: "group", subject_key: "the-inner-circle"}
+        ])
 
-      assert redirected_to(conn) ==
-               "/spaces/#{space.key}/pages/#{home.confluence_id}/Space+home"
+      html =
+        conn
+        |> init_test_session(%{user_id: reader.id})
+        |> get(~p"/spaces/#{space.key}")
+        |> html_response(200)
+
+      refute html =~ home.title
+      assert html =~ "Top-level pages"
+    end
+
+    test "a space without a home page is its overview", %{conn: conn} do
+      space = space_fixture(%{name: "Product Hub"})
+      page_fixture(space, %{title: "Roadmap", slug: "roadmap"})
+
+      html = conn |> get(~p"/spaces/#{space.key}") |> html_response(200)
+
+      assert html =~ "Top-level pages"
+      assert html =~ "Roadmap"
     end
   end
 

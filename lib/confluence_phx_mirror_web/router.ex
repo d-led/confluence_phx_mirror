@@ -111,7 +111,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
-    get "/spaces/:key", PageController, :space
+    # A space link is the space's landing page, rendered in one request — the
+    # space home page or, without one, the overview. See SpaceController.show/2.
+    get "/spaces/:key", SpaceController, :show
     get "/spaces/:key/overview", SpaceController, :overview
     # A sidebar branch opens on demand; see `SpaceController.tree/2`.
     get "/spaces/:key/tree/:page_id", SpaceController, :tree

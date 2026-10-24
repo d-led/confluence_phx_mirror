@@ -97,11 +97,6 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     refute policy =~ "'unsafe-eval'"
   end
 
-  test "GET /spaces/:key redirects to the space home page", %{conn: conn} do
-    conn = get(conn, ~p"/spaces/ENG")
-    assert redirected_to(conn) == "/spaces/ENG/pages/1000/Engineering+Handbook"
-  end
-
   test "GET a page renders macro markup, labels and the original link", %{conn: conn} do
     html = conn |> get("/spaces/ENG/pages/1002/Architecture+Overview") |> html_response(200)
 
