@@ -193,7 +193,16 @@
         </div>
 
         <p
-          :if={not @grants.synced?}
+          :if={@grants.personal}
+          id="space-access-personal"
+          class="mt-2 text-[11px] text-base-content/70"
+        >
+          A personal space: only {@grants.personal} may read it, and an administrator. Its
+          permissions do not have to say so — a personal space is narrowed by being somebody's.
+        </p>
+
+        <p
+          :if={not @grants.synced? and is_nil(@grants.personal)}
           id="space-access-unknown"
           class="mt-2 text-[11px] text-base-content/70"
         >

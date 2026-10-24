@@ -185,14 +185,17 @@ defmodule ConfluencePhxMirror.Mirror do
 
   @doc """
   Who may read a space, as the last sync read it — what the admin's space page
-  shows: groups, people, and whether anonymous readers are included.
+  shows: groups, people, whether anonymous readers are included, and whose
+  personal space it is.
 
   A user subject is stored under every identifier Confluence named it by (the
   account id and, when shared, the e-mail), so people are answered once per
-  account where the mirror knows one.
+  account where the mirror knows one. A personal space usually has no
+  permission rows at all, so its owner is answered here rather than left to look
+  like an open space.
   """
-  def space_grants(space_id) do
-    space_id |> space_permissions() |> grants()
+  def space_grants(%{id: space_id} = space) do
+    space_id |> space_permissions() |> grants(space)
   end
 
   @doc """
@@ -205,7 +208,7 @@ defmodule ConfluencePhxMirror.Mirror do
       select: %{subject_type: r.subject_type, subject_key: r.subject_key}
     )
     |> Repo.all()
-    |> grants()
+    |> grants(page.space)
   end
 
   @doc """
@@ -231,8 +234,11 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   # One shape for "who may read this", whether the rows came from a space's
-  # permissions or a page's restrictions.
-  defp grants(subjects) do
+  # permissions, a page's restrictions or nothing at all.
+  #
+  # `personal` is the narrowing that has no rows: a personal space belongs to one
+  # account, and an empty permission table there means "one reader", not "open".
+  defp grants(subjects, space) do
     %{
       groups:
         subjects
@@ -242,9 +248,29 @@ defmodule ConfluencePhxMirror.Mirror do
         |> Enum.sort(),
       users: user_grants(subjects),
       anonymous: Enum.any?(subjects, &(&1.subject_type == "anonymous")),
+      personal: personal_owner(space),
       synced?: subjects != []
     }
   end
+
+  @doc """
+  The account id a personal space belongs to, or nil for an ordinary space.
+
+  A personal space's key is `~` and its owner's account id; `Authorization`
+  enforces that, and this is the same fact spelled for a screen.
+  """
+  def personal_owner(%{type: "personal", key: key}) when is_binary(key),
+    do: key |> String.trim_leading("~") |> String.downcase()
+
+  def personal_owner(_space), do: nil
+
+  @doc """
+  Whether anything narrows this space at all — rows, or being somebody's own.
+
+  The question a screen asks before it says "open", because an empty permission
+  table on a personal space means one reader, not everybody.
+  """
+  def narrowed?(grants), do: grants.synced? or grants.personal != nil
 
   @doc """
   How access is reported for a page of spaces: subject counts per space, in one

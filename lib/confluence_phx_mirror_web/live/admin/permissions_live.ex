@@ -52,7 +52,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
     {:noreply,
      assign(socket,
        space: space,
-       grants: Mirror.space_grants(space.id),
+       grants: Mirror.space_grants(space),
        restricted: Mirror.restricted_pages(space.id),
        page: nil,
        page_grants: nil
@@ -145,7 +145,17 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
         </div>
 
         <p
-          :if={not @grants.synced?}
+          :if={@grants.personal}
+          id="space-access-personal"
+          class="mt-2 text-[11px] text-base-content/70"
+        >
+          A personal space: only <span class="font-mono">{@grants.personal}</span> may read it, and
+          an administrator. It needs no permission rows to be narrowed — being somebody's is
+          enough.
+        </p>
+
+        <p
+          :if={not @grants.synced? and is_nil(@grants.personal)}
           id="space-access-open"
           class="mt-2 text-[11px] text-base-content/70"
         >
@@ -308,9 +318,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
           </div>
 
           <div class="flex flex-wrap items-center gap-1.5">
+            <span
+              :if={Mirror.personal_owner(space)}
+              class="badge badge-outline badge-sm"
+              id={"space-personal-#{space.id}"}
+            >
+              personal
+            </span>
+
             <%= case Map.get(@access, space.id) do %>
               <% nil -> %>
-                <span class="badge badge-ghost badge-sm" id={"space-open-#{space.id}"}>open</span>
+                <span
+                  :if={is_nil(Mirror.personal_owner(space))}
+                  class="badge badge-ghost badge-sm"
+                  id={"space-open-#{space.id}"}
+                >
+                  open
+                </span>
               <% access -> %>
                 <span :if={access.anonymous} class="badge badge-warning badge-sm">anonymous</span>
                 <span :if={access.groups > 0} class="badge badge-ghost badge-sm">

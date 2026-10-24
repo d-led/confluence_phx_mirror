@@ -24,6 +24,23 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
     assert render(view) =~ "1 group"
   end
 
+  # The bug this guards: a personal space has no permission rows at all, and an
+  # empty table there means one reader, not everybody.
+  test "a personal space is not open — it belongs to one account", %{conn: conn} do
+    space = space_fixture(%{key: "~5F057CBE0B38B10022628D68", type: "personal"})
+
+    {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+
+    assert has_element?(view, "#space-personal-#{space.id}")
+    refute has_element?(view, "#space-open-#{space.id}")
+
+    view |> element("#inspect-space-#{space.id}") |> render_click()
+
+    assert has_element?(view, "#space-access-personal")
+    refute has_element?(view, "#space-access-open")
+    assert render(view) =~ "5f057cbe0b38b10022628d68"
+  end
+
   test "a space with no mirrored permissions says it is open", %{conn: conn} do
     space = space_fixture()
 

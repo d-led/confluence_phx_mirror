@@ -146,7 +146,7 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
   # Confluence, and an administrator is the one who needs to see whether the
   # mirror agrees with the site.
   defp space_grants(conn, space) do
-    if Scope.admin?(scope(conn)), do: Mirror.space_grants(space.id)
+    if Scope.admin?(scope(conn)), do: Mirror.space_grants(space)
   end
 
   defp with_space(conn, key, fun) do
