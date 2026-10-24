@@ -8,8 +8,11 @@ defmodule ConfluencePhxMirror.Mirror.Search.TextQuery do
   excludes a term — close to what people expect from a search box.
 
   Unquoted words match by prefix (`architect` finds “architecture”); quoted
-  phrases are exact. If the input is malformed (unclosed quote or parenthesis)
-  the caller falls back to Postgres' forgiving `websearch_to_tsquery`.
+  phrases are exact; a star on the end of a word (`architect*`) says the same
+  prefix match is all the reader wants — `Mirror.Search.text/2` reads it as “do
+  not look inside other words”. If the input is malformed (unclosed quote or
+  parenthesis) the caller falls back to Postgres' forgiving
+  `websearch_to_tsquery`.
   """
 
   @type ast ::

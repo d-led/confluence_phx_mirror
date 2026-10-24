@@ -140,6 +140,10 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   not. What the second pass finds is appended, never interleaved — a word that
   starts with the query is a better match than one that merely contains it, and
   the reader sees that order.
+
+  `scal*` asks for that first band alone: a star on the end of the last word is
+  the usual way to say "a word that begins like this", and it turns the fragment
+  pass off, so the answer is exactly the pages whose word starts there.
   """
   @spec text(String.t(), keyword()) :: {:ok, [result()]}
   def text(query, opts \\ []) do
@@ -153,13 +157,24 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
       {:ok, tsquery, terms} ->
         with {:ok, results} <- run_text(tsquery, "to_tsquery", terms, limit, offset) do
-          {:ok, inside_words(results, query, terms, limit)}
+          if prefix_only?(query) do
+            {:ok, results}
+          else
+            {:ok, inside_words(results, query, terms, limit)}
+          end
         end
 
       :error ->
         run_text(query, "websearch_to_tsquery", fallback_terms(query), limit, offset)
     end
   end
+
+  # A star on the last word is how a reader says "a word that starts this way":
+  # the prefix band is already the first thing a query answers with, and the star
+  # keeps it the only thing. The query language strips it before it reaches
+  # Postgres, so `scal*` and `scal` are the same tsquery — the difference is the
+  # second pass that one of them skips.
+  defp prefix_only?(query), do: String.ends_with?(query, "*")
 
   # Only when the prefix pass left room: a reader who typed a word the mirror
   # knows pays one query, and the trigram pass costs nothing for them.

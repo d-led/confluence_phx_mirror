@@ -50,6 +50,18 @@ defmodule ConfluencePhxMirror.Mirror.Search.TextTest do
     refute "Escalation policy" in titles("sc")
   end
 
+  test "a trailing star asks for the start of the word only" do
+    space = space_fixture(%{key: "FRAG", name: "Fragments"})
+    page_fixture(space, %{title: "Scalability notes", confluence_id: 97_004})
+    page_fixture(space, %{title: "Escalation policy", confluence_id: 97_005})
+
+    # Without the star the middle of a word counts as a match; with it only the
+    # start does — the reader asked for "a word that begins this way".
+    assert "Escalation policy" in titles("scal")
+    refute "Escalation policy" in titles("scal*")
+    assert "Scalability notes" in titles("scal*")
+  end
+
   test "searches labels, authors, spaces and attachment filenames" do
     assert "Architecture Overview" in titles("design")
     assert "Architecture Overview" in titles("jane doe")
