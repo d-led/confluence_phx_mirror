@@ -445,6 +445,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                       do: "last seen #{Time.ago(user.last_sign_in_at)}",
                       else: "never signed in"}
                   </p>
+                  <span
+                    :if={User.provisioned?(user)}
+                    id={"provisioned-#{user.id}"}
+                    class="badge badge-ghost badge-xs"
+                    title="The sync created this account because the site named this person"
+                  >
+                    from the sync
+                  </span>
                 </div>
               </div>
 
@@ -678,7 +686,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
           <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">
             <h2 class="text-sm font-semibold">Account provisioning</h2>
             <p class="mt-1 text-[11px] text-base-content/70">
-              Accounts are created on first sign-in — there is no account form.
+              A sync creates an account for every person Confluence names — an author, a group member — and
+              will share an e-mail for. There is no account form; signing in only claims an existing row.
             </p>
             <ul class="mt-3 space-y-2 text-xs">
               <li class="flex items-start gap-2">
@@ -749,8 +758,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               <span class="badge badge-ghost badge-xs">{length(@people)}</span>
             </div>
             <p class="mt-1 text-[11px] text-base-content/70">
-              Confluence does not list its users, so these are the people its content names: every
-              page and comment author, with the groups the last sync read for them.
+              Every Atlassian account the content or a group names — one person can have two of them
+              (a personal account and a guest one), and they stay two here. Only an account the site
+              shares an e-mail for can become a mirror account.
             </p>
 
             <ul :if={@people != []} class="mt-3 space-y-2.5">
@@ -762,7 +772,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                   <span :if={person.account?} class="badge badge-primary badge-xs">
                     has an account
                   </span>
+                  <span
+                    :if={not person.account?}
+                    id={"person-no-account-#{person.index}"}
+                    class="badge badge-ghost badge-xs"
+                    title="The site shares no e-mail for this identity, so there is nothing to sign in with or to match a reader against"
+                  >
+                    no account possible
+                  </span>
                 </div>
+                <p class="mt-0.5 font-mono text-[10px] text-base-content/50">
+                  {person.account_id}
+                </p>
                 <div class="mt-1 flex flex-wrap gap-1">
                   <span :for={group <- person.groups} class="badge badge-ghost badge-xs">
                     {group}
