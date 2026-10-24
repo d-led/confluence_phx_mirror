@@ -10,16 +10,17 @@
 #           function by complexity and coverage. Every push and every pull
 #           request; about eight minutes, which is the whole run now.
 #   image   `docker build`, Trivy on the result, and a run as uid 10001, then
-#           the amd64 + arm64 index is published to GHCR under the branch or
-#           tag name: `:main` (and `:latest`) for main, `:v1.2.3` for a release,
-#           never a commit hash. It waits for the two gates above (`needs`), so
-#           nothing is published from a commit that failed them.
+#           the image is published to GHCR under the branch or tag name:
+#           `:main` (and `:latest`) for main, `:v1.2.3` for a release, never a
+#           commit hash. A push publishes the amd64 image the checks had to
+#           build anyway; the amd64 + arm64 index waits for a release tag or a
+#           dispatch that asks for it. It waits for the two gates above
+#           (`needs`), so nothing is published from a commit that failed them.
 #
-# The image is by far the expensive half — 17 minutes measured on a warm cache,
-# 14 m 41 s of it the arm64 build under QEMU — and it is the half whose breakage
-# a developer finds in a couple of minutes with `docker build .` at home. So it
-# does **not** run on an ordinary push: it runs for a release tag, or when
-# someone asks for it:
+# The arm64 half is by far the expensive part — 14 m 41 s under QEMU, 17
+# minutes for the whole job on a warm cache — and it is the part whose breakage
+# a developer finds in a couple of minutes with `docker build .` at home. So a
+# push publishes amd64, and asking for the index costs:
 #
 #   gh workflow run ci --ref main --field image=true
 #
@@ -143,17 +144,17 @@ jobs:
 
   image:
     name: Image, scan, non-root, publish
-    # The point of a gate is that the thing behind it cannot be reached before
-    # it opens: the image is built, scanned and pushed only for a commit that
-    # passed static analysis and the suite.
     needs: [lint, test]
     runs-on: ubuntu-24.04
     # The arm64 half is built under QEMU, which is the slow part.
     timeout-minutes: 45
-    # A release tag, or a dispatch that asked for it. Not an ordinary push: see
-    # the header. Nothing can publish this on a pull request either, because a
-    # pull request is neither.
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.image
+    # The point of a gate is that the thing behind it cannot be reached before
+    # it opens: the image is built, scanned and pushed only for a commit that
+    # passed static analysis and the suite. A push publishes the amd64 image
+    # the checks already built; a release tag, or a dispatch that asks for it,
+    # also pays for the arm64 half and publishes the index. A pull request is
+    # neither, so it publishes nothing.
+    if: github.event_name == 'push' || inputs.image
     permissions:
       contents: read
       packages: write
@@ -191,6 +192,16 @@ jobs:
             fi
             echo "TAGS"
           } >> "$GITHUB_OUTPUT"
+
+          # The index is what an arm64 machine pulls natively, and building its
+          # half means compiling the release under QEMU — 14 minutes of the
+          # job. A push says nothing about wanting that, so it publishes the
+          # amd64 image the checks built; a tag or a dispatch asks for both.
+          if [ "${{ inputs.image || startsWith(github.ref, 'refs/tags/v') }}" = "true" ]; then
+            echo "platforms=linux/amd64,linux/arm64" >> "$GITHUB_OUTPUT"
+          else
+            echo "platforms=linux/amd64" >> "$GITHUB_OUTPUT"
+          fi
       # Built for the runner's own architecture so Trivy and the uid check read
       # a real image rather than a manifest list — and so those two checks stay
       # fast. This is the amd64 half of what is published below.
@@ -228,19 +239,20 @@ jobs:
           echo "image runs as uid ${uid}"
           test "${uid}" -ne 0
           test "${uid}" = "10001"
-      # One image per published tag, carrying both architectures: an Apple
-      # Silicon laptop or an arm64 VM pulls a native build, x86 servers pull
-      # theirs. arm64 is compiled here, under QEMU, which is why only the
-      # publication path pays for it.
+      # One image per published tag. For a release (or a dispatch) it carries
+      # both architectures: an Apple Silicon laptop or an arm64 VM pulls a
+      # native build, x86 servers pull theirs. arm64 is compiled here, under
+      # QEMU, which is why only that path pays for it.
       - name: Set up QEMU for the arm64 build
+        if: steps.image.outputs.platforms != 'linux/amd64'
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
         with:
           platforms: arm64
-      - name: Publish linux/amd64 and linux/arm64
+      - name: Publish ${{ steps.image.outputs.platforms }}
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ steps.image.outputs.platforms }}
           push: true
           tags: ${{ steps.image.outputs.tags }}
           build-args: |

@@ -280,32 +280,40 @@ not for the deployment.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs two jobs on every push and pull request, and a
-third when it is worth it:
+`.github/workflows/ci.yml` runs three jobs; the first two on every push and pull
+request, the third on every push and, with its expensive half, when somebody
+asks for the whole image:
 
 | Job | Runs | What it is |
 | --- | --- | --- |
 | **Static analysis** | every push, every PR | `mix lint`: `compile --warnings-as-errors`, `deps.unlock --check-unused`, `format --check-formatted`, `credo --strict`, `lint.sobelow --config` (sobelow, with the quoted-key warning it provokes from `mix.lock` attributed rather than printed). About half a minute |
 | **Suite and complexity** | every push, every PR | Postgres 17 service, `mix cover` (the suite with coverage), then `mix complexity` (CRAP per function, threshold 30). Seven to eight minutes, and the gate that matters |
-| **Image, scan, non-root** | a release tag, or a dispatch that asks | `docker build` (amd64), Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), `id -u` must be `10001`, then the amd64 + arm64 index is published. The expensive half, mostly the arm64 build under QEMU |
+| **Image, scan, non-root** | every push; the arm64 half also on a release tag or a dispatch that asks | `docker build` (amd64), Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), `id -u` must be `10001`, then the image is published. A push publishes the amd64 image the checks had to build anyway; a tag or a dispatch adds the arm64 half and publishes the index instead of a single-architecture image. That half is the expensive one — 14 m 41 s under QEMU |
 
 The image job `needs` the other two, so nothing is published from a commit that
-failed them. It does not run on a push, because the same breakage is found at
-home in two minutes:
+failed them. A push publishes the amd64 image, because the build is there
+anyway for the scan and the `id -u` check; what a push does not do is compile
+the release a second time under QEMU for arm64, which is where the minutes go.
+That half, and with it the multi-architecture index, is what a tag or a
+dispatch asks for. The breakage the image gate would catch is still two minutes
+at home:
 
 ```
 docker build .                                   # does it build at all
 scripts/quality.sh --image                       # builds it, checks uid 10001
-git tag v1.2.3 && git push origin v1.2.3         # the pipeline publishes it
-gh workflow run ci --ref main --field image=true # …or ask for a fresh `:main`
+git tag v1.2.3 && git push origin v1.2.3         # a release, amd64 + arm64
+gh workflow run ci --ref main --field image=true # …or ask for a fresh index
 ```
 
 The published tags are `ghcr.io/d-led/confluence_phx_mirror` under the **branch
 or tag name**: `:main` (and `:latest` as well, for deployments that prefer it)
-when the branch image was asked for, `:v1.2.3` for a release. There are no
-commit-hash tags — a tag that changes with every push says nothing about where
-the image came from, and the image already carries its commit in
-`build_info.json`.
+on every push to main, `:v1.2.3` for a release. There are no commit-hash tags —
+a tag that changes with every push says nothing about where the image came
+from, and the image already carries its commit in `build_info.json`.
+
+One consequence worth knowing before deploying an `:latest` pull to an arm64
+host: the image a push publishes is amd64 only, so that host runs it emulated
+until someone dispatches the index. Release tags always carry both.
 
 `.github/dependabot.yml` opens weekly pull requests for Hex, npm,
 GitHub Actions and the proxy's image. The mirror image's base versions are build
