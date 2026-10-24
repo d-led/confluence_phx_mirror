@@ -29,7 +29,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditExportController do
 
   defp download(conn, format) do
     conn
-    |> put_resp_content_type(content_type(format))
+    |> put_content_type(format)
     |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename(format)}"))
     # The log changes as the download runs, so a cached copy would be yesterday's
     # answer presented as today's.
@@ -62,8 +62,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditExportController do
 
   defp format(_params), do: :ndjson
 
-  defp content_type(:csv), do: "text/csv; charset=utf-8"
-  defp content_type(:ndjson), do: "application/x-ndjson; charset=utf-8"
+  # The header is written as a literal, one line per format: "a type read from a
+  # request parameter" is what `XSS.ContentType` exists to catch, and here the
+  # parameter has already been reduced to one of two atoms — so the value is
+  # chosen in code rather than carried from the request.
+  defp put_content_type(conn, :csv),
+    do: put_resp_content_type(conn, "text/csv; charset=utf-8")
+
+  defp put_content_type(conn, :ndjson),
+    do: put_resp_content_type(conn, "application/x-ndjson; charset=utf-8")
 
   defp filename(format) do
     "audit-#{Date.utc_today() |> Date.to_iso8601()}.#{extension(format)}"
