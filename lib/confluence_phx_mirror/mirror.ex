@@ -192,8 +192,47 @@ defmodule ConfluencePhxMirror.Mirror do
   account where the mirror knows one.
   """
   def space_grants(space_id) do
-    subjects = space_permissions(space_id)
+    space_id |> space_permissions() |> grants()
+  end
 
+  @doc """
+  Who may read a page on top of its space: a page with read restrictions is
+  readable only by the subjects listed here, whatever the space allows.
+  """
+  def page_grants(%Page{} = page) do
+    from(r in PageRestriction,
+      where: r.page_id == ^page.id and r.operation == "read",
+      select: %{subject_type: r.subject_type, subject_key: r.subject_key}
+    )
+    |> Repo.all()
+    |> grants()
+  end
+
+  @doc """
+  The pages in a space that carry their own restrictions, with how many subjects
+  narrow each — the questions the space view cannot answer.
+
+  Bounded like every other list on a screen: a space can have thousands of
+  pages, and the ones that are narrowed are the ones worth naming.
+  """
+  def restricted_pages(space_id, opts \\ []) do
+    from(p in Page,
+      join: r in PageRestriction,
+      on: r.page_id == p.id,
+      where:
+        p.space_id == ^space_id and p.type == "page" and is_nil(p.deleted_at) and
+          r.operation == "read",
+      group_by: p.id,
+      order_by: [asc: p.title],
+      limit: ^Keyword.get(opts, :limit, 20),
+      select: {p, count(r.id)}
+    )
+    |> Repo.all()
+  end
+
+  # One shape for "who may read this", whether the rows came from a space's
+  # permissions or a page's restrictions.
+  defp grants(subjects) do
     %{
       groups:
         subjects
@@ -755,6 +794,18 @@ defmodule ConfluencePhxMirror.Mirror do
 
   defp maybe_exclude_archived(query, true), do: query
   defp maybe_exclude_archived(query, false), do: where(query, [p], p.status != "archived")
+
+  @doc """
+  A page by its row id — what a list on a screen hands back, as against the
+  Confluence id a URL carries.
+  """
+  def get_page_by_id!(id) do
+    Repo.one!(
+      from p in Page,
+        where: p.id == ^id and is_nil(p.deleted_at),
+        preload: [:space]
+    )
+  end
 
   def get_page!(confluence_id) do
     Repo.one!(

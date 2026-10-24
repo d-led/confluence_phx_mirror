@@ -87,6 +87,38 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
   # selector takes raw, so the row is found by its attribute.
   defp subject_row(key), do: ~s{[id="space-access-user-#{key}"]}
 
+  test "a restricted page is named under its space, and inspecting it says who may read it", %{
+    conn: conn
+  } do
+    space = a_space_read_by("anyone@example.com")
+    restricted = page_fixture(space, %{title: "Salaries"})
+    page_fixture(space, %{title: "Handbook"})
+
+    {:ok, _} =
+      Mirror.replace_page_restrictions(restricted, [
+        %{operation: "read", subject_type: "group", subject_key: "leadership"}
+      ])
+
+    {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+
+    view |> element("#inspect-space-#{space.id}") |> render_click()
+
+    # Only the page that is narrowed is worth naming; the space's other pages
+    # inherit the space's answer.
+    assert has_element?(view, "#restricted-page-#{restricted.id}")
+    refute render(view) =~ "Handbook"
+
+    view |> element("#inspect-page-#{restricted.id}") |> render_click()
+
+    assert has_element?(view, "#page-access-panel")
+    assert has_element?(view, "#page-access-group-leadership")
+
+    # And the space's own readers are not added to it: a restricted page is
+    # readable only by who it lists. The space panel is still open behind it, so
+    # the question is asked of the page panel.
+    refute view |> element("#page-access-panel") |> render() =~ "anyone@example.com"
+  end
+
   defp a_space_read_by(email, opts \\ []) do
     space = space_fixture(%{key: "READ#{System.unique_integer([:positive])}"})
 

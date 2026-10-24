@@ -30,6 +30,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
        q: "",
        space: nil,
        grants: nil,
+       restricted: [],
+       page: nil,
+       page_grants: nil,
        page_title: "Permissions"
      )
      |> load()}
@@ -37,17 +40,40 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
 
   @impl true
   def handle_event("filter", %{"q" => q}, socket) do
-    {:noreply, socket |> assign(q: q, space: nil, grants: nil) |> load()}
+    {:noreply,
+     socket
+     |> assign(q: q, space: nil, grants: nil, restricted: [], page: nil, page_grants: nil)
+     |> load()}
   end
 
   def handle_event("inspect", %{"space_key" => key}, socket) do
     space = Mirror.get_space_by_key(key)
 
-    {:noreply, assign(socket, space: space, grants: Mirror.space_grants(space.id))}
+    {:noreply,
+     assign(socket,
+       space: space,
+       grants: Mirror.space_grants(space.id),
+       restricted: Mirror.restricted_pages(space.id),
+       page: nil,
+       page_grants: nil
+     )}
+  end
+
+  # A page's own restrictions are the half of the answer the space view cannot
+  # give: the space decides, and then the page narrows it further.
+  def handle_event("inspect_page", %{"page_id" => page_id}, socket) do
+    page = Mirror.get_page_by_id!(String.to_integer(page_id))
+
+    {:noreply, assign(socket, page: page, page_grants: Mirror.page_grants(page))}
+  end
+
+  def handle_event("close_page", _params, socket) do
+    {:noreply, assign(socket, page: nil, page_grants: nil)}
   end
 
   def handle_event("close", _params, socket) do
-    {:noreply, assign(socket, space: nil, grants: nil)}
+    {:noreply,
+     assign(socket, space: nil, grants: nil, restricted: [], page: nil, page_grants: nil)}
   end
 
   defp load(socket) do
@@ -162,6 +188,100 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
                 <span :if={not user.account?} class="text-[10px] text-base-content/50">
                   no account here yet
                 </span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div
+          :if={@restricted != []}
+          id="restricted-pages"
+          class="mt-4 border-t border-primary/20 pt-3"
+        >
+          <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
+            Pages narrowed further
+          </p>
+          <ul class="mt-1 space-y-1 text-xs">
+            <li
+              :for={{page, subjects} <- @restricted}
+              id={"restricted-page-#{page.id}"}
+              class="flex flex-wrap items-center justify-between gap-2"
+            >
+              <span class="min-w-0 truncate">{page.title}</span>
+              <span class="flex items-center gap-2">
+                <span class="badge badge-ghost badge-sm">
+                  {subjects} {if subjects == 1, do: "subject", else: "subjects"}
+                </span>
+                <button
+                  type="button"
+                  phx-click="inspect_page"
+                  phx-value-page_id={page.id}
+                  id={"inspect-page-#{page.id}"}
+                  class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
+                >
+                  Inspect
+                </button>
+              </span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div
+        :if={@page}
+        id="page-access-panel"
+        class="mt-3 rounded-xl border border-base-300 bg-base-200/40 p-4"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-xs font-semibold">{@page.title}</p>
+            <p class="mt-0.5 text-[11px] text-base-content/70">
+              A restricted page is readable only by the subjects listed here, whatever the space
+              allows — the two are not added together.
+            </p>
+          </div>
+          <button
+            type="button"
+            phx-click="close_page"
+            id="close-page-access"
+            class="btn btn-ghost btn-xs"
+          >
+            Close
+          </button>
+        </div>
+
+        <div class="mt-2 space-y-2 text-xs">
+          <div :if={@page_grants.anonymous} id="page-access-anonymous">
+            <span class="badge badge-warning badge-sm">anonymous readers</span>
+          </div>
+
+          <div :if={@page_grants.groups != []}>
+            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
+              Groups
+            </p>
+            <div class="mt-1 flex flex-wrap gap-1">
+              <span
+                :for={group <- @page_grants.groups}
+                id={"page-access-group-#{group}"}
+                class="badge badge-ghost badge-sm"
+              >
+                {group}
+              </span>
+            </div>
+          </div>
+
+          <div :if={@page_grants.users != []}>
+            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
+              People
+            </p>
+            <ul class="mt-1 space-y-1">
+              <li
+                :for={user <- @page_grants.users}
+                id={"page-access-user-#{user.key}"}
+                class="flex flex-wrap items-baseline gap-2"
+              >
+                <span class="font-medium">{user.label}</span>
+                <span class="font-mono text-[10px] text-base-content/50">{user.key}</span>
               </li>
             </ul>
           </div>
