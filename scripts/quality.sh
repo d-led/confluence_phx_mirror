@@ -4,9 +4,11 @@
 # ranking, in the order that fails fastest. Read-only — it never formats, never
 # rewrites the lockfile, and never leaves a file behind.
 #
-#   scripts/quality.sh              everything (what CI runs)
+#   scripts/quality.sh              everything CI runs on a push
 #   scripts/quality.sh --fast       static analysis only: no database, no tests
 #   scripts/quality.sh --no-tests   reuse the coverage already exported, re-rank
+#   scripts/quality.sh --image      additionally build the image and check the user
+#                                   it runs as (slow; CI does it for a release)
 #   scripts/quality.sh --top 20     how many CRAP entries to rank (default 8)
 #
 # Exit status is non-zero if any gate fails, so it can sit in a pipeline.
@@ -17,16 +19,18 @@ cd "$(dirname "$0")/.."
 
 fast=0
 tests=1
+image=0
 top=8
 
 usage() {
-  sed -n '3,12p' "$0" | sed 's/^# \{0,1\}//; s/^#$//'
+  sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//; s/^#$//'
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --fast) fast=1; shift ;;
     --no-tests) tests=0; shift ;;
+    --image) image=1; shift ;;
     --top) top="${2:?--top needs a number}"; shift 2 ;;
     -h | --help) usage; exit 0 ;;
     *)
@@ -168,6 +172,38 @@ else
   printf '\n'
   grep -E 'threshold failed|score=' "$report" | first_lines 20 || true
   record complexity 1 "worst ${worst:-?}, $offenders function(s) above $threshold"
+fi
+
+# ---------------------------------------------------------------------------
+# The image, built and started as the user it claims to be. Five minutes and
+# the half whose breakage `docker build .` finds anyway, so it is asked for
+# rather than assumed — CI builds it for a release tag or on request. The Trivy
+# scan stays in CI: fourteen seconds there, and a database download here.
+# ---------------------------------------------------------------------------
+
+if [[ $image -eq 1 ]]; then
+  banner "image"
+
+  if ! command -v docker >/dev/null 2>&1; then
+    record image 1 "docker is not on PATH"
+  else
+    tag="confluence-mirror-quality:$$"
+
+    if docker build -q -t "$tag" . >"$report" 2>&1; then
+      uid=$(docker run --rm --entrypoint /usr/bin/id "$tag" -u 2>>"$report") || uid=unknown
+
+      if [[ $uid == 10001 ]]; then
+        record image 0 "built, runs as uid $uid"
+      else
+        record image 1 "runs as uid $uid, not 10001"
+      fi
+    else
+      tail -n 30 "$report"
+      record image 1 "does not build"
+    fi
+
+    docker image rm -f "$tag" >/dev/null 2>&1 || true
+  fi
 fi
 
 finish

@@ -151,8 +151,9 @@ One script runs everything and prints one summary; the `mix` aliases below are
 what it calls, and are worth running on their own while working:
 
 ```bash
-scripts/quality.sh              # lint, suite with coverage, CRAP report (what CI runs)
+scripts/quality.sh              # lint, suite with coverage, CRAP report (what CI runs on a push)
 scripts/quality.sh --fast       # static analysis only: no database, no tests
+scripts/quality.sh --image      # …and build the image, checking it runs as uid 10001
 scripts/quality.sh --top 20     # rank more CRAP entries (default 8)
 
 mix lint                        # compile --warnings-as-errors, unused deps, format, credo --strict, sobelow

@@ -280,23 +280,32 @@ not for the deployment.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs three jobs on every push and pull request:
+`.github/workflows/ci.yml` runs two jobs on every push and pull request, and a
+third when it is worth it:
 
-| Job | What it is |
-| --- | --- |
-| **Static analysis** | `mix lint`: `compile --warnings-as-errors`, `deps.unlock --check-unused`, `format --check-formatted`, `credo --strict`, `sobelow --config` |
-| **Suite and complexity** | Postgres 17 service, `mix cover` (the suite with coverage), then `mix complexity` (CRAP per function, threshold 30) |
-| **Image, scan, non-root** | `docker build` (amd64), Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), `id -u` must be `10001`, then the amd64 + arm64 index is published |
+| Job | Runs | What it is |
+| --- | --- | --- |
+| **Static analysis** | every push, every PR | `mix lint`: `compile --warnings-as-errors`, `deps.unlock --check-unused`, `format --check-formatted`, `credo --strict`, `sobelow --config`. About half a minute |
+| **Suite and complexity** | every push, every PR | Postgres 17 service, `mix cover` (the suite with coverage), then `mix complexity` (CRAP per function, threshold 30). Seven to eight minutes, and the gate that matters |
+| **Image, scan, non-root** | a release tag, or a dispatch that asks | `docker build` (amd64), Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), `id -u` must be `10001`, then the amd64 + arm64 index is published. The expensive half, mostly the arm64 build under QEMU |
 
-On `main` and on `v*.*.*` tags the image is published to
-`ghcr.io/d-led/confluence_phx_mirror` under the **branch or tag name**: `:main`
-(and `:latest` as well, for deployments that prefer it) for the branch,
-`:v1.2.3` for a release. There are no commit-hash tags — a tag that changes with
-every push says nothing about where the image came from, and the image already
-carries its commit in `build_info.json`. Whatever is scanned and started in CI
-is the branch's own tag, so a later stage that pulls `:main` pulls the image
-that was checked. The same two gates run locally as `mix lint` and
-`scripts/quality.sh`.
+The image job `needs` the other two, so nothing is published from a commit that
+failed them. It does not run on a push, because the same breakage is found at
+home in two minutes:
+
+```
+docker build .                                   # does it build at all
+scripts/quality.sh --image                       # builds it, checks uid 10001
+git tag v1.2.3 && git push origin v1.2.3         # the pipeline publishes it
+gh workflow run ci --ref main --field image=true # …or ask for a fresh `:main`
+```
+
+The published tags are `ghcr.io/d-led/confluence_phx_mirror` under the **branch
+or tag name**: `:main` (and `:latest` as well, for deployments that prefer it)
+when the branch image was asked for, `:v1.2.3` for a release. There are no
+commit-hash tags — a tag that changes with every push says nothing about where
+the image came from, and the image already carries its commit in
+`build_info.json`.
 
 `.github/dependabot.yml` opens weekly pull requests for Hex, npm,
 GitHub Actions and the proxy's image. The mirror image's base versions are build
