@@ -35,6 +35,28 @@ defmodule ConfluencePhxMirrorWeb.Router do
     plug Plugs.ReaderRateLimit, scope: :api
   end
 
+  # The MCP endpoint authenticates like the API (`McpAuth` asks `ApiAuth`), and
+  # additionally accepts the identity a reverse proxy already established, so a
+  # reader signed in to the mirror needs no second credential. A JSON-RPC call
+  # carries its own credential and no session, so there is no ambient authority
+  # for a cross-site request to ride; the endpoint checks `Origin` instead.
+  # sobelow_skip ["Config.CSRF"]
+  pipeline :mcp do
+    plug :fetch_session
+    plug Plugs.FetchCurrentUser
+    plug Plugs.ProxyAuth
+    plug Plugs.McpAuth
+    # MCP calls are reads of the same content: they spend the API budget.
+    plug Plugs.ReaderRateLimit, scope: :api
+  end
+
+  # Discovery and the machine-to-machine half of the MCP authorization server.
+  # No session, no cookie, no rate-limit budget beyond the API's.
+  pipeline :oauth do
+    plug :accepts, ["json"]
+    plug Plugs.ReaderRateLimit, scope: :api
+  end
+
   # The attachment route only ever reads, so there is no state to protect with a
   # CSRF token; it fetches the session solely so the reader's permissions can be
   # applied to the bytes.
@@ -258,6 +280,51 @@ defmodule ConfluencePhxMirrorWeb.Router do
     pipe_through :docs
 
     get "/openapi.json", ApiDocsController, :spec
+  end
+
+  # The Model Context Protocol server. One stateless endpoint; see
+  # `ConfluencePhxMirrorWeb.McpController` for why GET and DELETE are 405.
+  # A JSON-RPC call carries its own credential and no session, so there is no
+  # ambient authority for a cross-site request to ride; `Origin` is checked.
+  # sobelow_skip ["Config.CSRF"]
+  scope "/api", ConfluencePhxMirrorWeb do
+    pipe_through :mcp
+
+    post "/mcp", McpController, :handle
+    get "/mcp", McpController, :stream
+    delete "/mcp", McpController, :terminate
+    # A preflight answer, so a client that probes the endpoint gets `Allow`
+    # rather than a 404 that reads like "no MCP here".
+    options "/mcp", McpController, :options
+  end
+
+  # The authorization server an MCP client discovers from a 401. Registration
+  # and the token exchange are machine calls; the consent page is the browser's
+  # and goes through `:browser`, so the proxy (or the mirror's own session) has
+  # already said who the reader is.
+  scope "/.well-known", ConfluencePhxMirrorWeb do
+    pipe_through :oauth
+
+    get "/oauth-protected-resource", OAuthMetadataController, :protected_resource
+    get "/oauth-protected-resource/api/mcp", OAuthMetadataController, :protected_resource
+    get "/oauth-authorization-server", OAuthMetadataController, :authorization_server
+  end
+
+  # Registration and the token exchange are machine calls with no cookie; the
+  # consent POST below is in `:browser` and keeps its CSRF token.
+  # sobelow_skip ["Config.CSRF"]
+  scope "/oauth", ConfluencePhxMirrorWeb do
+    pipe_through :oauth
+
+    post "/register", OAuthController, :register
+    post "/token", OAuthController, :token
+  end
+
+  scope "/oauth", ConfluencePhxMirrorWeb do
+    pipe_through :browser
+
+    get "/authorize", OAuthController, :authorize
+    post "/authorize", OAuthController, :decide
   end
 
   scope "/health", ConfluencePhxMirrorWeb do

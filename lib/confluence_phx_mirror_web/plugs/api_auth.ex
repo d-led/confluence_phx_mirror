@@ -15,12 +15,43 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuth do
   def init(opts), do: opts
 
   def call(conn, _opts) do
+    case identity(conn) do
+      :none -> assume_or_reject(conn)
+      {:ok, user} -> authenticate(conn, {:ok, user})
+      {:error, reason} -> authenticate(conn, {:error, reason})
+    end
+  end
+
+  @doc """
+  Who the request's credentials name: `{:ok, user}`, `{:error, reason}`, or
+  `:none` when it carries no credentials at all.
+
+  Exposed because the MCP endpoint authenticates the same way (`McpAuth`) and
+  must not grow a second, subtly different parser. Choosing what an absent
+  credential means stays with each plug: the API assumes an administrator in
+  development, MCP answers a challenge in a real deployment.
+  """
+  @spec identity(Plug.Conn.t()) ::
+          {:ok, ConfluencePhxMirror.Accounts.User.t()} | {:error, atom()} | :none
+  def identity(conn) do
     conn = fetch_query_params(conn)
 
     case credentials(conn) do
-      {:bearer, token} -> authenticate(conn, Accounts.authenticate_api_token(token))
-      {:basic, email, token} -> authenticate(conn, Accounts.authenticate_basic(email, token))
-      :none -> assume_or_reject(conn)
+      {:bearer, token} -> authenticate(token)
+      {:basic, email, token} -> Accounts.authenticate_basic(email, token)
+      :none -> :none
+    end
+  end
+
+  # An MCP client arrives with the access token the mirror's own authorization
+  # server issued; everybody else arrives with an API token. The signed token is
+  # tried first because verifying it is an HMAC, while the API token lookup is a
+  # row plus an Argon2 check.
+  defp authenticate(token) do
+    case ConfluencePhxMirror.OAuth.user_from_access_token(token) do
+      {:ok, user} -> {:ok, user}
+      {:error, reason} -> {:error, reason}
+      :error -> Accounts.authenticate_api_token(token)
     end
   end
 
