@@ -143,11 +143,14 @@ Four consequences follow, and each is a setting in both configurations:
    `CM_TRUST_PROXY_HEADERS=true` makes it use the last `X-Forwarded-For` entry —
    the hop the proxy observed, which a client cannot write.
 
-Because *every* request goes through the proxy, the JSON API and the
-Confluence-compatible REST endpoints are behind GitHub sign-in too. API tokens
-(`/admin/users`) still work for the application's own authentication, but the
-proxy is in front of them; use a skip-auth route on the proxy if a machine
-client has to reach the API unauthenticated.
+Because the proxy owns the browser paths, the JSON API and the
+Confluence-compatible REST endpoints would otherwise be behind GitHub sign-in
+too. They are not: the shipped proxy config skips the paths the app
+authenticates itself — the API, the MCP endpoint and its OAuth halves, the
+webhook intake — and leaves `/oauth/authorize` and the reading surface to the
+proxy. [routes-auth.md](routes-auth.md) has the exact set, and explains the
+difference between the proxy's `302`, an `api_routes` `401`, and the app's own
+refusal.
 
 ### Verified, not assumed
 

@@ -62,6 +62,27 @@ primary_region = "ams"
   OAUTH2_PROXY_SKIP_PROVIDER_BUTTON = "true"
   OAUTH2_PROXY_SILENCE_PING_LOGGING = "true"
 
+  # The paths the *app* authenticates, and the proxy must not answer first with
+  # a 302 to GitHub:
+  #
+  #   /api/…            the JSON API and the MCP endpoint — Bearer token, or for
+  #                     MCP the token the mirror itself issued (`Plugs.ApiAuth`,
+  #                     `Plugs.McpAuth`)
+  #   /wiki/rest/api/…  the Confluence-compatible subset, same tokens
+  #   /webhooks/…       a Confluence delivery, authenticated by its signature
+  #   /oauth/…          registration and the token exchange: machine calls of the
+  #                     mirror's own authorization server
+  #   /.well-known/…    the discovery documents a 401 points a client at
+  #
+  # `/oauth/authorize` is deliberately **not** here: that is the browser's
+  # consent step, and the proxy is what identifies the reader there.
+  #
+  # Two paths stay behind the sign-in on purpose: `/attachments/…` (the bytes are
+  # read as the reader, and the app resolves that from the session) and
+  # `/health` (probes reach the mirror directly, over Flycast; the door has
+  # `/ping` for its own liveness). See docs/routes-auth.md.
+  OAUTH2_PROXY_SKIP_AUTH_ROUTES = '^/api/|^/wiki/rest/api/|^/webhooks/|^/oauth/(token|register)$|^/\.well-known/'
+
 [http_service]
   internal_port = 4180
   force_https = true

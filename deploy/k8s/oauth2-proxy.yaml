@@ -70,6 +70,14 @@ spec:
               value: "true"
             - name: OAUTH2_PROXY_SILENCE_PING_LOGGING
               value: "true"
+            # The machine paths the mirror authenticates itself (`/api/…`,
+            # `/wiki/rest/api/…`, `/webhooks/…`, the OAuth token/registration
+            # calls and the discovery documents). Same set as the Fly proxy,
+            # explained once in deploy/fly/proxy/fly.toml and
+            # docs/routes-auth.md. `/oauth/authorize` is not skipped — that is
+            # the browser step this proxy exists for.
+            - name: OAUTH2_PROXY_SKIP_AUTH_ROUTES
+              value: "^/api/|^/wiki/rest/api/|^/webhooks/|^/oauth/(token|register)$|^/\\.well-known/"
             - name: OAUTH2_PROXY_CLIENT_ID
               valueFrom:
                 secretKeyRef:

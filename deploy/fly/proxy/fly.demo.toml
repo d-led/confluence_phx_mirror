@@ -62,6 +62,13 @@ primary_region = "ams"
   OAUTH2_PROXY_SKIP_PROVIDER_BUTTON = "true"
   OAUTH2_PROXY_SILENCE_PING_LOGGING = "true"
 
+  # The demo mirror serves the same routes as the live one, so the machine
+  # paths are skipped for the same reason: the app authenticates them itself
+  # (Bearer token, or the delivery's signature) and the proxy would otherwise
+  # answer a 302 to GitHub. The set is explained once, in `fly.toml` next to
+  # this one and in docs/routes-auth.md.
+  OAUTH2_PROXY_SKIP_AUTH_ROUTES = '^/api/|^/wiki/rest/api/|^/webhooks/|^/oauth/(token|register)$|^/\.well-known/'
+
 [http_service]
   internal_port = 4180
   force_https = true

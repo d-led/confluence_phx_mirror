@@ -28,20 +28,48 @@ proxy, and nothing else can open a connection to the app.
 | admitted by the proxy | any GitHub account whose verified e-mail matches `OAUTH2_PROXY_EMAIL_DOMAINS` (shipped: `*`), or a member of `OAUTH2_PROXY_GITHUB_ORG` / `…_GITHUB_TEAM` when those are set |
 | sets up the mirror | `X-Forwarded-Email`, `X-Forwarded-User`, `X-Auth-Request-*`, `X-Forwarded-Proto: https`, `X-Forwarded-For` |
 | strips | the forwarded identity headers a client sends; it re-sets them from the session, so a reader cannot choose an identity by sending a header |
-| skip-auth routes | **none** — `OAUTH2_PROXY_SKIP_AUTH_ROUTES` is unset, so `/api/*` and `/webhooks/*` are behind GitHub sign-in like every other path |
+| skip-auth routes | `/api/…`, `/wiki/rest/api/…`, `/webhooks/…`, `/oauth/(token|register)`, `/.well-known/…` — the paths the app authenticates itself. Shipped as `OAUTH2_PROXY_SKIP_AUTH_ROUTES` in `deploy/fly/proxy/fly.toml`, `fly.demo.toml` and `deploy/k8s/oauth2-proxy.yaml` |
 | session | `_oauth2_proxy` cookie, `Secure`, `SameSite=Lax`, 168 h, refreshed hourly |
+
+A path the proxy skips carries **no identity at all**: not `X-Forwarded-Email`,
+not `X-Auth-Request-User`, nothing. That is the price of opening it to machines,
+and the reason it is safe: on those paths the app's own credential is the only
+identity there is, and `CM_PROXY_AUTH` is never consulted — the `:api`,
+`:webhook` and `:oauth` pipelines have no `ProxyAuth` plug, and the `:mcp`
+pipeline's `McpAuth` falls back to the token.
+
+### Two ways to refuse, and which one a machine sees
+
+"Unauthenticated" has three different shapes, and a client tells them apart by
+the status line:
+
+| Route | No credential | Set by |
+| --- | --- | --- |
+| a browser path the proxy owns | `302` to `github.com/login/oauth/authorize` | oauth2-proxy (`skip_auth_routes` absent) |
+| a machine path kept behind the proxy | `401` with a challenge, no redirect | oauth2-proxy, `OAUTH2_PROXY_API_ROUTES` |
+| a path the app authenticates | whatever the app answers: `401` + `WWW-Authenticate` (API, MCP), `401`/`404` (webhook intake, off or unsigned), `200` (discovery documents) | the mirror |
+
+So `skip_auth_routes` is the *app-authorized* lever — the proxy gets out of the
+way, and the app's Bearer token, signature or PKCE flow decides. `api_routes` is
+the *unauthorized* lever: for a machine path you cannot hand to the app (an
+upstream that speaks JSON but has no credentials of its own), it replaces the
+sign-in redirect with a challenge, which is what a client can act on. Nothing in
+this deployment needs it today — every machine path is one the app authenticates
+— so it is not shipped; it is the setting to reach for the day one appears.
 
 Two consequences that are easy to trip over:
 
-* **A Confluence delivery cannot arrive.** `POST /webhooks/confluence` through
-  the public address answers `302` to `github.com/login/oauth/authorize`. The
-  intake is therefore switched off as well (`CM_WEBHOOK_ENABLED=false`, see
-  [configuration.md](configuration.md#webhooks)).
-* **A machine client cannot use the API** without a GitHub session. The app's
-  own API tokens still work, but the proxy answers first. Opening the API (or
-  the intake) to machines means a skip-auth route for that path *and* the app's
-  own credential — `Authorization: Bearer <api token>` for the API,
-  `CM_WEBHOOK_TOKENS` or a `webhook`-scoped service token for deliveries.
+* **A Confluence delivery only arrives because `/webhooks/` is skipped.** The
+  proxy would otherwise answer the delivery with a `302` to GitHub, which
+  Confluence reports as a failed delivery. With the skip in place the intake is
+  reachable and its own checks decide: `CM_WEBHOOK_ENABLED` (otherwise `404`,
+  see [configuration.md](configuration.md#webhooks)) and the signature or
+  `CM_WEBHOOK_TOKENS`.
+* **A machine client reaches the API with its own token, not a GitHub
+  session.** `/api/v1/…` and `/wiki/rest/api/…` are skipped, so
+  `Authorization: Bearer <api token>` (or `Basic email:token`) is what the app
+  sees first. The proxy no longer answers first, and the app's refusal is a
+  `401` with `WWW-Authenticate`, not a login page.
 
 Behind a proxy the mirror trusts the identity header only when told to
 (`CM_PROXY_AUTH`), because trusting a header is only defensible when the
@@ -57,6 +85,10 @@ endpoint cannot be reached any other way.
 | `/admin/audit/export` | `:browser` | same | the controller's own admin check |
 | `/attachments/…`, `/spaces/:key/icon` | `:attachments` | session (optional) | `Authorization` — an unreadable file is `404` |
 | `/api/v1/**`, `/wiki/rest/api/**` | `:api` | `Authorization: Bearer`, `Authorization: Basic email:token` | `ApiAuth` (401/403), `ReaderRateLimit` (429) |
+| `/api/mcp` | `:mcp` | the mirror's own MCP access token (the pipeline also accepts a proxy-established identity, which the shipped proxy config does not set on this path) | `McpAuth` (401 + `WWW-Authenticate`, so a client starts the OAuth flow), `ReaderRateLimit` (429) |
+| `/oauth/register`, `/oauth/token` | `:oauth` | none for registration (public client, PKCE); the code itself for the exchange | `OAuthController` (400 for a bad, reused or expired code) |
+| `/oauth/authorize` | `:browser` | session cookie, then the proxy header | the consent screen; `ProxyAuth` |
+| `/.well-known/oauth-*` | `:oauth` | none | nothing — it is metadata, and a 401 points a client at it |
 | `/webhooks/confluence` | `:webhook` | `X-Hub-Signature-256` HMAC, `X-Webhook-Token`, `Authorization: Bearer`, `?token=` | `WebhookIntake` (404 when off), `WebhookRateLimit` (429), `WebhookAuth`, `WebhookController` (401/503) |
 | `/health` | `:health` | none | nothing — it answers whether the process is alive |
 | `/api/docs`, `/api/openapi.json` | `:browser` / `:docs` | none | `CM_API_DOCS` (404 when off) |
