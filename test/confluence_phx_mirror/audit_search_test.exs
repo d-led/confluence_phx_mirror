@@ -63,4 +63,22 @@ defmodule ConfluencePhxMirror.AuditSearchTest do
   test "a query with SQL wildcards is treated literally" do
     assert Audit.search(query: "%") == []
   end
+
+  test "every word has to match, and each may match a different part of the event" do
+    # "member" is what the role was and "admin" is what it became: an operator
+    # who saw both in the log asks for both.
+    assert Audit.search(query: "member admin") |> Enum.map(& &1.action) ==
+             ["user.role_changed"]
+
+    # The account was created as a member and never was an admin.
+    assert Audit.search(query: "jane@example.com created admin") == []
+  end
+
+  test "one word nobody's event carries empties the log" do
+    assert Audit.search(query: "jane@example.com nonsense") == []
+  end
+
+  test "a box holding only spaces asks for nothing" do
+    assert length(Audit.search(query: "   ")) == length(Audit.search([]))
+  end
 end

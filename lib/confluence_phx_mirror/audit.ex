@@ -76,9 +76,10 @@ defmodule ConfluencePhxMirror.Audit do
   @doc """
   One page of the audit log, newest first.
 
-  `:query` is matched against the action, the actor and the entity id (so
-  `jane@acme.com` finds both what she did and what was done to her account),
-  `:action` and `:actor_type` narrow it further.
+  `:query` is a set of words, and every one of them has to match — each word is
+  looked for in the action, the actor, the entity id and the metadata, so
+  `jane role` asks what changed Jane's role rather than for a phrase nobody
+  wrote. `:action` and `:actor_type` narrow it further.
   """
   def search(opts \\ []) do
     import Ecto.Query
@@ -229,27 +230,44 @@ defmodule ConfluencePhxMirror.Audit do
   def actor(%{actor_label: label}) when is_binary(label) and label != "", do: label
   def actor(%{actor_type: type}), do: type
 
-  defp filter_query(queryable, query) when is_binary(query) and query != "" do
-    import Ecto.Query
-
-    # Wildcards are removed rather than escaped: a reader typing `%` wants to
-    # find a literal percent sign, not every row.
-    literal = query |> String.replace(["\\", "%", "_"], "") |> String.trim()
-
-    if literal == "" do
-      from e in queryable, where: false
-    else
-      pattern = "%" <> literal <> "%"
-
-      from e in queryable,
-        where:
-          ilike(e.action, ^pattern) or ilike(e.actor_label, ^pattern) or
-            ilike(e.entity_id, ^pattern) or
-            fragment("?::text ILIKE ?", e.metadata, ^pattern)
-    end
+  defp filter_query(queryable, query) when is_binary(query) do
+    query
+    |> words()
+    |> Enum.reduce(queryable, &matching(&2, &1))
   end
 
   defp filter_query(queryable, _query), do: queryable
+
+  # A reader's words are requirements, not a phrase: "jane role" is how an
+  # operator asks what changed Jane's role, and one word nobody carries empties
+  # the log. A box holding only spaces has no words, and so filters nothing.
+  defp words(query), do: query |> String.split() |> Enum.reject(&(&1 == ""))
+
+  # The wildcards a reader types are the characters they mean: `_` is how the
+  # mirror writes actions (`user.role_changed`) and `%` is a percent, not "any
+  # run of characters". Escaping them keeps a filter from turning into a query
+  # nobody wrote.
+  defp pattern(word) do
+    escaped =
+      word
+      |> String.replace("\\", "\\\\")
+      |> String.replace("%", "\\%")
+      |> String.replace("_", "\\_")
+
+    "%" <> escaped <> "%"
+  end
+
+  defp matching(queryable, word) do
+    import Ecto.Query
+
+    pattern = pattern(word)
+
+    from e in queryable,
+      where:
+        ilike(e.action, ^pattern) or ilike(e.actor_label, ^pattern) or
+          ilike(e.entity_id, ^pattern) or
+          fragment("?::text ILIKE ?", e.metadata, ^pattern)
+  end
 
   defp filter_action(queryable, action) when is_binary(action) and action != "" do
     import Ecto.Query
