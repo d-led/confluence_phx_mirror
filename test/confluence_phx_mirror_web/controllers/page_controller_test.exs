@@ -18,6 +18,13 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert html =~ "Freshness"
   end
 
+  test "the landing page searches from the top bar, where every other page does", %{conn: conn} do
+    document = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_fragment()
+
+    assert Enum.count(LazyHTML.query(document, "header #header-search-input")) == 1
+    assert Enum.empty?(LazyHTML.query(document, "main #header-search-input"))
+  end
+
   test "a deep page collapses its breadcrumb into an ellipsis dropdown", %{conn: conn} do
     html = conn |> get("/spaces/ENG/pages/1205/Emergency+Revocation") |> html_response(200)
 

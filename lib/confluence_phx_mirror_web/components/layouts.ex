@@ -418,13 +418,8 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   # the server's question, and a pageful of suggestions belongs to the reader's
   # permissions. The query travels in the session so the box opens on the words
   # the page it sits on is already showing.
-  #
-  # Public because the landing page has a search box of its own — the same island
-  # in another set of clothes (`variant={:hero}`), so the first control a reader
-  # meets suggests too instead of waiting for Enter.
   attr :live, :any, required: true, doc: "a conn or a LiveView socket"
   attr :query, :string, default: ""
-  attr :variant, :atom, default: :header, values: [:header, :hero]
 
   def header_search(%{live: %Phoenix.LiveView.Socket{} = socket} = assigns) do
     assigns =
@@ -453,9 +448,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
     ~H"{@island}"
   end
 
-  defp island_session(assigns) do
-    %{"q" => assigns.query, "variant" => to_string(assigns.variant)}
-  end
+  defp island_session(assigns), do: %{"q" => assigns.query}
 
   defp source_label(nil), do: "not configured"
 

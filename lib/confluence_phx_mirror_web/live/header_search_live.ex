@@ -35,7 +35,6 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLive do
     # rather than one per page view.
     {:ok,
      assign(socket,
-       variant: variant(session),
        user_id: session["user_id"],
        scope: nil,
        query: session["q"] || "",
@@ -45,15 +44,11 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLive do
      )}
   end
 
-  # The header's compact box and the landing page's hero are the same island: one
-  # set of suggestions, two sets of clothes.
-  defp variant(%{"variant" => "hero"}), do: :hero
-  defp variant(_session), do: :header
-
-  defp container_class(:header), do: "relative ml-1 hidden min-w-0 flex-1 self-end pb-1 md:block"
-  defp container_class(:hero), do: "relative w-full max-w-md"
-  defp form_class(:header), do: nil
-  defp form_class(:hero), do: "flex w-full gap-2"
+  # One box, one place: the top bar of every page. It takes the room between the
+  # brand and the controls and sits on the same bottom line as both (`self-end
+  # pb-1`), which is what makes the header read as a single line. Below `md` the
+  # field would be a sliver, so the bar shows a search button instead.
+  defp container_class, do: "relative ml-1 hidden min-w-0 flex-1 self-end pb-1 md:block"
 
   @impl true
   def handle_event("suggest", %{"q" => q}, socket) do
@@ -127,14 +122,13 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="header-search" phx-hook=".HeaderSearch" class={container_class(@variant)}>
+    <div id="header-search" phx-hook=".HeaderSearch" class={container_class()}>
       <form
         id="header-search-form"
         action={~p"/search"}
         method="get"
         phx-change="suggest"
         phx-submit="search_all"
-        class={form_class(@variant)}
       >
         <label class="input input-sm flex flex-1 items-center gap-2 rounded-lg border-base-300 bg-base-200/60">
           <.icon name="hero-magnifying-glass" class="size-4 shrink-0 opacity-50" />
@@ -154,7 +148,6 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLive do
             phx-debounce="150"
           />
         </label>
-        <button :if={@variant == :hero} type="submit" class="btn btn-primary btn-sm">Search</button>
       </form>
 
       <div

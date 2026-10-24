@@ -10,37 +10,35 @@
   mirror_source={@mirror_source}
   page_title={@page_title}
   sidebar?={false}
-  search?={false}
 >
-  <section class="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-base-300/70 pb-4">
-    <div class="min-w-0">
-      <h1 class="text-2xl font-semibold tracking-tight">{@mirror_name}</h1>
-      <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/70">
-        <a
-          :if={@mirror_url}
-          href={@mirror_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-        >
-          <.icon name="hero-arrow-top-right-on-square" class="size-3.5" /> {@mirror_host}
-        </a>
-        <span class="text-base-content/70">·</span>
-        <span>
-          {@stats.spaces} spaces · {@stats.pages} pages · {@stats.attachments} attachments
-          · synced {if @last_sync_run,
-            do: Time.ago(@last_sync_run.finished_at || @last_sync_run.started_at),
-            else: "never"}
-        </span>
-      </p>
-    </div>
-
-    <%!-- The same island as the header's box, in the landing page's clothes:
-    what matches appears under the field as the reader types. --%>
-    <Layouts.header_search live={@conn} variant={:hero} />
+  <%!-- One line above the content: what this mirror is, where it comes from,
+  how much is in it and how fresh that is. The search field is in the top bar
+  on every page — including this one — so a second copy here would be the same
+  question asked twice, a scroll apart, in a costume the header does not wear.
+  --%>
+  <section class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+    <h1 class="text-xl font-semibold tracking-tight">{@mirror_name}</h1>
+    <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/70">
+      <a
+        :if={@mirror_url}
+        href={@mirror_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+      >
+        <.icon name="hero-arrow-top-right-on-square" class="size-3" /> {@mirror_host}
+      </a>
+      <span class="text-base-content/70">·</span>
+      <span>
+        {@stats.spaces} spaces · {@stats.pages} pages · {@stats.attachments} attachments
+        · synced {if @last_sync_run,
+          do: Time.ago(@last_sync_run.finished_at || @last_sync_run.started_at),
+          else: "never"}
+      </span>
+    </p>
   </section>
 
-  <section class="mt-6">
+  <section class="mt-5">
     <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-base-content/70">Spaces</h2>
       <div class="flex flex-wrap gap-3 text-xs font-medium text-primary">

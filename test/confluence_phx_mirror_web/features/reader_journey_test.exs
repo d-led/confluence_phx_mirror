@@ -27,7 +27,7 @@ defmodule ConfluencePhxMirrorWeb.Features.ReaderJourneyTest do
     conn
     |> visit(~p"/")
     |> fill_in("Search the mirror", with: "rate limit")
-    |> click_button("Search")
+    |> submit()
     |> assert_path(~p"/search", query_params: %{q: "rate limit"})
     |> assert_has("a", "Search and CQL")
     |> click_link("Search and CQL")
