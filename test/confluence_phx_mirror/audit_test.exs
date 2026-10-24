@@ -47,16 +47,36 @@ defmodule ConfluencePhxMirror.AuditTest do
         id: 43,
         mode: "snapshot",
         status: "succeeded",
-        stats: %{"pages" => 43, "attachments" => 15, "errors" => []}
+        stats: %{
+          "pages" => 43,
+          "changed" => 40,
+          "unchanged" => 3,
+          "attachments" => 15,
+          "errors" => []
+        }
       }
 
       event = Audit.log(Audit.system_actor(), SyncRun.audit_event_finished(run))
+      metadata = Repo.get!(Event, event.id).metadata
 
-      assert Repo.get!(Event, event.id).metadata == %{
-               "mode" => "snapshot",
-               "status" => "succeeded",
-               "stats" => %{"pages" => 43, "attachments" => 15, "errors" => []}
+      assert metadata["stats"] == %{
+               "pages" => 43,
+               "changed" => 40,
+               "unchanged" => 3,
+               "attachments" => 15,
+               "errors" => []
              }
+
+      # The readable summary beside the counters: what a reader asks the log for
+      # after "which sync was that?" — listed, changed, skipped.
+      assert metadata["indexed"]["listed"] == 43
+      assert metadata["indexed"]["unchanged"] == 3
+      assert metadata["mode"] == "snapshot"
+      assert metadata["status"] == "succeeded"
+
+      # Counters stay nested; flattening them would put `pages` and `errors` in
+      # the same map as `mode` and `trigger`.
+      refute Map.has_key?(metadata, "pages")
     end
 
     test "lists events newest first" do

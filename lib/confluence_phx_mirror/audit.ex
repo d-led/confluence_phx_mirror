@@ -146,18 +146,44 @@ defmodule ConfluencePhxMirror.Audit do
   defp user_sentence(_kind, %{action: action}), do: action
 
   defp sync_sentence("started", %{metadata: meta}),
-    do: "Started a #{meta["mode"]} sync of #{meta["site"] || "the source"}#{trigger(meta)}"
+    do:
+      "Started #{article(mode_name(meta))} #{mode_name(meta)} sync of " <>
+        "#{meta["site"] || "the source"}#{trigger(meta)}"
 
   # A finished run says what it actually did, in the numbers an operator would
   # otherwise have to look up. `stats` is a map on new rows; a row written before
   # the encoder kept nested metadata has none, and falls back to the action name.
   defp sync_sentence("finished", %{metadata: %{"stats" => stats} = meta})
        when is_map(stats),
-       do: "Finished a #{meta["mode"]} sync: #{run_summary(stats)}#{trigger(meta)}"
+       do:
+         "Finished #{article(mode_name(meta))} #{mode_name(meta)} sync#{scope_of(meta)}: " <>
+           "#{run_summary(stats)}#{trigger(meta)}"
 
   defp sync_sentence("failed", %{metadata: meta}), do: "A sync failed: #{meta["error"]}"
 
   defp sync_sentence(_kind, %{action: action}), do: action
+
+  # "an incremental pull", "a snapshot": the sentence is read, not parsed.
+  defp article("incremental"), do: "an"
+  defp article(_mode), do: "a"
+
+  # A one-page run is stored as the `webhook` mode, because that is how such a
+  # run usually arrives — but the mode says *what* a run is, and the trigger says
+  # who asked for it. A `mix confluence.sync --mode page` run recorded as "a
+  # webhook sync, triggered by mix confluence.sync" reads as a contradiction the
+  # log does not need to tell: it was a page sync, asked for on the command line.
+  defp mode_name(%{"mode" => "webhook", "scope" => scope})
+       when is_binary(scope),
+       do: "page"
+
+  defp mode_name(%{"mode" => mode}), do: mode
+
+  # A run of one space or one page says so; "whole site" is the default and
+  # would be noise on every scheduled pull.
+  defp scope_of(%{"scope" => scope}) when is_binary(scope) and scope != "whole site",
+    do: " of #{scope}"
+
+  defp scope_of(_metadata), do: ""
 
   @sync_counters [
     {"spaces", "space"},
