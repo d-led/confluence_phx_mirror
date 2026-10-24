@@ -35,19 +35,9 @@
       </p>
     </div>
 
-    <form action={~p"/search"} method="get" class="flex w-full max-w-md gap-2">
-      <label class="input input-sm flex flex-1 items-center gap-2 rounded-lg border-base-300 bg-base-200/50">
-        <.icon name="hero-magnifying-glass" class="size-4 opacity-50" />
-        <input
-          type="search"
-          name="q"
-          aria-label="Search the mirror"
-          class="grow bg-transparent outline-none placeholder:text-base-content/70"
-          placeholder="Search pages, decisions, people…"
-        />
-      </label>
-      <button type="submit" class="btn btn-primary btn-sm">Search</button>
-    </form>
+    <%!-- The same island as the header's box, in the landing page's clothes:
+    what matches appears under the field as the reader types. --%>
+    <Layouts.header_search live={@conn} variant={:hero} />
   </section>
 
   <section class="mt-6">

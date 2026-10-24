@@ -150,25 +150,9 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
 
           <%!-- The field's bottom sits on the brand's last line, which is what
           makes the header read as one line: bottom-aligned with the brand,
-          less the brand link's own bottom padding (`pb-1` here). --%>
-          <form
-            :if={@search?}
-            action={~p"/search"}
-            method="get"
-            class="ml-1 hidden min-w-0 flex-1 self-end pb-1 md:block"
-          >
-            <label class="input input-sm flex w-full items-center gap-2 rounded-lg border-base-300 bg-base-200/60">
-              <.icon name="hero-magnifying-glass" class="size-4 shrink-0 opacity-50" />
-              <input
-                type="search"
-                name="q"
-                value={@search_query}
-                placeholder="Search pages, decisions, people…"
-                class="grow bg-transparent outline-none placeholder:text-base-content/70"
-                autocomplete="off"
-              />
-            </label>
-          </form>
+          less the brand link's own bottom padding (`pb-1` here). The island
+          keeps that shape and adds what matches to it as the reader types. --%>
+          <Layouts.header_search :if={@search?} live={@live} query={@search_query} />
 
           <%!-- The whole row sits on one bottom line: the brand's last line, the
           search field and these controls all end where that line ends (`pb-1` is
@@ -429,6 +413,49 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   end
 
   defp space_switcher(conn), do: live_render(conn, ConfluencePhxMirrorWeb.SpaceSwitcherLive)
+
+  # The header's search box is an island for the same reason: "what matches" is
+  # the server's question, and a pageful of suggestions belongs to the reader's
+  # permissions. The query travels in the session so the box opens on the words
+  # the page it sits on is already showing.
+  #
+  # Public because the landing page has a search box of its own — the same island
+  # in another set of clothes (`variant={:hero}`), so the first control a reader
+  # meets suggests too instead of waiting for Enter.
+  attr :live, :any, required: true, doc: "a conn or a LiveView socket"
+  attr :query, :string, default: ""
+  attr :variant, :atom, default: :header, values: [:header, :hero]
+
+  def header_search(%{live: %Phoenix.LiveView.Socket{} = socket} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :island,
+        live_render(socket, ConfluencePhxMirrorWeb.HeaderSearchLive,
+          id: "header-search-live",
+          session: island_session(assigns)
+        )
+      )
+
+    ~H"{@island}"
+  end
+
+  def header_search(%{live: conn} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :island,
+        live_render(conn, ConfluencePhxMirrorWeb.HeaderSearchLive,
+          session: island_session(assigns)
+        )
+      )
+
+    ~H"{@island}"
+  end
+
+  defp island_session(assigns) do
+    %{"q" => assigns.query, "variant" => to_string(assigns.variant)}
+  end
 
   defp source_label(nil), do: "not configured"
 
