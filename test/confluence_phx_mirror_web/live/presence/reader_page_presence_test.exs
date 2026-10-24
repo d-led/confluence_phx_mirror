@@ -79,15 +79,23 @@ defmodule ConfluencePhxMirrorWeb.ReaderPagePresenceTest do
     assert has_element?(view, "#page-presence-readers li")
   end
 
-  # `live/2` follows a LiveView mounted by the router, and this page's presence
-  # widgets are rendered into a controller response instead. The whole request
-  # still runs — the session is signed by the endpoint, the LiveView mounts and
-  # tracks — the test only has to say which LiveView on the page it is following.
+  # `live/2` follows the first LiveView in the document, and a page now renders
+  # two: the shell's space switcher in the header comes before the rail's
+  # presence widget. What this file is about is the presence widget, so it is
+  # mounted on its own with the page it would have been handed; the request
+  # itself is covered by "the HTML that arrives first counts the reader who
+  # asked for it".
   defp open_page(conn, path) do
-    conn
-    |> Plug.Conn.assign(:live_module, ConfluencePhxMirrorWeb.PagePresenceLive)
-    |> live(path)
+    session =
+      conn.private[:plug_session]
+      |> Kernel.||(%{})
+      |> Map.take(["user_id"])
+      |> Map.put("presence_page", page_number(path))
+
+    live_isolated(conn, ConfluencePhxMirrorWeb.PagePresenceLive, session: session)
   end
+
+  defp page_number(path), do: path |> String.split("/") |> Enum.at(4)
 
   defp restricted_page_path do
     "/spaces/ENG/pages/#{Demo.restricted_page()}/#{Demo.restricted_page_slug()}"

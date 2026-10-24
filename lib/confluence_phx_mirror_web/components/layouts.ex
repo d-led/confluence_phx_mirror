@@ -185,47 +185,10 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
 
             <%!-- One `name` for every top-bar menu: opening one closes the other,
             which is the native accordion behaviour of <details> and needs no
-            JavaScript. --%>
-            <details name="topbar-menu" class="dropdown dropdown-end hidden sm:block">
-              <summary class="btn btn-ghost btn-sm gap-1.5">
-                <.icon name="hero-rectangle-stack" class="size-4" />
-                <span class="hidden lg:inline">Spaces</span>
-              </summary>
-              <%!-- A mirror can have more spaces than a menu is tall, so the
-              panel scrolls. The cap sits on this box, not on the menu: a
-              height-constrained `.menu` wraps its items into columns. --%>
-              <div class="dropdown-content z-50 mt-2 max-h-[70vh] w-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-lg">
-                <ul class="menu w-full p-2">
-                  <li :for={space <- @spaces}>
-                    <.space_link space={space} />
-                  </li>
-                  <li :if={@spaces == []} class="menu-disabled">
-                    <span>No spaces mirrored yet</span>
-                  </li>
-                  <li class="menu-title text-[10px] uppercase tracking-wider">Browse</li>
-                  <li>
-                    <.link navigate={~p"/spaces"} class="gap-2">
-                      <.icon name="hero-rectangle-stack" class="size-4" /> All spaces
-                    </.link>
-                  </li>
-                  <li>
-                    <.link navigate={~p"/labels"} class="gap-2">
-                      <.icon name="hero-tag" class="size-4" /> Labels
-                    </.link>
-                  </li>
-                  <li>
-                    <.link navigate={~p"/people"} class="gap-2">
-                      <.icon name="hero-users" class="size-4" /> People
-                    </.link>
-                  </li>
-                  <li>
-                    <.link navigate={~p"/recent"} class="gap-2">
-                      <.icon name="hero-clock" class="size-4" /> Recently updated
-                    </.link>
-                  </li>
-                </ul>
-              </div>
-            </details>
+            JavaScript. The space switcher is the exception — it is a LiveView
+            that keeps its own open state, because a streaming page re-renders
+            and would take an `open` attribute away again. --%>
+            {space_switcher(@live)}
 
             <.theme_menu />
 
@@ -441,6 +404,15 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
     do: live_render(socket, ConfluencePhxMirrorWeb.SitePresenceLive, id: "site-presence")
 
   defp site_presence(conn), do: live_render(conn, ConfluencePhxMirrorWeb.SitePresenceLive)
+
+  # The same two flavours for the space switcher, which is a LiveView because
+  # "what matches" is the server's question: a mirror with thousands of spaces
+  # cannot ship its directory in a menu.
+  defp space_switcher(%Phoenix.LiveView.Socket{} = socket) do
+    live_render(socket, ConfluencePhxMirrorWeb.SpaceSwitcherLive, id: "space-switcher-live")
+  end
+
+  defp space_switcher(conn), do: live_render(conn, ConfluencePhxMirrorWeb.SpaceSwitcherLive)
 
   defp source_label(nil), do: "not configured"
 

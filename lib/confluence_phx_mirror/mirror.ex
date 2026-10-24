@@ -53,9 +53,16 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
-  defp named_like(queryable, blank) when blank in [nil, ""], do: queryable
+  @doc """
+  Narrows a `Space` query to the spaces whose name or key matches `term`.
 
-  defp named_like(queryable, term) do
+  Public because the shell's space switcher runs the same search under the
+  reader's permissions: the menu and the directory must agree on what "LOAD01"
+  finds.
+  """
+  def named_like(queryable, blank) when blank in [nil, ""], do: queryable
+
+  def named_like(queryable, term) do
     pattern = "%" <> String.replace(term, ["\\", "%", "_"], &("\\" <> &1)) <> "%"
 
     where(queryable, [s], ilike(s.name, ^pattern) or ilike(s.key, ^pattern))
