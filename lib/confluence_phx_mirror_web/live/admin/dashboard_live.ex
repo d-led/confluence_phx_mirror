@@ -299,15 +299,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
               />
             </div>
           </div>
-          <button
-            type="button"
-            phx-click="full_sync"
-            phx-disable-with="Queueing…"
-            class="btn btn-ghost btn-sm gap-1.5"
-            title="Fetch and re-render every page, even the ones that did not change"
-          >
-            <.icon name="hero-arrow-path-rounded-square" class="size-4" /> Re-read everything
-          </button>
           <a :if={admin_dashboard?()} href="/admin/runtime" class="link text-xs">LiveDashboard</a>
         </:actions>
       </.admin_header>
@@ -465,6 +456,38 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           <:empty>No sync runs yet.</:empty>
         </.data_table>
       </.section>
+
+      <%!-- A re-read is the one button on this page that costs what the first
+      sync cost: every page and attachment fetched and rendered again, changed
+      or not. So it is not in the row of everyday actions, where "Sync now"
+      fetches only what changed — it sits under the runs table, in a sentence
+      that says what it spends, and it asks before it queues. --%>
+      <div
+        id="full-reread"
+        class="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1.5 rounded-lg border border-base-300/60 px-3 py-2"
+      >
+        <p class="max-w-2xl text-xs text-base-content/70">
+          <span class="font-medium text-base-content/80">Re-reading everything</span>
+          fetches and re-renders every page and attachment, changed or not, at the
+          sync's configured pace: hours on a large site, and the busiest this mirror
+          will ever be with Confluence. Readers keep the pages they already have.
+        </p>
+        <button
+          type="button"
+          id="full-sync"
+          phx-click="full_sync"
+          phx-disable-with="Queueing…"
+          class="btn btn-ghost btn-xs gap-1.5"
+          data-confirm={
+            "Re-read every page and attachment, changed or not?\n\n" <>
+              "This is the slowest sync there is: on a large site it runs for hours " <>
+              "and keeps Confluence busy the whole time. Nobody loses access meanwhile, " <>
+              "and the run can be cancelled from this page.\n\nQueue it?"
+          }
+        >
+          <.icon name="hero-arrow-path-rounded-square" class="size-4" /> Re-read everything
+        </button>
+      </div>
 
       <div class="mt-8 grid gap-6 xl:grid-cols-2">
         <.section title="Latest activity" class="mt-0">
