@@ -67,6 +67,7 @@ Confluence ──REST──▶ Sync (incremental, rate-limited, audited) ──�
 | deploying and operating it: build, env contract, migrations, monitoring, backups | [docs/operations.md](docs/operations.md) |
 | deploying it to Fly.io or Kubernetes, behind an OAuth proxy | [docs/deployment.md](docs/deployment.md) |
 | looking for a setting | [docs/configuration.md](docs/configuration.md) |
+| who may reach which route, and what they may read | [docs/routes-auth.md](docs/routes-auth.md) |
 | integrating: JSON API, Confluence-compatible REST, CQL | [docs/api.md](docs/api.md) |
 | working on the code: architecture, tests, quality gates | [docs/developers.md](docs/developers.md) |
 | measuring a reader's screens, or load-testing a server | [docs/performance.md](docs/performance.md) |
