@@ -27,6 +27,7 @@ defmodule ConfluencePhxMirror.Mirror do
   }
 
   alias ConfluencePhxMirror.Accounts.User
+  alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Mirror.{PageRestriction, SpacePermission}
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.SyncRun
@@ -178,7 +179,11 @@ defmodule ConfluencePhxMirror.Mirror do
   def space_permissions(space_id) do
     from(c in SpacePermission,
       where: c.space_id == ^space_id and c.operation == "read",
-      select: %{subject_type: c.subject_type, subject_key: c.subject_key}
+      select: %{
+        subject_type: c.subject_type,
+        subject_key: c.subject_key,
+        granted_by_id: c.granted_by_id
+      }
     )
     |> Repo.all()
   end
@@ -236,21 +241,44 @@ defmodule ConfluencePhxMirror.Mirror do
   # One shape for "who may read this", whether the rows came from a space's
   # permissions, a page's restrictions or nothing at all.
   #
+  # The site's rows and the mirror's own are answered apart: an administrator
+  # checking the mirror against Confluence has to be able to tell "the space says
+  # this" from "we added that".
+  #
   # `personal` is the narrowing that has no rows: a personal space belongs to one
   # account, and an empty permission table there means "one reader", not "open".
   defp grants(subjects, space) do
+    synced = Enum.reject(subjects, &granted_row?/1)
+    granted = Enum.filter(subjects, &granted_row?/1)
+
     %{
       groups:
-        subjects
+        synced
         |> Enum.filter(&(&1.subject_type == "group"))
         |> Enum.map(& &1.subject_key)
         |> Enum.uniq()
         |> Enum.sort(),
-      users: user_grants(subjects),
-      anonymous: Enum.any?(subjects, &(&1.subject_type == "anonymous")),
+      users: user_grants(synced),
+      anonymous: Enum.any?(synced, &(&1.subject_type == "anonymous")),
       personal: personal_owner(space),
-      synced?: subjects != []
+      synced?: subjects != [],
+      granted: with_accounts(granted)
     }
+  end
+
+  defp granted_row?(%{granted_by_id: id}), do: not is_nil(id)
+  defp granted_row?(_subject), do: false
+
+  # The overlay rows, with the name a screen wants to show for a person.
+  defp with_accounts(rows) do
+    accounts = user_grants(Enum.filter(rows, &(&1.subject_type == "user")))
+
+    Enum.map(rows, fn row ->
+      case Enum.find(accounts, &(&1.key == row.subject_key)) do
+        nil -> row
+        account -> Map.put(row, :label, account.label)
+      end
+    end)
   end
 
   @doc """
@@ -319,10 +347,108 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Enum.uniq_by(& &1.key)
   end
 
+  @doc """
+  The readers this mirror added to a space, apart from the ones the sync read.
+
+  A grant is a `space_permissions` row with `granted_by_id` set: one table, so
+  every access rule sees it without learning a second concept, and a marker, so a
+  screen can say which rows are the site's and which are ours.
+  """
+  def space_grants_here(%{id: space_id}) do
+    from(p in SpacePermission,
+      where: p.space_id == ^space_id and p.operation == "read" and not is_nil(p.granted_by_id),
+      order_by: [asc: p.subject_type, asc: p.subject_key]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Lets one more reader into a space the site narrows — the mirror's own decision.
+
+  A user is named by a key the mirror knows (an account id or an e-mail), a group
+  by a name the sync has read; nothing is invented here. Only an administrator may
+  grant, and the grant is in the audit log. An open space is refused: there is
+  nothing to widen, and a row there would read as "this is what narrows it".
+  """
+  def grant_space_access(space, subject_type, subject_key, actor)
+      when subject_type in ["user", "group"] and is_binary(subject_key) do
+    with :ok <- authorize_grant(actor),
+         :ok <- refuse_open_space(space),
+         :ok <- refuse_unknown(subject_type, subject_key),
+         {:ok, row} <- insert_grant(space, subject_type, subject_key, actor) do
+      Audit.log(actor, SpacePermission.audit_event_granted(row, space.key))
+      {:ok, row}
+    end
+  end
+
+  @doc "Takes that reader away again, on the same authority."
+  def revoke_space_access(space, subject_type, subject_key, actor) do
+    with :ok <- authorize_grant(actor),
+         %SpacePermission{} = row <- find_grant(space, subject_type, subject_key) do
+      {:ok, removed} = Repo.delete(row)
+      Audit.log(actor, SpacePermission.audit_event_revoked(removed, space.key))
+      {:ok, removed}
+    else
+      nil -> {:error, :not_granted}
+      error -> error
+    end
+  end
+
+  defp find_grant(space, subject_type, subject_key) do
+    Repo.one(
+      from p in SpacePermission,
+        where:
+          p.space_id == ^space.id and p.operation == "read" and
+            p.subject_type == ^subject_type and p.subject_key == ^subject_key and
+            not is_nil(p.granted_by_id)
+    )
+  end
+
+  defp insert_grant(space, subject_type, subject_key, actor) do
+    %SpacePermission{}
+    |> SpacePermission.changeset(%{
+      space_id: space.id,
+      operation: "read",
+      subject_type: subject_type,
+      subject_key: subject_key,
+      granted_by_id: granted_by_id(actor)
+    })
+    |> Repo.insert()
+  end
+
+  defp granted_by_id({:user, %User{id: id}}), do: id
+  defp granted_by_id(_actor), do: nil
+
+  # The same question administration asks, asked here so no surface can bypass it
+  # by calling the context directly.
+  defp authorize_grant({:user, %User{} = actor}) do
+    if ConfluencePhxMirror.Accounts.Admins.admin?(actor), do: :ok, else: {:error, :not_authorized}
+  end
+
+  defp authorize_grant(_actor), do: {:error, :not_authorized}
+
+  # A grant adds a reader to a space that is narrowed. On an open space it would be
+  # a row that reads like a restriction and narrows nothing.
+  defp refuse_open_space(%{id: space_id}) do
+    if space_permissions(space_id) == [], do: {:error, :space_is_open}, else: :ok
+  end
+
+  defp refuse_unknown("user", subject_key) do
+    if identity_known?([subject_key]), do: :ok, else: {:error, :unknown_identity}
+  end
+
+  defp refuse_unknown("group", subject_key) do
+    if subject_key in synced_group_names(), do: :ok, else: {:error, :unknown_group}
+  end
+
   @doc "Replaces what we know about who may read a space."
   def replace_space_permissions(%Space{} = space, permissions) do
     Repo.transaction(fn ->
-      Repo.delete_all(from c in SpacePermission, where: c.space_id == ^space.id)
+      # Only the sync's own rows: a grant here outlives every run.
+      Repo.delete_all(
+        from c in SpacePermission, where: c.space_id == ^space.id and is_nil(c.granted_by_id)
+      )
+
       insert_subjects(SpacePermission, :space_id, space.id, permissions)
     end)
   end

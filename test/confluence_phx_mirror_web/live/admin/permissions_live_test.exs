@@ -103,6 +103,9 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
   # A subject key can be an e-mail or "557058:…", neither of which a CSS
   # selector takes raw, so the row is found by its attribute.
   defp subject_row(key), do: ~s{[id="space-access-user-#{key}"]}
+  defp granted_row(type, key), do: ~s{[id="granted-#{type}-#{key}"]}
+  defp add_person(key), do: ~s{[id="grant-add-person-#{key}"]}
+  defp revoke_row(type, key), do: ~s{[id="revoke-#{type}-#{key}"]}
 
   test "a restricted page is named under its space, and inspecting it says who may read it", %{
     conn: conn
@@ -134,6 +137,65 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
     # readable only by who it lists. The space panel is still open behind it, so
     # the question is asked of the page panel.
     refute view |> element("#page-access-panel") |> render() =~ "anyone@example.com"
+  end
+
+  describe "granting access here" do
+    test "a person the site names can be added to a narrow space, and removed again", %{
+      conn: conn
+    } do
+      space = a_space_read_by("inside@example.com")
+      person = "557058:guest-reader"
+      a_person_named(person, "Guest Reader")
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+      view |> element("#inspect-space-#{space.id}") |> render_click()
+
+      assert has_element?(view, "#granted-none")
+
+      view |> element("#open-grant") |> render_click()
+      view |> element("#grant-search-form") |> render_change(%{"term" => "guest"})
+      view |> element(add_person(person)) |> render_click()
+
+      assert has_element?(view, granted_row("user", person))
+      refute has_element?(view, "#granted-none")
+      assert person in Enum.map(Mirror.space_grants_here(space), & &1.subject_key)
+
+      view |> element(revoke_row("user", person)) |> render_click()
+
+      assert has_element?(view, "#granted-none")
+      assert Mirror.space_grants_here(space) == []
+    end
+
+    test "a group the sync read can be added too", %{conn: conn} do
+      space = a_space_read_by("inside@example.com")
+      {:ok, _} = Mirror.replace_group_members("all-staff", [%{email: "someone@example.com"}])
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+      view |> element("#inspect-space-#{space.id}") |> render_click()
+      view |> element("#open-grant") |> render_click()
+      html = view |> element("#grant-search-form") |> render_change(%{"term" => "all-staff"})
+
+      assert html =~ "all-staff"
+
+      view |> element(~s{[id="grant-add-group-all-staff"]}) |> render_click()
+
+      assert has_element?(view, granted_row("group", "all-staff"))
+    end
+
+    test "a search that matches nobody says why", %{conn: conn} do
+      space = a_space_read_by("inside@example.com")
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+      view |> element("#inspect-space-#{space.id}") |> render_click()
+      view |> element("#open-grant") |> render_click()
+      view |> element("#grant-search-form") |> render_change(%{"term" => "nobody-here"})
+
+      assert has_element?(view, "#grant-no-matches")
+    end
+  end
+
+  defp a_person_named(account_id, name) do
+    page_fixture(space_fixture(), %{author_name: name, author_account_id: account_id})
   end
 
   defp a_space_read_by(email, opts \\ []) do
