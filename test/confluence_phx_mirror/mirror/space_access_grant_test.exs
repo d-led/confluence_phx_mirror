@@ -132,6 +132,80 @@ defmodule ConfluencePhxMirror.Mirror.SpaceAccessGrantTest do
     assert entry.metadata["subject"] == outside.email
   end
 
+  describe "a page" do
+    # A page's restriction is asked after the space's, so the page cases live in
+    # an open space: they are about the page's own answer, not the space's.
+    setup do
+      space = space_fixture(%{key: "PAGEGRANTS"})
+      page = page_fixture(space, %{title: "Salaries"})
+
+      {:ok, _} =
+        Mirror.replace_page_restrictions(page, [
+          %{operation: "read", subject_type: "group", subject_key: "leadership"}
+        ])
+
+      %{page: page, space: space}
+    end
+
+    test "a grant lets one more reader onto a restricted page", %{
+      page: page,
+      outside: outside,
+      admin: admin
+    } do
+      refute Authorization.can_read_page?(Scope.for_user(outside), page)
+
+      {:ok, _} = Mirror.grant_page_access(page, "user", outside.email, {:user, admin})
+
+      assert Authorization.can_read_page?(Scope.for_user(outside), page)
+    end
+
+    test "the sync leaves the page grant alone", %{page: page, outside: outside, admin: admin} do
+      {:ok, _} = Mirror.grant_page_access(page, "user", outside.email, {:user, admin})
+
+      {:ok, _} =
+        Mirror.replace_page_restrictions(page, [
+          %{operation: "read", subject_type: "group", subject_key: "leadership"}
+        ])
+
+      assert Authorization.can_read_page?(Scope.for_user(outside), page)
+    end
+
+    test "a page the site opens again takes its grants with it", %{
+      page: page,
+      outside: outside,
+      admin: admin
+    } do
+      {:ok, _} = Mirror.grant_page_access(page, "user", outside.email, {:user, admin})
+      {:ok, _} = Mirror.replace_page_restrictions(page, [])
+
+      assert Mirror.page_grants(page).granted == []
+    end
+
+    test "an unrestricted page cannot be granted", %{space: space, outside: outside, admin: admin} do
+      open = page_fixture(space, %{title: "Handbook"})
+
+      assert {:error, :page_is_open} =
+               Mirror.grant_page_access(open, "user", outside.email, {:user, admin})
+    end
+
+    test "only an administrator may grant on a page", %{
+      page: page,
+      outside: outside,
+      inside: inside
+    } do
+      assert {:error, :not_authorized} =
+               Mirror.grant_page_access(page, "user", outside.email, {:user, inside})
+    end
+
+    test "the page grant is in the audit log", %{page: page, outside: outside, admin: admin} do
+      {:ok, _} = Mirror.grant_page_access(page, "user", outside.email, {:user, admin})
+
+      entry = Audit.recent(1) |> hd()
+      assert entry.action == "page.access_granted"
+      assert entry.entity_id == page.title
+    end
+  end
+
   test "the screen's answer keeps the site's rows and ours apart", %{
     space: space,
     outside: outside,

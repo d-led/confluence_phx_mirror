@@ -59,45 +59,42 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
   def handle_event("inspect_page", %{"page_id" => page_id}, socket) do
     page = Mirror.get_page_by_id!(String.to_integer(page_id))
 
-    {:noreply, assign(socket, page: page, page_grants: Mirror.page_grants(page))}
-  end
-
-  def handle_event("open_grant", _params, socket) do
-    {:noreply, socket |> assign(granting?: true, grant_query: "") |> search_grants()}
-  end
-
-  def handle_event("close_grant", _params, socket) do
     {:noreply,
-     assign(socket, granting?: false, grant_query: "", grant_people: [], grant_groups: [])}
+     assign(socket, page: page, page_grants: Mirror.page_grants(page), dialog_level: nil)}
   end
 
-  def handle_event("search_grant", %{"term" => term}, socket) do
+  def handle_event("grant_open", %{"level" => level}, socket) do
+    {:noreply, socket |> assign(dialog_level: level, grant_query: "") |> search_grants()}
+  end
+
+  def handle_event("grant_close", _params, socket) do
+    {:noreply, clear_grant_dialog(socket)}
+  end
+
+  def handle_event("grant_search", %{"term" => term}, socket) do
     {:noreply, socket |> assign(grant_query: term) |> search_grants()}
   end
 
   # Confluence's own dialog asks one question — who? — and answers with people and
   # groups in one list. So does this one, from what the mirror has read.
-  def handle_event("grant_access", %{"subject_type" => type, "subject_key" => key}, socket) do
-    case Mirror.grant_space_access(socket.assigns.space, type, key, actor(socket)) do
-      {:ok, _row} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "#{key} may now read #{socket.assigns.space.key}.")
-         |> assign(granting?: false, grant_query: "")
-         |> inspect_space(socket.assigns.space)}
+  def handle_event("grant_add", params, socket) do
+    %{"level" => level, "subject_type" => type, "subject_key" => key} = params
+
+    case add_grant(socket, level, type, key) do
+      {:ok, message} ->
+        {:noreply, socket |> put_flash(:info, message) |> clear_grant_dialog() |> refresh_panel()}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, grant_refusal(reason, key))}
     end
   end
 
-  def handle_event("revoke_access", %{"subject_type" => type, "subject_key" => key}, socket) do
-    case Mirror.revoke_space_access(socket.assigns.space, type, key, actor(socket)) do
-      {:ok, _row} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "#{key} may no longer read #{socket.assigns.space.key}.")
-         |> inspect_space(socket.assigns.space)}
+  def handle_event("grant_revoke", params, socket) do
+    %{"level" => level, "subject_type" => type, "subject_key" => key} = params
+
+    case remove_grant(socket, level, type, key) do
+      {:ok, message} ->
+        {:noreply, socket |> put_flash(:info, message) |> refresh_panel()}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, grant_refusal(reason, key))}
@@ -119,37 +116,47 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
       grants: Mirror.space_grants(space),
       restricted: Mirror.restricted_pages(space.id),
       page: nil,
-      page_grants: nil
+      page_grants: nil,
+      dialog_level: nil
     )
   end
 
   @grant_window 8
 
+  # The dialog searches what the mirror knows: people the content names, and the
+  # groups the sync has read. A key that is already allowed — by the site or by us
+  # — is not offered again, because the table holds one row per subject.
   defp search_grants(socket) do
     term = socket.assigns.grant_query
-    granted = taken_keys(socket)
+    taken = taken_keys(socket)
 
     people =
       [limit: @grant_window, query: term]
       |> Mirror.people()
-      |> Enum.reject(&taken?(&1.account_id, granted))
+      |> Enum.reject(&taken?(&1.account_id, taken))
 
     groups =
       Mirror.synced_group_names()
       |> Enum.filter(&matches?(&1, term))
-      |> Enum.reject(&taken?(&1, granted))
+      |> Enum.reject(&taken?(&1, taken))
       |> Enum.take(@grant_window)
 
     assign(socket, grant_people: people, grant_groups: groups)
   end
 
-  # A key already allowed — by the site or by us — is not offered again: the
-  # table holds one row per subject and the dialog should not invite a duplicate.
-  defp taken_keys(socket) do
-    space = socket.assigns.space
+  defp taken_keys(%{assigns: %{dialog_level: "page", page: page}}) when not is_nil(page),
+    do: page |> Mirror.page_grants() |> all_subject_keys()
 
-    (Mirror.space_permissions(space.id) ++ Mirror.space_grants_here(space))
-    |> Enum.map(& &1.subject_key)
+  defp taken_keys(%{assigns: %{space: space}}) when not is_nil(space),
+    do: space |> Mirror.space_grants() |> all_subject_keys()
+
+  defp taken_keys(_socket), do: []
+
+  # Everything a target already allows, whether the site said it or we did.
+  defp all_subject_keys(grants) do
+    groups = grants.groups ++ Enum.map(grants.granted, & &1.subject_key)
+    users = Enum.map(grants.users, & &1.key) ++ Enum.map(grants.granted, & &1.subject_key)
+    groups ++ users
   end
 
   defp taken?(key, taken), do: key in taken
@@ -159,10 +166,64 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
   defp matches?(value, term),
     do: value |> String.downcase() |> String.contains?(String.downcase(term))
 
+  defp add_grant(socket, "space", type, key) do
+    case Mirror.grant_space_access(socket.assigns.space, type, key, actor(socket)) do
+      {:ok, _row} -> {:ok, "#{key} may now read #{socket.assigns.space.key}."}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp add_grant(socket, "page", type, key) do
+    case Mirror.grant_page_access(socket.assigns.page, type, key, actor(socket)) do
+      {:ok, _row} -> {:ok, "#{key} may now read “#{socket.assigns.page.title}”."}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp remove_grant(socket, "space", type, key) do
+    case Mirror.revoke_space_access(socket.assigns.space, type, key, actor(socket)) do
+      {:ok, _row} -> {:ok, "#{key} may no longer read #{socket.assigns.space.key}."}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp remove_grant(socket, "page", type, key) do
+    case Mirror.revoke_page_access(socket.assigns.page, type, key, actor(socket)) do
+      {:ok, _row} -> {:ok, "#{key} may no longer read “#{socket.assigns.page.title}”."}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp clear_grant_dialog(socket),
+    do: assign(socket, dialog_level: nil, grant_query: "", grant_people: [], grant_groups: [])
+
+  # Whichever panel is open, reload it: the counts and the lists answer the same
+  # question the dialog just changed.
+  defp refresh_panel(%{assigns: %{page: %{} = page}} = socket) do
+    socket
+    |> assign(page_grants: Mirror.page_grants(page))
+    |> refresh_space()
+  end
+
+  defp refresh_panel(socket), do: refresh_space(socket)
+
+  defp refresh_space(%{assigns: %{space: nil}} = socket), do: socket
+
+  defp refresh_space(%{assigns: %{space: space}} = socket) do
+    assign(socket,
+      grants: Mirror.space_grants(space),
+      restricted: Mirror.restricted_pages(space.id),
+      access: socket.assigns.access
+    )
+  end
+
   defp grant_refusal(:not_authorized, _key),
-    do: "Only an administrator may change who reads a space."
+    do: "Only an administrator may change who reads this."
 
   defp grant_refusal(:space_is_open, _key), do: "This space is open — there is nothing to widen."
+
+  defp grant_refusal(:page_is_open, _key),
+    do: "This page is unrestricted — there is nothing to widen."
 
   defp grant_refusal(:unknown_identity, key),
     do: "The mirror has not seen #{key} yet — run a sync."
@@ -300,141 +361,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
           </div>
         </div>
 
-        <div class="mt-4 border-t border-primary/20 pt-3" id="space-granted">
-          <div class="flex items-center justify-between gap-2">
-            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
-              Granted here
-            </p>
-            <button
-              type="button"
-              phx-click="open_grant"
-              id="open-grant"
-              class="btn btn-primary btn-xs min-h-11 sm:min-h-0"
-            >
-              Add people or groups
-            </button>
-          </div>
-
-          <p
-            :if={@grants.granted == []}
-            id="granted-none"
-            class="mt-1 text-[11px] text-base-content/70"
-          >
-            Nothing granted here — who may read this space is Confluence's decision alone.
-          </p>
-
-          <ul :if={@grants.granted != []} class="mt-1 space-y-1 text-xs">
-            <li
-              :for={row <- @grants.granted}
-              id={"granted-#{row.subject_type}-#{row.subject_key}"}
-              class="flex flex-wrap items-center justify-between gap-2"
-            >
-              <span class="flex min-w-0 flex-wrap items-baseline gap-2">
-                <span class="badge badge-outline badge-xs">{row.subject_type}</span>
-                <span class="truncate font-medium">{Map.get(row, :label) || row.subject_key}</span>
-                <span :if={Map.get(row, :label)} class="font-mono text-[10px] text-base-content/50">
-                  {row.subject_key}
-                </span>
-              </span>
-              <button
-                type="button"
-                phx-click="revoke_access"
-                phx-value-subject_type={row.subject_type}
-                phx-value-subject_key={row.subject_key}
-                id={"revoke-#{row.subject_type}-#{row.subject_key}"}
-                class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
-              >
-                Remove
-              </button>
-            </li>
-          </ul>
-
-          <div
-            :if={@granting?}
-            id="grant-dialog"
-            class="mt-3 rounded-lg border border-primary/30 bg-base-100 p-3"
-          >
-            <div class="flex items-start justify-between gap-2">
-              <p class="text-xs font-semibold">Who else should read this space?</p>
-              <button
-                type="button"
-                phx-click="close_grant"
-                id="close-grant"
-                class="btn btn-ghost btn-xs"
-              >
-                Close
-              </button>
-            </div>
-
-            <form id="grant-search-form" phx-change="search_grant" phx-submit="search_grant">
-              <input
-                type="search"
-                name="term"
-                value={@grant_query}
-                phx-debounce="200"
-                placeholder="Search people and groups"
-                aria-label="Search people and groups"
-                class="input input-sm mt-2 min-h-11 w-full rounded-lg sm:min-h-0"
-              />
-            </form>
-
-            <ul
-              :if={@grant_people != [] or @grant_groups != []}
-              class="mt-2 space-y-1 text-xs"
-            >
-              <li
-                :for={person <- @grant_people}
-                id={"grant-person-#{person.account_id}"}
-                class="flex flex-wrap items-center justify-between gap-2"
-              >
-                <span class="flex min-w-0 flex-wrap items-baseline gap-2">
-                  <span class="badge badge-ghost badge-xs">person</span>
-                  <span class="truncate font-medium">{person.display_name || person.account_id}</span>
-                  <span class="font-mono text-[10px] text-base-content/50">{person.account_id}</span>
-                </span>
-                <button
-                  type="button"
-                  phx-click="grant_access"
-                  phx-value-subject_type="user"
-                  phx-value-subject_key={person.account_id}
-                  id={"grant-add-person-#{person.account_id}"}
-                  class="btn btn-primary btn-xs min-h-11 sm:min-h-0"
-                >
-                  Add
-                </button>
-              </li>
-
-              <li
-                :for={group <- @grant_groups}
-                id={"grant-group-#{group}"}
-                class="flex flex-wrap items-center justify-between gap-2"
-              >
-                <span class="flex min-w-0 flex-wrap items-baseline gap-2">
-                  <span class="badge badge-ghost badge-xs">group</span>
-                  <span class="truncate font-medium">{group}</span>
-                </span>
-                <button
-                  type="button"
-                  phx-click="grant_access"
-                  phx-value-subject_type="group"
-                  phx-value-subject_key={group}
-                  id={"grant-add-group-#{group}"}
-                  class="btn btn-primary btn-xs min-h-11 sm:min-h-0"
-                >
-                  Add
-                </button>
-              </li>
-            </ul>
-
-            <p
-              :if={@grant_people == [] and @grant_groups == []}
-              id="grant-no-matches"
-              class="mt-2 text-[11px] text-base-content/70"
-            >
-              Nobody the mirror knows matches. A grant can only name somebody the site has shown.
-            </p>
-          </div>
-        </div>
+        <.access_grants
+          level="space"
+          grants={@grants}
+          granting?={@dialog_level == "space"}
+          query={@grant_query}
+          people={@grant_people}
+          groups={@grant_groups}
+        />
 
         <div
           :if={@restricted != []}
@@ -529,6 +463,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
             </ul>
           </div>
         </div>
+
+        <.access_grants
+          level="page"
+          grants={@page_grants}
+          granting?={@dialog_level == "page"}
+          query={@grant_query}
+          people={@grant_people}
+          groups={@grant_groups}
+        />
       </div>
 
       <p :if={@spaces == []} id="spaces-empty" class="mt-6 text-sm text-base-content/70">

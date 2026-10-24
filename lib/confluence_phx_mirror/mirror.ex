@@ -210,7 +210,11 @@ defmodule ConfluencePhxMirror.Mirror do
   def page_grants(%Page{} = page) do
     from(r in PageRestriction,
       where: r.page_id == ^page.id and r.operation == "read",
-      select: %{subject_type: r.subject_type, subject_key: r.subject_key}
+      select: %{
+        subject_type: r.subject_type,
+        subject_key: r.subject_key,
+        granted_by_id: r.granted_by_id
+      }
     )
     |> Repo.all()
     |> grants(page.space)
@@ -444,9 +448,13 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc "Replaces what we know about who may read a space."
   def replace_space_permissions(%Space{} = space, permissions) do
     Repo.transaction(fn ->
-      # Only the sync's own rows: a grant here outlives every run.
+      # Only the sync's own rows: a grant here outlives every run. A space that
+      # comes back open has nothing to widen, so its grants go with it.
+      wipe_grants? = permissions == []
+
       Repo.delete_all(
-        from c in SpacePermission, where: c.space_id == ^space.id and is_nil(c.granted_by_id)
+        from c in SpacePermission,
+          where: c.space_id == ^space.id and (is_nil(c.granted_by_id) or ^wipe_grants?)
       )
 
       insert_subjects(SpacePermission, :space_id, space.id, permissions)
@@ -464,10 +472,81 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
+  @doc """
+  Lets one more reader onto a page the site restricted — the mirror's own
+  decision, on the same authority and the same rules as a space: an
+  administrator, a subject the mirror knows, and a page that is already narrowed.
+  """
+  def grant_page_access(%Page{} = page, subject_type, subject_key, actor)
+      when subject_type in ["user", "group"] and is_binary(subject_key) do
+    with :ok <- authorize_grant(actor),
+         :ok <- refuse_unrestricted_page(page),
+         :ok <- refuse_unknown(subject_type, subject_key),
+         {:ok, row} <- insert_restriction(page, subject_type, subject_key, actor) do
+      Audit.log(actor, PageRestriction.audit_event_granted(row, page.title))
+      {:ok, row}
+    end
+  end
+
+  @doc "Takes that reader off the page again."
+  def revoke_page_access(%Page{} = page, subject_type, subject_key, actor) do
+    with :ok <- authorize_grant(actor),
+         %PageRestriction{} = row <- find_restriction(page, subject_type, subject_key) do
+      {:ok, removed} = Repo.delete(row)
+      Audit.log(actor, PageRestriction.audit_event_revoked(removed, page.title))
+      {:ok, removed}
+    else
+      nil -> {:error, :not_granted}
+      error -> error
+    end
+  end
+
+  defp find_restriction(page, subject_type, subject_key) do
+    Repo.one(
+      from r in PageRestriction,
+        where:
+          r.page_id == ^page.id and r.operation == "read" and
+            r.subject_type == ^subject_type and r.subject_key == ^subject_key and
+            not is_nil(r.granted_by_id)
+    )
+  end
+
+  defp insert_restriction(page, subject_type, subject_key, actor) do
+    %PageRestriction{}
+    |> PageRestriction.changeset(%{
+      page_id: page.id,
+      operation: "read",
+      subject_type: subject_type,
+      subject_key: subject_key,
+      granted_by_id: granted_by_id(actor)
+    })
+    |> Repo.insert()
+  end
+
+  # A grant adds a reader to a page that is narrowed. On an unrestricted page it
+  # would be the row that restricts it — the opposite of what it says.
+  defp refuse_unrestricted_page(page) do
+    if page_restriction_rows(page.id) == [], do: {:error, :page_is_open}, else: :ok
+  end
+
+  defp page_restriction_rows(page_id) do
+    from(r in PageRestriction, where: r.page_id == ^page_id and r.operation == "read")
+    |> Repo.all()
+  end
+
   @doc "Replaces what we know about who may read a page."
   def replace_page_restrictions(%Page{} = page, restrictions) do
     Repo.transaction(fn ->
-      Repo.delete_all(from r in PageRestriction, where: r.page_id == ^page.id)
+      # The sync's own rows only — a grant here outlives every run. When the page
+      # comes back unrestricted there is nothing to widen, so the grants go too:
+      # a grant must never be the reason a page is narrowed.
+      wipe_grants? = restrictions == []
+
+      Repo.delete_all(
+        from r in PageRestriction,
+          where: r.page_id == ^page.id and (is_nil(r.granted_by_id) or ^wipe_grants?)
+      )
+
       insert_subjects(PageRestriction, :page_id, page.id, restrictions)
     end)
   end

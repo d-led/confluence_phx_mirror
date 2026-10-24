@@ -103,9 +103,9 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
   # A subject key can be an e-mail or "557058:…", neither of which a CSS
   # selector takes raw, so the row is found by its attribute.
   defp subject_row(key), do: ~s{[id="space-access-user-#{key}"]}
-  defp granted_row(type, key), do: ~s{[id="granted-#{type}-#{key}"]}
-  defp add_person(key), do: ~s{[id="grant-add-person-#{key}"]}
-  defp revoke_row(type, key), do: ~s{[id="revoke-#{type}-#{key}"]}
+  defp granted_row(type, key), do: ~s{[id="space-granted-#{type}-#{key}"]}
+  defp add_person(key), do: ~s{[id="space-grant-add-person-#{key}"]}
+  defp revoke_row(type, key), do: ~s{[id="space-revoke-#{type}-#{key}"]}
 
   test "a restricted page is named under its space, and inspecting it says who may read it", %{
     conn: conn
@@ -150,19 +150,19 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
       {:ok, view, _html} = live(conn, ~p"/admin/permissions")
       view |> element("#inspect-space-#{space.id}") |> render_click()
 
-      assert has_element?(view, "#granted-none")
+      assert has_element?(view, "#space-granted-none")
 
-      view |> element("#open-grant") |> render_click()
-      view |> element("#grant-search-form") |> render_change(%{"term" => "guest"})
+      view |> element("#space-open-grant") |> render_click()
+      view |> element("#space-grant-search") |> render_change(%{"term" => "guest"})
       view |> element(add_person(person)) |> render_click()
 
       assert has_element?(view, granted_row("user", person))
-      refute has_element?(view, "#granted-none")
+      refute has_element?(view, "#space-granted-none")
       assert person in Enum.map(Mirror.space_grants_here(space), & &1.subject_key)
 
       view |> element(revoke_row("user", person)) |> render_click()
 
-      assert has_element?(view, "#granted-none")
+      assert has_element?(view, "#space-granted-none")
       assert Mirror.space_grants_here(space) == []
     end
 
@@ -172,12 +172,12 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/admin/permissions")
       view |> element("#inspect-space-#{space.id}") |> render_click()
-      view |> element("#open-grant") |> render_click()
-      html = view |> element("#grant-search-form") |> render_change(%{"term" => "all-staff"})
+      view |> element("#space-open-grant") |> render_click()
+      html = view |> element("#space-grant-search") |> render_change(%{"term" => "all-staff"})
 
       assert html =~ "all-staff"
 
-      view |> element(~s{[id="grant-add-group-all-staff"]}) |> render_click()
+      view |> element(~s{[id="space-grant-add-group-all-staff"]}) |> render_click()
 
       assert has_element?(view, granted_row("group", "all-staff"))
     end
@@ -187,10 +187,41 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/admin/permissions")
       view |> element("#inspect-space-#{space.id}") |> render_click()
-      view |> element("#open-grant") |> render_click()
-      view |> element("#grant-search-form") |> render_change(%{"term" => "nobody-here"})
+      view |> element("#space-open-grant") |> render_click()
+      view |> element("#space-grant-search") |> render_change(%{"term" => "nobody-here"})
 
-      assert has_element?(view, "#grant-no-matches")
+      assert has_element?(view, "#space-grant-no-matches")
+    end
+  end
+
+  describe "granting access on a page" do
+    test "a person can be added to a restricted page and removed again", %{conn: conn} do
+      space = space_fixture(%{key: "PAGEDLG"})
+      page = page_fixture(space, %{title: "Salaries"})
+      person = "557058:page-guest"
+      a_person_named(person, "Page Guest")
+
+      {:ok, _} =
+        Mirror.replace_page_restrictions(page, [
+          %{operation: "read", subject_type: "group", subject_key: "leadership"}
+        ])
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+      view |> element("#inspect-space-#{space.id}") |> render_click()
+      view |> element("#inspect-page-#{page.id}") |> render_click()
+
+      assert has_element?(view, "#page-granted-none")
+
+      view |> element("#page-open-grant") |> render_click()
+      view |> element("#page-grant-search") |> render_change(%{"term" => "page guest"})
+      view |> element(~s{[id="page-grant-add-person-#{person}"]}) |> render_click()
+
+      assert has_element?(view, ~s{[id="page-granted-user-#{person}"]})
+      assert [%{subject_key: ^person}] = Mirror.page_grants(page).granted
+
+      view |> element(~s{[id="page-revoke-user-#{person}"]}) |> render_click()
+
+      assert Mirror.page_grants(page).granted == []
     end
   end
 
