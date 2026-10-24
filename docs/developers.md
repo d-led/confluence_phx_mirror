@@ -89,6 +89,7 @@ ones specific to the mirror.
 | Content | `Mirror` | Ecto queries for pages, trees, backlinks, labels |
 | Search | `Mirror.Search` + `Mirror.Search.CQL` | CQL → parameterised SQL over `tsvector` |
 | Blobs | `Blobs.Store` / `Blobs.LocalStore` | path-based; S3 can implement the behaviour |
+| Export | `Export` + `Export.Site` | Markdown per page, a streaming ZIP per space, and the mirror as a static website (`Site.Content` rewrites links, `Site.HTML` is the shell, `Site.Search` is the offline index) |
 | Jobs | Oban | `Sync.SnapshotWorker`, `Sync.PageWorker`, notification workers |
 | Web | controllers + LiveView | reader UI, admin dashboard, REST API, webhooks |
 | Presence | `Web.Presence` + `PagePresenceLive` / `SitePresenceLive` | who is reading a page, and how many readers are online; each is a LiveView rendered into the page, since the page itself is a controller response |

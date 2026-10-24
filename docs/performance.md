@@ -282,6 +282,21 @@ little (a wider branch, more text); timings move with the data the way the
 every match before it can sort them (a design question, not a query to trim),
 and the first home page after a sync on a cold cache, which a sync now warms.
 
+### A filtered window needs its own index
+
+`ORDER BY external_updated_at DESC LIMIT 6` narrowed to one space reads as free
+and is not. With only `pages(external_updated_at)` to walk, Postgres scans the
+index backwards across the whole mirror and throws away every row in another
+space, so the cost follows the table and not the space — and on the demo
+snapshot, where one space is most of the mirror, the plan looks fine. At 60k
+pages the space overview's recent list discarded 57,200 rows (237 ms, 57,916
+buffers) to return six; the same query on a copy of that table carrying
+`pages(space_id, external_updated_at DESC)` took 0.6 ms and 9 buffers. Every
+filtered "newest first" list wants the filter and the ordering in one index;
+the global index stays, because the home page's recent changes ask across every
+space. `explain (analyze, buffers)` on the exact statement is the check — a plan
+whose `Rows Removed by Filter` is the size of the table is the smell.
+
 ### Where the wall is
 
 Latency at a fixed concurrency says nothing about capacity. The `throughput`

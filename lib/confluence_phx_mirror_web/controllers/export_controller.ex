@@ -1,7 +1,7 @@
 defmodule ConfluencePhxMirrorWeb.ExportController do
   @moduledoc """
-  Downloads: one page as Markdown, one space as a streaming ZIP with Markdown
-  and attachments.
+  Downloads: one page as Markdown, a space as a streaming ZIP of Markdown, and
+  a space as a standalone static site.
 
   Exports only read the mirror; nothing here writes content anywhere except the
   reader's browser.
@@ -12,21 +12,32 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Export
-  alias ConfluencePhxMirror.Export.Zip
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirrorWeb.ArchiveDownload
   alias ConfluencePhxMirrorWeb.NotFound
 
   def space(conn, %{"key" => key}) do
-    case Mirror.find_space(key) do
-      {:ok, space} ->
-        if Authorization.can_read_space?(scope(conn), space) do
-          send_archive(conn, space)
-        else
-          NotFound.call(conn, "Space #{key} is not mirrored.")
-        end
+    with {:ok, space} <- readable_space(conn, key) do
+      ArchiveDownload.send(
+        conn,
+        Export.space_archive(space, scope(conn)),
+        Export.archive_name(space)
+      )
+    end
+  end
 
-      {:error, :not_found} ->
-        NotFound.call(conn, "Space #{key} is not mirrored.")
+  @doc """
+  The space as a static site: HTML pages, the same pages as Markdown, the
+  space's attachments and the site's theme — every link already pointing at a
+  file inside the archive.
+  """
+  def site(conn, %{"key" => key}) do
+    with {:ok, space} <- readable_space(conn, key) do
+      ArchiveDownload.send(
+        conn,
+        Export.space_site_archive(space, scope(conn)),
+        Export.space_site_archive_name(space)
+      )
     end
   end
 
@@ -46,27 +57,16 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
     end
   end
 
-  defp send_archive(conn, space) do
-    conn
-    |> put_resp_content_type("application/zip")
-    |> put_resp_header(
-      "content-disposition",
-      ~s(attachment; filename="#{Export.archive_name(space)}")
-    )
-    |> send_chunked(200)
-    |> stream_zip(Export.space_archive(space, scope(conn)))
+  # A space a reader may not see is not described anywhere — not on its page and
+  # not in its export — so both answer "not mirrored".
+  defp readable_space(conn, key) do
+    with {:ok, space} <- Mirror.find_space(key),
+         true <- Authorization.can_read_space?(scope(conn), space) do
+      {:ok, space}
+    else
+      _ -> NotFound.call(conn, "Space #{key} is not mirrored.")
+    end
   end
 
   defp scope(conn), do: Scope.from_assigns(conn.assigns)
-
-  defp stream_zip(conn, entries) do
-    entries
-    |> Zip.chunks()
-    |> Enum.reduce_while(conn, fn chunk, conn ->
-      case Plug.Conn.chunk(conn, IO.iodata_to_binary(chunk)) do
-        {:ok, conn} -> {:cont, conn}
-        {:error, _reason} -> {:halt, conn}
-      end
-    end)
-  end
 end

@@ -120,12 +120,14 @@ defmodule ConfluencePhxMirror.MixProject do
         "cmd --cd assets npm ci",
         "compile",
         "tailwind confluence_phx_mirror",
-        "esbuild confluence_phx_mirror"
+        "esbuild confluence_phx_mirror",
+        "esbuild confluence_phx_mirror_swagger"
       ],
       "assets.deploy": [
         "cmd --cd assets npm ci",
         "tailwind confluence_phx_mirror --minify",
         "esbuild confluence_phx_mirror --minify",
+        "esbuild confluence_phx_mirror_swagger --minify",
         "phx.digest"
       ],
       # Static analysis: no database, no test run, under a few seconds. Read-only

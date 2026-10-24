@@ -23,13 +23,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
      assign(socket,
        new_token: nil,
        q: "",
-       people_query: "",
-       account_pick: nil,
-       identity_pick: nil,
-       account_query: "",
-       account_results: nil,
-       identity_query: "",
-       identity_results: nil,
        proxy_auth?: Application.get_env(:confluence_phx_mirror, :proxy_auth, false),
        proxy_header:
          Application.get_env(:confluence_phx_mirror, :proxy_auth_header, "x-forwarded-email"),
@@ -44,18 +37,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   # function reads as the table of what the page can be asked to do.
   @impl true
   def handle_event("filter", params, socket), do: filter(params, socket)
-  def handle_event("filter_identities", params, socket), do: filter_identities(params, socket)
   def handle_event("set_disabled", params, socket), do: set_disabled(params, socket)
   def handle_event("change_role", params, socket), do: change_role(params, socket)
   def handle_event("add_group", params, socket), do: add_group(params, socket)
   def handle_event("remove_group", params, socket), do: remove_group(params, socket)
-  def handle_event("pick_account", params, socket), do: pick_account(params, socket)
-  def handle_event("pick_identity", params, socket), do: pick_identity(params, socket)
-  def handle_event("search_accounts", params, socket), do: search_accounts(params, socket)
-  def handle_event("search_identity", params, socket), do: search_identity(params, socket)
-  def handle_event("confirm_link", params, socket), do: confirm_link(params, socket)
-  def handle_event("cancel_pick", params, socket), do: cancel_pick(params, socket)
-  def handle_event("unlink_identity", params, socket), do: unlink_identity(params, socket)
   def handle_event("unban", params, socket), do: unban(params, socket)
   def handle_event("ban", params, socket), do: ban(params, socket)
   def handle_event("delete_user", params, socket), do: delete_user(params, socket)
@@ -72,27 +57,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   defp filter(%{"q" => q}, socket),
     do: {:noreply, socket |> assign(q: q, users_page: 1) |> load()}
 
-  # The identity search lives in the URL: a page of a hundred thousand
-  # identities is only useful if the one you mean can be linked to.
-  defp filter_identities(%{"pq" => query}, socket) do
-    {:noreply,
-     socket
-     |> assign(people_query: query, people_page: 1)
-     |> push_patch(to: ~p"/admin/users?#{identity_params(query)}")}
-  end
-
-  defp identity_params(blank) when blank in [nil, ""], do: []
-  defp identity_params(query), do: [pq: query]
-
   @impl true
   def handle_params(params, _uri, socket) do
     {:noreply,
      socket
-     |> assign(
-       users_page: page_number(params["u_page"]),
-       people_page: page_number(params["p_page"]),
-       people_query: params["pq"] || ""
-     )
+     |> assign(users_page: page_number(params["u_page"]))
      |> load()}
   end
 
@@ -183,142 +152,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
     end)
   end
 
-  # Linking is two searches and two clicks, in either direction: from an identity
-  # to the account that should hold it, or from an account to the identities it
-  # should hold. Neither side ever asks for an address to be typed in full — a
-  # mirror may name a hundred thousand identities, and nobody knows an account id
-  # by heart.
-  defp pick_account(%{"account_id" => account_id, "name" => name}, socket) do
-    {:noreply,
-     socket
-     |> assign(account_pick: %{account_id: account_id, display_name: name}, identity_pick: nil)
-     |> assign(account_query: "", account_results: nil)}
-  end
-
-  defp pick_identity(%{"user_id" => user_id}, socket) do
-    case Accounts.get_user(String.to_integer(user_id)) do
-      nil ->
-        {:noreply, put_flash(socket, :error, "That account is gone already.")}
-
-      user ->
-        {:noreply,
-         socket
-         |> assign(identity_pick: user, account_pick: nil)
-         |> assign(identity_query: "", identity_results: identity_candidates("", user))}
-    end
-  end
-
-  defp search_accounts(%{"q" => query}, socket) do
-    {:noreply, assign(socket, account_query: query, account_results: account_candidates(query))}
-  end
-
-  defp search_identity(%{"q" => query}, socket) do
-    {:noreply,
-     assign(socket,
-       identity_query: query,
-       identity_results: identity_candidates(query, socket.assigns.identity_pick)
-     )}
-  end
-
-  defp cancel_pick(_params, socket) do
-    {:noreply,
-     socket
-     |> assign(account_pick: nil, identity_pick: nil)
-     |> assign(account_query: "", account_results: nil, identity_query: "", identity_results: nil)}
-  end
-
-  defp confirm_link(%{"account_id" => account_id, "user_id" => user_id}, socket) do
-    with_user(socket, user_id, fn user ->
-      case Accounts.link_identity(user, account_id, actor(socket)) do
-        {:ok, user} ->
-          socket
-          |> assign(account_pick: nil, identity_pick: nil)
-          |> put_flash(
-            :info,
-            "#{account_id} is now #{user.email} — #{length(user.identity_account_ids)} linked."
-          )
-          |> load()
-
-        {:error, reason} ->
-          put_flash(socket, :error, link_refusal(reason, account_id))
-      end
-    end)
-  end
-
-  # Accounts offered for an identity: the administrator's own search, capped, so
-  # a mirror with thousands of accounts sends ten rows rather than all of them.
-  @candidate_window 8
-
-  defp account_candidates(query) do
-    query
-    |> Accounts.list_users(limit: @candidate_window)
-    |> Enum.map(&%{user: &1, identities: length(&1.identity_account_ids || [])})
-  end
-
-  # Identities offered for an account: only the ones no account holds yet are
-  # clickable — the others say whose they are, because moving one is a decision
-  # about two accounts and is not a side effect of this picker.
-  defp identity_candidates(query, %User{} = user) do
-    [limit: @candidate_window, query: query]
-    |> Mirror.people()
-    |> Enum.map(&Map.put(&1, :holder, holder_of(&1.account_id)))
-    |> Enum.reject(
-      &(&1.account_id in [user.confluence_account_id | user.identity_account_ids || []])
-    )
-  end
-
-  defp identity_candidates(_query, nil), do: []
-
-  defp holder_of(account_id) do
-    case Accounts.accounts_linked_to(account_id) do
-      [user | _] -> user.email
-      [] -> nil
-    end
-  end
-
-  # What the picker says under an identity it can offer: the groups the link
-  # would bring, which is the reason an administrator picks one over another.
-  defp groups_hint([]), do: "no groups synced"
-  defp groups_hint(nil), do: "no groups synced"
-  defp groups_hint(groups), do: "groups: " <> Enum.join(groups, ", ")
-
-  # Why linking was refused, said the way an administrator can act on it: whose
-  # the identity is, or that the site has not shown it yet.
-  @refusals %{
-    blank: "Pick an account first.",
-    already_linked: "That identity already belongs to this account.",
-    not_authorized: "Only an administrator may link identities."
-  }
-
-  defp link_refusal(reason, _account_id) when is_map_key(@refusals, reason),
-    do: Map.fetch!(@refusals, reason)
-
-  defp link_refusal({:linked_elsewhere, other}, account_id),
-    do: "#{account_id} belongs to #{other.email}. Unlink it there first."
-
-  defp link_refusal(:unknown_identity, account_id),
-    do: "The mirror has not seen #{account_id} yet — run a sync."
-
-  defp link_refusal(_reason, _account_id), do: "Could not link that identity."
-
-  defp unlink_identity(%{"account_id" => account_id}, socket) do
-    case Accounts.accounts_linked_to(account_id) do
-      [user | _] ->
-        case Accounts.unlink_identity(user, account_id, actor(socket)) do
-          {:ok, user} ->
-            {:noreply,
-             socket
-             |> put_flash(:info, "#{account_id} is no longer #{user.email}'s.")
-             |> load()}
-
-          {:error, _} ->
-            {:noreply, put_flash(socket, :error, "Could not unlink that identity.")}
-        end
-
-      [] ->
-        {:noreply, put_flash(socket, :error, "No account stands for that identity.")}
-    end
-  end
+  # Linking identities is the identities page's business: this screen shows
+  # what an account holds and says where to change it.
 
   defp unban(%{"user_id" => user_id}, socket) do
     with_user(socket, user_id, fn user ->
@@ -431,7 +266,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
 
   defp load(socket) do
     users_page = socket.assigns[:users_page] || 1
-    people_page = socket.assigns[:people_page] || 1
 
     users =
       Accounts.list_users(socket.assigns.q, page(users_page))
@@ -449,19 +283,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       users: users,
       users_page: users_page,
       users_total: Accounts.count_users(socket.assigns.q),
-      people: people(people_page, people_query(socket)),
-      people_page: people_page,
-      people_total: Mirror.count_people(query: people_query(socket)),
       service_tokens: Accounts.list_service_tokens(),
       administrators: administrators(),
       synced_groups: Mirror.synced_group_names()
     )
   end
 
-  defp people_query(socket), do: socket.assigns[:people_query] || ""
-
-  # A site can name a hundred thousand people; the screen draws a page and says
-  # how many there are, instead of building a hundred thousand rows.
+  # A mirror can hold more accounts than one screen should draw; the screen
+  # renders a page and says how many there are, instead of building every row.
   @page_size 25
 
   defp page(number), do: [limit: @page_size, offset: (number - 1) * @page_size]
@@ -472,16 +301,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   attr :page, :integer, required: true
   attr :total, :integer, required: true
   attr :param, :string, required: true
-  attr :query, :string, default: nil, doc: "the filter the page belongs to, kept across pages"
 
   @doc """
   "page 2 of 40 · 987 in total" with Previous/Next.
 
-  A site can name a hundred thousand people, so the list never renders more
-  than one page: the page number is a URL parameter, the query pages in the
-  database, and this says how much is left unseen. A filter travels with the
-  page numbers, or the second page would answer a different question than the
-  first.
+  A mirror can hold more accounts than one screen should draw, so the list never
+  renders more than a page: the page number is a URL parameter and the query does
+  the paging in the database.
   """
   def pager(assigns) do
     assigns = assign(assigns, :pages, page_count(assigns.total))
@@ -494,14 +320,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       <div class="flex gap-1.5">
         <.link
           :if={@page > 1}
-          patch={~p"/admin/users?#{page_params(@param, @page - 1, @query)}"}
+          patch={~p"/admin/users?#{page_params(@param, @page - 1)}"}
           class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
         >
           Previous
         </.link>
         <.link
           :if={@page < @pages}
-          patch={~p"/admin/users?#{page_params(@param, @page + 1, @query)}"}
+          patch={~p"/admin/users?#{page_params(@param, @page + 1)}"}
           class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
         >
           Next
@@ -511,8 +337,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
     """
   end
 
-  defp page_params(param, page, blank) when blank in [nil, ""], do: [{param, page}]
-  defp page_params(param, page, query), do: [{param, page}, {:pq, query}]
+  defp page_params(param, page), do: [{param, page}]
 
   # Why this account cannot be demoted or switched off here, if it cannot.
   defp guard(user) do
@@ -573,26 +398,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       {:error, :banned} -> "A banned account cannot be deleted — lift the ban first"
       {:error, :last_admin} -> guard_note(:last_admin)
     end
-  end
-
-  # The people Confluence's content names, marked when they have an account
-  # here and which account stands for them. The site lists no users: the content
-  # says who wrote it, and the sync asks the site which groups each of them is
-  # in.
-  defp people(page_number, query) do
-    offset = (page_number - 1) * @page_size
-
-    page = Mirror.people(limit: @page_size, offset: offset, query: query)
-    accounts = Accounts.accounts_by_identity(Enum.map(page, & &1.account_id))
-
-    page
-    |> Enum.map(fn person ->
-      person
-      |> Map.put(:account_email, Map.get(accounts, person.account_id))
-      |> Map.put(:account?, Map.has_key?(accounts, person.account_id))
-    end)
-    |> Enum.with_index(offset + 1)
-    |> Enum.map(fn {person, index} -> Map.put(person, :index, index) end)
   end
 
   # Who Confluence says administers the mirror: the members of every configured
@@ -666,91 +471,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               class="input input-sm min-h-11 w-full rounded-lg sm:min-h-0"
             />
           </form>
-
-          <div
-            :if={@identity_pick}
-            id="identity-picker"
-            class="border-b border-base-300/70 bg-primary/5 px-5 py-4"
-          >
-            <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <p class="text-xs font-semibold">
-                  Add an identity to <span class="font-medium">{@identity_pick.email}</span>
-                </p>
-                <p class="mt-0.5 text-[11px] text-base-content/70">
-                  Search what the content names, then click the one that is this person. A link
-                  makes everything that identity may read theirs, groups included — link two
-                  identities and it holds both.
-                </p>
-              </div>
-              <button
-                type="button"
-                phx-click="cancel_pick"
-                id="cancel-identity-pick"
-                class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
-              >
-                Close
-              </button>
-            </div>
-
-            <form
-              id="identity-search-form"
-              phx-change="search_identity"
-              phx-submit="search_identity"
-              class="mt-2"
-            >
-              <input
-                type="search"
-                name="q"
-                value={@identity_query}
-                phx-debounce="200"
-                placeholder="Search identities by name or account id"
-                aria-label="Search identities to link"
-                class="input input-sm min-h-11 w-full rounded-lg sm:min-h-0"
-              />
-            </form>
-
-            <ul :if={@identity_results not in [nil, []]} class="mt-2 space-y-1.5">
-              <li
-                :for={candidate <- @identity_results}
-                class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-base-300/60 bg-base-100 px-3 py-2"
-              >
-                <div class="min-w-0">
-                  <p class="truncate text-xs font-medium">
-                    {candidate.display_name || candidate.account_id}
-                  </p>
-                  <p class="font-mono text-[10px] text-base-content/50">
-                    {candidate.account_id}
-                  </p>
-                  <p class="text-[11px] text-base-content/70">
-                    {if candidate.holder,
-                      do: "already #{candidate.holder}'s — unlink it there first",
-                      else: groups_hint(candidate.groups)}
-                  </p>
-                </div>
-                <button
-                  :if={is_nil(candidate.holder)}
-                  type="button"
-                  phx-click="confirm_link"
-                  phx-value-account_id={candidate.account_id}
-                  phx-value-user_id={@identity_pick.id}
-                  id={"link-candidate-#{candidate.account_id}"}
-                  class="btn btn-primary btn-xs min-h-11 sm:min-h-0"
-                >
-                  Link
-                </button>
-              </li>
-            </ul>
-            <p
-              :if={@identity_results == []}
-              id="no-identity-candidates"
-              class="mt-2 text-[11px] text-base-content/70"
-            >
-              {if @identity_query == "",
-                do: "Nothing left to link here — the content has named nobody else yet.",
-                else: "No identity matches “#{@identity_query}”."}
-            </p>
-          </div>
 
           <p :if={@users == []} id="accounts-empty" class="px-5 py-8 text-sm text-base-content/70">
             No account matches this filter.
@@ -990,15 +710,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               <span :if={identities == []} class="text-[11px] text-base-content/70">
                 only the identity it signed in with
               </span>
-              <button
-                type="button"
-                phx-click="pick_identity"
-                phx-value-user_id={user.id}
-                id={"link-identity-#{user.id}"}
-                class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
-              >
-                Link an identity…
-              </button>
+              <%!-- Linking lives on the identities page, where both sides are
+              searchable: this row only says what the account already holds. --%>
+              <.link navigate={~p"/admin/identities"} class="link link-primary text-[11px]">
+                Link an identity →
+              </.link>
             </div>
 
             <%!-- Groups granted here sit on top of what the sync says: a
@@ -1208,189 +924,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
             <p :if={@synced_groups == []} class="mt-3 text-[11px] text-base-content/70">
               No group membership has been synced yet — run a sync.
             </p>
-          </div>
-
-          <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">
-            <div class="flex items-center justify-between gap-2">
-              <h2 class="text-sm font-semibold">People from Confluence</h2>
-              <span class="badge badge-ghost badge-xs">{@people_total}</span>
-            </div>
-            <p class="mt-1 text-[11px] text-base-content/70">
-              Every Atlassian account the content or a group names — one person can have two of them
-              (a personal account and a guest one), and they are two identities here until an
-              administrator says they are one person.
-            </p>
-
-            <%!-- A site can name a hundred thousand identities: they are searched,
-            never listed. The search is a URL parameter, so a colleague can send
-            a link to the one they mean. --%>
-            <form
-              id="identity-filter"
-              phx-change="filter_identities"
-              phx-submit="filter_identities"
-              class="mt-3"
-            >
-              <input
-                type="search"
-                name="pq"
-                value={@people_query}
-                phx-debounce="200"
-                placeholder="Search by name or account id"
-                aria-label="Search identities"
-                class="input input-sm min-h-11 w-full rounded-lg sm:min-h-0"
-              />
-            </form>
-
-            <div
-              :if={@account_pick}
-              id="account-picker"
-              class="mt-3 rounded-xl border border-primary/40 bg-primary/5 p-3"
-            >
-              <div class="flex items-start justify-between gap-2">
-                <p class="text-xs font-semibold">
-                  Link <span class="font-mono">{@account_pick.account_id}</span>
-                  <span :if={@account_pick.display_name} class="font-medium">
-                    ({@account_pick.display_name})
-                  </span>
-                  to an account
-                </p>
-                <button
-                  type="button"
-                  phx-click="cancel_pick"
-                  id="cancel-account-pick"
-                  class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
-                >
-                  Close
-                </button>
-              </div>
-
-              <form
-                id="account-search-form"
-                phx-change="search_accounts"
-                phx-submit="search_accounts"
-                class="mt-2"
-              >
-                <input
-                  type="search"
-                  name="q"
-                  value={@account_query}
-                  phx-debounce="200"
-                  placeholder="Search accounts by e-mail or name"
-                  aria-label="Search accounts"
-                  class="input input-sm min-h-11 w-full rounded-lg sm:min-h-0"
-                />
-              </form>
-
-              <ul :if={@account_results not in [nil, []]} class="mt-2 space-y-1.5">
-                <li :for={%{user: candidate, identities: linked} <- @account_results}>
-                  <button
-                    type="button"
-                    phx-click="confirm_link"
-                    phx-value-account_id={@account_pick.account_id}
-                    phx-value-user_id={candidate.id}
-                    id={"link-account-#{candidate.id}"}
-                    class="flex w-full items-center justify-between gap-2 rounded-lg border border-base-300/60 bg-base-100 px-3 py-2 text-left text-xs transition hover:border-primary/40 hover:text-primary"
-                  >
-                    <span class="truncate">{candidate.email}</span>
-                    <span class="shrink-0 text-[11px] text-base-content/70">
-                      {candidate.role} · {linked} linked
-                    </span>
-                  </button>
-                </li>
-              </ul>
-              <p
-                :if={@account_results == []}
-                id="no-account-candidates"
-                class="mt-2 text-[11px] text-base-content/70"
-              >
-                No account matches “{@account_query}” — refine the search.
-              </p>
-            </div>
-
-            <ul :if={@people != []} class="mt-3 space-y-2.5">
-              <li :for={person <- @people} id={"person-#{person.index}"} class="text-xs">
-                <div class="flex flex-wrap items-center gap-1.5">
-                  <span class="truncate font-medium">
-                    {person.display_name || person.account_id}
-                  </span>
-                  <span :if={person.account?} class="badge badge-primary badge-xs">
-                    has an account
-                  </span>
-                  <span
-                    :if={not person.account?}
-                    id={"person-no-account-#{person.index}"}
-                    class="badge badge-ghost badge-xs"
-                  >
-                    not a mirror account
-                  </span>
-                </div>
-                <p class="mt-0.5 font-mono text-[10px] text-base-content/50">
-                  {person.account_id}
-                </p>
-                <p class="mt-0.5 text-[11px] text-base-content/70">
-                  {if person.account_email,
-                    do: "This identity is #{person.account_email}: what it may read is theirs.",
-                    else:
-                      "No account stands for this identity yet. Link it to one below and what it may read becomes that account's — including the groups it is in."}
-                </p>
-                <div class="mt-1 flex flex-wrap gap-1">
-                  <span :for={group <- person.groups} class="badge badge-ghost badge-xs">
-                    {group}
-                  </span>
-                  <span :if={person.groups == []} class="text-[11px] text-base-content/70">
-                    no groups synced
-                  </span>
-                </div>
-
-                <%!-- One person, several Atlassian accounts: the personal one
-                and the guest one are two identities and the content may name
-                either. Linking says "this identity is this account", and what
-                the identity may read becomes the account's. --%>
-                <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <span :if={person.account_email} class="text-[11px] text-base-content/70">
-                    linked to <span class="font-medium">{person.account_email}</span>
-                  </span>
-                  <form
-                    :if={person.account_email}
-                    phx-submit="unlink_identity"
-                    id={"unlink-#{person.index}"}
-                  >
-                    <input type="hidden" name="account_id" value={person.account_id} />
-                    <button
-                      type="submit"
-                      class="btn btn-ghost btn-xs min-h-11 text-error sm:min-h-0"
-                      data-confirm={
-                        "Unlink #{person.account_id} from #{person.account_email}? What this identity may read stops being theirs."
-                      }
-                    >
-                      Unlink
-                    </button>
-                  </form>
-
-                  <button
-                    :if={is_nil(person.account_email)}
-                    type="button"
-                    phx-click="pick_account"
-                    phx-value-account_id={person.account_id}
-                    phx-value-name={person.display_name || ""}
-                    id={"link-#{person.index}"}
-                    class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
-                  >
-                    Link to an account…
-                  </button>
-                </div>
-              </li>
-            </ul>
-            <p :if={@people == []} class="mt-2 text-[11px] text-base-content/70">
-              No author mirrored yet — run a sync.
-            </p>
-            <.pager
-              id="people-pager"
-              page={@people_page}
-              total={@people_total}
-              param="p_page"
-              query={@people_query}
-            />
           </div>
 
           <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">

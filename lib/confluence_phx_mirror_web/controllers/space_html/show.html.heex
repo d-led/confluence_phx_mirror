@@ -256,14 +256,25 @@
       <section class="rounded-xl border border-base-300/70 bg-base-100 p-4">
         <h2 class="text-sm font-semibold">Export</h2>
         <p class="mt-1 text-xs text-base-content/70">
-          The whole space as Markdown with its attachments, as a ZIP.
+          As a static website — every page, its files and the site's look, with the links between
+          pages already pointing inside the folder — or as plain Markdown.
         </p>
-        <a
-          href={~p"/spaces/#{@space.key}/export.zip"}
-          class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-        >
-          Download Markdown (.zip) <.icon name="hero-arrow-down-tray" class="size-3.5" />
-        </a>
+        <div class="mt-2 flex flex-col items-start gap-1">
+          <a
+            href={~p"/spaces/#{@space.key}/site.zip"}
+            id="download-site"
+            class="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            Download as a website (.zip) <.icon name="hero-arrow-down-tray" class="size-3.5" />
+          </a>
+          <a
+            href={~p"/spaces/#{@space.key}/export.zip"}
+            id="download-markdown"
+            class="inline-flex items-center gap-1 text-xs font-medium text-base-content/70 hover:text-primary hover:underline"
+          >
+            Download Markdown (.zip)
+          </a>
+        </div>
       </section>
     </aside>
   </div>

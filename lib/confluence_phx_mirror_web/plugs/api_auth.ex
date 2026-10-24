@@ -16,9 +16,22 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuth do
 
   def call(conn, _opts) do
     case identity(conn) do
-      :none -> assume_or_reject(conn)
+      :none -> established_or_assumed(conn)
       {:ok, user} -> authenticate(conn, {:ok, user})
       {:error, reason} -> authenticate(conn, {:error, reason})
+    end
+  end
+
+  # `FetchCurrentUser` and `ProxyAuth` run before this plug: a browser that is
+  # already signed in — its own session cookie, or the identity the reverse
+  # proxy wrote into `X-Forwarded-Email` — is the caller. Behind oauth2-proxy
+  # that is every browser, so a reader who opened `/api/docs/swagger` presses
+  # "Try it out" without minting a token. The API is read-only, so a cookie
+  # here adds no state a cross-site request could change.
+  defp established_or_assumed(conn) do
+    case conn.assigns do
+      %{current_user: %Accounts.User{}} -> conn
+      _anonymous -> assume_or_reject(conn)
     end
   end
 

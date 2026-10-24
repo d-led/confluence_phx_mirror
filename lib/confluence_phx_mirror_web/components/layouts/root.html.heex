@@ -10,10 +10,26 @@
       {assigns[:page_title]}
     </.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+    <%!-- Swagger UI is a bundle of its own and only /api/docs/swagger asks for it:
+    the reader pages must not download a vendor UI. --%>
+    <link
+      :if={assigns[:swagger_ui]}
+      phx-track-static
+      rel="stylesheet"
+      href={~p"/assets/js/swagger.css"}
+    />
     <style :if={assigns[:skin_css] not in [nil, ""]}>
       <%= Phoenix.HTML.raw(assigns[:skin_css]) %>
     </style>
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
+    </script>
+    <script
+      :if={assigns[:swagger_ui]}
+      defer
+      phx-track-static
+      type="text/javascript"
+      src={~p"/assets/js/swagger.js"}
+    >
     </script>
   </head>
   <body class="min-h-screen bg-base-100 text-base-content antialiased">

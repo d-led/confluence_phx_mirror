@@ -255,6 +255,17 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           >
             <.icon name="hero-arrow-path" class="size-4" /> Sync now
           </button>
+          <%!-- The whole mirror as one folder of files: a plain download, so it
+          is a link rather than an event — nothing to ask the server for but
+          the bytes. --%>
+          <a
+            href="/admin/export/site.zip"
+            id="export-site"
+            class="btn btn-outline btn-sm gap-1.5"
+            title="Every space, page and attachment as a static site"
+          >
+            <.icon name="hero-arrow-down-tray" class="size-4" /> Static site
+          </a>
           <%!-- The same shape as the search screen's filter menus: the button
           opens a panel whose find box takes the keyboard, and the list is
           narrowed in the database, not in the browser. --%>

@@ -4,6 +4,7 @@
   "private": true,
   "description": "Browser dependencies bundled by esbuild; loaded from assets/js/app.js.",
   "dependencies": {
-    "highlight.js": "^11.12.0"
+    "highlight.js": "^11.12.0",
+    "swagger-ui-dist": "^5.34.0"
   }
 }

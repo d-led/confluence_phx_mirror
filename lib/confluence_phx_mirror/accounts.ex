@@ -97,6 +97,34 @@ defmodule ConfluencePhxMirror.Accounts do
     end
   end
 
+  @doc """
+  The account each of `account_ids` stands for, as rows.
+
+  `accounts_by_identity/1` answers "whose is this?" with an e-mail, which is all
+  a badge needs. The identities screen and its API also have to *act* on that
+  account — link the identity or take it away — so they ask for the row.
+  """
+  def users_by_identity(account_ids) do
+    keys = Enum.reject(account_ids, &is_nil/1)
+
+    if keys == [] do
+      %{}
+    else
+      from(u in User,
+        where:
+          u.confluence_account_id in ^keys or
+            fragment("? && ?", u.identity_account_ids, ^keys)
+      )
+      |> Repo.all()
+      |> Enum.flat_map(fn user ->
+        [user.confluence_account_id | user.identity_account_ids || []]
+        |> Enum.reject(&is_nil/1)
+        |> Enum.map(&{&1, user})
+      end)
+      |> Map.new()
+    end
+  end
+
   defp limit_if(query, nil), do: query
   defp limit_if(query, limit), do: limit(query, ^limit)
 

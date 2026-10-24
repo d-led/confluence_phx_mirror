@@ -1,0 +1,542 @@
+defmodule ConfluencePhxMirror.Export.Site.HTML do
+  @moduledoc """
+  The pages of an exported site: the same shell, type and colours as the mirror
+  a reader knows, written as plain HTML.
+
+  Nothing here needs a script: the heading permalinks are already in the body
+  (see `ConfluencePhxMirror.Export.Site.Content`), the theme is one stylesheet,
+  and every link is a file inside the archive. What the reader screens get from
+  LiveView — search, presence, the space switcher — has no business in a folder
+  of files, so it is absent rather than broken.
+  """
+
+  use Phoenix.Component
+
+  @doc """
+  The archive's front page.
+
+  `:spaces` are `%{name, key, href, icon, description, page_count}` maps.
+  """
+  attr :title, :string, required: true
+  attr :spaces, :list, required: true
+  attr :page_count, :integer, required: true
+  attr :generated, :string, required: true
+  attr :mirror_name, :string, required: true
+  attr :mirror_url, :string, default: nil
+  attr :html_attributes, :map, default: %{}
+
+  def site(assigns) do
+    ~H"""
+    <.shell
+      title={@title}
+      prefix=""
+      mirror_name={@mirror_name}
+      mirror_url={@mirror_url}
+      html_attributes={@html_attributes}
+      note={"#{plural(@page_count, "page")} in #{plural(length(@spaces), "space")}, copied #{@generated}."}
+    >
+      <:nav>
+        <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-base-content/70">
+          Spaces
+        </p>
+        <ul class="menu menu-sm w-full gap-1 p-0">
+          <li :for={space <- @spaces}>
+            <a href={space.href} class="truncate">
+              {space.name}
+              <span class="badge badge-ghost badge-xs">{space.key}</span>
+            </a>
+          </li>
+        </ul>
+      </:nav>
+
+      <h1 class="text-2xl font-semibold tracking-tight">{@title}</h1>
+      <p class="mt-1 max-w-2xl text-sm text-base-content/70">
+        A static copy of the mirror. Every page here works without a server: open
+        <code>index.html</code>
+        from the folder and the links stay inside it. Links to content the mirror did not
+        carry go back to the original site.
+      </p>
+
+      <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <a
+          :for={space <- @spaces}
+          href={space.href}
+          class="group flex flex-col gap-1 rounded-xl border border-base-300/70 bg-base-100 p-4 transition hover:border-primary/40 hover:bg-base-200/40"
+        >
+          <span class="flex min-w-0 items-center gap-2">
+            <img
+              :if={space.icon}
+              src={space.icon}
+              alt=""
+              loading="lazy"
+              class="size-6 shrink-0 rounded"
+            />
+            <span
+              :if={is_nil(space.icon)}
+              class="grid size-6 shrink-0 place-items-center rounded bg-primary text-[11px] font-bold text-primary-content"
+            >
+              {initial(space.name)}
+            </span>
+            <span class="truncate text-sm font-semibold group-hover:text-primary">
+              {space.name}
+            </span>
+            <span class="badge badge-outline badge-xs ml-auto shrink-0">{space.key}</span>
+          </span>
+          <span :if={space.description != ""} class="line-clamp-2 text-xs text-base-content/70">
+            {space.description}
+          </span>
+          <span class="mt-1 text-[11px] uppercase tracking-wide text-base-content/70">
+            {plural(space.page_count, "page")}
+          </span>
+        </a>
+      </div>
+    </.shell>
+    """
+  end
+
+  @doc """
+  A space's front page: its description and its whole page tree.
+
+  `:tree` carries `%{title, href, confluence_id, children}` nodes;
+  `:home` is `%{title, href}` for the space's home page, or `nil`.
+  """
+  attr :title, :string, required: true
+  attr :prefix, :string, required: true
+  attr :space, :map, required: true
+  attr :icon, :string, default: nil
+  attr :tree, :list, required: true
+  attr :home, :map, default: nil
+  attr :page_count, :integer, required: true
+  attr :generated, :string, required: true
+  attr :mirror_name, :string, required: true
+  attr :mirror_url, :string, default: nil
+  attr :html_attributes, :map, default: %{}
+
+  def space(assigns) do
+    ~H"""
+    <.shell
+      title={@title}
+      prefix={@prefix}
+      mirror_name={@mirror_name}
+      mirror_url={@mirror_url}
+      html_attributes={@html_attributes}
+      note={"#{plural(@page_count, "page")}, copied #{@generated}."}
+      crumbs={[%{title: "All spaces", href: @prefix <> "index.html"}]}
+    >
+      <:nav>
+        <p class="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-base-content/70">
+          <span class="truncate">{@space.name}</span>
+          <span class="badge badge-ghost badge-xs">{@space.key}</span>
+        </p>
+        <.tree nodes={@tree} />
+      </:nav>
+
+      <header class="flex flex-wrap items-start gap-3">
+        <img
+          :if={@icon}
+          src={@icon}
+          alt=""
+          loading="lazy"
+          class="size-10 shrink-0 rounded-lg border border-base-300/60 bg-base-100 p-1"
+        />
+        <div class="min-w-0">
+          <h1 class="text-2xl font-semibold tracking-tight">{@space.name}</h1>
+          <p class="mt-1 text-xs uppercase tracking-wide text-base-content/70">
+            {@space.key} · {plural(@page_count, "page")}
+          </p>
+        </div>
+      </header>
+
+      <p :if={@space.description not in [nil, ""]} class="mt-3 max-w-3xl text-sm">
+        {@space.description}
+      </p>
+
+      <p :if={@home} class="mt-4 text-sm">
+        Start at <a href={@home.href} class="link link-primary font-medium">{@home.title}</a>.
+      </p>
+
+      <nav aria-label="Pages in this space" class="mt-6 border-t border-base-300/70 pt-4">
+        <h2 class="mb-3 text-sm font-semibold">All pages</h2>
+        <.outline nodes={@tree} />
+      </nav>
+    </.shell>
+    """
+  end
+
+  @doc """
+  One page of the archive: its body, its place in the space and its files.
+
+  `:page` is the mirrored page; `:body` the HTML already rewritten for the
+  archive; `:attachments` are `%{name, href, size}` rows; `:children` and
+  `:crumbs` are `%{title, href}` maps; `:original` is the Confluence URL.
+  """
+  attr :title, :string, required: true
+  attr :prefix, :string, required: true
+  attr :page, :map, required: true
+  attr :body, :string, required: true
+  attr :updated, :string, default: nil
+  attr :space_name, :string, required: true
+  attr :space_key, :string, required: true
+  attr :space_href, :string, required: true
+  attr :tree, :list, required: true
+  attr :children, :list, default: []
+  attr :crumbs, :list, default: []
+  attr :attachments, :list, default: []
+  attr :original, :string, default: nil
+  attr :markdown_href, :string, required: true
+  attr :generated, :string, required: true
+  attr :mirror_name, :string, required: true
+  attr :mirror_url, :string, default: nil
+  attr :html_attributes, :map, default: %{}
+
+  def page(assigns) do
+    ~H"""
+    <.shell
+      title={@title}
+      prefix={@prefix}
+      mirror_name={@mirror_name}
+      mirror_url={@mirror_url}
+      html_attributes={@html_attributes}
+      note={"Copied #{@generated} from the Confluence mirror."}
+      crumbs={@crumbs}
+    >
+      <:nav>
+        <p class="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-base-content/70">
+          <a href={@space_href} class="truncate hover:text-primary">{@space_name}</a>
+          <span class="badge badge-ghost badge-xs">{@space_key}</span>
+        </p>
+        <.tree nodes={@tree} current={@page.confluence_id} />
+      </:nav>
+
+      <article>
+        <header>
+          <p class="text-xs font-medium uppercase tracking-wider text-base-content/70">
+            {@space_name}
+          </p>
+          <h1 class="mt-1 text-2xl font-semibold tracking-tight">{@page.title}</h1>
+          <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/70">
+            <span :if={@page.type == "blogpost"} class="badge badge-ghost badge-xs">Blog post</span>
+            <span :if={@page.status == "archived"} class="badge badge-warning badge-xs">
+              Archived
+            </span>
+            <span :if={@page.status == "draft"} class="badge badge-info badge-xs">Draft</span>
+            <span :if={@page.author_name}>by {@page.author_name}</span>
+            <span :if={@updated}>updated {@updated}</span>
+            <span>version {@page.version_number}</span>
+            <a :if={@original} href={@original} class="link link-primary">Original on Confluence</a>
+            <a href={@markdown_href} download class="link">Markdown</a>
+          </div>
+          <p :if={@page.labels not in [nil, []]} class="mt-2 flex flex-wrap gap-1">
+            <span :for={label <- @page.labels} class="badge badge-outline badge-xs">{label}</span>
+          </p>
+        </header>
+
+        <div class="confluence-content mt-4">
+          {Phoenix.HTML.raw(@body)}
+        </div>
+
+        <nav
+          :if={@children != []}
+          aria-label="Child pages"
+          class="mt-8 border-t border-base-300/70 pt-4"
+        >
+          <h2 class="mb-3 text-sm font-semibold">Child pages</h2>
+          <ul class="divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100">
+            <li :for={child <- @children}>
+              <a
+                href={child.href}
+                class="flex min-h-11 items-center gap-2 px-3 py-2 text-sm transition hover:bg-base-200/40"
+              >
+                {child.title}
+              </a>
+            </li>
+          </ul>
+        </nav>
+      </article>
+
+      <:rail>
+        <section>
+          <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/70">
+            Page info
+          </h2>
+          <dl class="space-y-1 text-xs">
+            <div class="flex gap-2">
+              <dt class="w-24 shrink-0 text-base-content/70">Space</dt>
+              <dd class="min-w-0 truncate">{@space_name} ({@space_key})</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="w-24 shrink-0 text-base-content/70">Confluence id</dt>
+              <dd>{@page.confluence_id}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="w-24 shrink-0 text-base-content/70">Updated</dt>
+              <dd>{@updated || "unknown"}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section :if={@attachments != []}>
+          <h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-base-content/70">
+            Attachments
+          </h2>
+          <ul class="space-y-1 text-xs">
+            <li :for={attachment <- @attachments} class="flex min-w-0 items-baseline gap-2">
+              <a href={attachment.href} class="truncate link link-primary">{attachment.name}</a>
+              <span class="ml-auto shrink-0 text-[11px] text-base-content/70">
+                {attachment.size}
+              </span>
+            </li>
+          </ul>
+        </section>
+      </:rail>
+    </.shell>
+    """
+  end
+
+  @doc """
+  The archive's search page.
+
+  The index is inlined, so the page searches a folder: `file://` may refuse to
+  fetch a sibling file, and a static site that needs a server is not static.
+  `assets/search.json` carries the same documents for other tools.
+  """
+  attr :title, :string, required: true
+  attr :spaces, :list, required: true
+  attr :page_count, :integer, required: true
+  attr :json, :string, required: true
+  attr :generated, :string, required: true
+  attr :mirror_name, :string, required: true
+  attr :mirror_url, :string, default: nil
+  attr :html_attributes, :map, default: %{}
+
+  def search(assigns) do
+    ~H"""
+    <.shell
+      title={@title}
+      prefix=""
+      mirror_name={@mirror_name}
+      mirror_url={@mirror_url}
+      html_attributes={@html_attributes}
+      note={"#{plural(@page_count, "page")} in #{plural(length(@spaces), "space")}, copied #{@generated}."}
+    >
+      <:nav>
+        <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-base-content/70">
+          Spaces
+        </p>
+        <ul class="menu menu-sm w-full gap-1 p-0">
+          <li :for={space <- @spaces}>
+            <a href={space.href} class="truncate">
+              {space.name}
+              <span class="badge badge-ghost badge-xs">{space.key}</span>
+            </a>
+          </li>
+        </ul>
+      </:nav>
+
+      <h1 class="text-2xl font-semibold tracking-tight">Search this copy</h1>
+      <p class="mt-1 max-w-2xl text-sm text-base-content/70">
+        Titles, spaces, labels and the beginning of each page's text. The index is part of the
+        folder, so nothing is sent anywhere and search works offline.
+      </p>
+
+      <div class="mt-4 max-w-xl">
+        <input
+          id="search-q"
+          type="search"
+          autocomplete="off"
+          spellcheck="false"
+          autofocus
+          placeholder="e.g. release notes"
+          aria-label="Search this copy"
+          class="input input-bordered w-full rounded-lg bg-base-100"
+        />
+      </div>
+
+      <p id="search-status" role="status" class="mt-3 text-xs text-base-content/70"></p>
+      <ol id="search-results" aria-label="Results" class="mt-3 space-y-2"></ol>
+
+      <script
+        id="search-index"
+        type="application/json"
+        phx-no-curly-interpolation
+      >
+        <%= Phoenix.HTML.raw(@json) %>
+      </script>
+      <script src="assets/search.js" defer>
+      </script>
+    </.shell>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Shell
+  # ---------------------------------------------------------------------------
+
+  attr :title, :string, required: true
+  attr :prefix, :string, required: true
+  attr :mirror_name, :string, required: true
+  attr :mirror_url, :string, default: nil
+  attr :html_attributes, :map, default: %{}
+  attr :note, :string, default: ""
+  attr :crumbs, :list, default: []
+
+  slot :nav
+  slot :rail
+  slot :inner_block, required: true
+
+  defp shell(assigns) do
+    ~H"""
+    <!DOCTYPE html>
+    <html lang="en" {@html_attributes} class="scroll-smooth">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="color-scheme" content="light dark" />
+        <meta name="generator" content="Confluence mirror static export" />
+        <title>{@title}</title>
+        <link rel="stylesheet" href={@prefix <> "assets/site.css"} />
+      </head>
+      <body class="min-h-screen bg-base-100 text-base-content antialiased">
+        <div class="flex min-h-screen flex-col">
+          <header class="border-b border-base-300/70 bg-base-100">
+            <div class="mx-auto flex w-full max-w-[1600px] items-center gap-3 px-3 py-2 sm:px-5">
+              <a
+                href={@prefix <> "index.html"}
+                class="flex items-center gap-2.5 rounded-lg px-1 py-1 transition hover:bg-base-200/70"
+              >
+                <span class="grid size-8 place-items-center rounded-lg bg-primary font-bold text-primary-content">
+                  {initial(@mirror_name)}
+                </span>
+                <span class="flex flex-col leading-tight">
+                  <span class="text-sm font-semibold">{@mirror_name}</span>
+                  <span class="text-[11px] uppercase tracking-wide text-base-content/70">
+                    static copy
+                  </span>
+                </span>
+              </a>
+              <form
+                action={@prefix <> "search.html"}
+                method="get"
+                role="search"
+                class="ml-auto flex items-center"
+              >
+                <input
+                  type="search"
+                  name="q"
+                  placeholder="Search"
+                  aria-label="Search this copy"
+                  autocomplete="off"
+                  class="input input-sm w-32 rounded-lg bg-base-100 sm:w-48"
+                />
+              </form>
+              <a
+                :if={@mirror_url}
+                href={@mirror_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-xs font-medium text-primary hover:underline"
+              >
+                The live site
+              </a>
+            </div>
+            <div
+              :if={@crumbs != []}
+              class="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-2 px-3 pb-2 text-xs sm:px-5"
+            >
+              <%= for {crumb, index} <- Enum.with_index(@crumbs) do %>
+                <span :if={index > 0} aria-hidden="true" class="text-base-content/40">/</span>
+                <a href={crumb.href} class="text-base-content/70 hover:text-primary">
+                  {crumb.title}
+                </a>
+              <% end %>
+            </div>
+          </header>
+
+          <div class="mx-auto flex w-full max-w-[1600px] flex-1 items-stretch">
+            <aside
+              class="hidden w-72 shrink-0 border-r border-base-300/60 bg-base-200/25 lg:block"
+              aria-label="Navigation"
+            >
+              <div class="p-4">
+                {render_slot(@nav)}
+              </div>
+            </aside>
+
+            <main class="min-w-0 flex-1">
+              <div class="w-full max-w-[88rem] px-4 py-5 sm:px-8">
+                {render_slot(@inner_block)}
+              </div>
+            </main>
+
+            <aside
+              :if={@rail != []}
+              class="hidden w-80 shrink-0 space-y-5 border-l border-base-300/60 p-5 xl:block"
+            >
+              {render_slot(@rail)}
+            </aside>
+          </div>
+
+          <footer class="border-t border-base-300/70 bg-base-200/30">
+            <div class="mx-auto flex w-full max-w-[1600px] flex-col gap-1 px-4 py-5 text-xs text-base-content/70 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <span class="font-medium text-base-content/80">{@mirror_name}</span>
+              <span>{@note}</span>
+            </div>
+          </footer>
+        </div>
+      </body>
+    </html>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Navigation
+  # ---------------------------------------------------------------------------
+
+  attr :nodes, :list, required: true
+  attr :current, :integer, default: nil
+
+  defp tree(assigns) do
+    ~H"""
+    <ul class="menu menu-sm w-full gap-0.5 p-0">
+      <li :for={node <- @nodes}>
+        <a
+          href={node.href}
+          class={["truncate", node.confluence_id == @current && "menu-active"]}
+          aria-current={if node.confluence_id == @current, do: "page"}
+        >
+          {node.title}
+        </a>
+        <.tree :if={node.children != []} nodes={node.children} current={@current} />
+      </li>
+    </ul>
+    """
+  end
+
+  attr :nodes, :list, required: true
+
+  defp outline(assigns) do
+    ~H"""
+    <ul class="space-y-1 text-sm">
+      <li :for={node <- @nodes}>
+        <a href={node.href} class="link link-hover">{node.title}</a>
+        <div :if={node.children != []} class="ml-3 border-l border-base-300/60 pl-3">
+          <.outline nodes={node.children} />
+        </div>
+      </li>
+    </ul>
+    """
+  end
+
+  defp plural(1, word), do: "1 " <> word
+  defp plural(count, word), do: "#{count} #{word}s"
+
+  defp initial(name) do
+    name
+    |> to_string()
+    |> String.first()
+    |> case do
+      nil -> "?"
+      first -> String.upcase(first)
+    end
+  end
+end

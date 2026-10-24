@@ -25,8 +25,21 @@ defmodule ConfluencePhxMirrorWeb.ExportControllerTest do
     assert header(conn, "content-disposition") =~ "Engineering Handbook.zip"
   end
 
+  test "offers a space as a static site", %{conn: conn} do
+    conn = get(conn, ~p"/spaces/ENG/site.zip")
+
+    assert conn.status == 200
+    assert header(conn, "content-type") =~ "application/zip"
+    assert header(conn, "content-disposition") =~ "Engineering Handbook site.zip"
+  end
+
   test "an unknown space is a 404", %{conn: conn} do
     body = conn |> get(~p"/spaces/NOPE/export.zip") |> html_response(404)
+    assert body =~ "Space NOPE is not mirrored"
+  end
+
+  test "an unknown space's site is a 404 too", %{conn: conn} do
+    body = conn |> get(~p"/spaces/NOPE/site.zip") |> html_response(404)
     assert body =~ "Space NOPE is not mirrored"
   end
 

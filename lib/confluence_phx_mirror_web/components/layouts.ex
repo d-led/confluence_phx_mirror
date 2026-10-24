@@ -36,6 +36,11 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   attr :breadcrumbs, :list, default: []
   attr :sidebar?, :boolean, default: true
   attr :rail?, :boolean, default: false
+
+  attr :wide?, :boolean,
+    default: false,
+    doc: "let the content take the window's width and drop the prose padding (Swagger UI)"
+
   attr :search?, :boolean, default: true, doc: "render the header search field"
   attr :search_query, :string, default: ""
   attr :page_title, :string, default: nil
@@ -290,7 +295,11 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
           more room, and a column that stays centred only widens in both
           directions. Prose keeps a measure of its own in `app.css`; tables,
           lists and the page's own furniture take the width. --%>
-          <div class="w-full max-w-[88rem] px-4 py-3 sm:px-8 sm:py-5 lg:py-6">
+          <div class={[
+            "w-full px-4 sm:px-8",
+            @wide? && "py-2",
+            !@wide? && "max-w-[88rem] py-3 sm:py-5 lg:py-6"
+          ]}>
             {render_slot(@inner_block)}
           </div>
         </main>

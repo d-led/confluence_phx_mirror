@@ -45,8 +45,9 @@ Configuration is read at boot; a running development server does **not** reload
 Scheduled pulls are incremental: they ask Confluence only for content that
 changed since the last run, and pages whose version is unchanged are skipped
 without being re-rendered or asked for their attachments and comments. A full
-re-read is available on demand ("Re-read everything" on the dashboard, or
-`mix confluence.sync --mode snapshot`); expect it to cost one request per page
+re-read is available on demand — "Re-read everything" under the sync-run table
+on the dashboard, which says what it costs and asks before it queues, or
+`mix confluence.sync --mode snapshot`; expect it to cost one request per page
 when the site is large.
 
 `CM_SOURCE` is explicit when set (`demo`, `http` — `live` is accepted as an

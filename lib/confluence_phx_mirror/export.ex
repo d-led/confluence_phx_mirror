@@ -1,28 +1,44 @@
 defmodule ConfluencePhxMirror.Export do
   @moduledoc """
-  Markdown exports of the mirror.
+  Exports of the mirror: Markdown, and the mirror as a static site.
 
   A page exports as one `.md` file; a space exports as a ZIP containing a
   folder tree that mirrors the page hierarchy, one Markdown file per page, and
   each page's attachments next to it. Links between pages and to attachments
   are rewritten to relative paths, so the archive works offline.
 
-  The archive is streamed: pages are converted one at a time and attachments are
-  read from the blob store only while they are written, so a large space never
-  has to fit in memory.
+  `ConfluencePhxMirror.Export.Site` is the same idea for readers who want the
+  pages themselves: HTML, the site's theme, an offline search index and the
+  Markdown beside each page.
+
+  Every archive is streamed: pages are converted one at a time and attachments
+  are read from the blob store only while they are written, so a large space
+  never has to fit in memory.
   """
 
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Blobs.{Key, Store}
   alias ConfluencePhxMirror.Export.Markdown
+  alias ConfluencePhxMirror.Export.Site
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Page, Space, URLs}
+  alias ConfluencePhxMirror.Sites
 
   @doc "Markdown of one page, with Confluence metadata as front matter."
   @spec page_markdown(Page.t()) :: String.t()
-  def page_markdown(%Page{} = page) do
-    front_matter(page) <> "\n" <> Markdown.from_html(page.body_export)
+  def page_markdown(%Page{} = page), do: page_markdown(page, %{})
+
+  @doc """
+  Markdown of one page whose links have already been planned.
+
+  `ctx` is `ConfluencePhxMirror.Export.Markdown`'s context — the archive's page
+  files and this page's attachments — so the Markdown written beside a page in
+  the static site points at the files that are actually there.
+  """
+  @spec page_markdown(Page.t(), map()) :: String.t()
+  def page_markdown(%Page{} = page, ctx) do
+    front_matter(page) <> "\n" <> Markdown.from_html(page.body_export, ctx)
   end
 
   @doc "Filename offered to the browser for one page."
@@ -30,6 +46,30 @@ defmodule ConfluencePhxMirror.Export do
 
   @doc "Filename offered to the browser for a space archive."
   def archive_name(%Space{} = space), do: sanitise(space.name) <> ".zip"
+
+  @doc """
+  The mirror as a static site: every space the reader may see, as HTML pages,
+  Markdown and attachments.
+
+  See `ConfluencePhxMirror.Export.Site` for the shape of the archive and the
+  rules its links follow.
+  """
+  @spec site_archive(Scope.t(), keyword()) :: Enumerable.t()
+  def site_archive(%Scope{} = scope, opts \\ []) do
+    scope |> Authorization.readable_spaces() |> Site.archive(scope, opts)
+  end
+
+  @doc "One space as a standalone static site."
+  @spec space_site_archive(Space.t(), Scope.t(), keyword()) :: Enumerable.t()
+  def space_site_archive(%Space{} = space, %Scope{} = scope, opts \\ []) do
+    Site.archive([space], scope, opts)
+  end
+
+  @doc "Filename offered for the whole-site static archive."
+  def site_archive_name, do: sanitise(Sites.name()) <> " site.zip"
+
+  @doc "Filename offered for one space's static archive."
+  def space_site_archive_name(%Space{} = space), do: sanitise(space.name) <> " site.zip"
 
   @doc """
   Stream of `{path_in_zip, data_or_fun}` entries for a space archive.
@@ -125,7 +165,7 @@ defmodule ConfluencePhxMirror.Export do
       attachments: attachments
     }
 
-    front_matter(page) <> "\n" <> Markdown.from_html(page.body_export, ctx)
+    page_markdown(page, ctx)
   end
 
   defp attachment_entries(page, file) do

@@ -84,14 +84,14 @@ endpoint cannot be reached any other way.
 | `/admin/**` | `:browser` + `live_session :admin` | same | `LiveUserAuth` (redirect), `:browser` |
 | `/admin/audit/export` | `:browser` | same | the controller's own admin check |
 | `/attachments/…`, `/spaces/:key/icon` | `:attachments` | session (optional) | `Authorization` — an unreadable file is `404` |
-| `/api/v1/**`, `/wiki/rest/api/**` | `:api` | `Authorization: Bearer`, `Authorization: Basic email:token` | `ApiAuth` (401/403), `ReaderRateLimit` (429) |
+| `/api/v1/**`, `/wiki/rest/api/**` | `:api` | `Authorization: Bearer`, `Authorization: Basic email:token`, or an identity already established (the mirror's session cookie, or the proxy's identity header) | `ApiAuth` (401/403), `ReaderRateLimit` (429) |
 | `/api/mcp` | `:mcp` | the mirror's own MCP access token (the pipeline also accepts a proxy-established identity, which the shipped proxy config does not set on this path) | `McpAuth` (401 + `WWW-Authenticate`, so a client starts the OAuth flow), `ReaderRateLimit` (429) |
 | `/oauth/register`, `/oauth/token` | `:oauth` | none for registration (public client, PKCE); the code itself for the exchange | `OAuthController` (400 for a bad, reused or expired code) |
 | `/oauth/authorize` | `:browser` | session cookie, then the proxy header | the consent screen; `ProxyAuth` |
 | `/.well-known/oauth-*` | `:oauth` | none | nothing — it is metadata, and a 401 points a client at it |
 | `/webhooks/confluence` | `:webhook` | `X-Hub-Signature-256` HMAC, `X-Webhook-Token`, `Authorization: Bearer`, `?token=` | `WebhookIntake` (404 when off), `WebhookRateLimit` (429), `WebhookAuth`, `WebhookController` (401/503) |
 | `/health` | `:health` | none | nothing — it answers whether the process is alive |
-| `/api/docs`, `/api/openapi.json` | `:browser` / `:docs` | none | `CM_API_DOCS` (404 when off) |
+| `/api/docs`, `/api/docs/swagger`, `/api/openapi.json` | `:browser` / `:docs` | none | `CM_API_DOCS` (404 when off) |
 
 Identity is resolved **once per request** (`Scope.for_user/1`) and carried in
 `conn.assigns.current_scope`; controllers and LiveViews read it back with

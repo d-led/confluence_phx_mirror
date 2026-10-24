@@ -1,0 +1,45 @@
+<Layouts.app
+  flash={@flash}
+  current_scope={@current_scope}
+  live={@conn}
+  spaces={@spaces}
+  last_sync_run={@last_sync_run}
+  mirror_name={@mirror_name}
+  mirror_url={@mirror_url}
+  mirror_host={@mirror_host}
+  mirror_source={@mirror_source}
+  page_title={@page_title}
+  sidebar?={false}
+  wide?
+>
+  <%!-- One strip, then the widget. Swagger UI is the page: a hero above it
+  would only push the operations below the fold, and its own title block is
+  hidden in `app.css` because the strip already names the page and links the
+  document. --%>
+  <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[12px]">
+    <h1 class="text-base font-semibold">The mirror API</h1>
+    <a href={@spec_url} class="link link-primary font-mono">/api/openapi.json</a>
+    <a href={@readable_url} class="link">readable version</a>
+
+    <span :if={@auto_admin} class="text-base-content/70 sm:ml-auto">
+      Development mode — requests are sent as <code class="font-mono">{@admin_email}</code>, so
+      <em>Try it out</em>
+      needs no token.
+    </span>
+    <span :if={!@auto_admin} class="text-base-content/70 sm:ml-auto">
+      Requests carry this browser's cookies, so a signed-in reader needs no token;
+      scripts can <a href="/profile" class="link link-primary">mint one</a>
+      and use <em>Authorize</em>.
+    </span>
+  </div>
+
+  <%!-- Swagger UI paints its own light palette (dark grey text on white), so the
+  widget sits on a light surface of its own — see `.swagger-ui-frame` in
+  assets/css/app.css, which also trims its generous default spacing. --%>
+  <div
+    id="swagger-ui"
+    data-spec-url={@spec_url}
+    class="swagger-ui-frame mt-2 rounded-lg p-1 sm:p-2"
+  >
+  </div>
+</Layouts.app>

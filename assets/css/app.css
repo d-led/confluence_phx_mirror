@@ -7,6 +7,10 @@
 @source "../css";
 @source "../js";
 @source "../../lib/confluence_phx_mirror_web";
+/* The static site export renders its own pages (`Export.Site.HTML`); they are
+   written into a folder and must look like the mirror, so their classes are
+   compiled in here like every screen's. */
+@source "../../lib/confluence_phx_mirror/export";
 /* Required for Tailwind to automatically pick up changes in colocated CSS files in dev */
 @source "../../_build/dev/phoenix-colocated/confluence_phx_mirror/*/";
 
@@ -749,6 +753,73 @@
   position: relative;
   top: -5rem;
   visibility: hidden;
+}
+
+/*
+  Swagger UI, on /api/docs/swagger.
+
+  The widget paints its own palette, and it is a light one: dark grey text on
+  white panels. So it sits on a light surface of its own instead of being
+  restyled rule by rule. Literal colours on purpose — a theme's palette must
+  not repaint a vendor widget.
+
+  For the dark variants the frame is inverted instead of restyled: Swagger has
+  several hundred hardcoded colours and no theme variables, so a hand-written
+  dark stylesheet would drift with every upgrade. The standard two-filter pair
+  keeps each colour's hue while flipping its lightness, which is why the method
+  badges still read as green/blue/purple. The variant is the reader's
+  (`data-scheme`, or `data-theme` for the built-in light/dark themes), and only
+  `system` — no `data-scheme`, and not one of those two themes — follows the
+  operating system, exactly as `Skins.style/0` paints the rest of the mirror.
+*/
+.swagger-ui-frame {
+  background-color: #fff;
+  color: #3b4151;
+}
+
+html[data-scheme="dark"] .swagger-ui-frame,
+html[data-theme="dark"] .swagger-ui-frame {
+  /* The inverse of the theme's #1c2026 surface: the filter flips it back. */
+  background-color: #e3ded9;
+  filter: invert(1) hue-rotate(180deg);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-scheme]):not([data-theme="light"]):not([data-theme="dark"])
+    .swagger-ui-frame {
+    background-color: #e3ded9;
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+
+/* Swagger UI ships the spacing of a documentation site of its own: a 1460px
+   gutter, a banner-sized title block that repeats what the page already says,
+   and generous padding around blocks. Inside the mirror's chrome that is
+   wasted room, so the frame trims it while leaving the widget's own look (and
+   its Authorize dialog) alone. */
+.swagger-ui-frame .swagger-ui .wrapper {
+  max-width: none;
+  padding: 0;
+}
+
+/* The page names itself and links the document; Swagger's own heading block
+   would say the same thing again in 200px of vertical space. */
+.swagger-ui-frame .swagger-ui .information-container {
+  display: none;
+}
+
+.swagger-ui-frame .swagger-ui .scheme-container {
+  margin: 0 0 0.5rem;
+  padding: 0.5rem;
+}
+
+.swagger-ui-frame .swagger-ui .opblock-tag,
+.swagger-ui-frame .swagger-ui .opblock {
+  margin: 0 0 0.5rem;
+}
+
+.swagger-ui-frame .swagger-ui .opblock-tag {
+  padding: 0.25rem 0.5rem;
 }
 
 /*

@@ -140,8 +140,12 @@ can move between them without going back to a hub:
 
 * `/admin` (**live**, refreshes every 5 s) – the overview: freshness, sync runs
   (counters, errors, `running` → `succeeded` / `partial` / `failed`), recent
-  activity and recently updated pages, plus the manual sync actions and
-  "Re-read everything" for a full pull.
+  activity and recently updated pages, and the manual sync actions: *Sync now*
+  (what changed) and *Sync one space*. Under the runs table, where a run's cost
+  is on screen, sits "Re-read everything" — the one action here that costs what
+  a first sync cost, because it fetches and re-renders every page and
+  attachment, changed or not. It says so where it stands, warns that it takes
+  hours on a large site, and asks before it queues.
 * `/admin/sync-log` (**live**) – the live log: every page, file and call to
   Confluence a sync touches — status, size, latency, retries and the waits the
   client-side rate limiter imposed — plus a summary line when the run ends
@@ -251,6 +255,57 @@ creator, ancestor and last-modified date); the same index backs
 `GET /api/v1/search`. Confluence's CQL syntax is available on the
 Confluence-compatible REST surface — see [api.md](api.md#search-cql-on-postgres).
 
+## Exporting the mirror
+
+Two downloads, one shape: a folder of files that works from disk — no server,
+no network, no build step.
+
+| Where | What | Who |
+| --- | --- | --- |
+| `/spaces/:key/site.zip` (space overview → Export) | that space as a static site | anyone who may read the space |
+| `/admin/export/site.zip` (admin dashboard → Static site) | every space as one static site | administrators only |
+| `/spaces/:key/export.zip` | that space as Markdown + attachments | anyone who may read the space |
+
+The static site contains:
+
+```text
+index.html                        every space in the archive
+search.html                       search over this copy (works offline)
+spaces/<KEY>/index.html           description, icon and the whole page tree
+spaces/<KEY>/pages/<id>.html      one page, with the mirror's own chrome
+spaces/<KEY>/pages/<id>.md        the same page as Markdown
+spaces/<KEY>/icon.<ext>           the space icon, when the mirror has it
+attachments/<KEY>/<page>/<file>   the mirrored attachments
+assets/site.css                   the site's compiled theme
+assets/search.json                the search index, for other tools
+assets/search.js                  the matcher search.html runs
+```
+
+**Links follow the rule the mirror already applies.** A link to a page the
+archive carries becomes a relative file — including a link written as a full
+Confluence URL on the site's own address. A link to a page the archive does not
+carry (a restricted page in a reader's copy, another space's page in a
+one-space archive) goes back to Confluence. A reader's copy carries only what
+that reader may open.
+
+**The look is the site's.** `assets/site.css` is the stylesheet this instance
+serves — the theme an administrator picked, custom skins included — and every
+page is written with the same markup as the reader screens. Heading permalinks
+are in the HTML rather than added by script, so a page needs no JavaScript.
+
+**Search is part of the folder.** `search.html` carries the index inline, so
+it works when the archive is opened from `file://` (where a page may not fetch
+its own files). Each document is a page's title, space, labels, date and the
+first 400 characters of its text; matching is client-side and ranks titles
+above spaces and labels, above the body.
+
+What it does not do: content Confluence renders only in the browser (Jira
+issues, page trees, gadgets) already reads as the mirror's "cannot be shown in
+the static mirror" note, and syntax highlighting — a reader-screen script —
+is not applied to exported code blocks. The archive is a snapshot taken while
+the download runs; on a large site that takes minutes, and the ZIP is stored
+rather than deflated, so its size is close to the sum of its files.
+
 ## Who may read what
 
 Access is mirrored, not invented. Confluence decides who may read a page; the
@@ -292,25 +347,6 @@ it withholds. The v1 JSON API, the Confluence-compatible API and the `/search`
 LiveView answer as the caller does: their results pass through the same
 `Authorization` checks, so a reader cannot find in them what the reader-side
 directory hides.
-
-### Checking it: *Admin* → *Permissions*
-
-Because access is replayed and not invented, the question an administrator
-actually has is "who can read this?", and the answer has to be checkable. The
-*Permissions* screen lists the mirrored spaces with a summary on each row —
-`open`, a count of groups, a count of people, `anonymous` — filters by name or
-key in the database, and opens a space to name its groups, its people (with "no
-account here yet" where the mirror has none), or to say in a word that nothing
-is mirrored for it and nothing narrows it.
-
-It answers the second half too: a space's panel lists the pages that carry
-restrictions of their own, and a page's panel names the subjects those
-restrictions allow. The two are not added together — a restricted page is
-readable only by what it lists, whatever the space allows, which is why the
-screen shows them as two decisions rather than one list.
-
-The screen only reads. Nothing here changes what Confluence decides, and nothing
-here grants access; it is the mirror's account of the last sync.
 
 ## Themes and variants
 
