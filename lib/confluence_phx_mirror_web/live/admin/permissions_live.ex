@@ -40,8 +40,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
     {:noreply, socket |> assign(q: q, space: nil, grants: nil) |> load()}
   end
 
-  def handle_event("inspect", %{"space_id" => space_id}, socket) do
-    space = Mirror.get_space!(String.to_integer(space_id))
+  def handle_event("inspect", %{"space_key" => key}, socket) do
+    space = Mirror.get_space_by_key(key)
 
     {:noreply, assign(socket, space: space, grants: Mirror.space_grants(space.id))}
   end
@@ -204,7 +204,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
             <button
               type="button"
               phx-click="inspect"
-              phx-value-space_id={space.id}
+              phx-value-space_key={space.key}
               id={"inspect-space-#{space.id}"}
               class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
             >
