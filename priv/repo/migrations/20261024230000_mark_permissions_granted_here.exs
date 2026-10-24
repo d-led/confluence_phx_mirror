@@ -15,11 +15,17 @@ defmodule ConfluencePhxMirror.Repo.Migrations.MarkPermissionsGrantedHere do
   """
   use Ecto.Migration
 
+  # An index on a table that is being read while the deploy runs has to be built
+  # CONCURRENTLY, and that needs both flags — see the note in docs/operations.md
+  # and `migrations_safety_test`.
+  @disable_ddl_transaction true
+  @disable_migration_lock true
+
   def change do
     alter table(:space_permissions) do
       add :granted_by_id, references(:users, on_delete: :nilify_all)
     end
 
-    create index(:space_permissions, [:granted_by_id])
+    create index(:space_permissions, [:granted_by_id], concurrently: true)
   end
 end
