@@ -40,11 +40,51 @@ defmodule ConfluencePhxMirror.Accounts do
     )
   end
 
-  def list_users(query \\ nil) do
+  @doc """
+  Accounts, filtered by `query` (an e-mail, a name, a group) and paged.
+
+  The mirror can hold a hundred thousand of them, so `:limit` and `:offset`
+  page in the database and the screen draws one page.
+  """
+  def list_users(query \\ nil, opts \\ []) do
     from(u in User, order_by: [asc: u.email])
     |> filter_users(query)
+    |> limit_if(Keyword.get(opts, :limit))
+    |> offset(^(Keyword.get(opts, :offset) || 0))
     |> Repo.all()
   end
+
+  @doc "How many accounts match `query`, for the screen's \"of N\"."
+  def count_users(query \\ nil) do
+    from(u in User)
+    |> filter_users(query)
+    |> select(count())
+    |> Repo.one()
+  end
+
+  @doc """
+  Which of `account_ids` already have an account here.
+
+  Asked for one page of people, not for the whole site: a mirror with a hundred
+  thousand identities must not read every account to decide a badge.
+  """
+  def accounts_among(account_ids) do
+    keys = Enum.reject(account_ids, &is_nil/1)
+
+    from(u in User,
+      where:
+        u.confluence_account_id in ^keys or
+          fragment("lower(?)", u.email) in ^keys,
+      select: {u.confluence_account_id, fragment("lower(?)", u.email)}
+    )
+    |> Repo.all()
+    |> Enum.flat_map(fn {id, email} -> [id, email] end)
+    |> Enum.reject(&is_nil/1)
+    |> MapSet.new()
+  end
+
+  defp limit_if(query, nil), do: query
+  defp limit_if(query, limit), do: limit(query, ^limit)
 
   defp filter_users(query, blank) when blank in [nil, ""], do: query
 

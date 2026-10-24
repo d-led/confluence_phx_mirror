@@ -46,6 +46,60 @@ defmodule ConfluencePhxMirrorWeb.SpaceControllerTest do
   end
 
   describe "the space overview" do
+    test "an administrator sees which groups and people may read the space", %{conn: conn} do
+      {space, _home} = space_with_home("Engineering Handbook")
+      admin = user_fixture(%{email: "space-admin@example.com", role: "admin"})
+
+      {:ok, _} =
+        Mirror.replace_space_permissions(space, [
+          %{subject_type: "group", subject_key: "confluence-users"},
+          %{subject_type: "user", subject_key: "jane@acme.com"}
+        ])
+
+      html =
+        conn
+        |> init_test_session(%{user_id: admin.id})
+        |> get(~p"/spaces/#{space.key}/overview")
+        |> html_response(200)
+
+      assert html =~ ~s(id="space-access")
+      assert html =~ ~s(id="space-access-group-confluence-users")
+      assert html =~ "jane@acme.com"
+    end
+
+    test "a reader is not told who else may read the space", %{conn: conn} do
+      {space, _home} = space_with_home("Engineering Handbook")
+      reader = user_fixture(%{email: "reader@example.com"})
+
+      {:ok, _} =
+        Mirror.replace_space_permissions(space, [
+          %{subject_type: "authenticated", subject_key: nil}
+        ])
+
+      html =
+        conn
+        |> init_test_session(%{user_id: reader.id})
+        |> get(~p"/spaces/#{space.key}/overview")
+        |> html_response(200)
+
+      refute html =~ ~s(id="space-access")
+    end
+
+    test "an administrator of a space with no mirrored permissions is told what that means", %{
+      conn: conn
+    } do
+      {space, _home} = space_with_home("Engineering Handbook")
+      admin = user_fixture(%{email: "space-admin@example.com", role: "admin"})
+
+      html =
+        conn
+        |> init_test_session(%{user_id: admin.id})
+        |> get(~p"/spaces/#{space.key}/overview")
+        |> html_response(200)
+
+      assert html =~ ~s(id="space-access-unknown")
+    end
+
     test "shows the space home, its top-level pages and the section tabs", %{conn: conn} do
       {space, home} = space_with_home("Engineering Handbook")
       page_fixture(space, %{title: "Architecture Overview", slug: "Architecture+Overview"})

@@ -179,6 +179,70 @@
         </.link>
       </section>
 
+      <%!-- Only an administrator is given @grants: who may read a space is the
+      site's decision, and the mirror should be checkable against it. --%>
+      <section
+        :if={assigns[:grants]}
+        id="space-access"
+        class="rounded-xl border border-base-300/70 bg-base-100 p-4"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold">Who can read this space</h2>
+          <span class="badge badge-ghost badge-xs">from the last sync</span>
+        </div>
+
+        <p
+          :if={not @grants.synced?}
+          id="space-access-unknown"
+          class="mt-2 text-[11px] text-base-content/70"
+        >
+          No permissions have been mirrored for this space, so nothing narrows it: every reader of
+          the mirror can open it. Run a sync to read them from Confluence.
+        </p>
+
+        <div :if={@grants.synced?} class="mt-2 space-y-2 text-xs">
+          <div :if={@grants.anonymous} id="space-access-anonymous">
+            <span class="badge badge-warning badge-sm">anonymous readers</span>
+          </div>
+
+          <div :if={@grants.groups != []}>
+            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
+              Groups
+            </p>
+            <div class="mt-1 flex flex-wrap gap-1">
+              <span
+                :for={group <- @grants.groups}
+                id={"space-access-group-#{group}"}
+                class="badge badge-ghost badge-sm"
+              >
+                {group}
+              </span>
+            </div>
+          </div>
+
+          <div :if={@grants.users != []}>
+            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
+              People
+            </p>
+            <ul class="mt-1 space-y-1">
+              <li :for={user <- @grants.users} class="truncate">
+                {user.label}
+                <span :if={not user.account?} class="text-[11px] text-base-content/60">
+                  (no account here)
+                </span>
+              </li>
+            </ul>
+          </div>
+
+          <p
+            :if={not @grants.anonymous and @grants.groups == [] and @grants.users == []}
+            class="text-[11px] text-base-content/70"
+          >
+            The site grants this space to no one the mirror can name — only administrators can see it.
+          </p>
+        </div>
+      </section>
+
       <section class="rounded-xl border border-base-300/70 bg-base-100 p-4">
         <h2 class="text-sm font-semibold">Export</h2>
         <p class="mt-1 text-xs text-base-content/70">

@@ -47,7 +47,30 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   def handle_event("revoke_token", params, socket), do: revoke_token(params, socket)
   def handle_event("dismiss_token", params, socket), do: dismiss_token(params, socket)
 
-  defp filter(%{"q" => q}, socket), do: {:noreply, socket |> assign(q: q) |> load()}
+  defp filter(%{"q" => q}, socket),
+    do: {:noreply, socket |> assign(q: q, users_page: 1) |> load()}
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(
+       users_page: page_number(params["u_page"]),
+       people_page: page_number(params["p_page"])
+     )
+     |> load()}
+  end
+
+  defp page_number(nil), do: 1
+
+  defp page_number(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {number, ""} when number > 0 -> number
+      _not_a_page -> 1
+    end
+  end
+
+  defp page_number(value) when is_integer(value) and value > 0, do: value
 
   # Disabling here is the mirror's own decision and stays independent of what
   # Confluence says; access is refused while either flag is set.
@@ -228,8 +251,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   end
 
   defp load(socket) do
+    users_page = socket.assigns[:users_page] || 1
+    people_page = socket.assigns[:people_page] || 1
+
     users =
-      Accounts.list_users(socket.assigns.q)
+      Accounts.list_users(socket.assigns.q, page(users_page))
       |> Enum.map(fn user ->
         %{
           user: user,
@@ -241,11 +267,63 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
 
     assign(socket,
       users: users,
-      people: people(),
+      users_page: users_page,
+      users_total: Accounts.count_users(socket.assigns.q),
+      people: people(people_page),
+      people_page: people_page,
+      people_total: Mirror.count_people(),
       service_tokens: Accounts.list_service_tokens(),
       administrators: administrators(),
       synced_groups: Mirror.synced_group_names()
     )
+  end
+
+  # A site can name a hundred thousand people; the screen draws a page and says
+  # how many there are, instead of building a hundred thousand rows.
+  @page_size 25
+
+  defp page(number), do: [limit: @page_size, offset: (number - 1) * @page_size]
+
+  defp page_count(total), do: max(ceil(total / @page_size), 1)
+
+  attr :id, :string, required: true
+  attr :page, :integer, required: true
+  attr :total, :integer, required: true
+  attr :param, :string, required: true
+
+  @doc """
+  "page 2 of 40 · 987 in total" with Previous/Next.
+
+  A site can name a hundred thousand people, so the list never renders more
+  than one page: the page number is a URL parameter, the query pages in the
+  database, and this says how much is left unseen.
+  """
+  def pager(assigns) do
+    assigns = assign(assigns, :pages, page_count(assigns.total))
+
+    ~H"""
+    <div :if={@pages > 1} id={@id} class="mt-3 flex flex-wrap items-center justify-between gap-2">
+      <span class="text-[11px] text-base-content/70">
+        page {@page} of {@pages} · {@total} in total
+      </span>
+      <div class="flex gap-1.5">
+        <.link
+          :if={@page > 1}
+          patch={~p"/admin/users?#{[{@param, @page - 1}]}"}
+          class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
+        >
+          Previous
+        </.link>
+        <.link
+          :if={@page < @pages}
+          patch={~p"/admin/users?#{[{@param, @page + 1}]}"}
+          class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
+        >
+          Next
+        </.link>
+      </div>
+    </div>
+    """
   end
 
   # Why this account cannot be demoted or switched off here, if it cannot.
@@ -311,14 +389,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   # The people Confluence's content names, marked when they have an account
   # here. The site lists no users: the content says who wrote it, and the sync
   # asks the site which groups each of them is in.
-  defp people do
-    accounts =
-      Accounts.list_users()
-      |> Enum.flat_map(&User.identity_keys/1)
-      |> MapSet.new()
+  defp people(page_number) do
+    offset = (page_number - 1) * @page_size
 
-    Enum.map(Mirror.people(), &Map.put(&1, :account?, MapSet.member?(accounts, &1.account_id)))
-    |> Enum.with_index(1)
+    page = Mirror.people(limit: @page_size, offset: offset)
+    accounts = Accounts.accounts_among(Enum.map(page, & &1.account_id))
+
+    page
+    |> Enum.map(&Map.put(&1, :account?, MapSet.member?(accounts, &1.account_id)))
+    |> Enum.with_index(offset + 1)
     |> Enum.map(fn {person, index} -> Map.put(person, :index, index) end)
   end
 
@@ -371,7 +450,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
         <section class="overflow-hidden rounded-2xl border border-base-300/70 bg-base-100">
           <div class="flex items-center justify-between gap-3 border-b border-base-300/70 px-5 py-3">
             <h2 class="text-sm font-semibold">Accounts</h2>
-            <span class="badge badge-ghost badge-sm">{length(@users)}</span>
+            <span class="badge badge-ghost badge-sm">{@users_total}</span>
           </div>
 
           <form id="user-filter" phx-change="filter" class="border-b border-base-300/70 px-5 py-3">
@@ -682,6 +761,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
           </article>
         </section>
 
+        <.pager
+          id="accounts-pager"
+          page={@users_page}
+          total={@users_total}
+          param="u_page"
+        />
+
         <aside class="space-y-5">
           <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">
             <h2 class="text-sm font-semibold">Account provisioning</h2>
@@ -776,13 +862,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
                     :if={not person.account?}
                     id={"person-no-account-#{person.index}"}
                     class="badge badge-ghost badge-xs"
-                    title="The site shares no e-mail for this identity, so there is nothing to sign in with or to match a reader against"
                   >
-                    no account possible
+                    not a mirror account
                   </span>
                 </div>
                 <p class="mt-0.5 font-mono text-[10px] text-base-content/50">
                   {person.account_id}
+                </p>
+                <p class="mt-0.5 text-[11px] text-base-content/70">
+                  {if person.account?,
+                    do: "A mirror account: this person can sign in here.",
+                    else:
+                      "No mirror account, and none can be made: Confluence does not share an e-mail address for this identity, so there is nothing to sign in with. The content still names them as its author."}
                 </p>
                 <div class="mt-1 flex flex-wrap gap-1">
                   <span :for={group <- person.groups} class="badge badge-ghost badge-xs">
@@ -797,6 +888,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
             <p :if={@people == []} class="mt-2 text-[11px] text-base-content/70">
               No author mirrored yet — run a sync.
             </p>
+            <.pager
+              id="people-pager"
+              page={@people_page}
+              total={@people_total}
+              param="p_page"
+            />
           </div>
 
           <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">

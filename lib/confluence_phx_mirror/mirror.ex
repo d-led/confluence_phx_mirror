@@ -26,6 +26,7 @@ defmodule ConfluencePhxMirror.Mirror do
     Space
   }
 
+  alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror.{PageRestriction, SpacePermission}
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.SyncRun
@@ -154,6 +155,51 @@ defmodule ConfluencePhxMirror.Mirror do
       select: %{subject_type: c.subject_type, subject_key: c.subject_key}
     )
     |> Repo.all()
+  end
+
+  @doc """
+  Who may read a space, as the last sync read it — what the admin's space page
+  shows: groups, people, and whether anonymous readers are included.
+
+  A user subject is stored under every identifier Confluence named it by (the
+  account id and, when shared, the e-mail), so people are answered once per
+  account where the mirror knows one.
+  """
+  def space_grants(space_id) do
+    subjects = space_permissions(space_id)
+
+    %{
+      groups:
+        subjects
+        |> Enum.filter(&(&1.subject_type == "group"))
+        |> Enum.map(& &1.subject_key)
+        |> Enum.uniq()
+        |> Enum.sort(),
+      users: user_grants(subjects),
+      anonymous: Enum.any?(subjects, &(&1.subject_type == "anonymous")),
+      synced?: subjects != []
+    }
+  end
+
+  defp user_grants(subjects) do
+    keys = for %{subject_type: "user", subject_key: key} <- subjects, do: key
+
+    accounts =
+      from(u in User,
+        where: u.confluence_account_id in ^keys or fragment("lower(?)", u.email) in ^keys,
+        select: {u.confluence_account_id, u.email, u.display_name}
+      )
+      |> Repo.all()
+
+    keys
+    |> Enum.uniq()
+    |> Enum.map(fn key ->
+      case Enum.find(accounts, fn {id, email, _name} -> key in [id, email] end) do
+        {_id, email, name} -> %{key: key, label: name || email, account?: true}
+        nil -> %{key: key, label: key, account?: false}
+      end
+    end)
+    |> Enum.uniq_by(& &1.key)
   end
 
   @doc "Replaces what we know about who may read a space."
@@ -379,17 +425,63 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc """
   The people Confluence's content names, each with the groups the last sync read
   — what the admin screen shows as the site's side of the story.
-  """
-  def people do
-    groups = groups_by_subject()
 
-    known_identities()
-    |> Enum.map(&Map.put(&1, :groups, Map.get(groups, &1.account_id, [])))
-    |> Enum.sort_by(&(&1.display_name || &1.account_id))
+  A site can name a hundred thousand people, and the screen must not try to draw
+  them all: `:limit` and `:offset` page the answer in the database, and the
+  groups are read for that page only. Without a limit the whole list comes back,
+  which is what tests and small sites want.
+  """
+  def people(opts \\ []) do
+    page = identities_page(opts)
+    groups = groups_by_subject(Enum.map(page, & &1.account_id))
+
+    Enum.map(page, &Map.put(&1, :groups, Map.get(groups, &1.account_id, [])))
   end
 
-  defp groups_by_subject do
-    from(m in GroupMember, select: {m.subject_key, m.group_name})
+  @doc "How many people the content names, for the screen's \"of N\"."
+  def count_people do
+    identities_query()
+    |> subquery()
+    |> select([i], count())
+    |> Repo.one()
+  end
+
+  defp identities_page(opts) do
+    limit = Keyword.get(opts, :limit)
+    offset = Keyword.get(opts, :offset, 0)
+
+    identities_query()
+    |> order_by([i], asc: coalesce(max(i.display_name), i.account_id))
+    |> limit_if(limit)
+    |> offset(^offset)
+    |> Repo.all()
+  end
+
+  defp limit_if(query, nil), do: query
+  defp limit_if(query, limit), do: limit(query, ^limit)
+
+  # One row per person, however often the content names them.
+  defp identities_query do
+    from(p in Page,
+      where: not is_nil(p.author_account_id),
+      select: %{account_id: p.author_account_id, display_name: p.author_name}
+    )
+    |> union_all(
+      ^from(c in Comment,
+        where: not is_nil(c.author_account_id),
+        select: %{account_id: c.author_account_id, display_name: c.author_name}
+      )
+    )
+    |> subquery()
+    |> group_by([i], i.account_id)
+    |> select([i], %{account_id: i.account_id, display_name: max(i.display_name)})
+  end
+
+  defp groups_by_subject(account_ids) do
+    from(m in GroupMember,
+      where: m.account_id in ^account_ids,
+      select: {m.subject_key, m.group_name}
+    )
     |> Repo.all()
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
@@ -927,13 +1019,29 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
-  def children(page) do
+  @doc "The pages directly below `page`, by title; `:limit` takes a window."
+  def children(page, opts \\ []) do
     from(p in Page,
       where: p.parent_id == ^page.id and is_nil(p.deleted_at),
       order_by: [asc: p.title],
+      limit: ^Keyword.get(opts, :limit),
       preload: [:space]
     )
     |> Repo.all()
+  end
+
+  @doc """
+  How many children a page has.
+
+  A front page with five hundred children is normal in a big space, and a page
+  that lists all of them is a page nobody scrolls. The count lets the page show
+  a window and say how much is behind it.
+  """
+  def count_children(%Page{} = page) do
+    Repo.aggregate(
+      from(p in Page, where: p.parent_id == ^page.id and is_nil(p.deleted_at)),
+      :count
+    )
   end
 
   @doc """
@@ -1010,10 +1118,27 @@ defmodule ConfluencePhxMirror.Mirror do
     navigation_query(space_id) |> where([p], is_nil(p.parent_id))
   end
 
+  @doc """
+  The rows one sidebar node expands to, in the same shape the tree draws.
+
+  The sidebar ships only the trail to the page being read; expanding a node asks
+  for that node's children, so a space with a thousand pages costs one request
+  per branch a reader actually opens.
+  """
+  def tree_children(space_id, %Page{} = page, opts \\ []) do
+    space_id
+    |> navigation_query()
+    |> where([p], p.parent_id == ^page.id)
+    |> filtered(opts)
+    |> Repo.all()
+  end
+
   # Only what the sidebar draws: selecting whole rows pulled `body_storage` and
   # `body_export` — every page's full content — to render titles and links.
   # Aliased `:page` so `Authorization.restrict_pages/2` can narrow it in place.
   defp navigation_query(space_id) do
+    child = from(c in Page, where: c.parent_id == parent_as(:page).id and is_nil(c.deleted_at))
+
     from(p in Page,
       as: :page,
       where: p.space_id == ^space_id and is_nil(p.deleted_at),
@@ -1026,7 +1151,10 @@ defmodule ConfluencePhxMirror.Mirror do
         title: p.title,
         type: p.type,
         slug: p.slug,
-        confluence_id: p.confluence_id
+        confluence_id: p.confluence_id,
+        # Whether the sidebar draws a chevron: a node with nothing below it
+        # should not offer to open.
+        has_children: exists(child)
       }
     )
   end
