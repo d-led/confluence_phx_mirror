@@ -162,6 +162,142 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
   defp row_id(row) when is_map(row), do: row[:dom_id]
   defp row_id(_row), do: nil
 
+  @typedoc """
+  One line of a searchable select: the value a choice carries, the words that
+  name it, and an optional short badge (`ENG`, a count) beside them.
+  """
+  @type option :: %{value: String.t(), label: String.t(), badge: String.t() | nil}
+
+  @doc """
+  A find box over a short list: type to narrow, arrow keys to walk the matches,
+  Enter to take the highlighted one.
+
+  The list is the server's, because "what matches" is the server's question —
+  the admin dashboard narrows spaces in the database, the search screen over
+  the spaces it already holds. Only the highlight is the browser's, so walking
+  a list costs no round trip per keystroke, and Enter is a click on the
+  highlighted line: the caller hears the same event a mouse would send.
+  """
+  attr :id, :string, required: true, doc: "the widget's DOM id; its parts are named from it"
+  attr :name, :string, required: true, doc: "the input's name, and so the form's payload key"
+  attr :query, :string, required: true
+  attr :options, :list, required: true, doc: "`option/0` maps, badges included as nil"
+  attr :placeholder, :string, default: "Find one"
+  attr :empty, :string, default: "Nothing matches"
+  attr :change_event, :string, required: true, doc: "narrowing as the reader types"
+  attr :submit_event, :string, required: true, doc: "Enter with nothing highlighted"
+  attr :select_event, :string, required: true, doc: "taking an option, by click or by Enter"
+  attr :value_param, :string, required: true, doc: "the `phx-value-*` a taken option carries"
+  attr :pending, :string, default: nil, doc: "what an option says while its answer is on the way"
+
+  def searchable_select(assigns) do
+    ~H"""
+    <div id={@id} phx-hook=".SelectKeys" class="space-y-1">
+      <form id={"#{@id}-form"} phx-change={@change_event} phx-submit={@submit_event}>
+        <input
+          type="text"
+          name={@name}
+          value={@query}
+          placeholder={@placeholder}
+          autocomplete="off"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls={"#{@id}-options"}
+          aria-autocomplete="list"
+          phx-debounce="150"
+          phx-mounted={JS.focus()}
+          class="input input-sm w-full"
+        />
+      </form>
+
+      <ul
+        id={"#{@id}-options"}
+        role="listbox"
+        aria-label={@placeholder}
+        class="menu menu-sm max-h-64 w-full flex-nowrap overflow-y-auto p-0"
+      >
+        <li :for={option <- @options} role="presentation">
+          <button
+            type="button"
+            id={"#{@id}-option-#{option.value}"}
+            role="option"
+            aria-selected="false"
+            phx-click={@select_event}
+            phx-disable-with={@pending}
+            {chosen_value(option.value, @value_param)}
+          >
+            <span class="truncate">{option.label}</span>
+            <span :if={option.badge} class="badge badge-ghost badge-xs">{option.badge}</span>
+          </button>
+        </li>
+        <li :if={@options == []} role="presentation">
+          <button type="button" disabled>{@empty}</button>
+        </li>
+      </ul>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".SelectKeys">
+        export default {
+          mounted() {
+            this.cursor = -1
+            // Typing asks the server for a new list, so a highlight from the
+            // old one would name a different space by the time it arrives.
+            this.input().addEventListener("input", () => this.paint(-1))
+            this.el.addEventListener("keydown", event => this.key(event))
+          },
+          updated() {
+            // The list can shrink under a highlight — a dashboard refresh
+            // re-reads it every few seconds — so a cursor past the end goes
+            // rather than staying on a line that is no longer there.
+            this.paint(Math.min(this.cursor, this.options().length - 1))
+          },
+          key(event) {
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault()
+              this.move(event.key === "ArrowDown" ? 1 : -1)
+            }
+            if (event.key === "Enter" && this.cursor >= 0) {
+              // Enter takes the highlighted line; it does not submit the form.
+              event.preventDefault()
+              this.options()[this.cursor].click()
+            }
+          },
+          // Walking off either end wraps around: a list of six has no far side
+          // to bump into, and the first match is one key away from the last.
+          move(delta) {
+            const count = this.options().length
+            if (count === 0) return
+            if (this.cursor === -1) return this.paint(delta > 0 ? 0 : count - 1)
+            this.paint((this.cursor + delta + count) % count)
+          },
+          paint(index) {
+            this.cursor = index
+            const options = this.options()
+            options.forEach((option, position) => {
+              const chosen = position === index
+              option.setAttribute("aria-selected", String(chosen))
+              option.classList.toggle("menu-active", chosen)
+              if (chosen) option.scrollIntoView({block: "nearest"})
+            })
+            const highlighted = options[index]
+            if (highlighted) this.input().setAttribute("aria-activedescendant", highlighted.id)
+            else this.input().removeAttribute("aria-activedescendant")
+          },
+          options() {
+            return Array.from(this.el.querySelectorAll("[role=option]"))
+          },
+          input() {
+            return this.el.querySelector("[role=combobox]")
+          }
+        }
+      </script>
+    </div>
+    """
+  end
+
+  # The event a taken option carries names its own value: `phx-value-key` for a
+  # space key, `phx-value-space` for the search screen's filter.
+  defp chosen_value(value, param), do: %{"phx-value-#{param}" => to_string(value)}
+
   @doc "Page title, eyebrow and metadata/action slots."
   attr :title, :string, required: true
   attr :eyebrow, :string, default: nil

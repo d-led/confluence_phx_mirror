@@ -138,6 +138,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   # a window of twenty, alphabetical. Nothing is filtered in the browser.
   defp spaces_like(query), do: Mirror.list_spaces(query: query, limit: @space_window)
 
+  # What the find box in "sync one space" offers: the name a reader looks for
+  # and the key they recognise, nothing else.
+  defp space_options(spaces) do
+    Enum.map(spaces, &%{value: &1.key, label: &1.name, badge: &1.key})
+  end
+
   # What the running run is doing, in numbers that move: the counters are
   # written by the sync as it counts, `Traffic` keeps what the calls cost, and
   # this page re-reads both every few seconds.
@@ -275,36 +281,21 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             <div
               :if={@open_menu == "sync-space"}
               id="sync-space-panel"
-              class="dropdown-content z-50 w-72 space-y-1 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+              class="dropdown-content z-50 w-72 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
             >
-              <form id="sync-space-form" phx-change="space_query" phx-submit="space_query">
-                <input
-                  type="text"
-                  name="space"
-                  value={@space_query}
-                  placeholder="Find a space"
-                  autocomplete="off"
-                  phx-debounce="150"
-                  phx-mounted={JS.focus()}
-                  class="input input-sm w-full"
-                />
-              </form>
-              <ul class="menu menu-sm max-h-64 w-full flex-nowrap overflow-y-auto p-0">
-                <li :for={space <- @sync_spaces}>
-                  <button
-                    type="button"
-                    phx-click="sync_space"
-                    phx-value-key={space.key}
-                    phx-disable-with="Queueing…"
-                  >
-                    <span class="truncate">{space.name}</span>
-                    <span class="badge badge-ghost badge-xs">{space.key}</span>
-                  </button>
-                </li>
-                <li :if={@sync_spaces == []}>
-                  <button type="button" disabled>No space matches</button>
-                </li>
-              </ul>
+              <.searchable_select
+                id="sync-space"
+                name="space"
+                query={@space_query}
+                options={space_options(@sync_spaces)}
+                placeholder="Find a space"
+                empty="No space matches"
+                change_event="space_query"
+                submit_event="space_query"
+                select_event="sync_space"
+                value_param="key"
+                pending="Queueing…"
+              />
             </div>
           </div>
           <button
