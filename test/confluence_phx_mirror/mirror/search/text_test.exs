@@ -24,6 +24,32 @@ defmodule ConfluencePhxMirror.Mirror.Search.TextTest do
     assert "Architecture Overview" in titles("architect")
   end
 
+  test "a fragment from inside a word finds the page, after the words that start with it" do
+    space = space_fixture(%{key: "FRAG", name: "Fragments"})
+    page_fixture(space, %{title: "Scalability notes", confluence_id: 97_001})
+    page_fixture(space, %{title: "Escalation policy", confluence_id: 97_002})
+
+    found = titles("scal")
+
+    assert "Scalability notes" in found
+    assert "Escalation policy" in found
+
+    # A word that starts with what was typed is the better match, whatever the
+    # other band scores: that is the promise of "prioritizing the first letter".
+    assert Enum.find_index(found, &(&1 == "Scalability notes")) <
+             Enum.find_index(found, &(&1 == "Escalation policy"))
+  end
+
+  test "a two-letter query stays a prefix search, because a trigram cannot index it" do
+    space = space_fixture(%{key: "FRAG", name: "Fragments"})
+    page_fixture(space, %{title: "Escalation policy", confluence_id: 97_003})
+
+    # Below three characters the SQL that looks inside words is a scan of every
+    # page's text — 390 ms on the pages this benchmark machine holds. The box is
+    # used as a prefix as soon as it is worth typing into.
+    refute "Escalation policy" in titles("sc")
+  end
+
   test "searches labels, authors, spaces and attachment filenames" do
     assert "Architecture Overview" in titles("design")
     assert "Architecture Overview" in titles("jane doe")

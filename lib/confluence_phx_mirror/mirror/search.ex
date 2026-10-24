@@ -134,6 +134,12 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   Plain words are ANDed and matched by prefix; `AND`/`OR`/`NOT` (uppercase),
   parentheses, quoted phrases and a leading `-` are supported. Malformed input
   falls back to Postgres' forgiving `websearch_to_tsquery`.
+
+  A one-word query that comes up short is asked again as a fragment: the text
+  index matches lexeme prefixes, so "escal" finds "Escalation" and "scal" does
+  not. What the second pass finds is appended, never interleaved — a word that
+  starts with the query is a better match than one that merely contains it, and
+  the reader sees that order.
   """
   @spec text(String.t(), keyword()) :: {:ok, [result()]}
   def text(query, opts \\ []) do
@@ -146,11 +152,69 @@ defmodule ConfluencePhxMirror.Mirror.Search do
         {:ok, []}
 
       {:ok, tsquery, terms} ->
-        run_text(tsquery, "to_tsquery", terms, limit, offset)
+        with {:ok, results} <- run_text(tsquery, "to_tsquery", terms, limit, offset) do
+          {:ok, inside_words(results, query, terms, limit)}
+        end
 
       :error ->
         run_text(query, "websearch_to_tsquery", fallback_terms(query), limit, offset)
     end
+  end
+
+  # Only when the prefix pass left room: a reader who typed a word the mirror
+  # knows pays one query, and the trigram pass costs nothing for them.
+  defp inside_words(results, query, terms, limit) do
+    word = fragment(query)
+    room = limit - length(results)
+
+    if is_binary(word) and room > 0 do
+      found = fragment_matches(word, room, Enum.map(results, & &1.page.id))
+      results ++ fragment_results(found, terms)
+    else
+      results
+    end
+  end
+
+  # One bare word, and nothing that means something to the query language: a
+  # phrase, a negation or a boolean has no single fragment to look for. Three
+  # characters is the floor a trigram index can work with — below it the same
+  # predicate becomes a scan of every page's text, which is why "z" stays a
+  # prefix-only search.
+  defp fragment(query) do
+    if String.length(query) >= 3 and Regex.match?(~r/^[\p{L}\p{N}_]+$/u, query) do
+      String.downcase(query)
+    end
+  end
+
+  # The trigram index answers this in milliseconds (`pages_search_text_trgm_idx`),
+  # where the same predicate without it is a sequential scan of every page's text.
+  # `%` and `_` are LIKE wildcards, so a word carrying them is escaped rather than
+  # matched loosely.
+  # sobelow_skip ["SQL.Query"]
+  defp fragment_matches(word, limit, exclude_ids) do
+    pattern = "%" <> String.replace(word, ~r/[\\%_]/, "\\\\\\0") <> "%"
+
+    sql = """
+    SELECT p.id, word_similarity($1, coalesce(p.title, '')) AS score
+    FROM pages p
+    JOIN spaces s ON s.id = p.space_id
+    WHERE p.deleted_at IS NULL
+      AND p.id <> ALL($2)
+      AND (p.title ILIKE $3 OR p.search_text ILIKE $3)
+    ORDER BY score DESC, p.external_updated_at DESC NULLS LAST
+    LIMIT #{Integer.to_string(limit)}
+    """
+
+    Repo.query!(sql, [word, exclude_ids, pattern]).rows
+  end
+
+  defp fragment_results(rows, terms) do
+    rows
+    |> Enum.map(fn [id, _score] -> id end)
+    |> load_pages()
+    |> Enum.map(fn page ->
+      %{page: page, space: page.space, rank: 0.0, snippet: snippet(page, terms)}
+    end)
   end
 
   # The SQL is a template: every user value becomes a $N parameter (see
