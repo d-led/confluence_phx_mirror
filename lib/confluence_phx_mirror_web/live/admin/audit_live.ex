@@ -246,6 +246,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
     |> Enum.take(4)
     |> Enum.map(fn {key, value} -> {key, fact(value)} end)
   end
+
   # A fact can be a map — a queued job's arguments, a settings diff — and the
   # row keeps it whole for the JSON API. A line of the log says the first few
   # pairs and counts the rest: what changed belongs here, every byte of it does
@@ -255,22 +256,27 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
       value
       |> Enum.sort_by(&elem(&1, 0))
       |> Enum.map(fn {key, inner} -> "#{key}=#{fact(inner)}" end)
+
     case pairs do
       [] ->
         "—"
+
       pairs when length(pairs) <= @pairs_on_a_line ->
         Enum.join(pairs, ", ")
+
       pairs ->
         Enum.join(Enum.take(pairs, @pairs_on_a_line), ", ") <>
           " +#{length(pairs) - @pairs_on_a_line}"
     end
   end
+
   defp fact(value) when is_list(value) do
     case Enum.map(value, &fact/1) do
       [] -> "—"
       parts -> Enum.join(parts, ", ")
     end
   end
+
   defp fact(nil), do: "—"
   defp fact(value) when is_binary(value), do: value
   defp fact(value) when is_number(value) or is_atom(value), do: to_string(value)
