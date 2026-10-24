@@ -14,15 +14,14 @@ defmodule ConfluencePhxMirrorWeb.SitePresenceLive do
   @impl true
   def mount(_params, session, socket) do
     topic = Presence.site_topic()
+    reader_key = session |> LiveUserAuth.reader() |> Presence.key()
 
     if connected?(socket) do
       Presence.subscribe(topic)
-
-      key = session |> LiveUserAuth.reader() |> Presence.key() |> Presence.site_key()
-      {:ok, _} = Presence.track(self(), topic, key, %{})
+      {:ok, _} = Presence.track(self(), topic, Presence.site_key(reader_key), %{})
     end
 
-    {:ok, assign(socket, :online, Presence.online_count())}
+    {:ok, assign(socket, :online, Presence.online_count(reader_key))}
   end
 
   @impl true

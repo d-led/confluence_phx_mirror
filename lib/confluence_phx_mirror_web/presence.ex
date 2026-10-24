@@ -47,16 +47,42 @@ defmodule ConfluencePhxMirrorWeb.Presence do
   """
   def subscribe(topic), do: Phoenix.PubSub.subscribe(ConfluencePhxMirror.PubSub, topic)
 
-  @doc "The names of the readers on a topic, one per person, in order."
-  def readers(topic) do
-    topic
-    |> list()
-    |> Enum.map(fn {_key, %{metas: [meta | _]}} -> meta[:user] end)
-    |> Enum.sort()
+  @doc """
+  The names of the readers on a topic, one per person, in order.
+
+  `you` is `{key, name}`, the reader looking at the page. They are named even
+  when Presence has not tracked them yet — which on the first paint it has not,
+  the socket is not up — because they are reading the page all the same.
+  """
+  def readers(topic, you \\ nil)
+
+  def readers(topic, nil) do
+    topic |> list() |> names()
   end
 
-  @doc "Number of readers with the mirror open."
-  def online_count, do: @site_topic |> list() |> map_size()
+  def readers(topic, {key, name}) do
+    presence = list(topic)
+    names = names(presence)
+
+    if Map.has_key?(presence, key), do: names, else: Enum.sort([name | names])
+  end
+
+  @doc """
+  How many people have the mirror open.
+
+  Given the reader's key, they are counted even when Presence has not tracked
+  them yet: whoever is asking for the number has the mirror open.
+  """
+  def online_count(reader_key \\ nil)
+
+  def online_count(nil), do: @site_topic |> list() |> map_size()
+
+  def online_count(reader_key) do
+    presence = list(@site_topic)
+    key = site_key(reader_key)
+
+    if Map.has_key?(presence, key), do: map_size(presence), else: map_size(presence) + 1
+  end
 
   @doc """
   The site topic's key for a reader.
@@ -66,6 +92,12 @@ defmodule ConfluencePhxMirrorWeb.Presence do
   only needs the count — not a list of who is here or which accounts they are.
   """
   def site_key(reader_key), do: "reader:" <> digest(reader_key)
+
+  defp names(presence) do
+    presence
+    |> Enum.map(fn {_key, %{metas: [meta | _]}} -> meta[:user] end)
+    |> Enum.sort()
+  end
 
   # Salted with the deployment's secret: unsalted, anyone could hash candidate
   # account ids and read the state back as a list of who is online.

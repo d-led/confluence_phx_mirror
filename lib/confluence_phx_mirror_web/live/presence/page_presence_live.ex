@@ -31,14 +31,14 @@ defmodule ConfluencePhxMirrorWeb.PagePresenceLive do
   end
 
   defp watching(socket, topic, reader) do
+    key = Presence.key(reader)
+
     if connected?(socket) do
       Presence.subscribe(topic)
-
-      {:ok, _} =
-        Presence.track(self(), topic, Presence.key(reader), %{user: Presence.name(reader)})
+      {:ok, _} = Presence.track(self(), topic, key, %{user: Presence.name(reader)})
     end
 
-    assign(socket, :readers, Presence.readers(topic))
+    assign(socket, :readers, Presence.readers(topic, {key, Presence.name(reader)}))
   end
 
   defp readable_page(confluence_id, scope) do
