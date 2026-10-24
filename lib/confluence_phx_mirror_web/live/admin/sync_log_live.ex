@@ -92,6 +92,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
     {:noreply, assign(socket, :follow?, follow)}
   end
 
+  # The arrow over the log's corner says "back to the newest line", which is the
+  # same thing as following again — the hook scrolls when that turns on.
+  def handle_event("follow_newest", _params, socket) do
+    {:noreply, assign(socket, :follow?, true)}
+  end
+
   def handle_event("clear", _params, socket) do
     Log.clear()
 
@@ -273,53 +279,70 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
       to stay legible while it does. The header sticks to the top and repeats at
       the bottom, so a reader who scrolled past the newest line still knows what
       each column is. --%>
-      <div
-        id="sync-log"
-        phx-hook=".Follow"
-        data-follow={to_string(@follow?)}
-        class="mt-2 max-h-[70vh] overflow-y-auto rounded-xl border border-base-300/70 bg-base-100 text-[11px]"
-      >
-        <table class="w-full table-fixed border-collapse font-mono">
-          <thead>
-            <.log_columns edge={:top} />
-          </thead>
-          <tbody>
-            <tr
-              :for={entry <- @visible}
-              id={"log-#{entry.id}"}
-              class="border-b border-base-300/40 align-baseline"
-            >
-              <td class="whitespace-nowrap px-3 py-1 align-baseline text-base-content/70">
-                <.local_time at={entry.at} format={:time} />
-              </td>
-              <td class={[
-                "whitespace-nowrap px-2 py-1 align-baseline",
-                elem(level_badge(entry.level), 1)
-              ]}>
-                {elem(level_badge(entry.level), 0)}
-              </td>
-              <td class="min-w-0 px-2 py-1 align-baseline break-words">
-                {entry.message}
-                <span :if={details(entry) != ""} class="text-base-content/70">
-                  · {details(entry)}
-                </span>
-              </td>
-              <%!-- The run is the first thing to go on a narrow screen: the line
+      <div class="relative">
+        <div
+          id="sync-log"
+          phx-hook=".Follow"
+          data-follow={to_string(@follow?)}
+          class="mt-2 max-h-[70vh] overflow-y-auto rounded-xl border border-base-300/70 bg-base-100 text-[11px]"
+        >
+          <table class="w-full table-fixed border-collapse font-mono">
+            <thead>
+              <.log_columns edge={:top} />
+            </thead>
+            <tbody>
+              <tr
+                :for={entry <- @visible}
+                id={"log-#{entry.id}"}
+                class="border-b border-base-300/40 align-baseline"
+              >
+                <td class="whitespace-nowrap px-3 py-1 align-baseline text-base-content/70">
+                  <.local_time at={entry.at} format={:time} />
+                </td>
+                <td class={[
+                  "whitespace-nowrap px-2 py-1 align-baseline",
+                  elem(level_badge(entry.level), 1)
+                ]}>
+                  {elem(level_badge(entry.level), 0)}
+                </td>
+                <td class="min-w-0 px-2 py-1 align-baseline break-words">
+                  {entry.message}
+                  <span :if={details(entry) != ""} class="text-base-content/70">
+                    · {details(entry)}
+                  </span>
+                </td>
+                <%!-- The run is the first thing to go on a narrow screen: the line
               itself usually names it. --%>
-              <td class="hidden whitespace-nowrap px-2 py-1 pr-3 text-right align-baseline text-base-content/70 sm:table-cell">
-                {entry.run_id && "##{entry.run_id}"}
-              </td>
-            </tr>
-            <tr :if={@visible == []}>
-              <td colspan="4" class="px-4 py-10 text-center font-sans text-sm text-base-content/70">
-                Nothing yet. Lines appear here as soon as a sync starts, including every call it makes.
-              </td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <.log_columns edge={:bottom} />
-          </tfoot>
-        </table>
+                <td class="hidden whitespace-nowrap px-2 py-1 pr-3 text-right align-baseline text-base-content/70 sm:table-cell">
+                  {entry.run_id && "##{entry.run_id}"}
+                </td>
+              </tr>
+              <tr :if={@visible == []}>
+                <td colspan="4" class="px-4 py-10 text-center font-sans text-sm text-base-content/70">
+                  Nothing yet. Lines appear here as soon as a sync starts, including every call it makes.
+                </td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <.log_columns edge={:bottom} />
+            </tfoot>
+          </table>
+        </div>
+
+        <%!-- New lines arrive at the bottom, and a reader who scrolled up to
+        read one should not have to hunt for them: the arrow appears only while
+        the log is paused, and taking it starts following again. --%>
+        <button
+          :if={!@follow?}
+          id="sync-log-to-end"
+          type="button"
+          phx-click="follow_newest"
+          title="Scroll to the newest line and follow again"
+          aria-label="Scroll to the newest line"
+          class="absolute bottom-3 right-4 z-10 grid size-9 place-items-center rounded-full border border-base-300 bg-base-100 text-base-content/70 shadow-md transition hover:bg-base-200 hover:text-primary"
+        >
+          <.icon name="hero-arrow-down" class="size-4" />
+        </button>
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".Follow">

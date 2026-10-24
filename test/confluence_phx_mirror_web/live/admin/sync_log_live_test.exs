@@ -120,6 +120,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
     assert has_element?(view, "#sync-log-follow[aria-pressed=true]")
   end
 
+  test "an arrow takes a reader who scrolled away back to the newest line", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
+
+    # Following keeps the arrow out of the way: the newest line is already in
+    # sight, so a button offering to go there would be noise.
+    refute has_element?(view, "#sync-log-to-end")
+
+    view |> render_hook("scrolled", %{"follow" => false})
+
+    assert has_element?(view, "#sync-log-to-end[aria-label='Scroll to the newest line']")
+
+    view |> element("#sync-log-to-end") |> render_click()
+
+    refute has_element?(view, "#sync-log-to-end")
+    assert has_element?(view, "#sync-log[data-follow=true]")
+  end
+
   test "a snapshot leaves the pages it mirrored in the log", %{conn: conn} do
     demo_snapshot!()
     {:ok, _run} = Sync.run(:snapshot)

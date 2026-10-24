@@ -114,19 +114,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
         current={:audit}
         title="Audit log"
         subtitle="Every change the mirror made or saw — newest first, append-only."
-      >
-        <:actions>
-          <%!-- Newest first is right for reading, wrong for reaching the other
-          end of a busy log: the anchor is the whole mechanism, no script. --%>
-          <.link
-            href="#audit-log-end"
-            id="audit-jump-to-end"
-            class="btn btn-ghost btn-sm gap-1 rounded-lg"
-          >
-            <.icon name="hero-arrow-down" class="size-4" /> Jump to the end
-          </.link>
-        </:actions>
-      </.admin_header>
+      />
 
       <%!-- One box for what the reader knows — "jane role", "sync failed" — and
       two menus to narrow what the words cannot say. The box takes the room;
@@ -231,20 +219,24 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
           Load older events
         </button>
       </div>
-
-      <%!-- Where "Jump to the end" lands: past the oldest event on the page, so
-      the reader arrives at the top of what comes next. --%>
-      <div id="audit-log-end" class="scroll-mt-24"></div>
     </Layouts.app>
     """
   end
 
   # The facts that did not fit in the sentence: identifiers, versions, counts.
-  @described ~w(email title role from to groups mode source error filename count name prefix version page space event event_type stats status)
+  # `trigger` is left out on purpose — the sentence already ends with it, and a
+  # row that says "triggered by the hourly schedule" twice is the sort of noise
+  # that makes an audit log unreadable. `source` is *not* left out: the sentence
+  # never names the site, and "which Confluence" is the first question asked of
+  # a sync that copied the wrong thing.
+  @described ~w(email title role from to groups mode error filename count name prefix version page space event
+               event_type stats status trigger)
+
   @pairs_on_a_line 3
 
   # A log nobody filtered is the whole log; saying so is what "Clear" is for.
   defp filtered?(query, action, actor), do: query != "" or action != "" or actor != ""
+
   defp facts(%{metadata: metadata}) do
     metadata
     |> Map.drop(@described)
