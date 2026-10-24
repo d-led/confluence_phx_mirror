@@ -72,17 +72,31 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
     end
   end
 
-  # The proxy session lives in a cookie and every request in it is the same
-  # visit. The log entry and the account's "last seen" are about visits, so a
-  # request that already carried this reader is not a new sign-in — otherwise
-  # the audit log would be one entry per page load.
+  # A proxy cookie is one visit, so every request in it is the same sign-in.
+  # "Last seen" and the log entry are about visits, and a request that already
+  # carried this reader is not one.
+  #
+  # A client that keeps no cookie at all — a scripted reader, a load test that
+  # sends the header — would otherwise look new on every request and write a log
+  # entry per page. Half an hour is the finest a "last seen" needs to be, and it
+  # bounds what one such client can add to the log.
+  @visit_seconds 1_800
+
   defp signed_in(conn, user) do
-    if get_session(conn, :user_id) == user.id do
+    if same_session?(conn, user) or seen_recently?(user) do
       user
     else
       {:ok, user} = Accounts.record_sign_in(user, "proxy")
       user
     end
+  end
+
+  defp same_session?(conn, user), do: get_session(conn, :user_id) == user.id
+
+  defp seen_recently?(%User{last_sign_in_at: nil}), do: false
+
+  defp seen_recently?(%User{last_sign_in_at: at}) do
+    DateTime.diff(DateTime.utc_now(), at, :second) < @visit_seconds
   end
 
   defp admitted?(conn, email) do

@@ -203,6 +203,19 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
 
       assert sign_ins(Accounts.get_user_by_email("jane@example.com")) == 1
     end
+
+    # A scripted reader sends the header and keeps no cookie, so every request
+    # looks like a new session to it. The log must not grow one entry per page
+    # because of that.
+    test "is one visit per half hour even without a cookie" do
+      in_group("jane@example.com", "confluence-users")
+
+      visit("jane@example.com")
+      visit("jane@example.com")
+      visit("jane@example.com")
+
+      assert sign_ins(Accounts.get_user_by_email("jane@example.com")) == 1
+    end
   end
 
   defp sign_ins(user) do
