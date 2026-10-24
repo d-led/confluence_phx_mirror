@@ -82,6 +82,33 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
      |> load()}
   end
 
+  def handle_event("switch_off_intake", _params, socket) do
+    Settings.put_webhook_enabled(false, actor(socket))
+
+    {:noreply,
+     socket
+     |> put_flash(
+       :info,
+       "The intake is off: deliveries are answered 410 and nothing is stored."
+     )
+     |> load()}
+  end
+
+  def handle_event("accept_deliveries", _params, socket) do
+    Settings.put_webhook_enabled(true, actor(socket))
+
+    {:noreply, socket |> put_flash(:info, "Deliveries are accepted again.") |> load()}
+  end
+
+  def handle_event("use_configured_intake", _params, socket) do
+    Settings.put_webhook_enabled(nil, actor(socket))
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "The intake follows the deployment setting again.")
+     |> load()}
+  end
+
   defp actor(%{assigns: %{current_user: user}}), do: {:user, user}
 
   defp load(socket) do
@@ -93,6 +120,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
       deliveries: Webhooks.recent(@deliveries),
       secret?: is_binary(config[:secret]),
       receivers: map_size(tokens),
+      intake_enabled?: Webhooks.enabled?(),
+      intake_open_by_admin?: Settings.stored("webhook.enabled") != nil,
       signature_required?: Webhooks.signature_required?(),
       # `stored/1`, not the value in force: this says whether an *administrator*
       # decided, and the deployment's own default is not their decision.
@@ -108,6 +137,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
+      live={@socket}
       spaces={@spaces}
       last_sync_run={@last_sync_run}
       mirror_name={@mirror_name}
@@ -132,7 +162,17 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
       </div>
 
       <div
-        :if={not @signature_required?}
+        :if={not @intake_enabled?}
+        id="webhook-intake-off"
+        class="mt-4 rounded-xl border border-base-300/70 bg-base-200/40 p-3 text-xs text-base-content/70"
+      >
+        The intake is off. Every delivery is answered <code class="font-mono">410 Gone</code>
+        and nothing is stored, so the site cannot trigger a sync here. Changes still arrive with
+        the scheduled pull.
+      </div>
+
+      <div
+        :if={@intake_enabled? and not @signature_required?}
         id="webhook-unsigned-warning"
         role="alert"
         class="mt-4 rounded-xl border-2 border-error/60 bg-error/10 p-4"
@@ -189,8 +229,51 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
 
       <section
         id="webhook-controls"
-        class="mt-4 grid gap-4 rounded-xl border border-base-300/70 bg-base-100 p-4 sm:grid-cols-2"
+        class="mt-4 grid gap-4 rounded-xl border border-base-300/70 bg-base-100 p-4 sm:grid-cols-2 lg:grid-cols-3"
       >
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-base-content/70">
+            Intake
+          </p>
+          <p id="webhook-intake-state" class="mt-1 text-sm font-medium">
+            {if @intake_enabled?, do: "accepting deliveries", else: "off (410 Gone)"}
+          </p>
+          <p class="mt-0.5 text-[11px] text-base-content/70">
+            {if @intake_open_by_admin?,
+              do: "set on this page, overrides the deployment",
+              else: "from the deployment (CM_WEBHOOK_ENABLED)"}
+          </p>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <button
+              :if={@intake_enabled?}
+              id="webhook-switch-off"
+              type="button"
+              phx-click="switch_off_intake"
+              data-confirm="Deliveries from the site will be refused from now on. The scheduled pull still syncs everything. Continue?"
+              class="btn btn-sm btn-ghost"
+            >
+              Switch off
+            </button>
+            <button
+              :if={not @intake_enabled?}
+              id="webhook-switch-on"
+              type="button"
+              phx-click="accept_deliveries"
+              class="btn btn-sm btn-primary"
+            >
+              Accept deliveries
+            </button>
+            <button
+              :if={@intake_open_by_admin?}
+              type="button"
+              phx-click="use_configured_intake"
+              class="btn btn-sm btn-ghost"
+            >
+              Use the deployment setting
+            </button>
+          </div>
+        </div>
+
         <div>
           <p class="text-[11px] font-semibold uppercase tracking-wider text-base-content/70">
             Signatures

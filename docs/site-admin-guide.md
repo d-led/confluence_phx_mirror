@@ -567,6 +567,17 @@ and signatures are required, the answer is `503
 webhook_secret_not_configured` — so "not set up" stays distinguishable from
 "wrong secret".
 
+### Turning the intake off
+
+A mirror behind a sign-in proxy, whose sync is scheduled anyway, has no reason to
+be reachable by the site. *Switch off* on `/admin/webhooks` — or
+`CM_WEBHOOK_ENABLED=false` in the deployment — answers every delivery
+`410 webhooks_disabled` and stores nothing, not even the attempt: a switched-off
+intake is not a delivery log. Changes still arrive with the scheduled pull, so
+this costs freshness, not correctness. It is a different decision from requiring
+signatures, which says *who* may post rather than *whether* anyone may; the page
+shows both, and each can be handed back to the deployment separately.
+
 ### What it will act on
 
 The intake reads a fixed shape and ignores everything else, because it may be

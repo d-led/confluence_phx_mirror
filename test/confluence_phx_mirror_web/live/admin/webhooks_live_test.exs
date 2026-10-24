@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminWebhooksLiveTest do
   import Phoenix.LiveViewTest
 
   alias ConfluencePhxMirror.Settings
+  alias ConfluencePhxMirror.Webhooks
 
   setup do
     previous = Application.get_env(:confluence_phx_mirror, :webhooks)
@@ -60,5 +61,34 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminWebhooksLiveTest do
 
     assert html =~ "The cap must be a whole number above zero."
     assert Settings.stored("webhook.rate_limit") == nil
+  end
+
+  test "an administrator switches the intake off and the page says so", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/webhooks")
+
+    view |> element("#webhook-switch-off") |> render_click()
+
+    assert has_element?(view, "#webhook-intake-off")
+    assert has_element?(view, "#webhook-intake-state", "off (410 Gone)")
+    assert Settings.webhook_enabled?() == false
+  end
+
+  test "a delivery is refused once the intake is off, not merely ignored", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/webhooks")
+
+    view |> element("#webhook-switch-off") |> render_click()
+
+    assert {:error, :disabled} = Webhooks.receive(%{"event" => "page_updated"}, "{}", [])
+  end
+
+  test "the intake hands the decision back to the deployment", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/webhooks")
+
+    view |> element("#webhook-switch-off") |> render_click()
+    view |> element(~s(button[phx-click="use_configured_intake"])) |> render_click()
+
+    refute has_element?(view, "#webhook-intake-off")
+    assert Settings.stored("webhook.enabled") == nil
+    assert Webhooks.enabled?()
   end
 end

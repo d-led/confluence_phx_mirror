@@ -51,6 +51,33 @@ defmodule ConfluencePhxMirror.Webhooks do
   """
   @spec receive(map(), binary(), [{String.t(), String.t()}], keyword()) :: outcome()
   def receive(payload, raw_body, headers, opts \\ []) do
+    if enabled?() do
+      accept(payload, raw_body, headers, opts)
+    else
+      # Nothing is stored: a disabled intake is not a delivery log, and keeping
+      # the payloads of a route an operator switched off would be a surprise.
+      {:error, :disabled}
+    end
+  end
+
+  @doc """
+  Whether the intake accepts deliveries at all.
+
+  Off means every delivery is refused with `410 Gone` and nothing is stored.
+  It is the switch for a mirror that has no reason to be reachable by the site —
+  one behind a sign-in proxy, or whose sync is scheduled — and it is separate
+  from `require_signature`, which decides who may post rather than whether
+  anyone may.
+  """
+  @spec enabled?() :: boolean()
+  def enabled? do
+    case Settings.webhook_enabled?() do
+      nil -> Keyword.get(config(), :enabled, true)
+      value -> value
+    end
+  end
+
+  defp accept(payload, raw_body, headers, opts) do
     secret = config()[:secret]
 
     case authenticate(raw_body, signature_header(headers), secret, opts) do

@@ -279,6 +279,17 @@ webhooks =
     secret -> Keyword.put(webhooks, :secret, secret)
   end
 
+# The intake can also be switched off altogether — for a mirror that has no
+# reason to be reachable by the site, because it sits behind a sign-in proxy or
+# because its sync is scheduled. Off means every delivery is answered `410 Gone`
+# and nothing is stored. Only a variable that is set overrides the default, so a
+# development or test configuration survives a boot.
+webhooks =
+  case System.get_env("CM_WEBHOOK_ENABLED") do
+    nil -> webhooks
+    value -> Keyword.put(webhooks, :enabled, value in ~w(1 true yes))
+  end
+
 config :confluence_phx_mirror, webhooks: webhooks
 
 # CM_THEME seeds the theme the whole site wears ("fresh-blue" ships with the

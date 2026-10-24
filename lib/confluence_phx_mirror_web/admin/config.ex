@@ -85,6 +85,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
           if(webhooks[:secret], do: "configured", else: "not set"),
           "CM_WEBHOOK_SECRET"
         ),
+        row(
+          "Webhook intake",
+          if(webhooks[:enabled] == false, do: "off (410 Gone)", else: "accepting"),
+          "CM_WEBHOOK_ENABLED"
+        ),
         row("Webhook tokens", receivers(config(:webhook_tokens, %{})), "CM_WEBHOOK_TOKENS"),
         row("Mail from", mail_from(notifications[:from]), "MIRROR_MAIL_FROM")
       ]

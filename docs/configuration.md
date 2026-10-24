@@ -125,6 +125,7 @@ owns that lookup rather than the plug that asks.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `CM_WEBHOOK_ENABLED` | `true` | `false` switches the intake off: every delivery is answered `410 Gone` and nothing is stored, not even the attempt. For a mirror behind a sign-in proxy whose sync is scheduled |
 | `CM_WEBHOOK_SECRET` | – | the secret Confluence signs with; without it no signature can be checked |
 | `CM_WEBHOOK_REQUIRE_SIGNATURE` | `false` | `true` refuses deliveries that present no valid signature or token (and answers `503` when no secret is configured). An administrator can override this on `/admin/webhooks` at runtime |
 | `CM_WEBHOOK_TOKENS` | – | `receiver=token,…` route-scoped webhook tokens |
@@ -201,6 +202,7 @@ and clearing the field hands the decision back to the environment.
 | Reader limits (HTML, API, attachments) | `CM_READER_RATE_LIMIT_PER_MINUTE` and the per-scope variables | requests per reader per minute |
 | Notifications on/off | `MIRROR_NOTIFICATIONS` | whether the mirror mails watchers at all |
 | Digest hour (UTC) | `MIRROR_DIGEST_HOUR_UTC` | when the daily digest goes out |
+| Webhook intake open | `CM_WEBHOOK_ENABLED` | whether deliveries are accepted at all |
 | Webhook signatures required | `CM_WEBHOOK_REQUIRE_SIGNATURE` | whether deliveries must be signed |
 | Webhook intake limit | `CM_WEBHOOK_RATE_LIMIT_PER_MINUTE` | deliveries accepted per address per minute |
 

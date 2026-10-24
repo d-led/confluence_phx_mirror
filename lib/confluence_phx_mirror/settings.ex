@@ -17,6 +17,7 @@ defmodule ConfluencePhxMirror.Settings do
   | `reader.attachments_limit` | attachment downloads per reader per minute | `:reader_rate_limit, :attachments` |
   | `notifications.enabled` | whether the mirror sends e-mail at all | `:notifications, :enabled` |
   | `notifications.digest_hour_utc` | the hour daily digests go out | `:notifications, :digest_hour_utc` |
+  | `webhook.enabled` | whether the intake accepts deliveries at all | `:webhooks, :enabled` |
   | `webhook.require_signature` | whether deliveries must be signed | `:webhooks, :require_signature` |
   | `webhook.rate_limit` | deliveries accepted per address per minute | `:webhook_rate_limit, :limit` |
 
@@ -65,6 +66,7 @@ defmodule ConfluencePhxMirror.Settings do
       type: :hour,
       default: {:notification, :digest_hour_utc, 8}
     },
+    "webhook.enabled" => %{type: :boolean, default: {:webhook, :enabled, true}},
     "webhook.require_signature" => %{type: :boolean, default: {:webhook, :require_signature}},
     "webhook.rate_limit" => %{type: :pos_integer, default: {:webhook, :limit}}
   }
@@ -115,6 +117,10 @@ defmodule ConfluencePhxMirror.Settings do
   @doc "The UTC hour the daily digest goes out."
   @spec digest_hour_utc() :: 0..23
   def digest_hour_utc, do: effective("notifications.digest_hour_utc")
+
+  @doc "Whether the webhook intake accepts deliveries at all."
+  @spec webhook_enabled?() :: boolean()
+  def webhook_enabled?, do: effective("webhook.enabled")
 
   @doc "Whether webhook deliveries must be signed."
   @spec webhook_require_signature() :: boolean() | nil
@@ -191,6 +197,13 @@ defmodule ConfluencePhxMirror.Settings do
           {:ok, changes()} | {:error, term()}
   def put_webhook_require_signature(required?, actor) do
     update(%{"webhook.require_signature" => required?}, actor)
+  end
+
+  @doc "Accepts webhook deliveries, refuses them, or drops the decision."
+  @spec put_webhook_enabled(boolean() | nil, Audit.actor()) ::
+          {:ok, changes()} | {:error, term()}
+  def put_webhook_enabled(enabled?, actor) do
+    update(%{"webhook.enabled" => enabled?}, actor)
   end
 
   @doc "Caps the webhook intake at `per_minute`, or drops the decision with `nil`."
@@ -376,6 +389,12 @@ defmodule ConfluencePhxMirror.Settings do
   defp resolve(:theme), do: configured(:theme)
   defp resolve({:reader_limit, scope, floor}), do: reader_default(scope, floor)
   defp resolve({:notification, key, floor}), do: notification_default(key, floor)
+
+  defp resolve({:webhook, :enabled, default}) do
+    :confluence_phx_mirror
+    |> Application.get_env(:webhooks, [])
+    |> Keyword.get(:enabled, default)
+  end
 
   defp resolve({:webhook, :require_signature}) do
     :confluence_phx_mirror

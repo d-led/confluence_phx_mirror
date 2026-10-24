@@ -4,6 +4,11 @@ defmodule ConfluencePhxMirrorWeb.WebhookController do
 
   The route is metered before it gets here, so a flood never reaches this code;
   a body larger than a delivery should be is refused before it is stored.
+
+  An operator can switch the intake off altogether (`CM_WEBHOOK_ENABLED`), and
+  then every delivery is answered `410 Gone` and nothing is stored — a mirror
+  behind a sign-in proxy whose sync is scheduled has no reason to be reachable
+  by the site.
   """
 
   use ConfluencePhxMirrorWeb, :controller
@@ -32,6 +37,9 @@ defmodule ConfluencePhxMirrorWeb.WebhookController do
         conn
         |> put_status(202)
         |> json(%{status: "accepted", delivery_id: delivery.id, state: delivery.status})
+
+      {:error, :disabled} ->
+        conn |> put_status(410) |> json(%{error: "webhooks_disabled"})
 
       {:error, :invalid_signature} ->
         conn |> put_status(401) |> json(%{error: "invalid_signature"})

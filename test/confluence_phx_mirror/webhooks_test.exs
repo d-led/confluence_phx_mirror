@@ -218,4 +218,29 @@ defmodule ConfluencePhxMirror.WebhooksTest do
       assert {:error, :not_configured} = Webhooks.receive(JSON.decode!(body), body, [])
     end
   end
+
+  describe "when the intake is switched off" do
+    setup do
+      previous = Application.get_env(:confluence_phx_mirror, :webhooks)
+
+      Application.put_env(:confluence_phx_mirror, :webhooks,
+        secret: @secret,
+        enabled: false
+      )
+
+      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :webhooks, previous) end)
+      :ok
+    end
+
+    test "a well-formed, correctly signed delivery is still refused" do
+      assert {:error, :disabled} = deliver("page_updated", 1002)
+    end
+
+    test "nothing is kept, not even the fact of the attempt" do
+      deliver("page_updated", 1002)
+
+      assert Repo.aggregate(Delivery, :count) == 0
+      refute_enqueued(worker: PageWorker)
+    end
+  end
 end

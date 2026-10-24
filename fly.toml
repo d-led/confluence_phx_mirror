@@ -75,6 +75,14 @@ primary_region = "ams"
   # config says `demo` in the same place.
   CM_SOURCE = "http"
 
+  # Nothing can reach the webhook intake: the proxy authenticates every request
+  # and has no skip-auth route, and the scheduled pull is what keeps this mirror
+  # current. An ingress that accepts deliveries would be a second, unauthenticated
+  # way in — so it answers 410 and stores nothing. Turn it back on at
+  # /admin/webhooks (the administrator's setting wins over this line) if the site
+  # is ever pointed at the route.
+  CM_WEBHOOK_ENABLED = "false"
+
   # The proxy topology (docs/deployment.md). Every request that arrives came
   # from `confluence-mirror`, the only public address, so its identity headers
   # are the reader; `MIRROR_ALLOW_UNSAFE_IDENTITY` is the acknowledgement

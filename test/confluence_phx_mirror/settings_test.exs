@@ -138,6 +138,17 @@ defmodule ConfluencePhxMirror.SettingsTest do
       assert Settings.webhook_require_signature() ==
                Application.get_env(:confluence_phx_mirror, :webhooks, [])[:require_signature]
     end
+
+    test "close an intake the deployment leaves open" do
+      put_config(:webhooks, enabled: true, secret: "the-secret")
+
+      assert Settings.webhook_enabled?()
+      assert {:ok, _} = Settings.put_webhook_enabled(false, @actor)
+      refute Settings.webhook_enabled?()
+
+      assert {:ok, _} = Settings.put_webhook_enabled(nil, @actor)
+      assert Settings.webhook_enabled?()
+    end
   end
 
   defp put_config(key, value) do

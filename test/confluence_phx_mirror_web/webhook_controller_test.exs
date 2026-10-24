@@ -232,4 +232,32 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
       |> post(~p"/webhooks/confluence", body)
     end
   end
+
+  describe "when the intake is switched off" do
+    setup do
+      previous = Application.get_env(:confluence_phx_mirror, :webhooks)
+
+      Application.put_env(:confluence_phx_mirror, :webhooks,
+        secret: @secret,
+        enabled: false
+      )
+
+      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :webhooks, previous) end)
+      :ok
+    end
+
+    test "a correctly signed delivery is answered 410 Gone and not recorded", %{conn: conn} do
+      body = JSON.encode!(payload("page_updated", 1002))
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("x-hub-signature-256", sign(body))
+        |> post(~p"/webhooks/confluence", body)
+
+      assert json_response(conn, 410)["error"] == "webhooks_disabled"
+      assert Repo.aggregate(Delivery, :count) == 0
+      refute_enqueued(worker: PageWorker)
+    end
+  end
 end
