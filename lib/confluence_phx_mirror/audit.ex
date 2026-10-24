@@ -34,14 +34,17 @@ defmodule ConfluencePhxMirror.Audit do
   @doc "Records an audit event. Raises if it cannot be persisted."
   @spec log(actor(), Entry.t()) :: Event.t()
   def log(actor, %Entry{} = entry) do
-    {actor_type, actor_id, actor_label} = normalise_actor(actor)
+    actor = normalise_actor(actor)
 
     event =
       %Event{}
       |> Event.changeset(%{
-        actor_type: actor_type,
-        actor_id: actor_id,
-        actor_label: actor_label,
+        actor_type: actor.type,
+        actor_id: actor.id,
+        actor_label: actor.label,
+        actor_name: actor.name,
+        actor_email: actor.email,
+        actor_account_id: actor.account_id,
         action: entry.action,
         entity_type: entry.entity_type,
         entity_id: to_string(entry.entity_id),
@@ -253,6 +256,20 @@ defmodule ConfluencePhxMirror.Audit do
   @doc "Who acted: a person's address, the system name, or a webhook."
   def actor(%{actor_type: "system", actor_label: label}), do: "#{label} (system)"
   def actor(%{actor_type: "webhook", actor_id: id}), do: "webhook ##{id}"
+
+  # A person is three facts: the name they showed, the address they signed in
+  # with, and the Atlassian account id that outlives both. Whatever the row has
+  # is shown, in that order, so an old row (before these were recorded) still
+  # reads as the label it always did.
+  def actor(%{actor_type: "user"} = event) do
+    [event.actor_name, event.actor_email, event.actor_account_id]
+    |> Enum.reject(&(is_nil(&1) or &1 == ""))
+    |> case do
+      [] -> event.actor_label || "user"
+      parts -> Enum.join(parts, " · ")
+    end
+  end
+
   def actor(%{actor_label: label}) when is_binary(label) and label != "", do: label
   def actor(%{actor_type: type}), do: type
 
@@ -291,7 +308,8 @@ defmodule ConfluencePhxMirror.Audit do
     from e in queryable,
       where:
         ilike(e.action, ^pattern) or ilike(e.actor_label, ^pattern) or
-          ilike(e.entity_id, ^pattern) or
+          ilike(e.actor_name, ^pattern) or ilike(e.actor_email, ^pattern) or
+          ilike(e.actor_account_id, ^pattern) or ilike(e.entity_id, ^pattern) or
           fragment("?::text ILIKE ?", e.metadata, ^pattern)
   end
 
@@ -309,9 +327,25 @@ defmodule ConfluencePhxMirror.Audit do
 
   defp filter_actor(queryable, _type), do: queryable
 
-  defp normalise_actor({:user, %{id: id, email: email}}), do: {"user", to_string(id), email}
-  defp normalise_actor({:system, name}), do: {"system", nil, name}
-  defp normalise_actor({:webhook, id}), do: {"webhook", to_string(id), "webhook"}
+  defp normalise_actor({:user, user}) do
+    email = Map.get(user, :email)
+
+    %{
+      type: "user",
+      id: user |> Map.fetch!(:id) |> to_string(),
+      label: email,
+      name: Map.get(user, :display_name),
+      email: email,
+      account_id: Map.get(user, :confluence_account_id)
+    }
+  end
+
+  defp normalise_actor({:system, name}), do: actor_of("system", nil, name)
+  defp normalise_actor({:webhook, id}), do: actor_of("webhook", to_string(id), "webhook")
+
+  defp actor_of(type, id, label) do
+    %{type: type, id: id, label: label, name: nil, email: nil, account_id: nil}
+  end
 
   defp stringify(metadata) do
     Map.new(metadata, fn {key, value} -> {to_string(key), encode(value)} end)

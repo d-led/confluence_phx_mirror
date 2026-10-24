@@ -15,6 +15,9 @@ defmodule ConfluencePhxMirror.Audit.Event do
     field :actor_type, :string
     field :actor_id, :string
     field :actor_label, :string
+    field :actor_name, :string
+    field :actor_email, :string
+    field :actor_account_id, :string
     field :action, :string
     field :entity_type, :string
     field :entity_id, :string
@@ -29,6 +32,9 @@ defmodule ConfluencePhxMirror.Audit.Event do
       :actor_type,
       :actor_id,
       :actor_label,
+      :actor_name,
+      :actor_email,
+      :actor_account_id,
       :action,
       :entity_type,
       :entity_id,
