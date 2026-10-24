@@ -82,4 +82,36 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLiveTest do
 
     assert html =~ "reader.field1=default, reader.field2=default, reader.field3=default +2"
   end
+
+  test "an empty map, a list and a number each read as themselves", %{conn: conn} do
+    event =
+      Audit.log(
+        {:system, "test"},
+        Entry.new("job.finished", "job", 8, %{
+          "empty" => %{},
+          "files" => ["one.png", nil],
+          "pages" => 42,
+          "missing" => nil
+        })
+      )
+
+    {:ok, view, _html} = live(conn, ~p"/admin/audit")
+
+    line =
+      view
+      |> element("#audit-#{event.id}")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+
+    # A fact reads as "key value" on the line: an empty map is a dash, a list is
+    # its items, a number is itself.
+    assert line =~ "empty —"
+    assert line =~ "files one.png, —"
+    assert line =~ "pages 42"
+
+    # A value that is not there is not a fact; the row drops it rather than
+    # printing its name with nothing after it.
+    refute line =~ "missing"
+  end
 end
