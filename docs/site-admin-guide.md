@@ -234,6 +234,11 @@ Confluence-compatible REST surface — see [api.md](api.md#search-cql-on-postgre
 Access is mirrored, not invented. Confluence decides who may read a page; the
 mirror replays that decision:
 
+> This page is about *what an admitted reader may open*. Who gets an account at
+> all — the proxy's identity, `CM_USER_POLICY`, `CM_ADMINS`, `CM_ADMIN_GROUPS`,
+> and which route accepts which credential — is
+> [routes-auth.md](routes-auth.md), next to this guide.
+
 * **Page restrictions** are read per page
   (`GET /content/{id}/restriction/byOperation/read`) and stored in
   `page_restrictions`. A restricted page is readable only by the listed users
