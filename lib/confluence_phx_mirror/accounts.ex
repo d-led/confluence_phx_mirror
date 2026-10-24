@@ -272,6 +272,25 @@ defmodule ConfluencePhxMirror.Accounts do
     end
   end
 
+  @doc """
+  Records that a reader arrived: stamps the account and writes the log entry.
+
+  A visit, not a request. The proxy plug calls this when a session does not
+  already carry the same reader; a magic link calls it when a token is consumed.
+  Without it, a deployment behind a proxy has accounts whose "last seen" column
+  says never and a log that cannot answer "did that person ever come in?" —
+  which reads exactly like an account that was never created.
+  """
+  @spec record_sign_in(User.t(), String.t()) ::
+          {:ok, User.t()} | {:error, Ecto.Changeset.t()}
+  def record_sign_in(%User{} = user, method \\ "magic_link") do
+    with {:ok, user} <-
+           user |> Ecto.Changeset.change(last_sign_in_at: now()) |> Repo.update() do
+      Audit.log({:user, user}, User.audit_event_signed_in(user, method))
+      {:ok, user}
+    end
+  end
+
   @doc "Creates a user explicitly (admin UI)."
   def create_user(attrs, actor) do
     with {:ok, user} <-
@@ -625,22 +644,9 @@ defmodule ConfluencePhxMirror.Accounts do
   defp sign_in(token, now) do
     Repo.transaction(fn ->
       {:ok, _} = token |> Ecto.Changeset.change(used_at: now) |> Repo.update()
-
-      {:ok, user} =
-        token.user
-        |> Ecto.Changeset.change(last_sign_in_at: now)
-        |> Repo.update()
-
+      {:ok, user} = record_sign_in(token.user)
       user
     end)
-    |> case do
-      {:ok, user} ->
-        Audit.log({:user, user}, User.audit_event_signed_in(user))
-        {:ok, user}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
   end
 
   defp magic_link_url(token) do

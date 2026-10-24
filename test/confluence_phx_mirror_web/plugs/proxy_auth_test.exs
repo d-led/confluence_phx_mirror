@@ -12,7 +12,8 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
 
   import ConfluencePhxMirror.Fixtures
 
-  alias ConfluencePhxMirror.{Accounts, Mirror}
+  alias ConfluencePhxMirror.{Accounts, Mirror, Repo}
+  alias ConfluencePhxMirror.Audit.Event
 
   alias ConfluencePhxMirror.Accounts.UserPolicy.{
     NewUsersCanReadPublicSpaces,
@@ -177,6 +178,42 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
 
   defp use_policy(policy) do
     Application.put_env(:confluence_phx_mirror, :user_policy, policy)
+  end
+
+  # Signing in is what an operator looks for on the users screen and in the log
+  # ("did this person ever come in?"), so a proxy visit has to record itself the
+  # way a magic link does.
+  describe "a visit behind the proxy" do
+    test "is recorded once, with the account's last-seen and a log entry" do
+      in_group("jane@example.com", "confluence-users")
+
+      visit("jane@example.com")
+
+      user = Accounts.get_user_by_email("jane@example.com")
+      assert user.last_sign_in_at
+      assert sign_ins(user) == 1
+    end
+
+    test "is one visit, not one per page" do
+      in_group("jane@example.com", "confluence-users")
+
+      conn = visit("jane@example.com")
+      conn |> recycle() |> get(~p"/spaces")
+      conn |> recycle() |> get(~p"/recent")
+
+      assert sign_ins(Accounts.get_user_by_email("jane@example.com")) == 1
+    end
+  end
+
+  defp sign_ins(user) do
+    import Ecto.Query
+
+    Repo.aggregate(
+      from(e in Event,
+        where: e.action == "user.signed_in" and e.entity_id == ^to_string(user.id)
+      ),
+      :count
+    )
   end
 
   defp in_group(email, group) do

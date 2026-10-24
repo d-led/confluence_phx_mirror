@@ -223,9 +223,9 @@ defmodule ConfluencePhxMirror.Accounts.User do
     Entry.new("user.login_requested", "user", user.id, %{email: user.email})
   end
 
-  @doc "Audit entry for a magic link being used."
-  def audit_event_signed_in(%__MODULE__{} = user) do
-    Entry.new("user.signed_in", "user", user.id, %{email: user.email, method: "magic_link"})
+  @doc "Audit entry for a sign-in, and how the person proved who they are."
+  def audit_event_signed_in(%__MODULE__{} = user, method \\ "magic_link") do
+    Entry.new("user.signed_in", "user", user.id, %{email: user.email, method: method})
   end
 
   @doc "Audit entry for an account signing out."

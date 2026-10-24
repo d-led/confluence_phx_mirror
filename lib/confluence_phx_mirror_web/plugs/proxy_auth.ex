@@ -60,6 +60,8 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
 
     case Accounts.ensure_user(email, attrs) do
       {:ok, user} ->
+        user = signed_in(conn, user)
+
         conn
         |> put_session(:user_id, user.id)
         |> assign(:current_user, user)
@@ -67,6 +69,19 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
 
       {:error, _changeset} ->
         refuse(conn)
+    end
+  end
+
+  # The proxy session lives in a cookie and every request in it is the same
+  # visit. The log entry and the account's "last seen" are about visits, so a
+  # request that already carried this reader is not a new sign-in — otherwise
+  # the audit log would be one entry per page load.
+  defp signed_in(conn, user) do
+    if get_session(conn, :user_id) == user.id do
+      user
+    else
+      {:ok, user} = Accounts.record_sign_in(user, "proxy")
+      user
     end
   end
 
