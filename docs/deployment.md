@@ -17,7 +17,7 @@ Two deployment configurations ship with the repository, both of the same shape:
 | migrations | `[deploy] release_command = "/app/bin/migrate"` | the `confluence-mirror-migrate` Job |
 | attachments | Fly volume `mirror_blobs` | PVC `mirror-blobs` |
 | clustering | `FLY_APP_NAME.internal` | headless Service via `DNS_CLUSTER_QUERY` |
-| deploy it | `./scripts/deploy-fly-main.sh` | `kubectl apply -f …` |
+| deploy it | `./scripts/fly-deploy.sh live` | `kubectl apply -f …` |
 
 ### Which Fly file is which
 
@@ -40,8 +40,9 @@ backends are deployed from the repository root, because the Dockerfile that
 builds the release needs the whole project as its build context; the two
 proxies are deployed from `deploy/fly/proxy`, where their Dockerfile is.
 
-`scripts/deploy-fly-main.sh` deploys the live app; `scripts/deploy-fly.sh`
-deploys the demo pair.
+`scripts/fly-deploy.sh live` ships a version to the live pair;
+`scripts/fly-deploy.sh demo` to the demo pair. Neither creates anything: what
+has to exist first is `scripts/fly-provision.sh live`, or `… demo`.
 
 Nothing here is required by the application: it is a 12-factor release, and
 [operations.md](operations.md) describes the environment contract any process
@@ -170,15 +171,41 @@ the forwarded identity headers a client sends and re-sets them from the session.
 
 ## Fly.io
 
+Two scripts, one per question. Provisioning is everything that exists once:
+
 ```bash
-export DATABASE_URL=…                     # or `fly mpg attach`
-export OAUTH2_PROXY_CLIENT_ID=… OAUTH2_PROXY_CLIENT_SECRET=…
-./scripts/deploy-fly.sh
+CM_CONFLUENCE_SITE=https://acme.atlassian.net \
+CM_ATL_EMAIL=me@acme.com \
+CM_ATL_TOKEN=… \
+OAUTH2_PROXY_CLIENT_ID=… OAUTH2_PROXY_CLIENT_SECRET=… \
+./scripts/fly-provision.sh live
 ```
 
-The script creates both apps, generates `SECRET_KEY_BASE`, `RELEASE_COOKIE` and
-the proxy's cookie secret once, creates the volume, deploys the mirror, then the
-proxy. The GitHub OAuth app's callback URL is
+That creates both apps (the mirror with no public address, its oauth2-proxy
+with the only one), `fly postgres create` and attach, the blob volume, and the
+secrets an app cannot boot without: `SECRET_KEY_BASE`, `RELEASE_COOKIE`, the
+proxy's cookie secret, the Confluence credentials. Re-running it is safe —
+every step finds what exists and says so — and it changes nothing, because
+rotating a secret is a decision (`fly secrets set`), not a side effect of a
+deploy.
+
+Deploying is everything that happens per version, and needs no credentials:
+
+```bash
+./scripts/fly-deploy.sh live            # mirror, then its front door
+./scripts/fly-deploy.sh live --check    # verify only: would this deploy?
+./scripts/fly-deploy.sh live --sync     # …and enqueue a full snapshot
+```
+
+It refuses before building anything if an app or a secret is missing, and
+names the provisioning command that puts it there. It deploys the mirror
+first: the proxy's upstream is the mirror's Flycast address, so a proxy
+released first answers 502.
+
+The demo pair is the same two commands with `demo`, and its `DATABASE_URL` is
+one you bring (`./scripts/fly-provision.sh demo` reads it from the
+environment). The GitHub OAuth app's callback URLs are
+`https://confluence-mirror.fly.dev/oauth2/callback` and
 `https://confluence-mirror-demo.fly.dev/oauth2/callback`.
 
 Details that are easy to get wrong:

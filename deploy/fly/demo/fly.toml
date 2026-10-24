@@ -3,7 +3,7 @@
 #
 # This is *not* the main site. The live mirror of a real Confluence site is
 # `fly.toml` at the repository root (app `confluence-mirror-app`), and that is
-# what `scripts/deploy-fly-main.sh` deploys. This file sits here because the
+# what `scripts/fly-deploy.sh live` deploys. This file sits here because the
 # directory a config stands for should not also be a name you deploy to: a bare
 # `fly deploy` at the root is the main site, and the demo has to be asked for.
 #
@@ -19,8 +19,9 @@
 # proxy-set identity header defensible: nothing else can open a connection, and
 # the app still refuses the header unless CM_PROXY_AUTH says otherwise.
 #
-# `scripts/deploy-fly.sh` creates the app, the volume and the secrets, and
-# deploys both apps in order. Read docs/deployment.md for the whole picture.
+# `scripts/fly-provision.sh demo` creates the app, the volume and the secrets;
+# `scripts/fly-deploy.sh demo` deploys both apps, in order. Read
+# docs/deployment.md for the whole picture.
 
 app = "confluence-mirror-demo-app"
 primary_region = "ams"

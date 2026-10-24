@@ -15,32 +15,34 @@
 # demo pair is the only thing that needs `--config`, and its file names the
 # demo in its own name.
 #
-# Deploy from the repository root, so the build context is the whole project:
+# Two scripts own this deployment, and they answer different questions:
 #
-#   fly deploy \
-#     --build-arg VERSION="$(git describe --tags --always)" \
+#   scripts/fly-provision.sh live   create the apps, database, volume, secrets
+#   scripts/fly-deploy.sh live      build this image and release it
+#
+# The second is what a release runs, and it does the whole deployment: this app
+# and then its front door, in that order. `fly deploy` on its own still works,
+# and deploys this app only — from the repository root, because the build
+# context has to be the whole project:
+#
+#   fly deploy --ha=false --flycast --no-public-ips \
+#     --build-arg VERSION=… \
 #     --build-arg REVISION="$(git rev-parse --short HEAD)"
 #
-# The app has **no public IP**. Until the `confluence-mirror` oauth2-proxy app
-# exists (deploy/fly/proxy), the mirror is reachable only over the private
-# network — `fly proxy 8080:8080 -a confluence-mirror-app` from a laptop — which
-# is what makes the first deploy a safe one.
+# The app has **no public IP**: it is reachable only over the private network,
+# from the proxy or from `fly proxy 8080:8080 -a confluence-mirror-app`. That is
+# what makes trusting an identity header defensible, and it is why the three
+# settings in `[env]` below are what they are.
 #
 # Secrets this app needs (none of them live in this file):
 #
 #   DATABASE_URL            `fly postgres attach` sets it
 #   SECRET_KEY_BASE         openssl rand -hex 48
 #   RELEASE_COOKIE          openssl rand -hex 48 (shared by every node)
-#   CM_SOURCE               http — mirror a real site, not the bundled demo
 #   CM_CONFLUENCE_SITE      https://<site>.atlassian.net
 #   CM_ATL_EMAIL            the account the API token belongs to
 #   CM_ATL_TOKEN            https://id.atlassian.com/manage-profile/security/api-tokens
 #   CM_ADMINS               who may open /admin, comma-separated
-#
-# When the proxy is added, two more things follow: `CM_PROXY_AUTH=true` and
-# `CM_TRUST_PROXY_HEADERS=true` on this app, and `MIRROR_ALLOW_UNSAFE_IDENTITY=1`
-# as the acknowledgement `Config.IdentityGuard` demands — trusting an identity
-# header is only defensible behind a proxy that is the sole way in.
 
 app = "confluence-mirror-app"
 primary_region = "ams"
@@ -68,6 +70,18 @@ primary_region = "ams"
 
   # CM_ADMINS is *not* here on purpose: it names real people, and this file is
   # in a public repository. It is a secret — see `fly secrets list`.
+
+  # This deployment mirrors a real site, not the bundled snapshot. The demo's
+  # config says `demo` in the same place.
+  CM_SOURCE = "http"
+
+  # The proxy topology (docs/deployment.md). Every request that arrives came
+  # from `confluence-mirror`, the only public address, so its identity headers
+  # are the reader; `MIRROR_ALLOW_UNSAFE_IDENTITY` is the acknowledgement
+  # `Config.IdentityGuard` demands for honouring them in a production release.
+  CM_PROXY_AUTH = "true"
+  CM_TRUST_PROXY_HEADERS = "true"
+  MIRROR_ALLOW_UNSAFE_IDENTITY = "1"
 
   # Attachments: a path-based blob store on the mounted volume, never in the
   # release and never in Postgres.

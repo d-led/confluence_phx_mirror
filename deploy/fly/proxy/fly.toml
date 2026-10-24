@@ -7,7 +7,10 @@
 #
 #   fly deploy
 #
-# (from the repository root: `fly deploy deploy/fly/proxy`)
+# (from the repository root: `fly deploy deploy/fly/proxy`).
+#
+# `scripts/fly-deploy.sh live` does it in the only order that works — the mirror
+# first, then this — because the upstream below is the mirror's Flycast address.
 #
 # Secrets it needs (none live in this file):
 #

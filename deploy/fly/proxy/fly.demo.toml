@@ -13,7 +13,7 @@
 # X-Forwarded-Email / X-Forwarded-User to the mirror, which provisions the
 # account on first sight (CM_PROXY_AUTH=true on the backend).
 #
-# Secrets, set by scripts/deploy-fly.sh and never written down here:
+# Secrets, set by scripts/fly-provision.sh demo and never written down here:
 #   OAUTH2_PROXY_CLIENT_ID, OAUTH2_PROXY_CLIENT_SECRET  GitHub OAuth app
 #   OAUTH2_PROXY_COOKIE_SECRET                          urlsafe base64, 32 bytes
 #
