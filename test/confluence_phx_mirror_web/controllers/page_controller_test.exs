@@ -245,4 +245,74 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert second =~ "Release 2.0"
     assert second =~ "Showing 26–"
   end
+
+  test "a change in the feed says what happened, where, and to whose page", %{conn: conn} do
+    space = space_fixture(%{key: "FRESH", name: "Freshness Lab"})
+
+    first_draft =
+      page_fixture(space, %{
+        confluence_id: 96_001,
+        title: "First draft",
+        version_number: 1,
+        author_name: "Ada",
+        body_text: "How the revocation list is built,\n\nand who signs it.",
+        external_updated_at: ~U[2026-10-23 10:00:00Z]
+      })
+
+    revised =
+      page_fixture(space, %{
+        confluence_id: 96_002,
+        title: "Second draft",
+        version_number: 3,
+        author_name: "Grace",
+        external_updated_at: ~U[2026-10-23 09:00:00Z]
+      })
+
+    document = conn |> get(~p"/recent") |> html_response(200) |> LazyHTML.from_fragment()
+
+    changes = row_text(document, first_draft)
+    assert changes =~ "First draft"
+    assert changes =~ "Freshness Lab"
+    assert changes =~ "Ada"
+    # A title says what a page is called; the row has width to spare for what it
+    # says, with a paragraph's line breaks flattened into the one line.
+    assert changes =~ "How the revocation list is built, and who signs it."
+
+    hrefs = row(document, first_draft) |> LazyHTML.query("a") |> LazyHTML.attribute("href")
+    assert [href] = hrefs
+    assert href =~ "/spaces/FRESH/pages/96001"
+
+    # Confluence counts versions: a page still at its first one was written,
+    # not edited, and the feed is the one place that can say so.
+    assert changes =~ "new"
+    refute row_text(document, revised) =~ "new"
+  end
+
+  test "a long page is quoted in the feed, not copied into it", %{conn: conn} do
+    space = space_fixture(%{key: "LONG", name: "Long Reads"})
+
+    page =
+      page_fixture(space, %{
+        confluence_id: 96_010,
+        title: "A very long read",
+        body_text: String.duplicate("prose ", 500),
+        external_updated_at: ~U[2026-10-23 12:00:00Z]
+      })
+
+    document = conn |> get(~p"/recent") |> html_response(200) |> LazyHTML.from_fragment()
+
+    quoted = row_text(document, page)
+    assert quoted =~ "prose prose"
+    # The cut is shown as a cut: a row that stopped mid-sentence without saying
+    # so would read as the author's own ending.
+    assert quoted =~ "…"
+  end
+
+  defp row(document, page) do
+    document |> LazyHTML.query("#recent-page-#{page.id}")
+  end
+
+  defp row_text(document, page) do
+    document |> row(page) |> LazyHTML.text()
+  end
 end
