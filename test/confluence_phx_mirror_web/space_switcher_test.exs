@@ -15,7 +15,6 @@ defmodule ConfluencePhxMirrorWeb.SpaceSwitcherTest do
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
   import ConfluencePhxMirror.Fixtures
-  import Phoenix.LiveViewTest
 
   test "a space is listed with its name and the key that tells it apart", %{conn: conn} do
     space_fixture(%{key: "LOAD012", name: "LOAD01 Test Space 2"})

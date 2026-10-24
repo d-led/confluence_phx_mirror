@@ -9,7 +9,6 @@ defmodule ConfluencePhxMirrorWeb.SpaceTreeTest do
   use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import ConfluencePhxMirror.Fixtures
-  import Phoenix.LiveViewTest, only: [has_element: 2]
 
   alias ConfluencePhxMirror.Mirror
 

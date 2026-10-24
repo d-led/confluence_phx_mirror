@@ -69,40 +69,17 @@ defmodule ConfluencePhxMirror.Accounts do
   end
 
   @doc """
-  Which of `account_ids` have an account here, and whose it is.
+  Which of `account_ids` have an account here, and which account.
 
   Asked for one page of people, not for the whole site: a mirror with a hundred
   thousand identities must not read every account to decide a badge. The answer
-  is a map from the identity to the e-mail of the account that stands for it —
-  the identity the account signed in with and the ones an administrator linked
-  alike, because to the permission rules they are the same person.
-  """
-  def accounts_by_identity(account_ids) do
-    keys = Enum.reject(account_ids, &is_nil/1)
+  is a map from the identity to the account that stands for it — the identity
+  the account signed in with and the ones an administrator linked alike,
+  because to the permission rules they are the same person.
 
-    if keys == [] do
-      %{}
-    else
-      from(u in User,
-        where:
-          u.confluence_account_id in ^keys or
-            fragment("? && ?", u.identity_account_ids, ^keys),
-        select: {u.email, u.confluence_account_id, u.identity_account_ids}
-      )
-      |> Repo.all()
-      |> Enum.flat_map(fn {email, primary, linked} ->
-        [primary | linked || []] |> Enum.reject(&is_nil/1) |> Enum.map(&{&1, email})
-      end)
-      |> Map.new()
-    end
-  end
-
-  @doc """
-  The account each of `account_ids` stands for, as rows.
-
-  `accounts_by_identity/1` answers "whose is this?" with an e-mail, which is all
-  a badge needs. The identities screen and its API also have to *act* on that
-  account — link the identity or take it away — so they ask for the row.
+  Rows rather than e-mails: a badge needs only the address, but the identities
+  screen and its API have to *act* on the account — link the identity or take
+  it away — and an e-mail cannot be acted on.
   """
   def users_by_identity(account_ids) do
     keys = Enum.reject(account_ids, &is_nil/1)
