@@ -172,6 +172,37 @@ defmodule ConfluencePhxMirror.Accounts.UserPolicyTest do
     end
   end
 
+  describe "how a policy says itself" do
+    defmodule ADeploymentPolicy do
+      @moduledoc false
+      @behaviour ConfluencePhxMirror.Accounts.UserPolicy
+      @impl true
+      def allows?(_identity, _purpose), do: true
+    end
+
+    test "the shipped policies read as the sentence an operator gets" do
+      assert UserPolicy.describe(NewUsersCanReadPublicSpaces) ==
+               "anybody may read the public spaces"
+
+      assert UserPolicy.describe(ReadersMustExistInConfluence) ==
+               "readers must exist in Confluence"
+    end
+
+    test "a combination says which policies it is made of" do
+      both = [NewUsersCanReadPublicSpaces, ReadersMustExistInConfluence]
+
+      assert UserPolicy.describe({:any_of, both}) ==
+               "any of: anybody may read the public spaces or readers must exist in Confluence"
+
+      assert UserPolicy.describe({:all_of, both}) ==
+               "all of: anybody may read the public spaces and readers must exist in Confluence"
+    end
+
+    test "a policy module this project does not ship is named by its last word" do
+      assert UserPolicy.describe(ADeploymentPolicy) == "ADeploymentPolicy"
+    end
+  end
+
   describe "what a deployment that names no policy keeps" do
     setup do
       Application.put_env(:confluence_phx_mirror, :user_policy, nil)
