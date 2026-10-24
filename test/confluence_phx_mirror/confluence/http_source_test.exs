@@ -141,7 +141,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceTest do
         "version" => %{
           "number" => 2,
           "when" => "2026-10-23T21:35:53.763Z",
-          "by" => %{"displayName" => "Dmitry", "accountId" => "acc-1"}
+          "by" => %{"displayName" => "Jane", "accountId" => "acc-1"}
         },
         "history" => %{"createdDate" => "2026-10-23T20:00:00.000Z"},
         "ancestors" => [%{"id" => "4456832"}],

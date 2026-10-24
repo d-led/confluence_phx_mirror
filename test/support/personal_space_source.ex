@@ -29,7 +29,7 @@ defmodule ConfluencePhxMirror.Confluence.PersonalSpaceSource do
        [
          %{
            key: @personal_key,
-           name: "Dmitry Ledentsov",
+           name: "Space Owner",
            type: "personal",
            description: "Your personal space",
            homepage_id: nil,
