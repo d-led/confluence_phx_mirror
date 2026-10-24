@@ -9,7 +9,7 @@ defmodule ConfluencePhxMirror.Accounts do
 
   import Ecto.Query
 
-  alias ConfluencePhxMirror.Accounts.{Admins, ApiToken, LoginToken, TokenHash, User}
+  alias ConfluencePhxMirror.Accounts.{Admins, ApiToken, LoginToken, TokenHash, User, UserPolicy}
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Mailer
   alias ConfluencePhxMirror.Mirror
@@ -581,8 +581,9 @@ defmodule ConfluencePhxMirror.Accounts do
       nil ->
         # Seeded administrators (CM_ADMINS) can always sign in: otherwise a new
         # deployment would need self sign-up just to reach the admin screens.
-        if Application.get_env(:confluence_phx_mirror, :self_signup, false) or
-             Admins.seeded?(email) do
+        # Everybody else is the deployment's `UserPolicy` to admit.
+        if Admins.seeded?(email) or
+             UserPolicy.allows?(%{email: email}, :sign_in) do
           ensure_user(email)
         else
           {:error, :unknown_email}

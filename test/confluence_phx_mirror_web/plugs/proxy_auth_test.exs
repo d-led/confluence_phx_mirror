@@ -14,6 +14,11 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
 
   alias ConfluencePhxMirror.{Accounts, Mirror}
 
+  alias ConfluencePhxMirror.Accounts.UserPolicy.{
+    NewUsersCanReadPublicSpaces,
+    ReadersMustExistInConfluence
+  }
+
   setup do
     previous = Application.get_env(:confluence_phx_mirror, :proxy_auth)
     previous_members = Application.get_env(:confluence_phx_mirror, :proxy_auth_members_only)
@@ -106,6 +111,72 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
 
     assert html_response(conn, 200)
     refute Accounts.get_user_by_email("jane@example.com")
+  end
+
+  describe "the deployment's policy" do
+    setup do
+      previous = Application.get_env(:confluence_phx_mirror, :user_policy)
+      previous_groups = Application.get_env(:confluence_phx_mirror, :proxy_auth_groups_header)
+
+      on_exit(fn ->
+        Application.put_env(:confluence_phx_mirror, :user_policy, previous)
+        Application.put_env(:confluence_phx_mirror, :proxy_auth_groups_header, previous_groups)
+      end)
+
+      :ok
+    end
+
+    test "a policy that admits everybody lets a stranger in" do
+      use_policy(NewUsersCanReadPublicSpaces)
+
+      assert html_response(visit("stranger@example.com"), 200)
+      assert Accounts.get_user_by_email("stranger@example.com")
+    end
+
+    test "a policy that needs the site refuses a stranger even when the proxy is not members-only" do
+      Application.put_env(:confluence_phx_mirror, :proxy_auth_members_only, false)
+      use_policy(ReadersMustExistInConfluence)
+
+      assert html_response(visit("stranger@example.com"), 403)
+      refute Accounts.get_user_by_email("stranger@example.com")
+    end
+
+    test "a disabled account is refused before a policy that would admit it" do
+      use_policy(NewUsersCanReadPublicSpaces)
+      {:ok, user} = Accounts.ensure_user("banned@example.com")
+      {:ok, _} = Accounts.set_disabled(user, true, {:system, "test"})
+
+      assert html_response(visit("banned@example.com"), 403)
+    end
+
+    test "the groups the proxy asserts are checked against the site's membership" do
+      # The proxy can only say what the identity provider told it. The mirror
+      # checks that claim against its own membership, so an asserted group is
+      # evidence only when the site lists this person in it.
+      Application.put_env(:confluence_phx_mirror, :proxy_auth_groups_header, "x-forwarded-groups")
+      use_policy(ReadersMustExistInConfluence)
+      in_group("sam@example.com", "confluence-users")
+
+      admitted =
+        build_conn()
+        |> put_req_header("x-forwarded-email", "sam@example.com")
+        |> put_req_header("x-forwarded-groups", "confluence-users,engineering")
+        |> get(~p"/")
+
+      assert html_response(admitted, 200)
+
+      refused =
+        build_conn()
+        |> put_req_header("x-forwarded-email", "stranger@example.com")
+        |> put_req_header("x-forwarded-groups", "confluence-users")
+        |> get(~p"/")
+
+      assert html_response(refused, 403)
+    end
+  end
+
+  defp use_policy(policy) do
+    Application.put_env(:confluence_phx_mirror, :user_policy, policy)
   end
 
   defp in_group(email, group) do

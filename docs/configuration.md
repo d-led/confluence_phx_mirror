@@ -78,7 +78,9 @@ CM_SOURCE=synthetic CM_SYNTHETIC_SPACES=200 CM_SYNTHETIC_PAGES=500 \
 | `CM_PROXY_AUTH` | `false` | trust the reverse proxy's identity header |
 | `CM_PROXY_AUTH_HEADER` | `x-forwarded-email` | header carrying the reader's e-mail |
 | `CM_PROXY_AUTH_NAME_HEADER` | `x-forwarded-user` | header carrying the display name |
-| `CM_PROXY_AUTH_MEMBERS_ONLY` | `true` | admit only administrators and identities the sync has seen on the mirrored site |
+| `CM_PROXY_AUTH_MEMBERS_ONLY` | `true` | admit only administrators and identities the sync has seen on the mirrored site (the default rule when no policy is named) |
+| `CM_PROXY_AUTH_GROUPS_HEADER` | – | header carrying group names the identity provider asserts, e.g. `x-forwarded-groups` (CSV) |
+| `CM_USER_POLICY` | – | who may have an account: `new_users_can_read_public_spaces` (alias `allow_all`) or `readers_must_exist_in_confluence` (alias `members_only`) |
 | `MIRROR_ALLOW_SITE_DISABLED_READERS` | `false` | let readers Confluence reports as *inactive* read anyway; accounts the site no longer has, and banned accounts, stay out |
 | `MIRROR_ALLOW_UNSAFE_IDENTITY` | `false` | acknowledge the three switches above in a production release |
 
@@ -94,15 +96,30 @@ release is still allowed without a flag (`CM_SOURCE=demo`); anything else needs
 `CM_PROXY_AUTH` is only safe when the app cannot be reached except through the
 proxy.
 
-An OAuth2 proxy usually authenticates a whole Atlassian organisation, which is
-wider than the site being mirrored, so the mirror decides for itself whom to
-admit: an administrator (seeded, admin role, or a member of an admin group), or
-an identity the sync has seen — a member of a group the content mentions, or a
-user named in a space permission or page restriction
-(`Mirror.identity_known?/1`). Everyone else gets a `403` page and **no account is
-created**. Confluence Cloud has no API that lists a site's users, so "seen" is
-the strongest statement the mirror can make; `CM_PROXY_AUTH_MEMBERS_ONLY=false`
-falls back to admitting anyone the proxy authenticates.
+Who may have an account is a policy, not a switch:
+`ConfluencePhxMirror.Accounts.UserPolicy`. A policy answers one question — may
+this arriving identity become a reader — and knows nothing about what a reader
+may open; that stays with the permissions the sync mirrored. Two ship with the
+mirror:
+
+* `new_users_can_read_public_spaces` — anyone who arrives gets an account, and
+  sees the spaces nobody restricted. This is the audience-wider-than-the-site
+  case: readers of a published handbook, a customer base, a whole organisation.
+* `readers_must_exist_in_confluence` (the default) — an administrator (seeded,
+  admin role, or a member of an admin group), or an identity the sync has seen:
+  a member of a group the content mentions, a user named in a space permission
+  or page restriction, or somebody an identity provider asserts in a group the
+  site also lists that person in. Everyone else gets a `403` page and **no
+  account is created**.
+
+Confluence Cloud has no API that lists a site's users, so "seen" is the
+strongest statement the mirror can make. A deployment that names no policy keeps
+what the older switches implied: `CM_PROXY_AUTH_MEMBERS_ONLY=false` and
+`MIRROR_SELF_SIGNUP=true` each mean "anyone", for the door they belong to;
+naming `CM_USER_POLICY` replaces both. Policies compose in code
+(`{:any_of, [a, b]}`, `{:all_of, [a, b]}`), and a policy that needs to look
+something up — an allow-list an operator maintains, a cached membership check —
+owns that lookup rather than the plug that asks.
 
 ## Webhooks
 

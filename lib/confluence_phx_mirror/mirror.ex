@@ -613,6 +613,34 @@ defmodule ConfluencePhxMirror.Mirror do
     end
   end
 
+  @doc """
+  Whether the site lists these people in any of these groups.
+
+  An identity provider in front of the mirror may assert group names; the one
+  thing the mirror can check about that claim is its own membership mirror. A
+  group the site has never shown is not evidence, and neither is a group the
+  site lists with somebody else in it — which is why the person is looked up
+  inside the group, not the group on its own.
+  """
+  @spec members_of_asserted_groups?([String.t()], [String.t() | nil]) :: boolean()
+  def members_of_asserted_groups?(group_names, subject_keys) do
+    groups = group_names |> Enum.reject(&(&1 in [nil, ""])) |> Enum.map(&GroupMember.key/1)
+    subjects = subject_keys |> Enum.reject(&is_nil/1) |> Enum.map(&GroupMember.key/1)
+
+    if groups == [] or subjects == [] do
+      false
+    else
+      from(m in GroupMember,
+        where:
+          fragment("lower(?)", m.group_name) in ^groups and
+            fragment("lower(?)", m.subject_key) in ^subjects,
+        limit: 1,
+        select: 1
+      )
+      |> Repo.exists?()
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Pages
   # ---------------------------------------------------------------------------

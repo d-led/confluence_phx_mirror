@@ -83,6 +83,12 @@ config :confluence_phx_mirror,
   # Only an administrator, or an identity the sync has seen on the mirrored
   # site, is admitted; `false` restores "the proxy decides".
   proxy_auth_members_only: true,
+  # Who may have an account: nil keeps what the switches above imply, a module
+  # (or `{:any_of, [...]}`) is the deployment's own answer. See
+  # `ConfluencePhxMirror.Accounts.UserPolicy`.
+  user_policy: nil,
+  # A header carrying group names an identity provider asserts, if any.
+  proxy_auth_groups_header: nil,
   # More themes for the admin's picker, on top of the built-in default and the
   # packs. The shape is documented in ConfluencePhxMirrorWeb.Skins.
   skins: [],

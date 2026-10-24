@@ -241,6 +241,22 @@ if members_only = System.get_env("CM_PROXY_AUTH_MEMBERS_ONLY") do
   config :confluence_phx_mirror, :proxy_auth_members_only, members_only in ~w(1 true yes)
 end
 
+# Who counts as a reader: a policy, not a switch. `CM_USER_POLICY` names one of
+# the shipped policies; an unknown name raises rather than falling back, because
+# a typo must not quietly widen or narrow the audience. Without it, the switches
+# above decide (`CM_PROXY_AUTH_MEMBERS_ONLY`, `self_signup`).
+if policy = System.get_env("CM_USER_POLICY") do
+  config :confluence_phx_mirror,
+         :user_policy,
+         ConfluencePhxMirror.Accounts.UserPolicy.named!(policy)
+end
+
+# An identity provider in front of the proxy may assert group names; naming the
+# header here is what lets a policy check them against the mirrored membership.
+if header = System.get_env("CM_PROXY_AUTH_GROUPS_HEADER") do
+  config :confluence_phx_mirror, :proxy_auth_groups_header, String.downcase(header)
+end
+
 # Webhooks accept unsigned deliveries by default: a mirror that has just been
 # pointed at a Confluence site should work, and /admin/webhooks keeps saying what
 # that costs. `CM_WEBHOOK_SECRET` plus `CM_WEBHOOK_REQUIRE_SIGNATURE=true` closes

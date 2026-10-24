@@ -7,14 +7,15 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
   trusts that header: an admitted address becomes an account on first sight, so
   there is no sign-up step and no account form. Roles and groups stay local.
 
-  The proxy answers "who is this?", not "should they be here?" — an Atlassian
-  organisation is usually wider than the site being mirrored. So the mirror
-  admits an identity only when it has a reason to: a mirror administrator, or
-  somebody the sync has seen on the mirrored site (a member of a mentioned
-  group, or a user named in a space permission or page restriction, see
-  `ConfluencePhxMirror.Mirror.identity_known?/1`). Anyone else gets a 403 page
-  and no account. `CM_PROXY_AUTH_MEMBERS_ONLY=false` restores the older
-  behaviour, where the proxy's word was enough.
+  The proxy answers "who is this?", not "should they be here?". That second
+  question belongs to `ConfluencePhxMirror.Accounts.UserPolicy`: the plug builds
+  the identity the proxy presented — the address, and the groups it asserts when
+  a group header is configured — and asks the deployment's policy. An identity
+  the policy refuses gets a 403 page and no account.
+
+  A disabled account is refused here, before the policy is asked: switching an
+  account off is the strongest statement an operator can make about a reader,
+  and no policy should be able to undo it.
 
   Trusting a header means the endpoint must not be reachable except through the
   proxy; that is why the plug is off unless explicitly enabled. Without a
@@ -27,8 +28,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
   import Phoenix.Controller, only: [put_view: 2, render: 3]
 
   alias ConfluencePhxMirror.Accounts
-  alias ConfluencePhxMirror.Accounts.{Admins, Scope, User}
-  alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Accounts.{Scope, User, UserPolicy}
 
   def init(opts), do: opts
 
@@ -44,7 +44,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
   end
 
   defp sign_in(conn, email) do
-    if admitted?(email) do
+    if admitted?(conn, email) do
       provision(conn, email)
     else
       refuse(conn)
@@ -70,25 +70,40 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
     end
   end
 
-  # A disabled account is refused whatever else is true of it: it is the
-  # strongest statement an operator can make about a reader. Otherwise an
-  # administrator, and everybody else only when the sync can vouch for them —
-  # the account is looked up, never created, before the decision.
-  defp admitted?(email) do
+  defp admitted?(conn, email) do
     user = Accounts.get_user_by_email(email)
 
     not disabled?(user) and
-      (not members_only?() or Admins.seeded?(email) or known?(user, email))
+      UserPolicy.allows?(
+        %{
+          email: email,
+          account_id: user && user.confluence_account_id,
+          groups: asserted_groups(conn),
+          user: user
+        },
+        :proxy
+      )
   end
 
   defp disabled?(%User{} = user), do: User.disabled?(user)
   defp disabled?(nil), do: false
 
-  defp known?(%User{} = user, _email) do
-    Admins.admin?(user) or Mirror.identity_known?(User.identity_keys(user))
-  end
+  # Groups an identity provider asserts, when the deployment says which header
+  # carries them. The mirror checks them against its own membership mirror and
+  # nothing else — see `ConfluencePhxMirror.Mirror.members_of_asserted_groups?/2`.
+  defp asserted_groups(conn) do
+    case config(:proxy_auth_groups_header, nil) do
+      nil ->
+        []
 
-  defp known?(nil, email), do: Mirror.identity_known?([email])
+      header ->
+        conn
+        |> get_req_header(header)
+        |> Enum.flat_map(&String.split(&1, [",", ";"], trim: true))
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+    end
+  end
 
   defp refuse(conn) do
     conn
@@ -106,8 +121,6 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
   end
 
   defp enabled?, do: config(:proxy_auth, false)
-
-  defp members_only?, do: config(:proxy_auth_members_only, true)
 
   defp config(key, default), do: Application.get_env(:confluence_phx_mirror, key, default)
 end
