@@ -192,22 +192,29 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
   describe "identity linking" do
     @guest "5f057cbe0b38b10022628d68"
 
-    test "an administrator links a Confluence identity to an account, and unlinks it", %{
+    test "from an identity: the picker finds the account by search, and links on a click", %{
       conn: conn
     } do
       reader = user_fixture(%{email: "linked.reader@example.com"})
+      other = user_fixture(%{email: "other.person@example.com"})
       a_person_named(@guest)
 
       {:ok, view, _html} = live(conn, ~p"/admin/users")
 
-      html =
-        view
-        |> element("#link-1")
-        |> render_submit(%{"account_id" => @guest, "email" => reader.email})
+      # A hundred thousand identities are searched, never listed: the row opens a
+      # picker, the picker searches accounts, and the link is a click.
+      assert view |> element("#link-1") |> render_click() =~ "to an account"
 
-      assert html =~ "is now linked.reader@example.com"
-      assert html =~ "linked to"
+      view |> element("#account-search-form") |> render_change(%{"q" => "linked.reader"})
+
+      assert has_element?(view, "#link-account-#{reader.id}")
+      refute has_element?(view, "#link-account-#{other.id}")
+
+      html = view |> element("#link-account-#{reader.id}") |> render_click()
+
+      assert html =~ "#{@guest} is now linked.reader@example.com"
       assert Accounts.get_user(reader.id).identity_account_ids == [@guest]
+      assert has_element?(view, "#unlink-1")
 
       html = view |> element("#unlink-1") |> render_submit()
 
@@ -215,30 +222,97 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
       assert Accounts.get_user(reader.id).identity_account_ids == []
     end
 
-    test "linking to an address that is not an account says so", %{conn: conn} do
-      a_person_named(@guest)
+    test "from an account: both discovered identities can be linked to it", %{conn: conn} do
+      first = "5f057cbe0b38b10022628d68"
+      second = "557058:12861f68-8857-4349-927d-e49dfb30bd52"
+      account = user_fixture(%{email: "both.reader@example.com"})
+      a_person_named(first, "Guest Ledentsov")
+      a_person_named(second, "Ledentsov, Dmitry (FT RPD SWA IDT-DE)")
 
       {:ok, view, _html} = live(conn, ~p"/admin/users")
 
-      html =
-        view
-        |> element("#link-1")
-        |> render_submit(%{"account_id" => @guest, "email" => "nobody@example.com"})
+      # The account side opens with what it can offer, so linking two identities
+      # is two clicks and no typing at all.
+      html = view |> element("#link-identity-#{account.id}") |> render_click()
 
-      assert html =~ "No mirror account has that e-mail address."
+      assert has_element?(view, "#identity-picker")
+      assert html =~ "Add an identity to"
+      assert has_element?(view, identity_row(first))
+      assert has_element?(view, identity_row(second))
+
+      view |> element(identity_row(first)) |> render_click()
+      view |> element("#link-identity-#{account.id}") |> render_click()
+      html = view |> element(identity_row(second)) |> render_click()
+
+      assert html =~ "2 linked"
+
+      assert Enum.sort(Accounts.get_user(account.id).identity_account_ids) ==
+               Enum.sort([first, second])
     end
+
+    test "the picker does not offer an identity another account already holds", %{conn: conn} do
+      holder = user_fixture(%{email: "holder.reader@example.com"})
+      account = user_fixture(%{email: "second.reader@example.com"})
+      a_person_named(@guest)
+
+      {:ok, _} = Accounts.link_identity(holder, @guest, {:user, an_admin()})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+      view |> element("#link-identity-#{account.id}") |> render_click()
+
+      html = view |> element("#identity-search-form") |> render_change(%{"q" => @guest})
+
+      assert html =~ "already holder.reader@example.com"
+      refute has_element?(view, identity_row(@guest))
+    end
+
+    test "a search that matches no account says so", %{conn: conn} do
+      a_person_named(@guest)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+      view |> element("#link-1") |> render_click()
+
+      html = view |> element("#account-search-form") |> render_change(%{"q" => "nobody-here"})
+
+      assert html =~ "No account matches"
+    end
+
+    test "the identity list is searched by name or account id, not dumped", %{conn: conn} do
+      a_person_named(@guest, "Guest Ledentsov")
+      a_person_named("557058:someone-else", "Other Person")
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      assert view |> element("#identity-filter") |> render_change(%{"pq" => "guest"}) =~
+               "Guest Ledentsov"
+
+      html = view |> element("#identity-filter") |> render_change(%{"pq" => "someone-else"})
+
+      assert html =~ "Other Person"
+      refute html =~ "Guest Ledentsov"
+
+      html = view |> element("#identity-filter") |> render_change(%{"pq" => "nobody-at-all"})
+
+      assert html =~ "No author mirrored yet"
+    end
+
+    # A Confluence account id can look like "557058:12861f68-…", and a ":" is not
+    # something a CSS selector takes raw, so the row is found by its attribute.
+    defp identity_row(account_id), do: ~s{[id="link-candidate-#{account_id}"]}
 
     # A person is somebody the content or a group names; the party line here is
     # "this identity exists and is linkable".
-    defp a_person_named(account_id) do
+    defp a_person_named(account_id, name \\ "Guest Ledentsov") do
       space = space_fixture()
-      page_fixture(space, %{author_name: "Guest Ledentsov", author_account_id: account_id})
+      page_fixture(space, %{author_name: name, author_account_id: account_id})
 
       {:ok, _} =
         Mirror.replace_group_members("confluence-users", [
-          %{account_id: account_id, display_name: "Guest Ledentsov"}
+          %{account_id: account_id, display_name: name}
         ])
     end
+
+    defp an_admin, do: user_fixture(%{email: "linking.admin@example.com", role: "admin"})
   end
 
   describe "moderation" do

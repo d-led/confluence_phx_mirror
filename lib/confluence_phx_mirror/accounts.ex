@@ -571,10 +571,20 @@ defmodule ConfluencePhxMirror.Accounts do
 
   The identity the account signs in with is not touched; this is the *further*
   identities a person holds.
+
+  Only an administrator may link, and the rule is enforced here rather than by
+  the screen that happens to call it: `{:error, :not_authorized}` otherwise. A
+  caller with no reader behind it — a mix task, the sync — is refused too, so an
+  API or MCP surface has to pass the reader it acts for and inherit the same
+  answer.
   """
   def link_identity(%User{} = user, account_id, actor) when is_binary(account_id) do
-    account_id = String.trim(account_id)
+    with :ok <- authorize_linking(actor) do
+      do_link_identity(user, String.trim(account_id), actor)
+    end
+  end
 
+  defp do_link_identity(%User{} = user, account_id, actor) do
     linked = user.identity_account_ids || []
 
     cond do
@@ -587,7 +597,7 @@ defmodule ConfluencePhxMirror.Accounts do
       other = Enum.find(accounts_linked_to(account_id), &(&1.id != user.id)) ->
         {:error, {:linked_elsewhere, other}}
 
-      not Mirror.identity_known?([account_id]) ->
+      not Mirror.identity_seen?([account_id]) ->
         {:error, :unknown_identity}
 
       true ->
@@ -601,8 +611,18 @@ defmodule ConfluencePhxMirror.Accounts do
     end
   end
 
-  @doc "Unlinks a Confluence identity: what it carries is no longer this account's."
+  @doc """
+  Unlinks a Confluence identity: what it carries is no longer this account's.
+
+  Authorized like linking — an administrator, or nobody.
+  """
   def unlink_identity(%User{} = user, account_id, actor) when is_binary(account_id) do
+    with :ok <- authorize_linking(actor) do
+      do_unlink_identity(user, account_id, actor)
+    end
+  end
+
+  defp do_unlink_identity(%User{} = user, account_id, actor) do
     linked = user.identity_account_ids || []
 
     if account_id in linked do
@@ -617,6 +637,13 @@ defmodule ConfluencePhxMirror.Accounts do
       {:error, :not_linked}
     end
   end
+
+  # Linking is an access decision, so it asks the question administration asks.
+  defp authorize_linking({:user, %User{} = actor}) do
+    if Admins.admin?(actor), do: :ok, else: {:error, :not_authorized}
+  end
+
+  defp authorize_linking(_actor), do: {:error, :not_authorized}
 
   @doc "The administrator assumed in development and test."
   def ensure_admin!(email \\ admin_email()) do

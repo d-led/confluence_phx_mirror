@@ -456,6 +456,10 @@ defmodule ConfluencePhxMirror.Mirror do
   them all: `:limit` and `:offset` page the answer in the database, and the
   groups are read for that page only. Without a limit the whole list comes back,
   which is what tests and small sites want.
+
+  `:query` is a term matched against the name Confluence shows and the account id
+  the permissions name, because a list that size is searched rather than
+  browsed.
   """
   def people(opts \\ []) do
     page = identities_page(opts)
@@ -465,8 +469,8 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc "How many people the content names, for the screen's \"of N\"."
-  def count_people do
-    identities_query()
+  def count_people(opts \\ []) do
+    identities_query(opts)
     |> subquery()
     |> select([i], count())
     |> Repo.one()
@@ -476,7 +480,7 @@ defmodule ConfluencePhxMirror.Mirror do
     limit = Keyword.get(opts, :limit)
     offset = Keyword.get(opts, :offset, 0)
 
-    identities_query()
+    identities_query(opts)
     |> order_by([i], asc: coalesce(max(i.display_name), i.account_id))
     |> limit_if(limit)
     |> offset(^offset)
@@ -487,7 +491,7 @@ defmodule ConfluencePhxMirror.Mirror do
   defp limit_if(query, limit), do: limit(query, ^limit)
 
   # One row per person, however often the content names them.
-  defp identities_query do
+  defp identities_query(opts) do
     from(p in Page,
       where: not is_nil(p.author_account_id),
       select: %{account_id: p.author_account_id, display_name: p.author_name}
@@ -499,8 +503,24 @@ defmodule ConfluencePhxMirror.Mirror do
       )
     )
     |> subquery()
+    |> identities_matching(Keyword.get(opts, :query))
     |> group_by([i], i.account_id)
     |> select([i], %{account_id: i.account_id, display_name: max(i.display_name)})
+  end
+
+  # A name Confluence shows and an account id the permissions name are both
+  # searched, case-insensitively, on the pattern the catalogs already use.
+  defp identities_matching(query, blank) when blank in [nil, ""], do: query
+
+  defp identities_matching(query, term) do
+    pattern = "%" <> (term |> to_string() |> String.trim() |> String.downcase()) <> "%"
+
+    where(
+      query,
+      [i],
+      fragment("lower(coalesce(?, '')) like ?", i.display_name, ^pattern) or
+        fragment("lower(?) like ?", i.account_id, ^pattern)
+    )
   end
 
   defp groups_by_subject(account_ids) do
@@ -637,6 +657,42 @@ defmodule ConfluencePhxMirror.Mirror do
 
       Repo.exists?(member?) or Repo.exists?(space_named?) or Repo.exists?(page_named?)
     end
+  end
+
+  @doc """
+  Whether the mirror has read about this identity at all: listed in a group by
+  the sync, named in a space permission or a page restriction, or the author of
+  a page or a comment.
+
+  Linking asks this, not `identity_known?/1`: the admin screen offers the people
+  the *content* names, so a link to an author must not come back "the mirror has
+  never seen this identity". Whether a person may also *sign in* is the narrower
+  question, and the login policy keeps asking it with `identity_known?/1`.
+  """
+  @spec identity_seen?([String.t() | nil]) :: boolean()
+  def identity_seen?(subject_keys) do
+    identity_known?(subject_keys) or authored_by?(subject_keys)
+  end
+
+  # Authorship, matched case-insensitively like the permission checks do.
+  defp authored_by?(subject_keys) do
+    subjects = subject_keys |> Enum.reject(&is_nil/1) |> Enum.map(&String.downcase/1)
+
+    subjects != [] and
+      (Repo.exists?(
+         from(p in Page,
+           where: fragment("lower(?)", p.author_account_id) in ^subjects,
+           limit: 1,
+           select: 1
+         )
+       ) or
+         Repo.exists?(
+           from(c in Comment,
+             where: fragment("lower(?)", c.author_account_id) in ^subjects,
+             limit: 1,
+             select: 1
+           )
+         ))
   end
 
   @doc """
