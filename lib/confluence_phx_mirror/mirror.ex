@@ -618,10 +618,13 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc """
   Whether the sync has ever seen this identity on the mirrored site.
   There is no user directory to consult — Confluence Cloud does not list a
-  site's users through the API — so "a user of the site" means "the mirror has
-  evidence of this person": a member of a group the content mentions, a user
-  named in a space permission or a page restriction. Mirror administrators are
-  a separate question, answered by `ConfluencePhxMirror.Accounts.Admins`.
+  site's users through the API — so "somebody of the site" means "the mirror has
+  read about this person": a member of a group the content mentions, somebody a
+  space permission or a page restriction names, or the author of a page or a
+  comment. Authorship counts because the rule this mirror keeps is that whoever
+  may read on Confluence may read here — an author is on the site even before a
+  group or a permission has listed them. Mirror administrators are a separate
+  question, answered by `ConfluencePhxMirror.Accounts.Admins`.
 
   Identities are matched case-insensitively, like the permission checks do.
   """
@@ -753,6 +756,27 @@ defmodule ConfluencePhxMirror.Mirror do
       where:
         s.key == ^String.upcase(space_key) and p.confluence_id == ^confluence_id and
           is_nil(p.deleted_at),
+      preload: [space: s]
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      page -> {:ok, page}
+    end
+  end
+
+  @doc """
+  Finds a page by space key and exact title.
+
+  Confluence keeps titles unique within a space, and a caller that has a title
+  in hand (a person quoting a page, an assistant that saw it in a list) should
+  not have to resolve an id first. The comparison is exact, like Confluence's
+  own: a near miss is a different page.
+  """
+  def find_page_by_title(space_key, title) do
+    from(p in Page,
+      join: s in assoc(p, :space),
+      where: s.key == ^String.upcase(space_key) and p.title == ^title and is_nil(p.deleted_at),
       preload: [space: s]
     )
     |> Repo.one()
@@ -1131,6 +1155,49 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
+  Every page of a space as the fields a page tree needs.
+
+  The sidebar learned this the expensive way: a tree needs ids, titles and
+  parents, not bodies, and selecting whole rows made one space map cost as much
+  as its content. This is the same six columns for a caller that wants the whole
+  space at once (the MCP server's `confluence_get_space_page_tree`).
+
+  Options: `:limit` (rows, plus one read to say whether the tree was cut) and
+  `:filter` (an authorization narrowing over the `:page` binding).
+
+  Returns `%{rows: [row], truncated?: boolean}` in sibling order.
+  """
+  def space_tree(space_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit)
+
+    rows =
+      from(p in Page,
+        as: :page,
+        where: p.space_id == ^space_id and is_nil(p.deleted_at),
+        order_by: [asc: p.title],
+        select: %{
+          id: p.id,
+          confluence_id: p.confluence_id,
+          parent_id: p.parent_id,
+          type: p.type,
+          title: p.title,
+          slug: p.slug,
+          ancestors: p.ancestors,
+          external_updated_at: p.external_updated_at
+        }
+      )
+      |> limit_rows(limit && limit + 1)
+      |> filtered(opts)
+      |> Repo.all()
+
+    if limit && length(rows) > limit do
+      %{rows: Enum.take(rows, limit), truncated?: true}
+    else
+      %{rows: rows, truncated?: false}
+    end
+  end
+
+  @doc """
   How many children a page has.
 
   A front page with five hundred children is normal in a big space, and a page
@@ -1352,6 +1419,40 @@ defmodule ConfluencePhxMirror.Mirror do
         limit: 1
     )
   end
+
+  @doc """
+  The most recent sync runs, newest first.
+
+  Ingestion history, not content: a caller that shows it decides who may see
+  it, the way `/admin` does.
+  """
+  def recent_sync_runs(limit \\ 5) do
+    from(r in SyncRun, order_by: [desc: r.started_at], limit: ^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Spaces by when the sync last read them, newest first, with page counts.
+
+  `spaces_with_counts/0` is a directory page and is cached; this answers "what
+  was indexed last", so the ordering and the window belong to the database.
+  `:key` narrows it to one space, for "when was this one last read?".
+  """
+  def spaces_by_last_sync(limit, opts \\ []) do
+    from(s in Space,
+      left_join: p in assoc(s, :pages),
+      where: is_nil(s.deleted_at) and is_nil(p.deleted_at),
+      where: ^last_sync_key(Keyword.get(opts, :key)),
+      group_by: s.id,
+      order_by: [desc_nulls_last: s.synced_at, asc: s.name],
+      limit: ^limit,
+      select: {s.key, s.name, s.synced_at, count(p.id)}
+    )
+    |> Repo.all()
+  end
+
+  defp last_sync_key(nil), do: dynamic(true)
+  defp last_sync_key(key), do: dynamic([s], s.key == ^String.upcase(key))
 
   def get_space_home(space, opts \\ [])
   def get_space_home(%Space{homepage_confluence_id: nil}, _opts), do: nil
