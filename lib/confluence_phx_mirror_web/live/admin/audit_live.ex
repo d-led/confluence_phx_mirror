@@ -120,7 +120,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
       <%!-- One box for what the reader knows — "jane role", "sync failed" — and
       two menus to narrow what the words cannot say. The box takes the room;
       a menu is as wide as the action it names. --%>
-      <form id="audit-filter" phx-change="filter" class="mt-5 flex flex-wrap items-center gap-2">
+      <form
+        id="audit-filter"
+        phx-change="filter"
+        phx-submit="filter"
+        class="mt-5 flex flex-wrap items-center gap-2"
+      >
         <label class="input input-sm flex min-w-0 flex-1 basis-56 items-center gap-2 rounded-lg border-base-300 bg-base-200/50">
           <.icon name="hero-magnifying-glass" class="size-4 shrink-0 opacity-50" />
           <input

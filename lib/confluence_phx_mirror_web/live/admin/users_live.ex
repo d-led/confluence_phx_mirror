@@ -454,7 +454,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
             <span class="badge badge-ghost badge-sm">{@users_total}</span>
           </div>
 
-          <form id="user-filter" phx-change="filter" class="border-b border-base-300/70 px-5 py-3">
+          <%!-- `phx-submit` is not decoration: without it Enter is a native
+          form submit, which reloads the page and throws the filter away. --%>
+          <form
+            id="user-filter"
+            phx-change="filter"
+            phx-submit="filter"
+            class="border-b border-base-300/70 px-5 py-3"
+          >
             <input
               type="search"
               name="q"

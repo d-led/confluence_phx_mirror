@@ -269,5 +269,21 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
 
       assert has_element?(view, "#accounts-empty")
     end
+
+    test "Enter filters in place instead of submitting the page", %{conn: conn} do
+      user_fixture(%{email: "needle@example.com"})
+      user_fixture(%{email: "haystack@example.com"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      # The form answers `phx-submit` — without it Enter is a native submit and
+      # the page reloads, filter and all.
+      assert has_element?(view, "#user-filter[phx-submit=filter]")
+
+      html = view |> element("#user-filter") |> render_submit(%{"q" => "needle"})
+
+      assert html =~ "needle@example.com"
+      refute html =~ "haystack@example.com"
+    end
   end
 end

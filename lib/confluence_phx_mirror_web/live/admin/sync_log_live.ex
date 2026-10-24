@@ -236,7 +236,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
       />
 
       <div class="mt-4 flex flex-wrap items-center gap-2">
-        <form id="sync-log-filter" phx-change="filter" class="flex min-w-0 flex-1 items-center gap-2">
+        <form
+          id="sync-log-filter"
+          phx-change="filter"
+          phx-submit="filter"
+          class="flex min-w-0 flex-1 items-center gap-2"
+        >
           <label class="input input-sm flex min-w-0 flex-1 items-center gap-2 rounded-lg border-base-300 bg-base-200/50">
             <.icon name="hero-funnel" class="size-4 opacity-50" />
             <input
