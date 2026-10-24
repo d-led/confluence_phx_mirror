@@ -8,7 +8,13 @@ export default function initPresence() {
   const page = document.querySelector("[data-presence-topic]")
   if (!site && !page) return
 
-  const socket = new Socket("/socket", {params: {}})
+  // Phoenix hands a socket the session only when the CSRF token proves the
+  // connection came from one of our own pages, and a socket that carries no
+  // session is an anonymous reader: it may join the site topic, but every
+  // restricted page answers it "not found". LiveView passes this token itself;
+  // a socket of our own has to say so.
+  const csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
+  const socket = new Socket("/socket", {params: {_csrf_token: csrfToken}})
   const channels = []
 
   if (site) {
@@ -34,11 +40,17 @@ export default function initPresence() {
 
 function join(socket, topic, render) {
   const channel = socket.channel(topic, {})
+
   const presence = new Presence(channel)
 
   presence.onSync(() => render(presence))
-  // A channel that could not be joined has no state to show.
-  channel.join().receive("error", () => render(null))
+  // A channel that could not be joined has no state to show, and asking again
+  // would be refused the same way: the reader keeps the number the page was
+  // rendered with, and the socket stops retrying.
+  channel.join().receive("error", () => {
+    render(null)
+    channel.leave()
+  })
 
   return channel
 }
@@ -51,7 +63,13 @@ function readers(presence) {
 }
 
 function setCount(node, presence) {
-  if (node) node.textContent = presence ? String(readers(presence).length) : "?"
+  // A refused join is not an unknown count: the number the page was rendered
+  // with is still the best answer, and a "?" would be a fault the reader cannot
+  // act on. The server renders it on every request, so the widget is honest
+  // even when the live half of it could not start.
+  if (!node || !presence) return
+
+  node.textContent = String(readers(presence).length)
 }
 
 function setReaders(list, presence) {
