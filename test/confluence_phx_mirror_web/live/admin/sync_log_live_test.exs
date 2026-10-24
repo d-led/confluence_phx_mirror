@@ -39,6 +39,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
     assert render(view) =~ "attachment pruned: diagram.svg"
   end
 
+  test "the count says when it is a ceiling, because the log slides", %{conn: conn} do
+    Log.add(:info, "page created: Budget")
+
+    {:ok, _view, html} = live(conn, ~p"/admin/sync-log")
+
+    assert html =~ "1 of 1 shown"
+    refute html =~ "(max)"
+
+    # Fill the ring: from here on the total is the most the log can hold, not
+    # everything the sync wrote.
+    for index <- 1..(Log.limit() + 5), do: Log.add(:info, "line #{index}")
+
+    {:ok, _full_view, full} = live(conn, ~p"/admin/sync-log")
+
+    assert full =~ "#{Log.limit()} of #{Log.limit()} (max) shown"
+  end
+
   test "a reader can narrow the log to warnings and errors", %{conn: conn} do
     Log.add(:info, "page created: Budget")
     Log.add(:warn, "page failed: Broken")

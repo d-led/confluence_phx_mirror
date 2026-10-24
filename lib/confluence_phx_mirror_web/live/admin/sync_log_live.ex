@@ -152,6 +152,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   defp newest_id([]), do: 0
   defp newest_id(entries), do: entries |> List.last() |> Map.fetch!(:id)
 
+  # The ring's own limit as a module attribute: it is what makes a total a
+  # ceiling, and a guard cannot call into another module.
+  @limit Log.limit()
+
+  defp shown_count(shown, held) when held >= @limit, do: "#{shown} of #{held} (max) shown"
+  defp shown_count(shown, held), do: "#{shown} of #{held} shown"
+
+  defp shown_tooltip(held) when held >= @limit,
+    do: "The log keeps the last #{@limit} lines; older ones have fallen off the end."
+
+  defp shown_tooltip(_held), do: "Every line the log holds."
+
   defp filter_entries(entries, level, query), do: Enum.filter(entries, &passes?(&1, level, query))
 
   defp passes?(entry, level, query) do
@@ -295,7 +307,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
         <span>{@counts.warn} warnings</span>
         <span>{@counts.error} errors</span>
         <span>·</span>
-        <span>{@shown} of {@held} shown</span>
+        <%!-- The log is a sliding window: once it is full, "400 of 400" means
+        "at most 400", not "the 400 the sync wrote". --%>
+        <span title={shown_tooltip(@held)}>{shown_count(@shown, @held)}</span>
       </p>
 
       <p
