@@ -420,6 +420,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             </th>
             <th title="Of those, the ones that had to be fetched and rendered">Changed</th>
             <th title="Of those, the ones already up to date and not fetched again">Unchanged</th>
+            <th title="How many pages the mirror held when the run finished — the size the three numbers to its left are a slice of">
+              In mirror
+            </th>
             <th>Attachments</th>
             <th>Errors</th>
             <th><span class="sr-only">Queue</span></th>
@@ -434,6 +437,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             <td class="text-xs tabular-nums">{row.listed}</td>
             <td class="text-xs tabular-nums">{row.changed}</td>
             <td class="text-xs tabular-nums">{row.unchanged}</td>
+            <td class="text-xs tabular-nums">{row.total}</td>
             <td class="text-xs tabular-nums">{row.attachments}</td>
             <td class="max-w-[18rem] truncate text-xs text-error" title={row.error}>
               {row.error || "—"}
@@ -540,6 +544,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       listed: "—",
       changed: "—",
       unchanged: "—",
+      total: "—",
       attachments: "—",
       error: nil,
       job_id: job.id,
@@ -559,6 +564,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       listed: run.stats["pages"] || 0,
       changed: run.stats["changed"] || 0,
       unchanged: run.stats["unchanged"] || 0,
+      total: run.stats["total"] || 0,
       attachments: run.stats["attachments"] || 0,
       error: run.error,
       job_id: nil,

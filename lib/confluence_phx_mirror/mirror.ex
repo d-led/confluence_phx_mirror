@@ -1311,7 +1311,10 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   def attachments(%Page{id: id}) do
-    from(a in Attachment, where: a.page_id == ^id, order_by: [asc: a.filename])
+    from(a in Attachment,
+      where: a.page_id == ^id and is_nil(a.comment_id),
+      order_by: [asc: a.filename]
+    )
     |> Repo.all()
   end
 
@@ -1398,6 +1401,43 @@ defmodule ConfluencePhxMirror.Mirror do
         where: p.space_id == ^space_id and is_nil(p.deleted_at),
         select: count(p.id)
     )
+  end
+
+  @doc "How many pages the mirror holds, across every space."
+  def count_pages do
+    Repo.one(from p in Page, where: is_nil(p.deleted_at), select: count(p.id))
+  end
+
+  @doc """
+  Marks a page's comments, attachments and restrictions as read.
+
+  A page's own version says nothing about its details: a reply arrives, a
+  screenshot is pasted in, and the page stays at version 1. This stamp is what
+  lets a later run ask "whose details have I never read?" and answer it.
+  """
+  def mark_details_synced(%Page{id: id}) do
+    {1, _} =
+      Repo.update_all(from(p in Page, where: p.id == ^id),
+        set: [details_synced_at: DateTime.utc_now() |> DateTime.truncate(:second)]
+      )
+
+    :ok
+  end
+
+  @doc """
+  Pages whose details have never been read, oldest first.
+
+  `:limit` is required: this is a backlog, and a run works through a slice of
+  it rather than reading a hundred thousand pages' comments in one go.
+  """
+  def pages_awaiting_details(limit) do
+    from(p in Page,
+      where: is_nil(p.deleted_at) and is_nil(p.details_synced_at),
+      order_by: [asc: p.id],
+      limit: ^limit,
+      select: p.confluence_id
+    )
+    |> Repo.all()
   end
 
   # ---------------------------------------------------------------------------

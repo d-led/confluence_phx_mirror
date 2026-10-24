@@ -34,7 +34,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
           required(:space_key) => String.t(),
           required(:base_url) => String.t() | nil,
           optional(:pages) => %{integer() => page_ref()},
-          optional(:attachments) => %{String.t() => attachment_ref()}
+          optional(:attachments) => %{{integer(), String.t()} => attachment_ref()}
         }
 
   @type link :: %{
@@ -357,9 +357,15 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     end
   end
 
-  defp attachment_link({page_id, filename}, href, context) do
-    case get_in(context, [:attachments, filename]) do
-      %{confluence_id: attachment_id, page_confluence_id: ^page_id, space_key: space_key} ->
+  # Confluence's download path names the content the file hangs off, and that is
+  # not always the page: a screenshot pasted into a comment is
+  # `/download/attachments/9306117/…`, naming the comment. The map is keyed by
+  # that owner and the filename, so a page file and a comment file of the same
+  # name cannot be mistaken for one another, and the mirror still serves both
+  # under the page they belong to.
+  defp attachment_link({owner_id, filename}, href, context) do
+    case get_in(context, [:attachments, {owner_id, filename}]) do
+      %{confluence_id: attachment_id, page_confluence_id: page_id, space_key: space_key} ->
         {:attachment, URLs.attachment_path(space_key, page_id, attachment_id, filename)}
 
       _ ->

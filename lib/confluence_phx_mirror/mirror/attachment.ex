@@ -23,12 +23,18 @@ defmodule ConfluencePhxMirror.Mirror.Attachment do
 
     belongs_to :page, ConfluencePhxMirror.Mirror.Page
 
+    # A file pasted into a comment belongs to the comment: Confluence's own
+    # download path names the comment as the owner, and the page's file list
+    # must not gain a screenshot somebody dropped in a reply.
+    belongs_to :comment, ConfluencePhxMirror.Mirror.Comment
+
     timestamps(type: :utc_datetime)
   end
 
   @fields [
     :confluence_id,
     :page_id,
+    :comment_id,
     :filename,
     :media_type,
     :byte_size,

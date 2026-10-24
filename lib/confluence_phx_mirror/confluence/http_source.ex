@@ -30,6 +30,16 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   @page_expand "body.storage,body.export_view,version,ancestors,metadata.labels,space,history"
 
+  @comment_expand "body.export_view,version,history"
+
+  # Content that hangs off a page. A container of one of these is the owner the
+  # mirror needs; a container that is itself a comment has to be asked again.
+  @page_types ["page", "blogpost"]
+
+  # Confluence also lets a space hold files (logos, layout images). They belong
+  # to no page, so the mirror has nowhere to put them.
+  @space_types ["global", "personal"]
+
   # Client sizing is deployment config (CM_HTTP_*), not a code constant.
   defp page_limit, do: config()[:page_size] || 50
   defp max_attempts, do: config()[:retries] || 3
@@ -92,9 +102,10 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   def comments(confluence_id, _opts) do
     path = "/content/#{confluence_id}/child/comment"
 
-    with {:ok, results} <-
-           paginate_json(path, %{"limit" => 100, "expand" => "body.export_view,version,history"}) do
-      {:ok, Enum.map(results, &parse_comment(&1, confluence_id))}
+    with {:ok, results} <- paginate_json(path, %{"limit" => 100, "expand" => @comment_expand}),
+         comments = Enum.map(results, &parse_comment(&1, confluence_id)),
+         {:ok, files} <- comment_attachments(comments, confluence_id) do
+      {:ok, Enum.map(comments, &Map.put(&1, :attachments, Map.get(files, &1.id, [])))}
     end
   end
 
@@ -347,6 +358,142 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     end
   end
 
+  @doc """
+  The pages whose comments or attachments moved since `since`.
+
+  Every kind of content in Confluence has a version of its own, and a child's
+  version does not bump its page's: a page can gain a reply and a screenshot and
+  stay at version 1. A page-change window therefore never sees them, and a run
+  that only asked for pages would miss a comment for good.
+
+  The search index answers with the content that changed and its `container`
+  says who owns it. A file pasted into a comment hangs off the *comment*, so the
+  comment's own container is asked for. Files a space holds for its own layout
+  have no page to belong to here; they are counted, not dropped in silence.
+  """
+  @impl true
+  def touched_since(since, _opts) do
+    cql = ~s[lastmodified >= "#{format_cql_time(since)}" and type in (comment, attachment)]
+    params = %{"cql" => cql, "limit" => page_limit(), "expand" => "container"}
+
+    with {:ok, results} <- paginate_json("/content/search", params) do
+      resolve_owners(results, %{
+        pages: [],
+        space_attachments: 0,
+        comments: comment_owners(results)
+      })
+    end
+  end
+
+  # Comments name their page directly, so the ones that changed in this window
+  # also answer for the files attached to them, without another request.
+  defp comment_owners(results) do
+    for %{"type" => "comment", "id" => id, "container" => %{"type" => type, "id" => page}} <-
+          results,
+        type in @page_types,
+        into: %{},
+        do: {to_string(id), parse_id(page)}
+  end
+
+  defp resolve_owners([], acc),
+    do: {:ok, %{acc | pages: acc.pages |> Enum.reverse() |> Enum.uniq()}}
+
+  defp resolve_owners([result | rest], acc) do
+    case owner_page_id(result, acc.comments) do
+      {:ok, nil} ->
+        resolve_owners(rest, %{acc | space_attachments: acc.space_attachments + 1})
+
+      {:ok, page_id} ->
+        resolve_owners(rest, %{acc | pages: [page_id | acc.pages]})
+
+      {:error, reason} ->
+        {:error, {:unresolved_owner, result["id"], reason}}
+    end
+  end
+
+  @doc """
+  Who owns a piece of content the search index returned.
+
+  `{:page, id}` is the page a run has to read again; `{:comment, id}` is a
+  comment that owns it, whose own container has to be asked for; `:space` is a
+  file a space keeps for its own layout, which has no page to belong to here.
+  """
+  def owner_of(%{"container" => %{"type" => type, "id" => id}}) when type in @page_types,
+    do: {:page, parse_id(id)}
+
+  def owner_of(%{"container" => %{"type" => "comment", "id" => id}}), do: {:comment, parse_id(id)}
+
+  def owner_of(%{"container" => %{"type" => type}}) when type in @space_types, do: :space
+  def owner_of(%{"container" => %{"type" => type}}), do: {:unexpected, type}
+  def owner_of(_result), do: :no_container
+
+  defp owner_page_id(result, known) do
+    case owner_of(result) do
+      {:page, page_id} ->
+        {:ok, page_id}
+
+      {:comment, comment_id} ->
+        case Map.fetch(known, to_string(comment_id)) do
+          {:ok, page_id} -> {:ok, page_id}
+          :error -> comment_owner_page(comment_id)
+        end
+
+      :space ->
+        {:ok, nil}
+
+      {:unexpected, type} ->
+        {:error, {:unexpected_container, type}}
+
+      :no_container ->
+        {:error, :no_container}
+    end
+  end
+
+  defp comment_owner_page(comment_id) do
+    case request_json("/content/#{comment_id}", %{"expand" => "container"}) do
+      {:ok, %{"container" => %{"type" => type, "id" => id}}} when type in @page_types ->
+        {:ok, parse_id(id)}
+
+      {:ok, body} ->
+        {:error, {:comment_container, body["container"]}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Every file attached to the page's comments, in one request: the search index
+  # answers `container in (...)`, so a page with forty comments costs one call
+  # rather than forty.
+  defp comment_attachments([], _page_id), do: {:ok, %{}}
+
+  defp comment_attachments(comments, page_id) do
+    ids = Enum.map_join(comments, ", ", & &1.id)
+
+    params = %{
+      "cql" => "container in (#{ids}) and type = attachment",
+      "limit" => page_limit(),
+      "expand" => "container,version"
+    }
+
+    with {:ok, results} <- paginate_json("/content/search", params) do
+      {:ok, group_comment_files(results, page_id)}
+    end
+  end
+
+  @doc """
+  Groups attachment search results by the comment that owns them.
+  """
+  def group_comment_files(results, page_id) do
+    results
+    |> Enum.map(fn result ->
+      result
+      |> parse_attachment(page_id)
+      |> Map.put(:comment_id, parse_id(get_in(result, ["container", "id"])))
+    end)
+    |> Enum.group_by(& &1.comment_id)
+  end
+
   # ---------------------------------------------------------------------------
   # Diagnostics
   # ---------------------------------------------------------------------------
@@ -473,7 +620,11 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     }
   end
 
-  defp parse_comment(content, page_id) do
+  @doc """
+  One comment, as the mirror needs it: its own version, who wrote it and when,
+  and the files it carries.
+  """
+  def parse_comment(content, page_id) do
     parent_id =
       content
       |> Map.get("ancestors", [])
@@ -483,13 +634,18 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
         _ -> nil
       end
 
+    version = content["version"] || %{}
+
     %{
       id: parse_id(content["id"]),
       page_id: page_id,
       parent_id: parent_id,
-      author: get_in(content, ["version", "by", "displayName"]),
+      author: get_in(version, ["by", "displayName"]),
+      author_account_id: get_in(version, ["by", "accountId"]),
       body_export: get_in(content, ["body", "export_view", "value"]),
-      created_at: parse_time(get_in(content, ["version", "when"])),
+      version_number: version["number"],
+      created_at: parse_time(get_in(content, ["history", "createdDate"]) || version["when"]),
+      updated_at: parse_time(version["when"]),
       url: public_url(content["_links"]["webui"])
     }
   end

@@ -185,24 +185,34 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
   end
 
   describe "comments/2 and attachments/2" do
-    test "maps comments with their parent and export body" do
+    test "maps comments with their parent, version, export body and its own files" do
+      # A comment can carry files, and they are found by asking the index for
+      # everything whose container is one of this page's comments — one request
+      # for the page rather than one per comment.
       stub(fn conn ->
-        assert conn.request_path == "/wiki/rest/api/content/1002/child/comment"
+        case conn.request_path do
+          "/wiki/rest/api/content/1002/child/comment" ->
+            Req.Test.json(conn, %{
+              "results" => [
+                %{
+                  "id" => "3001",
+                  "ancestors" => [%{"id" => "2999"}],
+                  "version" => %{
+                    "number" => 2,
+                    "when" => "2026-10-03T08:00:00.000Z",
+                    "by" => %{"displayName" => "Sam", "accountId" => "acc-sam"}
+                  },
+                  "body" => %{"export_view" => %{"value" => "<p>nice</p>"}},
+                  "_links" => %{"webui" => "/spaces/ENG/pages/1002?focusedCommentId=3001"}
+                }
+              ]
+            })
 
-        Req.Test.json(conn, %{
-          "results" => [
-            %{
-              "id" => "3001",
-              "ancestors" => [%{"id" => "2999"}],
-              "version" => %{
-                "when" => "2026-10-03T08:00:00.000Z",
-                "by" => %{"displayName" => "Sam"}
-              },
-              "body" => %{"export_view" => %{"value" => "<p>nice</p>"}},
-              "_links" => %{"webui" => "/spaces/ENG/pages/1002?focusedCommentId=3001"}
-            }
-          ]
-        })
+          "/wiki/rest/api/content/search" ->
+            Req.Test.json(conn, %{
+              "results" => [comment_file_json("att9002", "shot.png", "3001")]
+            })
+        end
       end)
 
       assert {:ok, [comment]} = HttpSource.comments(1002, [])
@@ -210,8 +220,35 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
       assert comment.page_id == 1002
       assert comment.parent_id == 2999
       assert comment.author == "Sam"
+      assert comment.author_account_id == "acc-sam"
+      assert comment.version_number == 2
       assert comment.body_export == "<p>nice</p>"
       assert comment.url =~ "focusedCommentId=3001"
+
+      assert [file] = comment.attachments
+      assert file.id == "att9002"
+      assert file.filename == "shot.png"
+      assert file.comment_id == 3001
+    end
+
+    test "a comment with no files costs no extra request" do
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/rest/api/content/1002/child/comment"
+        Req.Test.json(conn, %{"results" => []})
+      end)
+
+      assert {:ok, []} = HttpSource.comments(1002, [])
+    end
+
+    defp comment_file_json(id, filename, comment_id) do
+      %{
+        "id" => id,
+        "title" => filename,
+        "container" => %{"type" => "comment", "id" => comment_id},
+        "version" => %{"number" => 1, "when" => "2026-10-03T08:00:00.000Z"},
+        "extensions" => %{"mediaType" => "image/png", "fileSize" => 128},
+        "_links" => %{"download" => "/download/attachments/#{comment_id}/#{filename}"}
+      }
     end
 
     test "maps attachments with media type, size and download URL" do

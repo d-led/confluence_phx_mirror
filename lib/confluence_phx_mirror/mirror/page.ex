@@ -36,6 +36,10 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     field :external_created_at, :utc_datetime
     field :external_updated_at, :utc_datetime
     field :synced_at, :utc_datetime
+    # Comments, attachments and restrictions have versions of their own and
+    # none of them bumps the page's. This is when the page's details were last
+    # read, so a run that missed them can find the page again.
+    field :details_synced_at, :utc_datetime
     field :deleted_at, :utc_datetime
     field :search_text, :string, default: ""
 
@@ -76,6 +80,7 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     :external_created_at,
     :external_updated_at,
     :synced_at,
+    :details_synced_at,
     :deleted_at,
     :search_text
   ]

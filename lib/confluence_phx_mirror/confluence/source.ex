@@ -10,7 +10,6 @@ defmodule ConfluencePhxMirror.Confluence.Source do
 
   All functions return plain maps ("DTOs") shaped like the Confluence REST API,
   so both sources exercise exactly the same ingestion code.
-
   ## Page DTO
 
       %{
@@ -46,12 +45,21 @@ defmodule ConfluencePhxMirror.Confluence.Source do
       %{id: 9001, page_id: 1002, filename: "diagram.svg",
         media_type: "image/svg+xml", byte_size: 1234, version: 2,
         download_url: "/download/attachments/1002/diagram.svg",
-        updated_at: DateTime.t()}
+        updated_at: DateTime.t(), comment_id: 3001 | nil}
+
+  `page_id` is the page the mirror stores the file under; `comment_id` is set
+  when the file belongs to a comment rather than the page itself.
 
   ## Comment DTO
 
       %{id: 3001, page_id: 1001, parent_id: nil, author: "Jane Doe",
-        body_export: "<p>...</p>", created_at: DateTime.t(), url: "..."}
+        author_account_id: "557058:...", body_export: "<p>...</p>",
+        version_number: 2, created_at: DateTime.t(), updated_at: DateTime.t(),
+        url: "...", attachments: [attachment()]}
+
+  A comment is content with a version of its own, and it can carry files of its
+  own: a screenshot pasted into a reply belongs to the comment. `attachments`
+  is therefore always present, empty when the comment has none.
 
   ## Permission DTOs
 
@@ -119,7 +127,6 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   @doc "Comments of a page, including replies."
   @callback comments(confluence_id :: integer(), keyword()) ::
               {:ok, [comment()]} | {:error, term()}
-
   @doc "Attachment metadata of a page."
   @callback attachments(confluence_id :: integer(), keyword()) ::
               {:ok, [attachment()]} | {:error, term()}
@@ -134,6 +141,27 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   `{:error, :not_supported}`; the scheduler then falls back to a snapshot.
   """
   @callback changed_since(DateTime.t(), keyword()) :: {:ok, [page()]} | {:error, term()}
+
+  @typedoc """
+  What moved in a window besides the pages themselves.
+
+  `pages` are the pages whose comments or attachments changed — their own
+  version did not, so `changed_since/2` cannot see them. `space_attachments`
+  counts files a space owns for its own layout: Confluence has them, the mirror
+  has nowhere to put them, and saying so is better than dropping them quietly.
+  """
+  @type touched :: %{pages: [integer()], space_attachments: non_neg_integer()}
+
+  @doc """
+  Pages whose comments or attachments changed since `since`.
+
+  Every piece of content in Confluence has a version, and a child's version
+  does not bump its page's, so this is what keeps an incremental run from
+  missing a comment forever. Sources that cannot answer leave the callback
+  out; the run then reports that details were not re-checked rather than
+  pretending they were.
+  """
+  @callback touched_since(DateTime.t(), keyword()) :: {:ok, touched()} | {:error, term()}
 
   @doc """
   Read restrictions of one page.
@@ -212,6 +240,7 @@ defmodule ConfluencePhxMirror.Confluence.Source do
               {:ok, account_status()} | {:error, term()}
 
   @optional_callbacks changed_since: 2,
+                      touched_since: 2,
                       restrictions: 2,
                       space_permissions: 2,
                       space_icon: 2,

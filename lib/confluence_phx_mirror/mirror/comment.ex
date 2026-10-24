@@ -13,6 +13,10 @@ defmodule ConfluencePhxMirror.Mirror.Comment do
     field :body_text, :string
     field :external_url, :string
     field :external_created_at, :utc_datetime
+    # Which version of the comment the mirror holds, so "is this current?" has
+    # an answer for comments the way it does for pages and attachments.
+    field :version_number, :integer
+    field :external_updated_at, :utc_datetime
     field :synced_at, :utc_datetime
     field :deleted_at, :utc_datetime
 
@@ -34,6 +38,8 @@ defmodule ConfluencePhxMirror.Mirror.Comment do
       :body_text,
       :external_url,
       :external_created_at,
+      :version_number,
+      :external_updated_at,
       :synced_at
     ])
     |> validate_required([:confluence_id, :page_id])

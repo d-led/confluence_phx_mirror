@@ -251,8 +251,11 @@ defmodule ConfluencePhxMirror.Sync do
 
   # Checked between pages, never inside one: a page is written in a transaction
   # of its own, so stopping between two of them leaves nothing half-done.
-  @cancel_check_every 100
+  # How many already-current pages a run names in its log before it settles for
+  # the total. Naming them is what turns "1 listed, 1 unchanged" into an answer.
+  @listed_by_name 20
 
+  @cancel_check_every 100
   defp check_cancelled!(opts) do
     case opts[:run_id] do
       nil -> :ok
@@ -538,38 +541,54 @@ defmodule ConfluencePhxMirror.Sync do
 
     case source.changed_since(since, opts) do
       {:ok, dtos} ->
+        {extra, touched, touched_errors} = touched_pages(source, dtos, since, opts)
+
         # A page in a personal space is not imported through the side door.
-        {dtos, skipped_personal} = drop_personal_pages(source, dtos, opts)
+        {dtos, skipped_personal} = drop_personal_pages(source, dtos ++ extra, opts)
 
         record_phase(opts, "people")
         {people, people_errors, refreshed} = sync_groups(source, opts)
         record_phase(opts, "spaces")
         {spaces, icon_errors} = ensure_spaces_for(source, dtos, opts)
         {spaces, permission_errors} = sync_space_permissions(source, spaces)
-        {entries, counts, errors} = upsert_entries(dtos, spaces, opts)
+
+        {entries, counts, errors} =
+          upsert_entries(dtos, spaces, Keyword.put(opts, :force, touched))
+
         resolve_trees(spaces)
+        log_listing(dtos, entries)
         index = Mirror.page_index()
 
         record_phase(opts, "people")
         {new_people, newcomer_errors, _} = sync_groups(source, opts, newcomers(refreshed))
         record_phase(opts, "details")
         {stats, detail_errors} = sync_details(source, entries, index, opts)
+        record_phase(opts, "backlog")
+        {caught_up, catch_up_errors} = catch_up_details(source, opts)
         record_phase(opts, "groups")
         {group_rows, group_errors} = refresh_groups(source, opts)
 
         stats =
-          Map.merge(stats, %{
+          stats
+          |> Map.merge(caught_up)
+          |> Map.merge(%{
             "spaces" => length(spaces),
             "skipped_personal" => skipped_personal,
+            "details_relisted" => length(extra),
             "group_members" => people + new_people + group_rows
           })
           |> Map.merge(page_counts(counts))
 
         {stats,
          errors ++
+           touched_errors ++
            icon_errors ++
            permission_errors ++
-           people_errors ++ newcomer_errors ++ detail_errors ++ group_errors}
+           people_errors ++
+           newcomer_errors ++
+           detail_errors ++
+           catch_up_errors ++
+           group_errors}
 
       {:error, :not_supported} ->
         do_run(:snapshot, source, opts)
@@ -577,6 +596,126 @@ defmodule ConfluencePhxMirror.Sync do
       {:error, reason} ->
         raise_source_error(:changed_since, since, reason)
     end
+  end
+
+  # Comments and attachments have versions of their own and never bump their
+  # page's, so the page window cannot see them: a reply arrives, a screenshot is
+  # pasted in, and the page stays at version 1 while an incremental run reports
+  # nothing to do. The pages whose children moved are read and handed to the
+  # detail pass as forced work.
+  defp touched_pages(source, dtos, since, opts) do
+    if function_exported?(source, :touched_since, 2) do
+      case source.touched_since(since, opts) do
+        {:ok, touched} ->
+          known = MapSet.new(dtos, & &1.id)
+
+          {extra, errors} =
+            fetch_pages(source, Enum.reject(touched.pages, &MapSet.member?(known, &1)), opts)
+
+          if touched.space_attachments > 0 do
+            Log.add(
+              :info,
+              "#{touched.space_attachments} file(s) changed that belong to a space, not a page",
+              kind: :sync
+            )
+          end
+
+          {extra, MapSet.new(touched.pages), errors}
+
+        {:error, reason} ->
+          # The run still does what it can: the pages are mirrored either way,
+          # and the failure is reported as an error on the run rather than
+          # swallowed into a clean-looking sync.
+          Log.add(
+            :warn,
+            "could not ask what comments and attachments changed: #{inspect(reason)}"
+          )
+
+          {[], MapSet.new(), [error("comments", since, reason)]}
+      end
+    else
+      {[], MapSet.new(), []}
+    end
+  end
+
+  # Pages a changed comment or file pointed at: read so the detail pass can run
+  # against them. A page deleted between the two queries is not an error here —
+  # the page listing owns deletion.
+  defp fetch_pages(source, ids, opts) do
+    {dtos, errors} =
+      Enum.map_reduce(ids, [], fn id, errors ->
+        case source.page(id, opts) do
+          {:ok, dto} -> {dto, errors}
+          {:error, :not_found} -> {nil, errors}
+          {:error, reason} -> {nil, [error("page", id, reason) | errors]}
+        end
+      end)
+
+    {Enum.reject(dtos, &is_nil/1), errors}
+  end
+
+  # A run that says "1 listed, 1 unchanged" and stops leaves the reader asking
+  # which page and why nothing happened. While the listing is small the pages are
+  # named, with the version the site reported; a snapshot says only the totals.
+  defp log_listing(dtos, entries) do
+    visited = MapSet.new(entries, & &1.dto.id)
+    current = Enum.reject(dtos, &MapSet.member?(visited, &1.id))
+
+    case length(current) do
+      count when count in 1..@listed_by_name ->
+        Enum.each(current, fn dto ->
+          Log.add(:info, "already current: #{dto.title}",
+            page: dto.id,
+            space: dto.space_key,
+            version: dto.version.number,
+            modified: DateTime.to_iso8601(dto.updated_at)
+          )
+        end)
+
+      count when count > @listed_by_name ->
+        Log.add(:debug, "#{count} pages were already current; not named one by one",
+          unchanged: count
+        )
+
+      _none ->
+        :ok
+    end
+  end
+
+  # A page whose details were never read — a mirror upgraded to this rule, or a
+  # run that died between the page and its comments — has nothing pointing back
+  # at it: its own version will not move again. A bounded slice of that backlog
+  # is read on every run, so it drains instead of sitting there.
+  defp catch_up_details(source, opts) do
+    case Mirror.pages_awaiting_details(detail_backlog()) do
+      [] ->
+        {%{}, []}
+
+      ids ->
+        {dtos, fetch_errors} = fetch_pages(source, ids, opts)
+        {spaces, icon_errors} = ensure_spaces_for(source, dtos, opts)
+
+        {entries, _counts, upsert_errors} =
+          upsert_entries(dtos, spaces, Keyword.put(opts, :force, MapSet.new(ids)))
+
+        resolve_trees(spaces)
+        {stats, detail_errors} = sync_details(source, entries, Mirror.page_index(), opts)
+
+        Log.add(
+          :info,
+          "caught up on #{length(entries)} page(s) whose details had never been read",
+          pages: length(entries)
+        )
+
+        {Map.put(stats, "details_caught_up", length(entries)),
+         fetch_errors ++ icon_errors ++ upsert_errors ++ detail_errors}
+    end
+  end
+
+  defp detail_backlog do
+    :confluence_phx_mirror
+    |> Application.get_env(:sync, [])
+    |> Keyword.get(:detail_backlog, 200)
   end
 
   defp raise_source_error(scope, id, reason) do
@@ -982,6 +1121,7 @@ defmodule ConfluencePhxMirror.Sync do
   defp upsert_entries(dtos, spaces, opts) do
     by_key = Map.new(spaces, &{&1.key, &1})
     existing = existing_pages()
+    forced = Keyword.get(opts, :force, MapSet.new())
 
     {entries, counts, errors} =
       Enum.reduce(dtos, {[], %{changed: 0, unchanged: 0}, []}, fn dto,
@@ -993,12 +1133,14 @@ defmodule ConfluencePhxMirror.Sync do
 
         case Map.fetch(by_key, dto.space_key) do
           {:ok, space} ->
-            case upsert_page_record(space, dto, Map.get(existing, dto.id)) do
+            case upsert_page_record(space, dto, Map.get(existing, dto.id),
+                   force: MapSet.member?(forced, dto.id)
+                 ) do
               {:ok, :unchanged} ->
                 {entries, Map.update!(counts, :unchanged, &(&1 + 1)), errors}
 
               {:ok, entry} ->
-                {[entry | entries], Map.update!(counts, :changed, &(&1 + 1)), errors}
+                {[entry | entries], count_entry(counts, entry), errors}
 
               {:error, reason} ->
                 {entries, counts, [error("page", dto.id, reason) | errors]}
@@ -1011,6 +1153,12 @@ defmodule ConfluencePhxMirror.Sync do
 
     {Enum.reverse(entries), counts, errors}
   end
+
+  # A page re-read only because a comment or a file moved is not a changed page:
+  # its content was already current. Counting it as changed is how a quiet site
+  # ends up looking busy.
+  defp count_entry(counts, %{change: :unchanged}), do: Map.update!(counts, :unchanged, &(&1 + 1))
+  defp count_entry(counts, _entry), do: Map.update!(counts, :changed, &(&1 + 1))
 
   # Only the fields change detection needs: a page body can be megabytes, and
   # keeping 400k of them in memory to compare them would defeat the purpose.
@@ -1033,7 +1181,7 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp light(nil), do: nil
 
-  defp upsert_page_record(space, dto, previous, opts \\ []) do
+  defp upsert_page_record(space, dto, previous, opts) do
     attrs = page_attrs(dto)
     force? = Keyword.get(opts, :force, false)
 
@@ -1147,7 +1295,7 @@ defmodule ConfluencePhxMirror.Sync do
   defp render_entry(source, %{space: space, dto: dto, page: page, change: change}, index) do
     {attachments, attachment_errors} = mirror_attachments(source, space, page)
     restriction_errors = mirror_page_restrictions(source, page)
-    attachment_map = Map.new(attachments, &attachment_ref(space, page, &1))
+    attachment_map = Map.new(attachments, &attachment_ref(space, page, &1, page.confluence_id))
 
     context = %{
       page: page,
@@ -1161,7 +1309,13 @@ defmodule ConfluencePhxMirror.Sync do
 
     with {:ok, page} <- store_rendered_page(page, rendered, space, attachments),
          {:ok, _} <- Mirror.replace_links(page, rendered.links),
-         {:ok, comments} <- mirror_comments(source, page, context) do
+         {:ok, comments} <- mirror_comments(source, space, page, context) do
+      # One prune for both owners: the page's files and the ones that live in
+      # its comments. Anything else this page used to hold is gone upstream.
+      kept = Enum.map(attachments, & &1.confluence_id) ++ comments.attachment_ids
+      prune_errors = prune_attachments(page, kept)
+      :ok = Mirror.mark_details_synced(page)
+
       page = Map.put(page, :space, space)
       {notifications, notification_errors} = notify(change, page, space)
       audit_change(change, page, space, dto)
@@ -1170,10 +1324,10 @@ defmodule ConfluencePhxMirror.Sync do
        %{
          "attachments" => length(attachments),
          "attachments_downloaded" => Enum.count(attachments, & &1.downloaded?),
-         "comments" => comments,
+         "comments" => comments.count,
          "links" => length(rendered.links),
          "notifications" => notifications
-       }, attachment_errors ++ restriction_errors ++ notification_errors}
+       }, attachment_errors ++ restriction_errors ++ prune_errors ++ notification_errors}
     else
       {:error, reason} -> {:error, reason, dto}
     end
@@ -1271,8 +1425,13 @@ defmodule ConfluencePhxMirror.Sync do
     |> Enum.join(" ")
   end
 
-  defp attachment_ref(space, page, attachment) do
-    {attachment.filename,
+  # A reference is keyed by the content that owns the file — the page for a page
+  # attachment, the comment for a file pasted into a comment — and by its name,
+  # so two files called `image.png` in the same page cannot shadow each other.
+  # Both are served under the page they belong to, because that is what a reader
+  # is allowed to see.
+  defp attachment_ref(space, page, attachment, owner_confluence_id) do
+    {{owner_confluence_id, attachment.filename},
      %{
        confluence_id: attachment.confluence_id,
        page_confluence_id: page.confluence_id,
@@ -1286,14 +1445,13 @@ defmodule ConfluencePhxMirror.Sync do
       {:ok, attachment_dtos} ->
         {attachments, errors} =
           Enum.map_reduce(attachment_dtos, [], fn dto, errors ->
-            case mirror_attachment(source, space, page, dto) do
+            case mirror_attachment(source, space, page, dto, nil) do
               {:ok, attachment} -> {attachment, errors}
               {:error, reason} -> {nil, [error("attachment", dto.id, reason) | errors]}
             end
           end)
 
-        {Enum.reject(attachments, &is_nil/1),
-         errors ++ prune_attachments(page, Enum.map(attachment_dtos, &to_string(&1.id)))}
+        {Enum.reject(attachments, &is_nil/1), errors}
 
       {:error, reason} ->
         {[], [error("attachments", page.confluence_id, reason)]}
@@ -1323,7 +1481,7 @@ defmodule ConfluencePhxMirror.Sync do
     []
   end
 
-  defp mirror_attachment(source, space, page, dto) do
+  defp mirror_attachment(source, space, page, dto, comment_id) do
     # Confluence hands out numeric ids on older sites and "att164058" on newer
     # ones; the mirror stores the text form either way.
     confluence_id = to_string(dto.id)
@@ -1335,6 +1493,7 @@ defmodule ConfluencePhxMirror.Sync do
       attrs = %{
         confluence_id: confluence_id,
         page_id: page.id,
+        comment_id: comment_id,
         filename: dto.filename,
         media_type: dto.media_type,
         byte_size: dto.byte_size,
@@ -1391,48 +1550,97 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
-  defp mirror_comments(source, page, context) do
+  # A comment is a row before it is a body: its files belong to it, so the row
+  # has to exist before a file can point at it, and the body is rendered once the
+  # files are known because the body refers to them.
+  defp mirror_comments(source, space, page, context) do
     case source.comments(page.confluence_id, []) do
       {:ok, comments} ->
-        ids = Enum.map(comments, & &1.id)
+        {:ok, result} =
+          Repo.transaction(fn ->
+            {kept, attachment_errors} =
+              Enum.reduce(comments, {[], []}, fn dto, {kept, errors} ->
+                comment = upsert_comment(dto, page)
+                {files, file_errors} = mirror_comment_files(source, space, page, comment, dto)
+                store_comment_body(comment, dto, files, context, space, page)
 
-        Repo.transaction(fn ->
-          Enum.each(comments, fn dto ->
-            rendered = Renderer.render(dto.body_export, %{context | page: page})
+                {kept ++ Enum.map(Map.get(dto, :attachments, []), &to_string(&1.id)),
+                 errors ++ file_errors}
+              end)
 
-            attrs = %{
-              confluence_id: dto.id,
-              page_id: page.id,
-              author_name: dto.author,
-              body_export: rendered.html,
-              body_text: rendered.text,
-              external_url: dto.url,
-              external_created_at: dto.created_at,
-              synced_at: now()
-            }
+            delete_stale_comments(page, comments)
 
-            comment =
-              Repo.get_by(Comment, confluence_id: dto.id) || %Comment{}
-
-            {:ok, comment} =
-              comment
-              |> Comment.changeset(attrs)
-              |> Repo.insert_or_update()
-
-            resolve_comment_parent(comment, dto.parent_id)
+            %{count: length(comments), attachment_ids: kept, errors: attachment_errors}
           end)
 
-          from(c in Comment,
-            where: c.page_id == ^page.id and c.confluence_id not in ^ids
-          )
-          |> Repo.delete_all()
-        end)
-
-        {:ok, length(comments)}
+        {:ok, result}
 
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp upsert_comment(dto, page) do
+    attrs = %{
+      confluence_id: dto.id,
+      page_id: page.id,
+      author_name: dto.author,
+      author_account_id: Map.get(dto, :author_account_id),
+      external_url: dto.url,
+      external_created_at: dto.created_at,
+      version_number: Map.get(dto, :version_number),
+      external_updated_at: Map.get(dto, :updated_at),
+      synced_at: now()
+    }
+
+    comment = Repo.get_by(Comment, confluence_id: dto.id) || %Comment{}
+
+    {:ok, comment} =
+      comment
+      |> Comment.changeset(attrs)
+      |> Repo.insert_or_update()
+
+    resolve_comment_parent(comment, dto.parent_id)
+    comment
+  end
+
+  defp mirror_comment_files(source, space, page, comment, dto) do
+    {files, errors} =
+      Enum.map_reduce(Map.get(dto, :attachments, []), [], fn file, errors ->
+        case mirror_attachment(source, space, page, file, comment.id) do
+          {:ok, attachment} -> {attachment, errors}
+          {:error, reason} -> {nil, [error("attachment", file.id, reason) | errors]}
+        end
+      end)
+
+    {Enum.reject(files, &is_nil/1), errors}
+  end
+
+  # Confluence addresses a file pasted into a comment by the comment's id, so
+  # that is the owner the reference is keyed by — while the mirror serves it
+  # under the page, which is what a reader is allowed to open.
+  defp store_comment_body(comment, dto, files, context, space, page) do
+    refs = Map.new(files, &attachment_ref(space, page, &1, comment.confluence_id))
+
+    rendered =
+      Renderer.render(dto.body_export, %{
+        context
+        | attachments: Map.merge(context.attachments, refs)
+      })
+
+    {:ok, _} =
+      comment
+      |> Ecto.Changeset.change(body_export: rendered.html, body_text: rendered.text)
+      |> Repo.update()
+
+    :ok
+  end
+
+  defp delete_stale_comments(page, comments) do
+    ids = Enum.map(comments, & &1.id)
+
+    from(c in Comment, where: c.page_id == ^page.id and c.confluence_id not in ^ids)
+    |> Repo.delete_all()
   end
 
   defp resolve_comment_parent(_comment, nil), do: :ok
@@ -1495,7 +1703,12 @@ defmodule ConfluencePhxMirror.Sync do
   defp finish_run(run, stats, errors, actor, trigger) do
     status = if errors == [], do: "succeeded", else: "partial"
 
-    stats = Map.put(stats, "errors", normalize_errors(errors))
+    # The run's own numbers are its window; this is the mirror those numbers
+    # were compared against, so "1 listed" can be read next to its real size.
+    stats =
+      stats
+      |> Map.put("total", Mirror.count_pages())
+      |> Map.put("errors", normalize_errors(errors))
 
     {:ok, run} =
       run
@@ -1525,8 +1738,10 @@ defmodule ConfluencePhxMirror.Sync do
 
     Log.add(
       if(errors == [], do: :info, else: :warn),
-      "finished a #{run.mode} sync: #{stats["pages"] || 0} pages, " <>
-        "#{stats["attachments"] || 0} attachments, #{length(errors)} errors",
+      "finished a #{run.mode} sync: " <>
+        listing_sentence(stats) <>
+        "#{stats["attachments"] || 0} attachments, " <>
+        "#{stats["total"]} pages in the mirror, #{length(errors)} errors",
       sync_run_id: run.id
     )
 
@@ -1536,6 +1751,17 @@ defmodule ConfluencePhxMirror.Sync do
 
     {:ok, run}
   end
+
+  # "1 pages" beside "1 skipped" reads like a lie, because it is one item counted
+  # twice under two names. A run says what it listed, how that split, what it
+  # re-checked for children, and how big the mirror it compared against is.
+  defp listing_sentence(%{"pages" => listed} = stats) when is_integer(listed) do
+    "#{listed} listed (#{stats["changed"] || 0} changed, " <>
+      "#{stats["unchanged"] || 0} unchanged), " <>
+      "#{stats["details_relisted"] || 0} re-read for comments and files, "
+  end
+
+  defp listing_sentence(_stats), do: ""
 
   defp fail_run(run, message, trigger) do
     {:ok, run} =

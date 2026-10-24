@@ -49,6 +49,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
     comments =
       DemoContent.comments()
       |> Enum.filter(&(&1.page_id == confluence_id))
+      |> Enum.map(&Map.put_new(&1, :attachments, []))
 
     {:ok, comments}
   end
