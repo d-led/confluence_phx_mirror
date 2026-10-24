@@ -182,6 +182,11 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
   attr :name, :string, required: true, doc: "the input's name, and so the form's payload key"
   attr :query, :string, required: true
   attr :options, :list, required: true, doc: "`option/0` maps, badges included as nil"
+
+  attr :selected, :any,
+    default: nil,
+    doc: "the value (or values) the reader has already applied, marked with a tick"
+
   attr :placeholder, :string, default: "Find one"
   attr :empty, :string, default: "Nothing matches"
   attr :change_event, :string, required: true, doc: "narrowing as the reader types"
@@ -216,16 +221,22 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
         aria-label={@placeholder}
         class="menu menu-sm max-h-64 w-full flex-nowrap overflow-y-auto p-0"
       >
-        <li :for={option <- @options} role="presentation">
+        <li :for={{option, index} <- Enum.with_index(@options)} role="presentation">
           <button
             type="button"
-            id={"#{@id}-option-#{option.value}"}
+            id={"#{@id}-option-#{index}"}
             role="option"
-            aria-selected="false"
+            aria-selected={to_string(applied?(option.value, @selected))}
+            data-value={option.value}
             phx-click={@select_event}
             phx-disable-with={@pending}
             {chosen_value(option.value, @value_param)}
           >
+            <.icon
+              :if={applied?(option.value, @selected)}
+              name="hero-check"
+              class="size-4 shrink-0 text-primary"
+            />
             <span class="truncate">{option.label}</span>
             <span :if={option.badge} class="badge badge-ghost badge-xs">{option.badge}</span>
           </button>
@@ -274,7 +285,9 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
             const options = this.options()
             options.forEach((option, position) => {
               const chosen = position === index
-              option.setAttribute("aria-selected", String(chosen))
+              // The highlight is the keyboard's, not the reader's choice: the
+              // option they have applied keeps its own mark, drawn by the server.
+              option.dataset.cursor = String(chosen)
               option.classList.toggle("menu-active", chosen)
               if (chosen) option.scrollIntoView({block: "nearest"})
             })
@@ -297,6 +310,12 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
   # The event a taken option carries names its own value: `phx-value-key` for a
   # space key, `phx-value-space` for the search screen's filter.
   defp chosen_value(value, param), do: %{"phx-value-#{param}" => to_string(value)}
+
+  # A list, because the search screen's label filter takes several; a single
+  # value is a list of one.
+  defp applied?(value, selected) do
+    to_string(value) in Enum.map(List.wrap(selected), &to_string/1)
+  end
 
   @doc "Page title, eyebrow and metadata/action slots."
   attr :title, :string, required: true

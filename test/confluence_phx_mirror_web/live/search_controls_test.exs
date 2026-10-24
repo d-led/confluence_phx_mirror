@@ -90,7 +90,7 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
     assert_patch(view, ~p"/search?labels=release-notes")
     assert has_element?(view, "#labels-filter", "Label: release-notes")
 
-    view |> element("#labels-filter button[phx-click='clear_labels']") |> render_click()
+    view |> element("#labels-filter button[phx-value-label='']") |> render_click()
 
     assert_patch(view, ~p"/search")
   end
@@ -110,7 +110,27 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
     view |> open_menu("#labels-filter")
     view |> element("#label-form") |> render_submit(%{"label" => "   "})
 
-    refute has_element?(view, "#labels-filter button[phx-click='clear_labels']")
+    refute has_element?(view, "#labels-filter button[phx-value-label='']")
+  end
+
+  test "each finder is a combobox a keyboard can walk, marking what it applied", %{
+    conn: conn,
+    space: space
+  } do
+    {:ok, view, _html} = live(conn, ~p"/search?space=#{space.key}")
+    view |> open_menu("#space-filter")
+
+    # What Enter sends and what the arrows move over: one box wired to one
+    # list, one addressable line per space, and a tick on the filter in force.
+    assert has_element?(view, "input[name=space][role=combobox][aria-controls=space-options]")
+    assert has_element?(view, "ul#space-options[role=listbox]")
+
+    assert has_element?(
+             view,
+             "#space-options [role=option][data-value='#{space.key}'][aria-selected=true]"
+           )
+
+    assert has_element?(view, "#space-options [role=option][phx-value-space='']")
   end
 
   test "Escape closes whichever filter is open", %{conn: conn} do

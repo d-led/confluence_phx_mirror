@@ -56,11 +56,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncSpaceMenuTest do
     view |> element("#sync-space-menu button[phx-value-menu=sync-space]") |> render_click()
 
     # What the arrow keys need to find: one box wired to one list, and one
-    # addressable line per space that Enter can take.
+    # addressable line per space that Enter can take. Options are numbered, not
+    # named, because a label or an address is not something an id can hold.
     assert has_element?(view, "input[role=combobox][aria-controls=sync-space-options]")
     assert has_element?(view, "ul#sync-space-options[role=listbox]")
-    assert has_element?(view, "#sync-space-option-ENG[role=option][phx-value-key=ENG]")
-    assert has_element?(view, "#sync-space-option-MFS[role=option][phx-value-key=MFS]")
+
+    assert has_element?(
+             view,
+             "#sync-space-options [role=option][data-value=ENG][phx-value-key=ENG]"
+           )
+
+    assert has_element?(
+             view,
+             "#sync-space-options [role=option][data-value=MFS][phx-value-key=MFS]"
+           )
   end
 
   defp queued_space_keys do

@@ -21,6 +21,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   use ConfluencePhxMirrorWeb, :live_view
 
   import ConfluencePhxMirrorWeb.MirrorComponents
+  import ConfluencePhxMirrorWeb.UIComponents
 
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Catalog
@@ -198,10 +199,6 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     {:noreply, assign(socket, :people_query, clean(value))}
   end
 
-  def handle_event("clear_labels", _params, socket) do
-    {:noreply, patch(socket, Map.put(current_filters(socket), "labels", ""))}
-  end
-
   def handle_event("toggle_advanced", _params, socket) do
     {:noreply, assign(socket, :advanced?, not (socket.assigns.advanced? || false))}
   end
@@ -230,6 +227,12 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
      socket
      |> assign(:open_menu, nil)
      |> patch(Map.put(current_filters(socket), "updated", updated))}
+  end
+
+  # The last row of the label list is "Clear filter", which carries no label:
+  # taking it means no label filter at all, not one more empty one.
+  def handle_event("toggle_label", %{"label" => ""}, socket) do
+    {:noreply, patch(socket, Map.put(current_filters(socket), "labels", ""))}
   end
 
   def handle_event("toggle_label", %{"label" => label}, socket) do
@@ -484,6 +487,42 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   defp matching_spaces(spaces, query) do
     query = String.downcase(query)
     Enum.filter(spaces, &String.contains?(String.downcase(&1.name <> " " <> &1.key), query))
+  end
+
+  # The finders are options for `searchable_select`: a name a reader looks for,
+  # the value a click carries, and a badge that says how much is behind it. The
+  # "clear" rows ride along as ordinary options so the keyboard can reach them.
+  defp space_finds(spaces, query) do
+    options =
+      spaces
+      |> matching_spaces(query)
+      |> Enum.map(&%{value: &1.key, label: &1.name, badge: &1.key})
+
+    if query == "",
+      do: options ++ [%{value: "", label: "Clear filter", badge: nil}],
+      else: options
+  end
+
+  defp author_finds(authors, query) do
+    options =
+      authors
+      |> matching_authors(query)
+      |> Enum.map(&%{value: &1.name, label: &1.name, badge: to_string(&1.pages)})
+
+    if query == "",
+      do: options ++ [%{value: "", label: "Clear filter", badge: nil}],
+      else: options
+  end
+
+  defp label_finds(catalog, query, labels) do
+    options =
+      catalog
+      |> matching_labels(query)
+      |> Enum.map(&%{value: &1.name, label: &1.name, badge: to_string(&1.pages)})
+
+    if labels == "",
+      do: options,
+      else: options ++ [%{value: "", label: "Clear filter", badge: nil}]
   end
 
   defp matching_authors(authors, ""), do: authors
@@ -745,36 +784,19 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           icon="hero-rectangle-stack"
           label={space_summary(@space, @spaces)}
         >
-          <form id="space-form" phx-change="space_query" phx-submit="set_space">
-            <input
-              type="text"
-              name="space"
-              value={@space_query}
-              placeholder="Find a space"
-              autocomplete="off"
-              phx-debounce="150"
-              phx-mounted={JS.focus()}
-              class="input input-sm w-full"
-            />
-          </form>
-          <ul class="menu menu-sm w-full p-0">
-            <li :for={space <- matching_spaces(@spaces, @space_query)}>
-              <button
-                type="button"
-                phx-click="set_space"
-                phx-value-space={space.key}
-                class={space.key == @space && "menu-active"}
-              >
-                <span class="truncate">{space.name}</span>
-                <span class="badge badge-ghost badge-xs">{space.key}</span>
-              </button>
-            </li>
-            <li :if={@space_query == ""}>
-              <button type="button" phx-click="set_space" phx-value-space="">
-                Clear filter
-              </button>
-            </li>
-          </ul>
+          <.searchable_select
+            id="space"
+            name="space"
+            query={@space_query}
+            options={space_finds(@spaces, @space_query)}
+            selected={@space}
+            placeholder="Find a space"
+            empty="No space matches"
+            change_event="space_query"
+            submit_event="space_query"
+            select_event="set_space"
+            value_param="space"
+          />
         </.filter_menu>
 
         <.filter_menu
@@ -783,36 +805,19 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           icon="hero-user-circle"
           label={creator_summary(@creator)}
         >
-          <form id="people-form" phx-change="people_query" phx-submit="set_creator">
-            <input
-              type="text"
-              name="people"
-              value={@people_query}
-              placeholder="Find a person"
-              autocomplete="off"
-              phx-debounce="150"
-              phx-mounted={JS.focus()}
-              class="input input-sm w-full"
-            />
-          </form>
-          <ul class="menu menu-sm w-full p-0">
-            <li :for={author <- matching_authors(@authors, @people_query)}>
-              <button
-                type="button"
-                phx-click="set_creator"
-                phx-value-creator={author.name}
-                class={author.name == @creator && "menu-active"}
-              >
-                <span class="truncate">{author.name}</span>
-                <span class="badge badge-ghost badge-xs">{author.pages}</span>
-              </button>
-            </li>
-            <li :if={@people_query == ""}>
-              <button type="button" phx-click="set_creator" phx-value-creator="">
-                Clear filter
-              </button>
-            </li>
-          </ul>
+          <.searchable_select
+            id="people"
+            name="people"
+            query={@people_query}
+            options={author_finds(@authors, @people_query)}
+            selected={@creator}
+            placeholder="Find a person"
+            empty="No author matches"
+            change_event="people_query"
+            submit_event="people_query"
+            select_event="set_creator"
+            value_param="creator"
+          />
         </.filter_menu>
 
         <.filter_menu
@@ -866,41 +871,19 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           icon="hero-tag"
           label={labels_summary(@labels)}
         >
-          <form id="label-form" phx-change="label_query" phx-submit="add_label">
-            <input
-              type="text"
-              name="label"
-              value={@label_query}
-              placeholder="Find a label"
-              autocomplete="off"
-              phx-debounce="150"
-              phx-mounted={JS.focus()}
-              class="input input-sm w-full"
-            />
-          </form>
-          <ul class="menu menu-sm w-full p-0">
-            <li :for={%{name: name, pages: count} <- matching_labels(@label_catalog, @label_query)}>
-              <button
-                type="button"
-                phx-click="toggle_label"
-                phx-value-label={name}
-                class={name in label_values(@labels) && "menu-active"}
-              >
-                <.icon
-                  name={if name in label_values(@labels), do: "hero-check", else: "hero-plus"}
-                  class="size-4 text-primary"
-                />
-                <span class="truncate">{name}</span>
-                <span class="badge badge-ghost badge-xs">{count}</span>
-              </button>
-            </li>
-            <li :if={matching_labels(@label_catalog, @label_query) == []}>
-              <button type="button" disabled>Start typing to search for a label</button>
-            </li>
-            <li :if={@labels != ""}>
-              <button type="button" phx-click="clear_labels">Clear filter</button>
-            </li>
-          </ul>
+          <.searchable_select
+            id="label"
+            name="label"
+            query={@label_query}
+            options={label_finds(@label_catalog, @label_query, @labels)}
+            selected={label_values(@labels)}
+            placeholder="Find a label"
+            empty="No label matches — press Enter to add what you typed"
+            change_event="label_query"
+            submit_event="add_label"
+            select_event="toggle_label"
+            value_param="label"
+          />
         </.filter_menu>
 
         <button
