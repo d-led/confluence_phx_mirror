@@ -48,11 +48,17 @@ defmodule ConfluencePhxMirrorWeb.QueryBudgetTest do
     assert queries <= 22, "page view issued #{queries} queries"
   end
 
+  # "rate" is a word the mirror knows few of, which is the case the fragment pass
+  # was written for: when a one-word query comes up short, the same word is asked
+  # again as a fragment ("scal" finds "Escalation"). That second pass is three
+  # statements — its own query, the pages it returns and their spaces — and it
+  # costs nothing for a query that fills the page, which is why the ceiling moved
+  # by exactly those three and not by a number that grows with the content.
   test "search and the people directory stay bounded", %{conn: conn} do
     search = QueryCounter.count(fn -> get(conn, ~p"/search?q=rate") end)
     people = QueryCounter.count(fn -> get(conn, ~p"/people") end)
 
-    assert search <= 21, "search issued #{search} queries"
+    assert search <= 24, "search issued #{search} queries"
     assert people <= 12, "people directory issued #{people} queries"
   end
 end
