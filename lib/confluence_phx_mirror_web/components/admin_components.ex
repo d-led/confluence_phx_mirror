@@ -17,6 +17,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
     {:audit, "Audit", "hero-clipboard-document-list"},
     {:trash, "Trash", "hero-trash"},
     {:users, "Users", "hero-users"},
+    {:permissions, "Permissions", "hero-lock-closed"},
     {:settings, "Settings", "hero-cog-6-tooth"}
   ]
 
@@ -72,5 +73,6 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
   defp tab_path(:audit), do: ~p"/admin/audit"
   defp tab_path(:trash), do: ~p"/admin/trash"
   defp tab_path(:users), do: ~p"/admin/users"
+  defp tab_path(:permissions), do: ~p"/admin/permissions"
   defp tab_path(:settings), do: ~p"/admin/settings"
 end
