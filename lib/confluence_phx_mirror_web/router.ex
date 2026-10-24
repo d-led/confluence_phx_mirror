@@ -48,6 +48,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
   end
 
   pipeline :webhook do
+    # First, so a switched-off intake answers with the same 404 an unrouted path
+    # gets — before `:accepts` has picked a format for the error to render in.
+    plug Plugs.WebhookIntake
     plug :accepts, ["json"]
     plug Plugs.WebhookRateLimit
     plug Plugs.WebhookAuth, receiver: "confluence"

@@ -6,9 +6,9 @@ defmodule ConfluencePhxMirrorWeb.WebhookController do
   a body larger than a delivery should be is refused before it is stored.
 
   An operator can switch the intake off altogether (`CM_WEBHOOK_ENABLED`), and
-  then every delivery is answered `410 Gone` and nothing is stored — a mirror
-  behind a sign-in proxy whose sync is scheduled has no reason to be reachable
-  by the site.
+  then it does not answer as a switched-off intake: a reply that said so would
+  advertise that the endpoint exists. Every delivery is answered exactly like a
+  path nobody routed, and nothing is stored.
   """
 
   use ConfluencePhxMirrorWeb, :controller
@@ -39,7 +39,7 @@ defmodule ConfluencePhxMirrorWeb.WebhookController do
         |> json(%{status: "accepted", delivery_id: delivery.id, state: delivery.status})
 
       {:error, :disabled} ->
-        conn |> put_status(410) |> json(%{error: "webhooks_disabled"})
+        not_routed(conn)
 
       {:error, :invalid_signature} ->
         conn |> put_status(401) |> json(%{error: "invalid_signature"})
@@ -56,5 +56,13 @@ defmodule ConfluencePhxMirrorWeb.WebhookController do
     conn
     |> put_status(413)
     |> json(%{error: "payload_too_large", max_bytes: @max_body_bytes})
+  end
+
+  # A path that answers "this endpoint is switched off" tells an anonymous
+  # caller that the endpoint exists. `NoRouteError` is what the router raises
+  # for a path nobody routed, and the endpoint renders it through `ErrorJSON`,
+  # so the answer is byte-identical to anything else that is not here.
+  defp not_routed(conn) do
+    raise Phoenix.Router.NoRouteError, conn: conn, router: ConfluencePhxMirrorWeb.Router
   end
 end

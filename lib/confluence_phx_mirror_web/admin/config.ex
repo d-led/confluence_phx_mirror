@@ -87,7 +87,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
         ),
         row(
           "Webhook intake",
-          if(webhooks[:enabled] == false, do: "off (410 Gone)", else: "accepting"),
+          if(webhooks[:enabled] == false, do: "off (404, as if unrouted)", else: "accepting"),
           "CM_WEBHOOK_ENABLED"
         ),
         row("Webhook tokens", receivers(config(:webhook_tokens, %{})), "CM_WEBHOOK_TOKENS"),

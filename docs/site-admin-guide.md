@@ -243,6 +243,13 @@ mirror replays that decision:
   source that cannot read them says `{:error, :not_supported}` and the space
   stays open — the mirror already shows what the sync account can read.
 * **A space without rows is open.** Restrictions narrow; they never widen.
+* **A personal space belongs to one person.** Confluence keys it by its owner's
+  account id (`~5F057CBE0B38B10022628D68`), and only that account may read it —
+  whatever its permissions say, because a personal space usually has none and
+  "no rows means open" would publish one person's drafts. Nothing about the rule
+  is optional: not the space in the switcher, not its pages in search, not its
+  pages in an export or a macro listing. Mirror administrators see everything,
+  personal spaces included.
 * Mirror administrators always see everything.
 
 Readers are matched on e-mail or Confluence account id (`users.groups`,
@@ -251,8 +258,10 @@ Readers are matched on e-mail or Confluence account id (`users.groups`,
 The reader UI applies the policy to the space directory, the global space menu,
 page and blog views, label/recent listings, attachment downloads and exports; a
 hidden resource is a `404`, never a `403`, so the mirror does not confirm what
-it withholds. The v1 JSON API and the `/search` LiveView still answer from the
-unfiltered index — see [Known limitations](design-notes.md#known-limitations).
+it withholds. The v1 JSON API, the Confluence-compatible API and the `/search`
+LiveView answer as the caller does: their results pass through the same
+`Authorization` checks, so a reader cannot find in them what the reader-side
+directory hides.
 
 ## Themes and variants
 
@@ -571,12 +580,20 @@ webhook_secret_not_configured` — so "not set up" stays distinguishable from
 
 A mirror behind a sign-in proxy, whose sync is scheduled anyway, has no reason to
 be reachable by the site. *Switch off* on `/admin/webhooks` — or
-`CM_WEBHOOK_ENABLED=false` in the deployment — answers every delivery
-`410 webhooks_disabled` and stores nothing, not even the attempt: a switched-off
-intake is not a delivery log. Changes still arrive with the scheduled pull, so
-this costs freshness, not correctness. It is a different decision from requiring
-signatures, which says *who* may post rather than *whether* anyone may; the page
-shows both, and each can be handed back to the deployment separately.
+`CM_WEBHOOK_ENABLED=false` in the deployment — refuses every delivery and stores
+nothing, not even the attempt: a switched-off intake is not a delivery log.
+
+The refusal does not announce itself. It answers with the endpoint's own 404,
+byte for byte the same page any unrouted path returns, because a `410 Gone` or an
+`error: webhooks_disabled` body would tell an anonymous caller that a webhook
+endpoint lives here and what it is for. The plug therefore stands before
+`:accepts` in the pipeline: picking a format first would render a JSON 404 where
+an unknown path renders HTML, and that difference is itself an answer.
+
+Changes still arrive with the scheduled pull, so this costs freshness, not
+correctness. It is a different decision from requiring signatures, which says
+*who* may post rather than *whether* anyone may; the page shows both, and each
+can be handed back to the deployment separately.
 
 ### What it will act on
 

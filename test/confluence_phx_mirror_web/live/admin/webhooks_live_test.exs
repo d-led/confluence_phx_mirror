@@ -69,7 +69,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminWebhooksLiveTest do
     view |> element("#webhook-switch-off") |> render_click()
 
     assert has_element?(view, "#webhook-intake-off")
-    assert has_element?(view, "#webhook-intake-state", "off (410 Gone)")
+    assert has_element?(view, "#webhook-intake-state", "off (answered as unrouted)")
     assert Settings.webhook_enabled?() == false
   end
 

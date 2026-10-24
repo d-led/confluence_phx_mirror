@@ -40,7 +40,7 @@ Configuration is read at boot; a running development server does **not** reload
 | `CM_SYNC_INTERVAL_SECONDS` | `3600` | scheduled pull (`0` disables) |
 | `CM_SYNC_LOOKBACK_SECONDS` | `3600` | minimum window for an incremental pull |
 | `CM_SYNC_CONCURRENCY` | `4` | changed pages detailed at once |
-| `CM_SYNC_PERSONAL_SPACES` | `false` | mirror personal (`~account`) spaces — every user has one, and it holds their drafts |
+| `CM_SYNC_PERSONAL_SPACES` | `false` | mirror personal (`~account`) spaces — every user has one, and it holds their drafts. A mirrored one is still readable only by its owner and by administrators |
 
 Scheduled pulls are incremental: they ask Confluence only for content that
 changed since the last run, and pages whose version is unchanged are skipped
@@ -125,7 +125,7 @@ owns that lookup rather than the plug that asks.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CM_WEBHOOK_ENABLED` | `true` | `false` switches the intake off: every delivery is answered `410 Gone` and nothing is stored, not even the attempt. For a mirror behind a sign-in proxy whose sync is scheduled |
+| `CM_WEBHOOK_ENABLED` | `true` | `false` switches the intake off: every delivery is answered exactly like a path that is not routed (the endpoint's own 404) and nothing is stored, not even the attempt. The reply does not say a webhook endpoint exists |
 | `CM_WEBHOOK_SECRET` | – | the secret Confluence signs with; without it no signature can be checked |
 | `CM_WEBHOOK_REQUIRE_SIGNATURE` | `false` | `true` refuses deliveries that present no valid signature or token (and answers `503` when no secret is configured). An administrator can override this on `/admin/webhooks` at runtime |
 | `CM_WEBHOOK_TOKENS` | – | `receiver=token,…` route-scoped webhook tokens |

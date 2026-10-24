@@ -89,7 +89,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
      socket
      |> put_flash(
        :info,
-       "The intake is off: deliveries are answered 410 and nothing is stored."
+       "The intake is off: deliveries are answered as if the route did not exist, and nothing is stored."
      )
      |> load()}
   end
@@ -166,9 +166,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
         id="webhook-intake-off"
         class="mt-4 rounded-xl border border-base-300/70 bg-base-200/40 p-3 text-xs text-base-content/70"
       >
-        The intake is off. Every delivery is answered <code class="font-mono">410 Gone</code>
-        and nothing is stored, so the site cannot trigger a sync here. Changes still arrive with
-        the scheduled pull.
+        The intake is off. Every delivery is answered like a path that does not exist — nothing
+        tells an anonymous caller that a webhook lives here — and nothing is stored, so the site
+        cannot trigger a sync. Changes still arrive with the scheduled pull.
       </div>
 
       <div
@@ -236,7 +236,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
             Intake
           </p>
           <p id="webhook-intake-state" class="mt-1 text-sm font-medium">
-            {if @intake_enabled?, do: "accepting deliveries", else: "off (410 Gone)"}
+            {if @intake_enabled?, do: "accepting deliveries", else: "off (answered as unrouted)"}
           </p>
           <p class="mt-0.5 text-[11px] text-base-content/70">
             {if @intake_open_by_admin?,

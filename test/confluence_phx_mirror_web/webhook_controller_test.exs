@@ -246,16 +246,22 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
       :ok
     end
 
-    test "a correctly signed delivery is answered 410 Gone and not recorded", %{conn: conn} do
+    test "a delivery is answered exactly like a path that does not exist", %{conn: conn} do
       body = JSON.encode!(payload("page_updated", 1002))
 
-      conn =
+      answered =
         conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("x-hub-signature-256", sign(body))
         |> post(~p"/webhooks/confluence", body)
 
-      assert json_response(conn, 410)["error"] == "webhooks_disabled"
+      nowhere =
+        build_conn()
+        |> put_req_header("content-type", "application/json")
+        |> post("/webhooks/nothing", body)
+
+      assert answered.status == 404
+      assert answered.resp_body == nowhere.resp_body
       assert Repo.aggregate(Delivery, :count) == 0
       refute_enqueued(worker: PageWorker)
     end

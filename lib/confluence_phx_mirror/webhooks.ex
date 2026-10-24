@@ -63,11 +63,13 @@ defmodule ConfluencePhxMirror.Webhooks do
   @doc """
   Whether the intake accepts deliveries at all.
 
-  Off means every delivery is refused with `410 Gone` and nothing is stored.
-  It is the switch for a mirror that has no reason to be reachable by the site —
-  one behind a sign-in proxy, or whose sync is scheduled — and it is separate
-  from `require_signature`, which decides who may post rather than whether
-  anyone may.
+  Off means every delivery is refused before anything is stored, and the route
+  answers as if it did not exist — a switched-off intake that announced itself
+  would advertise an endpoint the operator asked to be rid of. It is the switch
+  for a mirror that has no reason to be reachable by the site — one behind a
+  sign-in proxy, or whose sync is scheduled — and it is separate from
+  `require_signature`, which decides who may post rather than whether anyone
+  may.
   """
   @spec enabled?() :: boolean()
   def enabled? do
