@@ -133,6 +133,15 @@ defmodule ConfluencePhxMirrorWeb.Router do
     end
   end
 
+  # The audit download is a plain HTTP stream, not a LiveView, so it sits beside
+  # the admin screens rather than inside their live_session; the controller asks
+  # the same admin question itself.
+  scope "/admin", ConfluencePhxMirrorWeb.Admin do
+    pipe_through :browser
+
+    get "/audit/export", AuditExportController, :index
+  end
+
   # ---------------------------------------------------------------------------
   # Attachments (blob store)
   # ---------------------------------------------------------------------------
