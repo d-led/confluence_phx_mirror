@@ -19,9 +19,12 @@ defmodule ConfluencePhxMirror.Authorization do
 
   Mirror administrators always see everything — including personal spaces, which
   an administrator may have to look at to decide whether to keep mirroring them.
-  Identity is matched on e-mail or Confluence account id; groups come from the
-  membership the sync reads from Confluence (plus any group an administrator
-  granted here).
+
+  A reader is matched by every identity their account stands for: its e-mail
+  address, the identity it signed in with, and any further Confluence identity an
+  administrator linked to it (`User.identity_keys/1`). One identity belongs to
+  one account. Groups come from the membership the sync reads from Confluence,
+  plus any group an administrator granted here.
 
 
   The decision is a pure function of the `Scope` and the mirror's tables, which

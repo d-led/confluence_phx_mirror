@@ -1,5 +1,12 @@
 defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
-  @moduledoc "Reader accounts and API tokens."
+  @moduledoc """
+  Reader accounts: who exists, how each one administers, which identities and
+  groups it holds, and which tokens it has.
+
+  Tokens are listed here and can be revoked — revoking only takes access away —
+  but never minted: a token acts as its owner, so it is created by the reader on
+  their own account page.
+  """
 
   use ConfluencePhxMirrorWeb, :live_view
 

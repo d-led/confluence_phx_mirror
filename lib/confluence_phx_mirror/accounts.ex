@@ -5,6 +5,12 @@ defmodule ConfluencePhxMirror.Accounts do
   There are no Confluence logins: readers sign in through a single-use magic
   link, or use an API token. In development and test an administrator is
   assumed (`MIRROR_AUTO_ADMIN`), so no login is needed at all.
+
+  An account stands for one person, and a person may hold several Confluence
+  identities — the one the sign-in matched, plus any further identity an
+  administrator linked. What the account may open is the union of them, which is
+  why the permission checks ask `User.identity_keys/1` rather than read the
+  single column.
   """
 
   import Ecto.Query

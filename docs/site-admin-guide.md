@@ -260,8 +260,11 @@ mirror replays that decision:
   personal spaces included.
 * Mirror administrators always see everything.
 
-Readers are matched on e-mail or Confluence account id (`users.groups`,
-`users.confluence_account_id`); group names are the mirrored groups.
+Readers are matched by every identity their account stands for: its e-mail
+address, the identity it signed in with, and any further Confluence identity an
+administrator linked to it (`users.identity_account_ids`, see
+[Accounts, tokens and identities](#accounts-tokens-and-identities)); group names
+are the mirrored groups, plus any group granted on this mirror.
 
 The reader UI applies the policy to the space directory, the global space menu,
 page and blog views, label/recent listings, attachment downloads and exports; a
@@ -543,7 +546,7 @@ be **linked** to a mirror account by its e-mail address, and unlinked again.
 
 What the identity carries becomes the account's: its group memberships, the
 spaces and pages it is named in, and the content it authored. The rule is the
-union — `Accounts.identity_keys/1` answers with every linked identity, so what a
+union — `User.identity_keys/1` answers with every linked identity, so what a
 reader may open is everything any of their identities may open, whether they
 arrived by a page or by an API token.
 
