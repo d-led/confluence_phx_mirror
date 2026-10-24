@@ -41,9 +41,14 @@ defmodule ConfluencePhxMirrorWeb.Router do
   # sobelow_skip ["Config.CSRF"]
   pipeline :attachments do
     # Attachment bytes are content: the page decides who may read them, so this
-    # pipeline needs the reader's identity as much as the HTML pipeline does.
+    # pipeline needs the reader's identity as much as the HTML pipeline does —
+    # the same three plugs, in the same order, so a browser that has not yet
+    # stored the session cookie of the page it is looking at (the first load, a
+    # revoked cookie) is answered as the same reader rather than as nobody.
     plug :fetch_session
     plug Plugs.FetchCurrentUser
+    plug Plugs.ProxyAuth
+    plug Plugs.AutoAdmin
     plug Plugs.ReaderRateLimit, scope: :attachments
   end
 

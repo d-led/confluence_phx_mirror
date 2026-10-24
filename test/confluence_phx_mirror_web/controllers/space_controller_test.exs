@@ -27,6 +27,21 @@ defmodule ConfluencePhxMirrorWeb.SpaceControllerTest do
                "This space has no icon."
     end
 
+    test "a restricted space's icon reaches the reader the page just signed in", %{conn: conn} do
+      space = space_with_icon("<svg/>")
+
+      {:ok, _} =
+        Mirror.replace_space_permissions(space, [
+          %{subject_type: "group", subject_key: "confluence-users"}
+        ])
+
+      # No session yet: this is the first request of a development browser, the
+      # one that fetches the picture beside the space the page just named. The
+      # attachments pipeline has to recognise the same reader the HTML pipeline
+      # signs in, or the directory shows a broken image on every first visit.
+      assert conn |> get(~p"/spaces/#{space.key}/icon") |> response(200) == "<svg/>"
+    end
+
     test "the directory and the overview show the icon", %{conn: conn} do
       space = space_with_icon("<svg/>")
       icon = ~s(src="/spaces/#{space.key}/icon")
