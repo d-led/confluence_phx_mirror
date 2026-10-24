@@ -217,20 +217,22 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
     )
   end
 
-  defp grant_refusal(:not_authorized, _key),
-    do: "Only an administrator may change who reads this."
+  # What the mirror refused, in the screen's own words. `%{key}` is the subject the
+  # sentence is about; a sentence that names nobody ignores it.
+  @refusals %{
+    not_authorized: "Only an administrator may change who reads this.",
+    space_is_open: "This space is open — there is nothing to widen.",
+    page_is_open: "This page is unrestricted — there is nothing to widen.",
+    unknown_identity: "The mirror has not seen %{key} yet — run a sync.",
+    unknown_group: "The sync has not read a group called %{key}.",
+    not_granted: "%{key} is not granted here."
+  }
 
-  defp grant_refusal(:space_is_open, _key), do: "This space is open — there is nothing to widen."
-
-  defp grant_refusal(:page_is_open, _key),
-    do: "This page is unrestricted — there is nothing to widen."
-
-  defp grant_refusal(:unknown_identity, key),
-    do: "The mirror has not seen #{key} yet — run a sync."
-
-  defp grant_refusal(:unknown_group, key), do: "The sync has not read a group called #{key}."
-  defp grant_refusal(:not_granted, key), do: "#{key} is not granted here."
-  defp grant_refusal(_reason, key), do: "Could not change access for #{key}."
+  defp grant_refusal(reason, key) do
+    @refusals
+    |> Map.get(reason, "Could not change access for %{key}.")
+    |> String.replace("%{key}", key)
+  end
 
   defp actor(%{assigns: %{current_user: user}}), do: {:user, user}
 

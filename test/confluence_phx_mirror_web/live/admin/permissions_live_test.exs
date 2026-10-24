@@ -194,6 +194,79 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
     end
   end
 
+  # A refusal is a sentence beside the control, not an error page: the click stays
+  # where it was. Each case is a click a stale screen can still send.
+  describe "a grant the mirror refuses" do
+    test "on an open space there is nothing to widen", %{conn: conn} do
+      space = space_fixture(%{key: "OPENSPACE"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+      view |> element("#inspect-space-#{space.id}") |> render_click()
+
+      html =
+        render_click(view, "grant_add", %{
+          "level" => "space",
+          "subject_type" => "user",
+          "subject_key" => "guest@example.com"
+        })
+
+      assert html =~ "This space is open — there is nothing to widen."
+      assert Mirror.space_grants_here(space) == []
+    end
+
+    test "a reader the mirror has never seen asks for a sync", %{conn: conn} do
+      space = a_space_read_by("inside@example.com")
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+      view |> element("#inspect-space-#{space.id}") |> render_click()
+
+      html =
+        render_click(view, "grant_add", %{
+          "level" => "space",
+          "subject_type" => "user",
+          "subject_key" => "never-seen@example.com"
+        })
+
+      assert html =~ "The mirror has not seen never-seen@example.com yet — run a sync."
+      assert Mirror.space_grants_here(space) == []
+    end
+
+    test "removing a grant that is already gone says so", %{conn: conn} do
+      space = a_space_read_by("inside@example.com")
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+      view |> element("#inspect-space-#{space.id}") |> render_click()
+
+      html =
+        render_click(view, "grant_revoke", %{
+          "level" => "space",
+          "subject_type" => "group",
+          "subject_key" => "confluence-users"
+        })
+
+      assert html =~ "confluence-users is not granted here."
+    end
+
+    test "an unrestricted page has nothing to widen either", %{conn: conn} do
+      space = a_space_read_by("inside@example.com")
+      page = page_fixture(space, %{title: "Handbook"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+      view |> element("#inspect-space-#{space.id}") |> render_click()
+      render_click(view, "inspect_page", %{"page_id" => to_string(page.id)})
+
+      html =
+        render_click(view, "grant_add", %{
+          "level" => "page",
+          "subject_type" => "user",
+          "subject_key" => "guest@example.com"
+        })
+
+      assert html =~ "This page is unrestricted — there is nothing to widen."
+      assert Mirror.page_grants(page).granted == []
+    end
+  end
+
   describe "granting access on a page" do
     test "a person can be added to a restricted page and removed again", %{conn: conn} do
       space = space_fixture(%{key: "PAGEDLG"})

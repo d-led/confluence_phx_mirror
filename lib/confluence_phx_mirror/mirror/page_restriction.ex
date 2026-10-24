@@ -30,7 +30,9 @@ defmodule ConfluencePhxMirror.Mirror.PageRestriction do
   def changeset(restriction, attrs) do
     restriction
     |> cast(attrs, @fields)
-    |> validate_required(@fields)
+    # `granted_by_id` is cast but not required: a row the sync writes has none, and
+    # that is the normal case — the column marks the mirror's own grants.
+    |> validate_required([:page_id, :operation, :subject_type])
     |> validate_inclusion(:subject_type, @subject_types)
     |> validate_inclusion(:operation, @operations)
     |> unique_constraint([:page_id, :operation, :subject_type, :subject_key],
