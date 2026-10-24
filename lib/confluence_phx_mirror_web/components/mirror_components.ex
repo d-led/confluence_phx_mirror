@@ -298,13 +298,15 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
         <.icon name="hero-arrow-top-right-on-square" class="size-3.5" /> View original
       </a>
       <%!-- An administrator can ask for a fresh read; a reader never sees the
-      action, and the controller refuses it as well. --%>
+      action, and the controller refuses it as well. It asks no confirmation: a
+      re-read replaces nothing a reader can lose, the worst it can do is queue
+      the same page twice, and a dialog that warns about a safe action teaches
+      people to dismiss dialogs that are not safe. --%>
       <form
         :if={@admin? and @resync_path}
         action={@resync_path}
         method="post"
         class="inline-flex"
-        data-confirm="Re-read this page, its attachments and its comments from Confluence?"
       >
         <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
         <button
