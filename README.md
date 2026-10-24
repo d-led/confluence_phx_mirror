@@ -69,6 +69,7 @@ Confluence ──REST──▶ Sync (incremental, rate-limited, audited) ──�
 | looking for a setting | [docs/configuration.md](docs/configuration.md) |
 | who may reach which route, and what they may read | [docs/routes-auth.md](docs/routes-auth.md) |
 | integrating: JSON API, Confluence-compatible REST, CQL | [docs/api.md](docs/api.md) |
+| letting an AI assistant read the wiki (MCP) | [docs/mcp.md](docs/mcp.md) |
 | working on the code: architecture, tests, quality gates | [docs/developers.md](docs/developers.md) |
 | measuring a reader's screens, or load-testing a server | [docs/performance.md](docs/performance.md) |
 | wondering why it is built this way, or what it does not do | [docs/design-notes.md](docs/design-notes.md) |
