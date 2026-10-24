@@ -47,6 +47,30 @@ defmodule ConfluencePhxMirror.Blobs.LocalStore do
   end
 
   @impl true
+  # sobelow_skip ["Traversal.FileModule"]
+  def list(opts) do
+    root = root(opts)
+
+    case File.ls(root) do
+      {:ok, _entries} ->
+        Path.wildcard(Path.join(root, "**/*"))
+        |> Enum.filter(&File.regular?/1)
+        |> Enum.map(fn path -> {Path.relative_to(path, root), written_at(path)} end)
+
+      # A store nobody has written to yet holds nothing; that is not an error.
+      {:error, :enoent} ->
+        []
+    end
+  end
+
+  defp written_at(path) do
+    case File.stat(path, time: :posix) do
+      {:ok, %File.Stat{mtime: mtime}} -> mtime
+      {:error, _reason} -> 0
+    end
+  end
+
+  @impl true
   def exists?(key, opts) do
     case validate_key(key) do
       :ok -> File.regular?(absolute_path(key, opts))
