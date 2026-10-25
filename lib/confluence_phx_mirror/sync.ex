@@ -23,9 +23,9 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Blobs.{Key, Store}
   alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirror.Confluence.Traffic
+  alias ConfluencePhxMirror.Metrics
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
-  alias ConfluencePhxMirror.Metrics
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.PageUpdates
   alias ConfluencePhxMirror.Repo
