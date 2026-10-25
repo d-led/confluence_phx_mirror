@@ -142,123 +142,129 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
      )}
   end
 
+  # ---------------------------------------------------------------------------
+  # Events
+  #
+  # The page has three kinds of event, and they are handled in three places so a
+  # reader can find one: the search itself (what the reader asked for), the
+  # menus (what is open, and the single-value choices they make), and the
+  # filters (what narrows the results, and can hold several values at once).
+  #
+  # Choosing a value that is already chosen takes it away, everywhere: a menu
+  # you cannot un-choose is one you reload the page to escape.
+  # ---------------------------------------------------------------------------
+
+  @menu_events ~w(toggle_filters toggle_advanced toggle_menu close_menu space_query people_query
+                  set_sort set_creator set_space set_updated)
+  @filter_events ~w(toggle_type toggle_label label_query add_label)
+
   @impl true
   def handle_event("search", %{"search" => params}, socket) do
-    q = params |> Map.get("q", "") |> to_string() |> String.trim()
-    {:noreply, patch(socket, Map.put(current_filters(socket), "q", q))}
+    {:noreply, patch(socket, Map.put(current_filters(socket), "q", clean(params["q"])))}
+  end
+
+  # The advanced panel submits every widget at once; a blank control simply
+  # stops filtering, so the URL always describes what is on screen.
+  def handle_event("advanced", %{"search" => params}, socket) do
+    {:noreply, patch(socket, Map.merge(current_filters(socket), advanced_filters(params)))}
   end
 
   def handle_event("clear", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/search")}
   end
 
-  # The advanced panel submits every widget at once; a blank control simply
-  # stops filtering, so the URL always describes what is on screen.
-  def handle_event("advanced", %{"search" => params}, socket) do
-    filters =
-      current_filters(socket)
-      |> Map.merge(%{
-        "phrase" => clean(params["phrase"]),
-        "any" => clean(params["any"]),
-        "none" => clean(params["none"]),
-        "from" => clean(params["from"]),
-        "to" => clean(params["to"])
-      })
-
-    {:noreply, patch(socket, filters)}
+  def handle_event(event, params, socket) when event in @menu_events do
+    {:noreply, menu(event, params, socket)}
   end
 
-  def handle_event("set_creator", %{"creator" => value}, socket) do
-    creator = if value == socket.assigns.creator, do: "", else: value
+  def handle_event(event, params, socket) when event in @filter_events do
+    {:noreply, filter(event, params, socket)}
+  end
 
-    {:noreply,
-     socket
-     |> assign(:open_menu, nil)
-     |> patch(Map.put(current_filters(socket), "creator", creator))}
+  defp advanced_filters(params) do
+    %{
+      "phrase" => clean(params["phrase"]),
+      "any" => clean(params["any"]),
+      "none" => clean(params["none"]),
+      "from" => clean(params["from"]),
+      "to" => clean(params["to"])
+    }
   end
 
   # On a phone the filter row is folded behind one button; this is that button.
-  def handle_event("toggle_filters", _params, socket) do
-    {:noreply, assign(socket, :filters_open?, not socket.assigns.filters_open?)}
+  defp menu("toggle_filters", _params, socket), do: toggle_assign(socket, :filters_open?)
+
+  defp menu("toggle_advanced", _params, socket), do: toggle_assign(socket, :advanced?)
+
+  defp menu("toggle_menu", %{"menu" => menu}, socket) do
+    assign(socket, :open_menu, if(socket.assigns.open_menu == menu, do: nil, else: menu))
   end
 
-  def handle_event("toggle_menu", %{"menu" => menu}, socket) do
-    open = if socket.assigns.open_menu == menu, do: nil, else: menu
-    {:noreply, assign(socket, :open_menu, open)}
-  end
+  defp menu("close_menu", _params, socket), do: assign(socket, :open_menu, nil)
 
-  def handle_event("close_menu", _params, socket) do
-    {:noreply, assign(socket, :open_menu, nil)}
-  end
+  defp menu("space_query", %{"space" => value}, socket),
+    do: assign(socket, :space_query, clean(value))
 
-  def handle_event("space_query", %{"space" => value}, socket) do
-    {:noreply, assign(socket, :space_query, clean(value))}
-  end
+  defp menu("people_query", %{"people" => value}, socket),
+    do: assign(socket, :people_query, clean(value))
 
-  def handle_event("people_query", %{"people" => value}, socket) do
-    {:noreply, assign(socket, :people_query, clean(value))}
-  end
+  defp menu("set_sort", %{"sort" => value}, socket),
+    do: patch(socket, Map.put(current_filters(socket), "sort", clean(value)))
 
-  def handle_event("toggle_advanced", _params, socket) do
-    {:noreply, assign(socket, :advanced?, not (socket.assigns.advanced? || false))}
-  end
+  # The single-value picks: the assign is named after the filter it sets, so one
+  # rule serves all three.
+  defp menu("set_creator", %{"creator" => value}, socket), do: choose(socket, :creator, value)
 
-  def handle_event("set_sort", %{"sort" => value}, socket) do
-    {:noreply, patch(socket, Map.put(current_filters(socket), "sort", clean(value)))}
-  end
+  defp menu("set_space", %{"space" => value}, socket), do: choose(socket, :space, value)
 
-  def handle_event("set_space", %{"space" => value}, socket) do
-    space = if value == socket.assigns.space, do: "", else: value
+  defp menu("set_updated", %{"updated" => value}, socket), do: choose(socket, :updated, value)
 
-    {:noreply,
-     socket |> assign(:open_menu, nil) |> patch(Map.put(current_filters(socket), "space", space))}
-  end
-
-  def handle_event("toggle_type", %{"type" => value}, socket) do
-    types = toggle(label_values(socket.assigns.types), value)
-
-    {:noreply, patch(socket, Map.put(current_filters(socket), "types", Enum.join(types, ",")))}
-  end
-
-  def handle_event("set_updated", %{"updated" => value}, socket) do
-    updated = if value == socket.assigns.updated, do: "", else: value
-
-    {:noreply,
-     socket
-     |> assign(:open_menu, nil)
-     |> patch(Map.put(current_filters(socket), "updated", updated))}
-  end
+  defp filter("toggle_type", %{"type" => value}, socket),
+    do: toggle_values(socket, :types, value)
 
   # The last row of the label list is "Clear filter", which carries no label:
   # taking it means no label filter at all, not one more empty one.
-  def handle_event("toggle_label", %{"label" => ""}, socket) do
-    {:noreply, patch(socket, Map.put(current_filters(socket), "labels", ""))}
+  defp filter("toggle_label", %{"label" => ""}, socket),
+    do: patch(socket, Map.put(current_filters(socket), "labels", ""))
+
+  defp filter("toggle_label", %{"label" => label}, socket),
+    do: toggle_values(socket, :labels, label)
+
+  defp filter("label_query", %{"label" => value}, socket),
+    do: assign(socket, :label_query, clean(value))
+
+  defp filter("add_label", %{"label" => value}, socket), do: add_label(socket, value)
+
+  defp choose(socket, key, value) do
+    chosen = if value == Map.get(socket.assigns, key), do: "", else: value
+
+    socket
+    |> assign(:open_menu, nil)
+    |> patch(Map.put(current_filters(socket), to_string(key), chosen))
   end
 
-  def handle_event("toggle_label", %{"label" => label}, socket) do
-    labels = toggle(label_values(socket.assigns.labels), label)
+  # A filter that holds several values: the chosen one joins the list, or leaves
+  # it when it was already in.
+  defp toggle_values(socket, key, value) do
+    chosen = toggle(label_values(Map.get(socket.assigns, key)), value)
 
-    {:noreply, patch(socket, Map.put(current_filters(socket), "labels", Enum.join(labels, ",")))}
+    patch(socket, Map.put(current_filters(socket), to_string(key), Enum.join(chosen, ",")))
   end
 
-  def handle_event("label_query", %{"label" => value}, socket) do
-    {:noreply, assign(socket, :label_query, value |> to_string() |> String.trim())}
-  end
+  defp toggle_assign(socket, key),
+    do: assign(socket, key, not (Map.get(socket.assigns, key) || false))
 
-  def handle_event("add_label", %{"label" => value}, socket) do
+  defp add_label(socket, value) do
     case normalise_label(value) do
       "" ->
-        {:noreply, socket}
+        socket
 
       label ->
         labels = Enum.uniq(label_values(socket.assigns.labels) ++ [label])
 
-        socket =
-          socket
-          |> assign(:label_query, "")
-          |> patch(Map.put(current_filters(socket), "labels", Enum.join(labels, ",")))
-
-        {:noreply, socket}
+        socket
+        |> assign(:label_query, "")
+        |> patch(Map.put(current_filters(socket), "labels", Enum.join(labels, ",")))
     end
   end
 
@@ -756,7 +762,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
         type="button"
         id="filters-toggle"
         phx-click="toggle_filters"
-        aria-expanded={@filters_open?}
+        aria-expanded={to_string(@filters_open?)}
         aria-controls="filters-row"
         class="btn btn-sm min-h-11 w-full justify-between gap-2 sm:hidden"
       >
@@ -891,7 +897,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
           type="button"
           id="advanced-toggle"
           phx-click="toggle_advanced"
-          aria-expanded={@advanced?}
+          aria-expanded={to_string(@advanced?)}
           class="btn btn-sm min-h-11 gap-1.5 font-normal sm:min-h-8"
         >
           <.icon name={if @advanced?, do: "hero-minus", else: "hero-plus"} class="size-4" />

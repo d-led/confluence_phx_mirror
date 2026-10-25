@@ -81,6 +81,69 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
     assert_patch(view, ~p"/search")
   end
 
+  test "picking a person narrows the search by author, and picking them again widens it", %{
+    conn: conn,
+    space: space
+  } do
+    page_fixture(space, %{author_name: "Jane Doe"})
+    {:ok, view, _html} = live(conn, ~p"/search")
+
+    view
+    |> open_menu("#creator-filter")
+    |> element("button[phx-click='set_creator'][phx-value-creator='Jane Doe']")
+    |> render_click()
+
+    assert_patch(view, ~p"/search?creator=Jane+Doe")
+    assert has_element?(view, "a", "By: Jane Doe")
+
+    view
+    |> open_menu("#creator-filter")
+    |> element("button[phx-click='set_creator'][phx-value-creator='Jane Doe']")
+    |> render_click()
+
+    assert_patch(view, ~p"/search")
+  end
+
+  test "typing in the author box narrows who is offered", %{conn: conn, space: space} do
+    page_fixture(space, %{author_name: "Jane Doe"})
+    page_fixture(space, %{author_name: "Sam Smith"})
+    {:ok, view, _html} = live(conn, ~p"/search")
+
+    view |> open_menu("#creator-filter")
+    assert has_element?(view, "#people-options", "Sam Smith")
+
+    view |> element("#people-form") |> render_change(%{"people" => "jan"})
+
+    assert has_element?(view, "#people-options", "Jane Doe")
+    refute has_element?(view, "#people-options", "Sam Smith")
+  end
+
+  test "the sort is a filter too: a chip says which one, and Best match takes it away", %{
+    conn: conn
+  } do
+    {:ok, view, _html} = live(conn, ~p"/search")
+
+    view |> element("#sort-form") |> render_change(%{"sort" => "newest"})
+
+    assert_patch(view, ~p"/search?sort=newest")
+    assert has_element?(view, "a", "Sort: newest first")
+
+    view |> element("#sort-form") |> render_change(%{"sort" => ""})
+
+    assert_patch(view, ~p"/search")
+    refute has_element?(view, "a", "Sort: newest first")
+  end
+
+  test "a phone folds the filter row behind one button", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/search")
+
+    assert has_element?(view, "#filters-toggle[aria-expanded=false]")
+
+    view |> element("#filters-toggle") |> render_click()
+
+    assert has_element?(view, "#filters-toggle[aria-expanded=true]")
+  end
+
   test "typing a label and submitting it filters by it", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search")
 
