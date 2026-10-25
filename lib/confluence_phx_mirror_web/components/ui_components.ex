@@ -69,17 +69,28 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
   `value` is what the resource holds; `percent` is the device's usage, not the
   resource's share of it — "how much is left on the box" is the question this
   answers, and a mirror can hold two megabytes on a disk that is 94% full.
+
+  `share` splits that used part in two: the slice this mirror accounts for, and
+  everything else on the same device. Three colours, because "the disk is full"
+  and "we filled the disk" call for different reactions, and a mirror that holds
+  a few megabytes next to a build cache should look like one.
   """
   attr :id, :string, required: true, doc: "DOM id; the figure inside it is `-value`"
   attr :label, :string, required: true
   attr :value, :integer, required: true, doc: "what this holds, in bytes"
   attr :percent, :integer, default: nil, doc: "how much of its device is used, 0-100"
+
+  attr :share, :float,
+    default: nil,
+    doc: "how much of the device this resource accounts for, 0-100, to a tenth"
+
   attr :detail, :string, default: nil
   attr :note, :string, default: nil
   attr :hint, :string, default: nil, doc: "the path or the caveat, shown truncated"
 
   def resource_meter(assigns) do
     assigns = assign(assigns, :percent, assigns.percent && min(assigns.percent, 100))
+    assigns = assign(assigns, :share, our_slice(assigns))
 
     ~H"""
     <div id={@id} class="rounded-lg border border-base-300/70 bg-base-100 px-3 py-2">
@@ -87,8 +98,28 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
         <span class="text-[11px] uppercase tracking-wider text-base-content/70">{@label}</span>
         <span id={"#{@id}-value"} class="font-semibold tabular-nums">{human_bytes(@value)}</span>
       </div>
+      <div
+        :if={is_number(@share) and is_number(@percent)}
+        class={[
+          "mt-1.5 flex h-1.5 w-full overflow-hidden rounded-full bg-base-300",
+          alarm_class(@percent)
+        ]}
+        role="img"
+        aria-label={"#{@label}: #{slice(@share)}% of it ours, #{slice(@percent)}% of the device used"}
+      >
+        <span
+          class="h-full bg-primary"
+          style={primary_style(@share, @value)}
+          title={"ours: #{slice(@share)}%"}
+        ></span>
+        <span
+          class="h-full bg-base-content/40"
+          style={"width: #{slice(@percent - @share)}%"}
+          title={"everything else: #{slice(@percent - @share)}%"}
+        ></span>
+      </div>
       <progress
-        :if={@percent}
+        :if={is_number(@percent) and is_nil(@share)}
         class={["progress mt-1.5 h-1.5 w-full", meter_class(@percent)]}
         value={@percent}
         max="100"
@@ -101,11 +132,44 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
     """
   end
 
+  # A slice wider than the used part it belongs to is not a thing: a caller that
+  # measures the resource and the device at different moments can round past it.
+  defp our_slice(%{share: share, percent: percent})
+       when is_number(share) and is_number(percent),
+       do: share |> min(percent) |> as_float()
+
+  defp our_slice(_assigns), do: nil
+
+  # Percentages on a bar are read as numbers with a tenth, whether the caller
+  # handed over `30` or `30.0`.
+  defp as_float(value) when is_integer(value), do: value * 1.0
+  defp as_float(value), do: value
+
+  # A slice worth a tenth of a percent is still a slice: a mirror that holds a
+  # megabyte of a terabyte should say so, not round itself out of existence.
+  defp slice(value) when is_float(value), do: :erlang.float_to_binary(value, decimals: 1)
+  defp slice(value), do: Integer.to_string(value)
+
+  # Two pixels when this resource holds anything at all. Rounding a megabyte of
+  # a terabyte down to nothing would paint an empty bar, and an empty bar reads
+  # as a broken feature; the exact figure sits in the label beside it.
+  defp primary_style(share, value) when value > 0,
+    do: "width: #{slice(share)}%; min-width: 2px"
+
+  defp primary_style(share, _value), do: "width: #{slice(share)}%"
+
   # A disk is full long before it says so: the mirror cannot write when the last
   # byte is gone, and a sync that dies at 98% is worse than one that warned.
   defp meter_class(percent) when percent >= 90, do: "progress-error"
   defp meter_class(percent) when percent >= 75, do: "progress-warning"
   defp meter_class(_percent), do: "progress-primary"
+
+  # With the used part split in two, the fill is a composition rather than a
+  # warning: the alarm moves to a ring, because a tinted free space reads as
+  # filled and turns a full disk into a confusing one.
+  defp alarm_class(percent) when percent >= 90, do: "ring-1 ring-error/60"
+  defp alarm_class(percent) when percent >= 75, do: "ring-1 ring-warning/60"
+  defp alarm_class(_percent), do: nil
 
   @doc "A byte count as a person reads it: B, KB, MB, GB, TB."
   def human_bytes(bytes) when bytes < 1024, do: "#{bytes} B"

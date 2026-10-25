@@ -39,6 +39,26 @@ defmodule ConfluencePhxMirrorWeb.Admin.ResourcesTest do
     assert memory =~ "this VM:"
   end
 
+  test "each bar says how much of its device this mirror accounts for", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin")
+
+    html = render(view)
+
+    assert bar_label(html, "#resources-blob-mount") =~ "of it ours,"
+    assert bar_label(html, "#resources-memory") =~ "of it ours,"
+    # Postgres reports what it uses and never how big its volume is, so this one
+    # waits for CM_DATABASE_CAPACITY_GB rather than guessing a share of nothing.
+    assert bar_label(html, "#resources-database") == nil
+  end
+
+  defp bar_label(html, selector) do
+    html
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(~s(#{selector} [role="img"]))
+    |> LazyHTML.attribute("aria-label")
+    |> List.first()
+  end
+
   defp text_of(html, selector) do
     html |> LazyHTML.from_fragment() |> LazyHTML.query(selector) |> LazyHTML.text()
   end

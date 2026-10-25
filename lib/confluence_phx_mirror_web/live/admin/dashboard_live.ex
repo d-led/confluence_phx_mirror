@@ -251,6 +251,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     "#{human_bytes(bytes)} database of a #{human_bytes(capacity)} volume"
   end
 
+  # The third colour on a bar: how much of the device this deployment accounts
+  # for. A device that did not report its size gets no colour — a share of an
+  # unknown whole is a guess, and a bar that guesses is worse than no bar.
+  defp share_percent(_bytes, total) when not is_integer(total), do: nil
+  defp share_percent(_bytes, total) when total <= 0, do: nil
+
+  defp share_percent(bytes, total),
+    do: bytes * 100 / total |> Float.round(1) |> min(100)
+
   # "2.8 GB free of 16 GB" — memory is read the way a disk is, and the mirror's
   # own heap sits underneath it, because that is the part a sync grows.
   defp memory_line(%{available_bytes: available, total_bytes: total}) do
@@ -502,6 +511,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             label="Data mount"
             value={@resources.used_bytes}
             percent={@resources.device && @resources.device.percent}
+            share={@resources.device && share_percent(@resources.used_bytes, @resources.device.total_bytes)}
             detail={device_line(@resources)}
             note={"#{@resources.files} files, measured #{Time.ago(@resources.measured_at)}"}
             hint={@resources.path}
@@ -511,6 +521,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             label="Postgres"
             value={@database.bytes}
             percent={database_percent(@database, @database_capacity)}
+            share={share_percent(@database.bytes, @database_capacity)}
             detail={database_line(@database, @database_capacity)}
             note={table_line(@database.tables)}
             hint="size from Postgres itself; a percentage needs CM_DATABASE_CAPACITY_GB"
@@ -520,6 +531,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             label="Memory"
             value={@memory.used_bytes}
             percent={@memory.percent}
+            share={share_percent(@memory.beam_bytes, @memory.total_bytes)}
             detail={memory_line(@memory)}
             note={"this VM: #{human_bytes(@memory.beam_bytes)}"}
             hint="the machine's memory, and the part of it this node holds"

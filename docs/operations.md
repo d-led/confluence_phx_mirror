@@ -353,6 +353,15 @@ the blob root is on. The route is served with its own content policy
 bundle depends on and the reader pages forbid inline script; that exception is
 one route wide and exists only when the dashboard is compiled in.
 
+Its **Metrics** page charts the catalogue under the `confluence_mirror` nav —
+pages, spaces, attachments, comments, labels, what sits in the trash, accounts,
+blob bytes and database bytes — one point per poll (10 s) plus the same numbers
+the run that just finished wrote. The last two hours are kept in memory
+(`ConfluencePhxMirror.MetricsHistory`, 720 points per series); nothing is
+persisted, so a restart starts the charts over. Read a value by putting the
+cursor over the plot: the legend shows `--` while the cursor is elsewhere,
+which is uPlot's idle state, not an empty chart.
+
 ## Rate limiting
 
 Three meters, in two directions:
@@ -408,6 +417,15 @@ SQL function over `statvfs`. The database card therefore shows the database, its
 on-disk footprint including WAL, and its biggest tables; set
 `CM_DATABASE_CAPACITY_GB` to the size of its volume (on Fly: `fly volumes list`)
 and it also draws a percentage, the same way the blob mount does.
+
+Each bar is a composition rather than a gauge: the blue slice is what this
+deployment put there, the grey is everything else on the same device, and the
+track is what is left — a mirror holding two megabytes of a disk a build cache
+filled should not read as the culprit. Shares are drawn to a tenth of a percent,
+because "0%" and "a sliver" are different answers and the dev box is the second
+one. The alarm lives on a ring around the bar rather than in its fill (amber from
+75%, red from 90%): a tinted free space reads as filled, which turns a full disk
+into a confusing one. A device that did not report its size gets no share at all.
 
 An open overview is read at two speeds: the run in flight every five seconds,
 because that is what an operator sits and watches, and everything else — the
