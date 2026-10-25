@@ -57,18 +57,28 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
     assert render(view) =~ worker_name(SpaceWorker)
   end
 
-  test "a job names the space it reads and who asked for it", %{conn: conn} do
+  test "a job says what it acts on and who asked, without knowing the worker by name", %{
+    conn: conn
+  } do
     job = sync_job("MFS") |> with_state("available")
 
     {:ok, view, _html} = live(conn, ~p"/admin/jobs")
 
     # A queue of identical "SpaceWorker" rows says nothing about which space
-    # each one reads, which is the only thing worth knowing about them.
-    row = view |> element("#job-#{job.id}") |> render()
+    # each one reads: the scope comes from the job's own arguments.
+    assert view |> element("#job-#{job.id}-scope") |> render() =~ "space MFS"
+    assert view |> element("#job-#{job.id}-trigger") |> render() =~ "a test"
+  end
 
-    assert row =~ "SpaceWorker"
-    assert row =~ "space MFS"
-    assert row =~ "by a test"
+  test "a job that takes no arguments says so rather than showing a blank", %{conn: conn} do
+    {:ok, job} =
+      ConfluencePhxMirror.Sync.SnapshotWorker.new(%{"trigger" => "the schedule"}) |> Oban.insert()
+
+    Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "available"])
+
+    {:ok, view, _html} = live(conn, ~p"/admin/jobs")
+
+    assert view |> element("#job-#{job.id}-scope") |> render() =~ "—"
   end
 
   test "a job says what its run has done so far, and links to that run's log", %{conn: conn} do

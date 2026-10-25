@@ -16,6 +16,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
   where its log is. A sync is the first kind of job with such a record, not the
   only kind this page can show.
 
+  For the same reason the row is built from what every job has — its worker,
+  its arguments, its state and its attempts — and not from what today's workers
+  happen to mean. The **Scope** column is the arguments read back to the
+  reader ("space MFS", "mode snapshot"), so a worker this page has never heard
+  of still says what it acts on; a job that takes none says so instead of
+  leaving a blank. Who asked lives under the worker's name, the way the sync
+  table carries the trigger under its mode.
+
   It is admin-only, like every screen under `/admin`, and it is not dev-only on
   purpose: leftover jobs are made by deploys, and the deploy that matters is the
   production one. It refreshes itself while open, because the state it shows is
@@ -109,18 +117,26 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
   defp trigger(%{args: %{"trigger" => trigger}}) when is_binary(trigger), do: trigger
   defp trigger(_job), do: nil
 
-  # What the job is *for*. A queue of identical "SpaceWorker" rows says nothing
-  # about which space each one reads, which is the only thing an operator
-  # looking at a re-read wants to know.
-  defp subject(%{worker: worker, args: args}) do
-    case {worker_name(worker), args} do
-      {"SpaceWorker", %{"space_key" => key}} -> "space #{key}"
-      {"SnapshotWorker", %{"mode" => "snapshot"}} -> "the whole site, re-read"
-      {"SnapshotWorker", _args} -> "the whole site, what changed"
-      {"SweepWorker", _args} -> "every space, one job each"
-      _other -> nil
+  # What the job acts on, read off its arguments. The page knows no worker by
+  # name — a job added tomorrow says its own scope without a change here — so
+  # the only thing spelled out is how an argument names itself on the page:
+  # `space_key` reads as "space", the rest keep their key. `trigger` is left
+  # out because who asked is a column of its own.
+  @argument_names %{"space_key" => "space", "confluence_id" => "page"}
+
+  defp scope(%{args: args}) do
+    case args |> Map.delete("trigger") |> Enum.map_join(", ", &name_argument/1) do
+      "" -> nil
+      text -> text
     end
   end
+
+  defp name_argument({key, value}) do
+    "#{Map.get(@argument_names, key, key)} #{answer(value)}"
+  end
+
+  defp answer(value) when is_binary(value), do: value
+  defp answer(value), do: inspect(value)
 
   # "Long-running" is said only about a job that has been executing longer than
   # any run this mirror has measured; a shorter one is simply working.
@@ -196,7 +212,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
         <.data_table id="jobs" rows={@rows}>
           <:head>
             <th>#</th>
-            <th>Job</th>
+            <th title="The worker that runs it, and who asked for it">Job</th>
+            <th title="What this job acts on, as its own arguments name it">Scope</th>
             <th>State</th>
             <th title="What the job is doing: the run it started, and a link to that run's lines in the sync log">
               Progress
@@ -211,10 +228,25 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
             <td class="text-xs tabular-nums text-base-content/70">{job.id}</td>
             <td class="text-xs">
               <span class="font-medium">{worker_name(job.worker)}</span>
-              <span :if={subject(job)} class="text-base-content/70"> · {subject(job)}</span>
-              <span :if={trigger(job)} class="block text-[11px] text-base-content/70">
-                by {trigger(job)}
+              <span
+                :if={trigger(job)}
+                id={"job-#{job.id}-trigger"}
+                class="block text-[11px] text-base-content/70"
+              >
+                {trigger(job)}
               </span>
+            </td>
+            <td class="text-xs" id={"job-#{job.id}-scope"}>
+              <%= if scope(job) do %>
+                {scope(job)}
+              <% else %>
+                <span
+                  class="text-base-content/70"
+                  title="This job takes no arguments: it acts on everything its worker knows how to find."
+                >
+                  —
+                </span>
+              <% end %>
             </td>
             <td>
               <span class={["badge badge-sm", state_class(job.state)]}>{job.state}</span>
