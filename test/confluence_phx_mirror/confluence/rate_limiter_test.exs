@@ -5,7 +5,15 @@ defmodule ConfluencePhxMirror.Confluence.RateLimiterTest do
   """
   use ExUnit.Case, async: true
 
+  alias ConfluencePhxMirror.Confluence.HttpSource
   alias ConfluencePhxMirror.Confluence.RateLimiter
+
+  test "the limiter the application starts runs at the configured pace" do
+    configured = :confluence_phx_mirror |> Application.get_env(HttpSource, []) |> Keyword.fetch!(:requests_per_second)
+
+    assert %{bucket: %{rate: rate}} = RateLimiter.state()
+    assert rate == configured * 1.0
+  end
 
   test "a call with a free token does not wait" do
     start_supervised!({RateLimiter, name: __MODULE__.Quick, requests_per_second: 1_000, burst: 1})

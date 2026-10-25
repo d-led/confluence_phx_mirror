@@ -131,6 +131,19 @@ end
 http_defaults =
   Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Confluence.HttpSource, [])
 
+# A variable overrides the deployment's configuration only when the operator
+# actually set it. Falling back to the *configured* value rather than to a
+# number written here keeps `config.exs`/`config/test.exs` in charge of
+# everything an environment does not speak about — the suite's own pacing
+# (`requests_per_second: 1_000`) used to be silently replaced by the site's
+# polite 5 a second, which turned every stubbed HTTP call into a 200 ms wait.
+configured_int = fn key, env_name, default ->
+  case System.get_env(env_name) do
+    nil -> Keyword.get(http_defaults, key, default)
+    value -> String.to_integer(value)
+  end
+end
+
 config :confluence_phx_mirror,
        ConfluencePhxMirror.Confluence.HttpSource,
        Keyword.merge(http_defaults,
@@ -139,15 +152,15 @@ config :confluence_phx_mirror,
          # how hard a re-read leans on Postgres: a shared-CPU database is
          # happier at 2 than at 4 (see "A re-read, sized" in
          # docs/operations.md).
-         sync_concurrency: String.to_integer(System.get_env("CM_SYNC_CONCURRENCY") || "4"),
+         sync_concurrency: configured_int.(:sync_concurrency, "CM_SYNC_CONCURRENCY", 4),
          base_url: System.get_env("CM_CONFLUENCE_SITE"),
          email: System.get_env("CM_ATL_EMAIL"),
          api_token: System.get_env("CM_ATL_TOKEN"),
-         requests_per_second: String.to_integer(System.get_env("CM_REQUESTS_PER_SECOND", "5")),
-         burst: String.to_integer(System.get_env("CM_BURST", "5")),
-         retries: String.to_integer(System.get_env("CM_HTTP_RETRIES", "3")),
-         page_size: String.to_integer(System.get_env("CM_HTTP_PAGE_SIZE", "50")),
-         retry_backoff_ms: String.to_integer(System.get_env("CM_HTTP_RETRY_BACKOFF_MS", "250")),
+         requests_per_second: configured_int.(:requests_per_second, "CM_REQUESTS_PER_SECOND", 5),
+         burst: configured_int.(:burst, "CM_BURST", 5),
+         retries: configured_int.(:retries, "CM_HTTP_RETRIES", 3),
+         page_size: configured_int.(:page_size, "CM_HTTP_PAGE_SIZE", 50),
+         retry_backoff_ms: configured_int.(:retry_backoff_ms, "CM_HTTP_RETRY_BACKOFF_MS", 250),
          spaces:
            case System.get_env("CM_SPACES") do
              nil -> :all
@@ -155,7 +168,7 @@ config :confluence_phx_mirror,
              keys -> keys |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
            end,
          sync_interval_seconds:
-           String.to_integer(System.get_env("CM_SYNC_INTERVAL_SECONDS", "3600")),
+           configured_int.(:sync_interval_seconds, "CM_SYNC_INTERVAL_SECONDS", 3600),
          # Pages that changed are detailed (attachments, comments) this many at a
          # time; the request rate limit still paces the actual calls.
          sync_concurrency: String.to_integer(System.get_env("CM_SYNC_CONCURRENCY", "4"))
