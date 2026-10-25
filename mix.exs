@@ -64,6 +64,11 @@ defmodule ConfluencePhxMirror.MixProject do
       {:lazy_html, ">= 0.1.0", only: :test},
       {:phoenix_test, "~> 0.12.1", only: :test, runtime: false},
       {:phoenix_live_dashboard, "~> 0.9.1"},
+      # The dashboard's Ecto Stats page is a browser over this package's
+      # queries — index usage, sequential scans, cache hits, bloat — and it
+      # lists no repo at all unless the module is loadable, which is why it
+      # stays out of a release: nothing on the mirror needs it to run.
+      {:ecto_psql_extras, "~> 0.8", only: [:dev, :test]},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.5", runtime: Mix.env() == :dev},
       {:heroicons,
