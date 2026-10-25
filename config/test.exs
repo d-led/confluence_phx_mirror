@@ -33,7 +33,10 @@ config :confluence_phx_mirror, Oban,
 config :confluence_phx_mirror,
   auto_admin: true,
   self_signup: true,
-  blob_root: "tmp/mirror_test",
+  # Per partition, like the database: two suites in one checkout (a second
+  # agent, a watcher) would otherwise delete each other's blobs mid-run, and the
+  # failures look like the code rather than like the directory.
+  blob_root: "tmp/mirror_test#{System.get_env("MIX_TEST_PARTITION")}",
   # Argon2 is memory-hard on purpose; the suite pays for the algorithm, not for
   # the production cost of it (16 MiB and two passes per token check).
   token_hash_params: [t_cost: 1, m_cost: 3, parallelism: 1],
