@@ -21,6 +21,7 @@ defmodule ConfluencePhxMirror.Audit.Export do
   import Ecto.Query
 
   alias ConfluencePhxMirror.Audit.Event
+  alias ConfluencePhxMirror.Csv
   alias ConfluencePhxMirror.Repo
 
   @batch 500
@@ -49,14 +50,14 @@ defmodule ConfluencePhxMirror.Audit.Export do
 
   @doc "The header line, for the format asked for (`:csv` only)."
   @spec header(:csv | :ndjson) :: iodata()
-  def header(:csv), do: encode_csv_row(@columns) <> "\n"
+  def header(:csv), do: Csv.encode_row(@columns) <> "\n"
   def header(:ndjson), do: []
 
   @doc "One batch, encoded."
   @spec encode(:csv | :ndjson, [Event.t()]) :: iodata()
   def encode(:ndjson, events), do: Enum.map(events, &(encode_json(&1) <> "\n"))
 
-  def encode(:csv, events), do: Enum.map(events, &(encode_csv_row(row(&1)) <> "\n"))
+  def encode(:csv, events), do: Enum.map(events, &(Csv.encode_row(row(&1)) <> "\n"))
 
   defp row(event) do
     [
@@ -89,23 +90,4 @@ defmodule ConfluencePhxMirror.Audit.Export do
   defp field(event, "actor_account_id"), do: event.actor_account_id
   defp field(event, "actor_label"), do: event.actor_label
   defp field(event, "metadata"), do: event.metadata
-
-  # RFC 4180: a field is quoted when it holds a comma, a quote or a newline, and
-  # a quote inside is doubled. Anything else stays as it is, so numbers and
-  # timestamps stay readable in a spreadsheet.
-  defp encode_csv_row(values) do
-    Enum.map_join(values, ",", &csv_field/1)
-  end
-
-  defp csv_field(nil), do: ""
-
-  defp csv_field(value) when is_binary(value) do
-    if String.contains?(value, [",", "\"", "\n", "\r"]) do
-      "\"" <> String.replace(value, "\"", "\"\"") <> "\""
-    else
-      value
-    end
-  end
-
-  defp csv_field(value), do: to_string(value)
 end

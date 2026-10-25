@@ -56,6 +56,15 @@ defmodule ConfluencePhxMirror.Sync.ChildChangesTest do
       assert comment.body_export =~ "Looks good to me"
     end
 
+    test "an emoji Confluence's export writes as text is a character here" do
+      assert {:ok, _run} = Sync.run(:incremental, source: CommentedSource, since: empty_window())
+
+      comment = Repo.get_by!(Comment, confluence_id: CommentedSource.comment_id())
+
+      assert comment.body_export =~ "Looks good to me 😁"
+      assert comment.body_text =~ "😁"
+    end
+
     test "the page's own version is left exactly as it was" do
       page!(CommentedSource.page_id())
 

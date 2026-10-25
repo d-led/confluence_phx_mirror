@@ -212,10 +212,16 @@ an unrelated paragraph of the page.
 ## Known limitations
 
 * Confluence's own emoji set (`:big_grin:`, the blue-star family) has no Unicode
-  character. `export_view` renders it as that shortcode text — its glyph exists
-  only as a Confluence-hosted image in `body.view` — so the mirror shows the
-  shortcode, exactly as Confluence's export does. Standard emoji and the classic
-  emoticons carry `data-emoji-fallback` or a classic name and are converted.
+  character — its glyph is a sprite image on Atlassian's side — and `export_view`
+  writes the shortcode as *text*, where nothing distinguishes it from prose. The
+  **storage** does: it marks the pick as `<ac:emoticon ac:emoji-id="atlassian-big_grin"
+  ac:emoji-shortname=":big_grin:" …>`. `Sync.Emoticons.from_storage/2` replaces
+  the shortcodes that markup names with the nearest character (`😁`, ⭐, ✅ …),
+  and only those: prose and anything inside `<pre>`/`<code>` keeps its text.
+  Standard emoji and the classic emoticons carry a fallback character or a
+  classic name and need no storage to resolve. A body mirrored before this
+  existed gets the characters on its next sync — a page from its own stored
+  storage at render time.
 * Comments are read-only and rendered flat (one reply level styled).
 * Confluence Cloud does not expose *space* permissions for reading, so they are
   mirrored only when a source can supply them; page restrictions are synced.

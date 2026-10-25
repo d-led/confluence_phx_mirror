@@ -151,6 +151,14 @@ defmodule ConfluencePhxMirror.SyncTest do
   end
 
   describe "space icons" do
+    setup do
+      # The sync runs in a child of its caller, so the source reports to the
+      # process that asked, not to whoever it happens to be running as.
+      SpaceIconSource.listen(self())
+      on_exit(&SpaceIconSource.reset/0)
+      :ok
+    end
+
     test "mirrors the icon bytes into the blob store" do
       assert {:ok, run} = Sync.run(:snapshot, source: SpaceIconSource)
       assert run.status == "succeeded"

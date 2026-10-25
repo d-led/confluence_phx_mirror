@@ -194,6 +194,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
     pipe_through :browser
 
     get "/audit/export", AuditExportController, :index
+    get "/sync-runs/export", SyncRunsExportController, :index
     get "/export/site.zip", SiteExportController, :index
   end
 
@@ -239,6 +240,12 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/labels", LabelController, :index
     get "/search", SearchController, :index
     get "/stats", StatsController, :show
+
+    # Every sync the mirror ever ran, a window at a time, and the same history
+    # as a stream. Administrator-only: a run's error is what the node said when
+    # the sync broke.
+    get "/sync-runs", SyncRunController, :index
+    get "/sync-runs/export", SyncRunController, :export
 
     # The Confluence identities the content names, and standing an account on
     # one. Administrator-only; the only writes the v1 API accepts, because the

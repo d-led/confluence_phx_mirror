@@ -33,10 +33,12 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Sync.{
     Cancelled,
     DynamicContent,
+    Emoticons,
     Gate,
     Log,
     PageProperties,
     Renderer,
+    Runs,
     SyncRun
   }
 
@@ -100,8 +102,7 @@ defmodule ConfluencePhxMirror.Sync do
     )
 
     try do
-      {stats, errors} = do_run(mode, source, opts)
-      {stats, errors} = reconcile_accounts(mode, source, stats, errors, opts)
+      {stats, errors} = run_work(mode, source, opts, run)
       finish_run(run, stats, errors, actor, trigger)
     rescue
       Cancelled ->
@@ -137,6 +138,89 @@ defmodule ConfluencePhxMirror.Sync do
     if function_exported?(source, :name, 0), do: source.name(), else: inspect(source)
   end
 
+  # The work runs in a child of the process that owns the run row, not in it:
+  # the row, the audit entry and the gate have to outlive the work being
+  # stopped. A cancel exits this child (see `Runs.stop/1`), which is immediate
+  # and can land anywhere. What makes that safe is the write boundary:
+  #
+  #   * a page's version change stores the new body and clears
+  #     `details_synced_at` in one transaction, so an interrupted detail pass is
+  #     simply a page the backlog reads again — never a page claiming details
+  #     that were not written;
+  #   * the details of a page (text, links, comments, that same mark) are one
+  #     transaction too, and they check for a stop before writing, so they land
+  #     whole or not at all;
+  #   * blob files are named by page, attachment and filename, so a file written
+  #     by work that rolled back is reused, not duplicated.
+  defp run_work(mode, source, opts, run) do
+    parent = self()
+    tag = make_ref()
+
+    {pid, ref} =
+      spawn_monitor(fn ->
+        # `$callers` is what the Ecto sandbox (and anything else that asks
+        # "whose work is this?") reads; a spawned process has to inherit it by
+        # hand, which is also what makes the child's database work legal in a
+        # test that owns the sandbox.
+        Process.put(:"$callers", [parent | Process.get(:"$callers", [])])
+        Log.current_run(run.id)
+        Logger.metadata(sync_run_id: run.id)
+        Runs.register(run.id)
+
+        result =
+          try do
+            check_cancelled!(opts)
+            {stats, errors} = do_run(mode, source, opts)
+            {:ok, reconcile_accounts(mode, source, stats, errors, opts)}
+          rescue
+            error -> {:error, error, __STACKTRACE__}
+          catch
+            kind, reason -> {:caught, kind, reason, __STACKTRACE__}
+          end
+
+        send(parent, {tag, result})
+      end)
+
+    receive do
+      {^tag, {:ok, report}} ->
+        Process.demonitor(ref, [:flush])
+        report
+
+      {^tag, {:error, error, stacktrace}} ->
+        reraise error, stacktrace
+
+      {^tag, {:caught, kind, reason, stacktrace}} ->
+        :erlang.raise(kind, reason, stacktrace)
+
+      {:DOWN, ^ref, :process, ^pid, reason} ->
+        # No result message: the child was stopped on request, or died in a way
+        # it could not report. A stop is a cancellation, not a failure.
+        case reason do
+          :shutdown ->
+            raise Cancelled
+
+          :killed ->
+            raise Cancelled
+
+          :normal ->
+            raise Cancelled
+
+          # The pages run in tasks linked to the child, so a raise inside a page
+          # leaves the child with that exception as its exit reason — a stop
+          # that landed there, or the page's own failure, which is re-raised as
+          # itself rather than as "the process exited".
+          {%Cancelled{}, _stacktrace} ->
+            raise Cancelled
+
+          {exception, stacktrace} when is_exception(exception) ->
+            reraise(exception, stacktrace)
+
+          other ->
+            raise "the sync process exited: #{inspect(other)}"
+        end
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # One run at a time, and stopping one
   # ---------------------------------------------------------------------------
@@ -144,16 +228,28 @@ defmodule ConfluencePhxMirror.Sync do
   @abandoned "the process running this sync stopped before it finished"
 
   @doc """
-  Asks a running sync to stop at its next safe boundary.
+  Stops a running sync.
+
+  The request is recorded on the row first, because that is the only signal a
+  run on another node or in `mix confluence.sync` can see. When the run is on
+  this node the process doing the work is exited as well, so the stop is
+  immediate rather than "after the next page": the page in flight is one
+  transaction and rolls back, and the run ends `cancelled` with the pages it
+  already wrote.
 
   Returns `{:error, :not_running}` when there is nothing to stop — a run that
-  already finished, or one that never started. The request is a flag the run
-  checks between pages; it is not a kill, so the answer to "has it stopped?"
-  is the run's status, not this call.
+  already finished, or one that never started.
   """
   @spec cancel(Ecto.UUID.t() | integer(), Audit.actor()) ::
           {:ok, SyncRun.t()} | {:error, :not_running}
   def cancel(run_id, actor) do
+    run_id = cancel_id(run_id)
+
+    # The exit first, the row second: the work stops now, and the transaction it
+    # was in is already rolling back by the time the row is written. The row is
+    # still the record — and still the only signal a run elsewhere can see.
+    stopped = Runs.stop(run_id)
+
     case Repo.get(SyncRun, run_id) do
       %SyncRun{status: "running"} = run ->
         {:ok, run} =
@@ -161,15 +257,35 @@ defmodule ConfluencePhxMirror.Sync do
           |> SyncRun.changeset(%{cancel_requested_at: now()})
           |> Repo.update()
 
-        Log.add(:warn, "cancellation requested, stopping at the next page",
+        Log.add(:warn, cancel_message(stopped),
           sync_run_id: run.id,
           by: actor_name(actor)
         )
 
         {:ok, run}
 
+      %SyncRun{} = run when stopped == :stopped ->
+        # The process was ours and is gone; its parent is recording the outcome.
+        {:ok, run}
+
       _finished_or_missing ->
         {:error, :not_running}
+    end
+  end
+
+  defp cancel_message(:stopped), do: "cancellation requested: stopping the run now"
+
+  defp cancel_message(:elsewhere),
+    do:
+      "cancellation requested, stopping at the next page (the run is on another node or process)"
+
+  # The dashboard sends the id it rendered, which arrives as a string.
+  defp cancel_id(id) when is_integer(id), do: id
+
+  defp cancel_id(id) do
+    case Integer.parse(to_string(id)) do
+      {parsed, ""} -> parsed
+      _ -> id
     end
   end
 
@@ -255,7 +371,7 @@ defmodule ConfluencePhxMirror.Sync do
   # the total. Naming them is what turns "1 listed, 1 unchanged" into an answer.
   @listed_by_name 20
 
-  @cancel_check_every 100
+  @cancel_check_every 10
   defp check_cancelled!(opts) do
     case opts[:run_id] do
       nil -> :ok
@@ -1217,22 +1333,25 @@ defmodule ConfluencePhxMirror.Sync do
         {:ok, :unchanged}
 
       change ->
-        with {:ok, page} <- Mirror.upsert_page(space, attrs),
-             {:ok, page} <- Mirror.replace_labels(page, dto.labels) do
+        Repo.transaction(fn ->
+          page = must!(Mirror.upsert_page(space, attrs))
+          page = must!(Mirror.replace_labels(page, dto.labels))
           # Labels and properties are stored before any page renders, so label
           # listings and property reports in a snapshot see the whole run.
-          {:ok, _properties} =
-            Mirror.replace_properties(page, PageProperties.parse(dto.body.storage))
+          must!(Mirror.replace_properties(page, PageProperties.parse(dto.body.storage)))
+          # The version moved, so the details are stale by definition. Clearing
+          # the mark in the same transaction is what makes an interrupted
+          # detail pass readable again: `pages_awaiting_details` looks for NULL.
+          :ok = Mirror.mark_details_stale(page)
 
-          {:ok,
-           %{
-             space: space,
-             dto: dto,
-             page: page,
-             change: change,
-             previous_version: previous && previous.version_number
-           }}
-        end
+          %{
+            space: space,
+            dto: dto,
+            page: page,
+            change: change,
+            previous_version: previous && previous.version_number
+          }
+        end)
     end
   end
 
@@ -1281,7 +1400,7 @@ defmodule ConfluencePhxMirror.Sync do
   # Rendering, labels, links, attachments, comments
   # ---------------------------------------------------------------------------
 
-  defp sync_details(source, entries, index, _opts) do
+  defp sync_details(source, entries, index, opts) do
     initial =
       {%{
          "attachments" => 0,
@@ -1292,7 +1411,7 @@ defmodule ConfluencePhxMirror.Sync do
        }, []}
 
     entries
-    |> Task.async_stream(&render_entry(source, &1, index),
+    |> Task.async_stream(&render_entry(source, &1, index, opts),
       max_concurrency: concurrency(),
       timeout: :infinity,
       ordered: false
@@ -1319,9 +1438,11 @@ defmodule ConfluencePhxMirror.Sync do
     |> Keyword.get(:sync_concurrency, 4)
   end
 
-  defp render_entry(source, %{space: space, dto: dto, page: page, change: change}, index) do
+  defp render_entry(source, %{space: space, dto: dto, page: page, change: change}, index, opts) do
+    check_cancelled!(opts)
+
     {attachments, attachment_errors} = mirror_attachments(source, space, page)
-    restriction_errors = mirror_page_restrictions(source, page)
+    restrictions = fetch_restrictions(source, page)
     attachment_map = Map.new(attachments, &attachment_ref(space, page, &1))
 
     context = %{
@@ -1332,16 +1453,16 @@ defmodule ConfluencePhxMirror.Sync do
       attachments: attachment_map
     }
 
-    rendered = Renderer.render(dto.body.export_view, context)
+    rendered =
+      Renderer.render(Emoticons.from_storage(dto.body.export_view, dto.body.storage), context)
 
-    with {:ok, page} <- store_rendered_page(page, rendered, space, attachments),
-         {:ok, _} <- Mirror.replace_links(page, rendered.links),
-         {:ok, comments} <- mirror_comments(source, space, page, context) do
-      # One prune for both owners: the page's files and the ones that live in
-      # its comments. Anything else this page used to hold is gone upstream.
-      kept = Enum.map(attachments, & &1.confluence_id) ++ comments.attachment_ids
-      prune_errors = prune_attachments(page, kept)
-      :ok = Mirror.mark_details_synced(page)
+    with {:ok, read} <-
+           read_page_details(source, page, rendered, attachments, restrictions),
+         {:ok, {page, comments, pruned}} <-
+           store_details(page, space, read, context, source, opts) do
+      # Blobs go after the commit: a crash between the two leaves an
+      # unreferenced file, which is harmless, never a row pointing at nothing.
+      discard_blobs(pruned)
 
       page = Map.put(page, :space, space)
       {notifications, notification_errors} = notify(change, page, space)
@@ -1354,28 +1475,58 @@ defmodule ConfluencePhxMirror.Sync do
          "comments" => comments.count,
          "links" => length(rendered.links),
          "notifications" => notifications
-       }, attachment_errors ++ restriction_errors ++ prune_errors ++ notification_errors}
+       },
+       attachment_errors ++
+         restriction_errors(restrictions, page) ++
+         comments.errors ++ notification_errors}
     else
       {:error, reason} -> {:error, reason, dto}
     end
   end
 
-  # A page's read restrictions decide access before its space does, so they are
-  # synced per page; a source that cannot read them says nothing at all.
-  defp mirror_page_restrictions(source, page) do
-    case fetch_restrictions(source, page) do
-      {:ok, restrictions} ->
-        {:ok, _} = Mirror.replace_page_restrictions(page, restrictions)
-        []
-
-      :unsupported ->
-        []
-
-      {:error, reason} ->
-        [error("page", page.confluence_id, {:restrictions, reason})]
+  # Everything the write needs, read before the transaction opens: reading
+  # inside it would hold a connection open for the duration of a network call.
+  defp read_page_details(source, page, rendered, attachments, restrictions) do
+    with {:ok, comment_dtos} <- source.comments(page.confluence_id, []) do
+      {:ok,
+       %{
+         rendered: rendered,
+         comments: comment_dtos,
+         attachments: attachments,
+         restrictions: restrictions
+       }}
     end
   end
 
+  # The details of one page, in one transaction. A run can be stopped at any
+  # instant (see `run_work/4`), so the page's text, links, comments and the mark
+  # that says its details were read move together. The stop is checked here,
+  # inside the transaction: what was written before the request is rolled back
+  # with it, and the page waits in the backlog for the next run.
+  defp store_details(page, space, read, context, source, opts) do
+    Repo.transaction(fn ->
+      check_cancelled!(opts)
+
+      page = must!(store_rendered_page(page, read.rendered, space, read.attachments))
+      must!(Mirror.replace_links(page, read.rendered.links))
+      :ok = apply_restrictions(page, read.restrictions)
+
+      comments = must!(store_comments(read.comments, source, space, page, context))
+
+      kept = Enum.map(read.attachments, & &1.confluence_id) ++ comments.attachment_ids
+      pruned = delete_attachments(page, kept)
+
+      :ok = Mirror.mark_details_synced(page)
+      {page, comments, pruned}
+    end)
+  end
+
+  defp must!({:ok, value}), do: value
+  defp must!({:error, reason}), do: Repo.rollback(reason)
+
+  # A page's read restrictions decide access before its space does, so they are
+  # synced per page; a source that cannot read them says nothing at all. The
+  # read happens before the page's transaction; the write is inside it.
   defp fetch_restrictions(source, page) do
     if function_exported?(source, :restrictions, 2) do
       source.restrictions(page.confluence_id, [])
@@ -1383,6 +1534,19 @@ defmodule ConfluencePhxMirror.Sync do
       :unsupported
     end
   end
+
+  defp apply_restrictions(_page, :unsupported), do: :ok
+  defp apply_restrictions(_page, {:error, _reason}), do: :ok
+
+  defp apply_restrictions(page, {:ok, restrictions}) do
+    must!(Mirror.replace_page_restrictions(page, restrictions))
+    :ok
+  end
+
+  defp restriction_errors({:error, reason}, page),
+    do: [error("page", page.confluence_id, {:restrictions, reason})]
+
+  defp restriction_errors(_read, _page), do: []
 
   # Dynamic macros are resolved from the mirror, so the stored body and its
   # search text both contain what a reader actually sees.
@@ -1485,27 +1649,31 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
-  # Attachments deleted in Confluence must disappear from the mirror too; the
-  # blob is removed first so a failed delete leaves a row pointing at nothing
-  # instead of an orphaned file.
-  defp prune_attachments(page, kept_confluence_ids) do
+  # Attachments deleted in Confluence must disappear from the mirror too. Their
+  # rows go in the page's transaction; the blob is removed after it commits, so
+  # a crash can only leave an unreferenced file, never a row pointing at a
+  # missing one.
+  defp delete_attachments(page, kept_confluence_ids) do
     stale =
       Repo.all(
         from a in Attachment,
           where: a.page_id == ^page.id and a.confluence_id not in ^kept_confluence_ids
       )
 
-    Enum.each(stale, fn attachment ->
+    Enum.each(stale, fn attachment -> {:ok, _} = Repo.delete(attachment) end)
+
+    stale
+  end
+
+  defp discard_blobs(attachments) do
+    Enum.each(attachments, fn attachment ->
       if attachment.blob_key, do: Store.delete(attachment.blob_key)
-      {:ok, _} = Repo.delete(attachment)
 
       Log.add(:warn, "attachment pruned: #{attachment.filename}",
         attachment: attachment.confluence_id,
-        page: page.confluence_id
+        page: attachment.page_id
       )
     end)
-
-    []
   end
 
   defp mirror_attachment(source, space, page, dto, comment_id) do
@@ -1580,31 +1748,24 @@ defmodule ConfluencePhxMirror.Sync do
   # A comment is a row before it is a body: its files belong to it, so the row
   # has to exist before a file can point at it, and the body is rendered once the
   # files are known because the body refers to them.
-  defp mirror_comments(source, space, page, context) do
-    case source.comments(page.confluence_id, []) do
-      {:ok, comments} ->
-        {:ok, result} =
-          Repo.transaction(fn ->
-            {kept, attachment_errors} =
-              Enum.reduce(comments, {[], []}, fn dto, {kept, errors} ->
-                comment = upsert_comment(dto, page)
-                {files, file_errors} = mirror_comment_files(source, space, page, comment, dto)
-                store_comment_body(comment, dto, files, context, space, page)
+  # Called inside the page's transaction: the comment rows and bodies, like the
+  # page body they annotate, are all-or-nothing.
+  defp store_comments(comment_dtos, source, space, page, context) do
+    Repo.transaction(fn ->
+      {kept, attachment_errors} =
+        Enum.reduce(comment_dtos, {[], []}, fn dto, {kept, errors} ->
+          comment = upsert_comment(dto, page)
+          {files, file_errors} = mirror_comment_files(source, space, page, comment, dto)
+          store_comment_body(comment, dto, files, context, space, page)
 
-                {kept ++ Enum.map(Map.get(dto, :attachments, []), &to_string(&1.id)),
-                 errors ++ file_errors}
-              end)
+          {kept ++ Enum.map(Map.get(dto, :attachments, []), &to_string(&1.id)),
+           errors ++ file_errors}
+        end)
 
-            delete_stale_comments(page, comments)
+      delete_stale_comments(page, comment_dtos)
 
-            %{count: length(comments), attachment_ids: kept, errors: attachment_errors}
-          end)
-
-        {:ok, result}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+      %{count: length(comment_dtos), attachment_ids: kept, errors: attachment_errors}
+    end)
   end
 
   defp upsert_comment(dto, page) do
@@ -1650,10 +1811,13 @@ defmodule ConfluencePhxMirror.Sync do
     refs = Map.new(files, &attachment_ref(space, page, &1))
 
     rendered =
-      Renderer.render(dto.body_export, %{
-        context
-        | attachments: Map.merge(refs, context.attachments)
-      })
+      Renderer.render(
+        Emoticons.from_storage(dto.body_export, Map.get(dto, :body_storage)),
+        %{
+          context
+          | attachments: Map.merge(refs, context.attachments)
+        }
+      )
 
     {:ok, _} =
       comment

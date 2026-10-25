@@ -146,11 +146,23 @@ can move between them without going back to a hub:
   a first sync cost, because it fetches and re-renders every page and
   attachment, changed or not. It says so where it stands, warns that it takes
   hours on a large site, and asks before it queues.
+
+  The runs table is a window of the last eight, because that is what an
+  operator can read at a glance; the database keeps every run the mirror ever
+  did. The section header carries the way out of the window: **All runs (CSV)**
+  for the spreadsheet, **JSONL** for a script. Both stream from Postgres as the
+  file downloads, so a hundred thousand runs cost a batch of memory rather than
+  a hundred thousand rows, and closing the download stops the reading at the
+  next chunk. The same history is on the API — see
+  [`/api/v1/sync-runs`](api.md#the-sync-history) — where it is paged instead of
+  streamed.
 * `/admin/sync-log` (**live**) – the live log: every page, file and call to
   Confluence a sync touches — status, size, latency, retries and the waits the
   client-side rate limiter imposed — plus a summary line when the run ends
   (calls, bytes, retries, throttled time, failures and the answers the site
   gave), held in memory while the run is fresh, with level and text filters.
+  Lines can be selected like any text; **Copy** takes the ones on screen, one
+  per line, as time, level, line and run.
 * `/admin/webhooks` (**live**, refreshes every 5 s) – what Confluence sent and
   whether its signature checked out, including rejected deliveries, plus
   whether a secret and fixed tokens are configured.

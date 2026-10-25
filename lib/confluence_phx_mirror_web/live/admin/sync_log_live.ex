@@ -299,6 +299,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
         <button id="sync-log-clear" type="button" phx-click="clear" class="btn btn-ghost btn-sm h-8">
           Clear
         </button>
+
+        <%!-- Selecting the lines is the browser's job; copying all of them is
+        one click. Both read the same rows, so what is copied is what is shown. --%>
+        <button
+          id="sync-log-copy"
+          type="button"
+          phx-hook=".Copy"
+          title="Copy the lines shown, one per line: time, level, line, run"
+          class="btn btn-ghost btn-sm h-8 gap-1.5"
+        >
+          <.icon name="hero-clipboard-document" class="size-4" />
+          <span data-copy-label>Copy</span>
+        </button>
       </div>
 
       <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-base-content/70">
@@ -332,7 +345,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
           id="sync-log"
           phx-hook=".Follow"
           data-follow={to_string(@follow?)}
-          class="mt-2 max-h-[70vh] overflow-y-auto rounded-xl border border-base-300/70 bg-base-100 text-[11px]"
+          class="mt-2 max-h-[70vh] select-text overflow-y-auto rounded-xl border border-base-300/70 bg-base-100 text-[11px]"
         >
           <table class="w-full table-fixed border-collapse font-mono">
             <thead>
@@ -423,6 +436,33 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
             // Reading scrollHeight forces the layout, so this includes the line
             // that just arrived.
             this.el.scrollTop = this.el.scrollHeight
+          }
+        }
+      </script>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".Copy">
+        // The rows on screen, as text: the columns the reader sees, one line
+        // per entry. Nothing is asked of the server — the page already holds
+        // what it drew.
+        export default {
+          mounted() {
+            this.el.addEventListener("click", () => this.copy())
+          },
+          copy() {
+            const rows = [...document.querySelectorAll("#sync-log-rows tr")]
+            const lines = rows.map(row =>
+              [...row.cells]
+                .filter(cell => getComputedStyle(cell).display !== "none")
+                .map(cell => cell.innerText.replace(/\s+/g, " ").trim())
+                .join("\t")
+            )
+            if (!navigator.clipboard) return
+            navigator.clipboard.writeText(lines.join("\n")).then(() => this.say("Copied"))
+          },
+          say(text) {
+            const label = this.el.querySelector("[data-copy-label]")
+            label.textContent = text
+            clearTimeout(this.timer)
+            this.timer = setTimeout(() => (label.textContent = "Copy"), 1200)
           }
         }
       </script>

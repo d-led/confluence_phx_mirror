@@ -68,6 +68,8 @@ GET /api/v1/pages/:id/{children,ancestors,descendants,labels,attachments,comment
 GET /api/v1/labels
 GET /api/v1/search?cql=...
 GET /api/v1/stats
+GET /api/v1/sync-runs
+GET /api/v1/sync-runs/export?format=jsonl
 GET /api/v1/identities
 POST /api/v1/identities/:account_id/link
 DELETE /api/v1/identities/:account_id/link
@@ -95,6 +97,30 @@ would otherwise be a page whose snippet has none of the words, so each hit
 carries a `comment` — `id`, `author`, `created` — when that is where the words
 were, and `null` when the page itself matched. The snippet is the comment's own
 text in that case.
+
+### The sync history
+
+A mirror keeps a row per sync run — every schedule tick, every one-page sync an
+administrator asked for, every webhook delivery — so the table grows for as long
+as the mirror exists. `GET /api/v1/sync-runs?start=&limit=` is one window of it,
+newest first, with `total` beside `results` and `_links.next` while there is
+more; `limit` defaults to 50 and is capped at 500.
+
+Each run names its `mode` (`snapshot`, `incremental`, `webhook`), its `scope`,
+its `status` (`running`, `succeeded`, `partial`, `failed`, `cancelled`), the
+times it `startedAt`/`finishedAt`, `durationMs` (`null` while it has not
+finished), `cancelRequestedAt`, the counters it wrote in `stats`, and the
+`error` the node reported when it broke.
+
+`GET /api/v1/sync-runs/export?format=jsonl` (or `csv`) is the whole history as a
+file, oldest first: **JSON lines** keeps each run's `stats` an object, **CSV**
+puts it in one cell as JSON. Both are streamed — read in batches as the download
+is written — so a hundred thousand runs cost one batch of memory, and a client
+that closes the connection stops the work at the next chunk.
+
+Both calls are an **administrator's**: a run's error is what the node said when
+the sync broke, which is an operator's reading rather than a reader's. Another
+token gets `403 not_authorized`.
 
 ### Identities: the only writes
 

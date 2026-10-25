@@ -2004,6 +2004,20 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
+  Says a page's details are stale — its version moved, so its comments, files
+  and restrictions are whatever the sync is about to read.
+
+  Clearing the mark is what makes an interrupted detail pass recoverable: the
+  backlog (`pages_awaiting_details/1`) reads NULL, so a page whose work was
+  stopped is read again by the next run instead of keeping a new body beside
+  old comments forever.
+  """
+  def mark_details_stale(%Page{id: id}) do
+    Repo.update_all(from(p in Page, where: p.id == ^id), set: [details_synced_at: nil])
+    :ok
+  end
+
+  @doc """
   Pages whose details have never been read, oldest first.
 
   `:limit` is required: this is a backlog, and a run works through a slice of

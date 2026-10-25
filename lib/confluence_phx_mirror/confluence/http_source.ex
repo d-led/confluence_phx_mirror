@@ -30,7 +30,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   @page_expand "body.storage,body.export_view,version,ancestors,metadata.labels,space,history"
 
-  @comment_expand "body.export_view,version,history"
+  @comment_expand "body.storage,body.export_view,version,history"
 
   # Content that hangs off a page. A container of one of these is the owner the
   # mirror needs; a container that is itself a comment has to be asked again.
@@ -654,6 +654,9 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       author: get_in(version, ["by", "displayName"]),
       author_account_id: get_in(version, ["by", "accountId"]),
       body_export: get_in(content, ["body", "export_view", "value"]),
+      # Emoji from Confluence's own set survive the export as a shortcode text;
+      # the storage is the only place that says they were emoticons.
+      body_storage: get_in(content, ["body", "storage", "value"]),
       version_number: version["number"],
       created_at: parse_time(get_in(content, ["history", "createdDate"]) || version["when"]),
       updated_at: parse_time(version["when"]),

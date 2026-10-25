@@ -101,14 +101,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
      |> assign(open_menu: nil, space_query: "", sync_spaces: spaces_like(""))}
   end
 
-  # A cancel is a request the run honours between pages, so the answer is
-  # "asked", not "stopped": the table shows the status change on the next tick.
+  # A cancel either exits the process doing the work (this node) or records the
+  # request for a run elsewhere; either way the table shows the status on the
+  # next tick.
   defp cancel_sync(%{"run_id" => run_id}, socket) do
     case Sync.cancel(run_id, {:user, socket.assigns.current_user}) do
       {:ok, _run} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Cancelling: the run stops after the page it is working on.")
+         |> put_flash(:info, "Cancelling: the run is being stopped now.")
          |> load()}
 
       {:error, :not_running} ->
@@ -381,30 +382,31 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
       <.section title="Sync runs">
         <:actions>
-          <form
-            :if={@running}
-            id="cancel-sync-form"
-            phx-submit="cancel_sync"
-            class="flex items-center gap-1.5"
+          <%!-- The table is a window of eight; the database keeps every run.
+          These two links are the way out of the window: a file the spreadsheet
+          opens, and the same history as JSON lines for a script. Both stream
+          from Postgres as the file downloads, so a hundred thousand runs cost
+          a batch of memory, not a hundred thousand rows. --%>
+          <a
+            id="sync-runs-export-csv"
+            href={~p"/admin/sync-runs/export?format=csv"}
+            title="Download every sync run as CSV, streamed from the database"
+            class="btn btn-ghost btn-xs gap-1"
           >
-            <input type="hidden" name="run_id" value={@running.id} />
-            <button
-              type="submit"
-              id="cancel-sync"
-              class="btn btn-warning btn-outline btn-sm"
-              data-confirm={
-                "Stop the sync that started #{Time.ago(@running.started_at)}?\n\n" <>
-                  "It finishes the page it is on and stops: #{@running.stats["pages"] || 0} " <>
-                  "pages listed so far stay in the mirror. Nothing is deleted, and the next " <>
-                  "sync starts from where this one stopped."
-              }
-            >
-              <.icon name="hero-stop" class="size-4" /> Cancel sync
-            </button>
-          </form>
+            <.icon name="hero-arrow-down-tray" class="size-4" /> All runs (CSV)
+          </a>
+          <a
+            id="sync-runs-export-jsonl"
+            href={~p"/admin/sync-runs/export?format=jsonl"}
+            title="Every sync run as JSON lines — one run per line, for a script"
+            class="btn btn-ghost btn-xs gap-1"
+          >
+            <.icon name="hero-arrow-down-tray" class="size-4" /> JSONL
+          </a>
         </:actions>
         <.data_table id="sync-runs" rows={@rows}>
           <:head>
+            <th title="The run's number: the id the audit log and the API name">Run</th>
             <th>When</th>
             <th title="How the run was asked for, and by whom">Mode</th>
             <th title="What the run covered: the whole site, one space or one page">Scope</th>
@@ -423,6 +425,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             <th><span class="sr-only">Queue</span></th>
           </:head>
           <:row :let={row}>
+            <td class="text-xs tabular-nums text-base-content/70">{row.run_id || "—"}</td>
             <td class="whitespace-nowrap text-xs">
               <.local_time at={row.at}>{Time.ago(row.at)}</.local_time>
             </td>
@@ -447,9 +450,28 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
               {row.error || "—"}
             </td>
             <td class="text-right">
+              <%!-- Both actions sit in the row they act on: a run in flight is
+              stopped, a job that has not started is dropped. --%>
+              <button
+                :if={row.status == "running"}
+                type="button"
+                id={"cancel-sync-#{row.run_id}"}
+                phx-click="cancel_sync"
+                phx-value-run_id={row.run_id}
+                phx-disable-with="Stopping…"
+                data-confirm={
+                  "Stop this run now?\n\n" <>
+                    "The page it is on is one transaction and rolls back; the pages already " <>
+                    "written stay. Nothing is deleted, and the next sync starts where this one stopped."
+                }
+                title="Stop this run now: the page in flight rolls back and the pages already written stay"
+                class="btn btn-warning btn-outline btn-xs gap-1"
+              >
+                <.icon name="hero-stop" class="size-4" /> Cancel
+              </button>
               <%!-- Only a sync that has not started can be dropped: once it is a
-              run, stopping it means asking it to stop, which is the button
-              above the table. --%>
+              run, stopping it means exiting its process, which is the button
+              beside this one. --%>
               <button
                 :if={row.job_id}
                 type="button"
@@ -573,6 +595,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   # rather than claim a zero.
   defp queued_row(job) do
     %{
+      run_id: nil,
       at: job.inserted_at,
       mode: job_mode(job),
       trigger: Map.get(job.args, "trigger"),
@@ -596,6 +619,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     numbers = SyncRun.summary(run)
 
     %{
+      run_id: run.id,
       at: run.started_at,
       mode: run.mode,
       # Who asked, when the run was asked for by someone: written at the start

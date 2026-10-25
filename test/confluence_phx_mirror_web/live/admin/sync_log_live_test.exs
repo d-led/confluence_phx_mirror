@@ -182,6 +182,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
     assert has_element?(view, "#sync-log[data-follow=true]")
   end
 
+  test "the lines a reader is looking at can be taken away in one click", %{conn: conn} do
+    Log.add(:info, "page created: Budget")
+
+    {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
+
+    assert has_element?(view, "#sync-log-copy[title*='Copy the lines shown']")
+  end
+
   test "a snapshot leaves the pages it mirrored in the log", %{conn: conn} do
     demo_snapshot!()
     {:ok, _run} = Sync.run(:snapshot)

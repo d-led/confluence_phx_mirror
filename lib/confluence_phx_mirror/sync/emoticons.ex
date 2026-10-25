@@ -28,10 +28,18 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
   existed: it is the reason a mirror needs no resync for its emoticons to
   appear, and it changes nothing on a body the sync already converted.
 
-  Confluence's own emoji set (`:big_grin:`, the blue-star family) has no
-  Unicode character: `export_view` writes its shortcode as text, and the glyph
-  lives only in `body.view` as a Confluence-hosted image. Nothing in the export
-  distinguishes that text from prose, so it stays as it is.
+  Confluence's own emoji set has no Unicode character. The editor stores a
+  picker's choice as markup that names it three ways and gives no fallback
+  character:
+
+      <ac:emoticon ac:name="blue-star" ac:emoji-shortname=":big_grin:"
+                   ac:emoji-id="atlassian-big_grin" ac:emoji-fallback=":big_grin:" />
+
+  and `export_view` writes it as the literal text `:big_grin:`, where nothing
+  distinguishes it from prose. The **storage** is what tells the two apart, so
+  `from_storage/2` replaces the shortcodes the storage names — and only those —
+  with the nearest character Atlassian's sprite would have drawn. The rest of
+  the body, including anything inside `<pre>` and `<code>`, is left as it is.
   """
 
   # The classic emoticon set: what `<ac:name>` says before emoji short names
@@ -73,6 +81,40 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
   # Twemoji names a glyph by its code points: 1f44d, 1f1e9-1f1ea.
   @codepoints ~r/^[0-9a-f]{4,6}(?:-[0-9a-f]{4,6})*$/
 
+  # Atlassian's own emoji set: a sprite image on their side, no character, and
+  # a shortname in storage (`atlassian-big_grin`). These are what this mirror
+  # draws instead — the same names as the classic set where the two overlap.
+  @emoji %{
+    "big-grin" => "😁",
+    "smile" => "🙂",
+    "laugh" => "😆",
+    "wink" => "😉",
+    "cheeky" => "😜",
+    "sad" => "🙁",
+    "cry" => "😢",
+    "angry" => "😠",
+    "thumbs-up" => "👍",
+    "thumbs-down" => "👎",
+    "tick" => "✅",
+    "cross" => "❌",
+    "warning" => "⚠️",
+    "information" => "ℹ️",
+    "question" => "❓",
+    "light-on" => "💡",
+    "light-off" => "💡",
+    "plus" => "➕",
+    "minus" => "➖",
+    "heart" => "❤️",
+    "yellow-star" => "⭐",
+    "red-star" => "⭐",
+    "green-star" => "⭐",
+    "blue-star" => "⭐"
+  }
+
+  # A run of markup the shortcodes inside must not touch: a code block, or any
+  # tag, so an attribute is never rewritten.
+  @verbatim ~r{(<pre\b[^>]*>.*?</pre>|<code\b[^>]*>.*?</code>|<[^>]*>)}is
+
   @image_name ~r/([^\/?#]+)\.(?:png|gif|svg|jpe?g)(?:[?#].*)?$/i
 
   @doc """
@@ -82,6 +124,8 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
   @spec from_attributes([{String.t(), String.t()}]) :: String.t() | nil
   def from_attributes(attrs) do
     character(attribute(attrs, "ac:emoji-fallback")) ||
+      emoji(attribute(attrs, "ac:emoji-shortname")) ||
+      emoji(attribute(attrs, "ac:emoji-id")) ||
       named(attribute(attrs, "ac:name")) ||
       named(attribute(attrs, "ac:emoji-shortname")) ||
       codepoints(attribute(attrs, "ac:emoji-id"))
@@ -100,6 +144,8 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
 
     if emoticon_image?(attrs, src) do
       character(attribute(attrs, "data-emoji-fallback")) ||
+        emoji(attribute(attrs, "data-emoji-shortname")) ||
+        emoji(attribute(attrs, "data-emoji-id")) ||
         named(attribute(attrs, "data-emoticon-name")) ||
         named(attribute(attrs, "data-emoji-shortname")) ||
         named(attribute(attrs, "alt")) ||
@@ -129,6 +175,68 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
     Regex.replace(pattern, text, fn tag, source ->
       resolve.(attributes(source)) || if fallback == :keep, do: tag, else: fallback
     end)
+  end
+
+  @doc """
+  `html` with the shortcodes its `storage` says are emoticons replaced.
+
+  An emoji from Confluence's own set has no fallback character, so the export
+  view writes its shortcode as plain text — indistinguishable from prose. The
+  storage markup is the only thing that says which of those words is an
+  emoticon, so it decides what is replaced; a body whose storage names no
+  emoticon comes back unchanged, and so does text inside `<pre>`/`<code>`.
+  """
+  @spec from_storage(String.t() | nil, String.t() | nil) :: String.t() | nil
+  def from_storage(nil, _storage), do: nil
+
+  def from_storage(html, storage) when is_binary(html) and is_binary(storage) do
+    storage
+    |> replaced_shortcodes()
+    |> Enum.reduce(html, fn {shortcode, glyph}, text -> swap(text, shortcode, glyph) end)
+  end
+
+  def from_storage(html, _storage), do: html
+
+  # `[{shortcode, glyph}]`: what the export writes in place of each emoticon the
+  # storage marks up, and the character the mirror draws for it.
+  defp replaced_shortcodes(storage) do
+    ~r{<ac:emoticon\b([^>]*)>}i
+    |> Regex.scan(storage, capture: :all_but_first)
+    |> Enum.map(fn [source] -> source |> attributes() |> shortcode() end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  defp shortcode(attrs) do
+    with glyph when is_binary(glyph) <- from_attributes(attrs),
+         text when is_binary(text) <- exported_text(attrs) do
+      {text, glyph}
+    else
+      _ -> nil
+    end
+  end
+
+  # The fallback when it is a shortcode, else the shortname: both are what
+  # `export_view` writes where it cannot draw the image.
+  defp exported_text(attrs) do
+    [attribute(attrs, "ac:emoji-fallback"), attribute(attrs, "ac:emoji-shortname")]
+    |> Enum.find(&shortcode?/1)
+  end
+
+  defp shortcode?(value) when is_binary(value),
+    do: String.starts_with?(value, ":") and String.ends_with?(value, ":")
+
+  defp shortcode?(_value), do: false
+
+  # Only the text between tags is rewritten: a run of markup comes back as it
+  # went in, so `alt=":big_grin:"` and a code block keep their text.
+  defp swap(text, shortcode, glyph) do
+    @verbatim
+    |> Regex.split(text, include_captures: true, trim: false)
+    |> Enum.map(fn part ->
+      if String.starts_with?(part, "<"), do: part, else: String.replace(part, shortcode, glyph)
+    end)
+    |> IO.iodata_to_binary()
   end
 
   # Confluence writes double-quoted attributes, and none of them contains `>`.
@@ -181,6 +289,18 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
 
   defp named(nil), do: nil
   defp named(value), do: Map.get(@legacy, name(value)) || Map.get(@shortnames, name(value))
+
+  # `atlassian-big_grin` and `:big_grin:` name the same emoji: the prefix says
+  # whose set it is, and the shortname spells it with underscores.
+  defp emoji(nil), do: nil
+
+  defp emoji(value) do
+    value
+    |> name()
+    |> String.replace_prefix("atlassian-", "")
+    |> String.replace("_", "-")
+    |> then(&Map.get(@emoji, &1))
+  end
 
   defp codepoints(nil), do: nil
 

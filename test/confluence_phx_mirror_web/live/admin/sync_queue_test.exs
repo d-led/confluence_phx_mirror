@@ -19,6 +19,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncQueueTest do
     {:ok, conn: Plug.Test.init_test_session(conn, %{"user_id" => ops.id})}
   end
 
+  test "the eight runs on screen can be left for the whole history", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin")
+
+    # The table is a window; the database keeps every run, so the section header
+    # carries the way out of it.
+    assert has_element?(view, "#sync-runs-export-csv[href='/admin/sync-runs/export?format=csv']")
+
+    assert has_element?(
+             view,
+             "#sync-runs-export-jsonl[href='/admin/sync-runs/export?format=jsonl']"
+           )
+  end
+
   test "a waiting sync sits in the run list with a button that drops it", %{conn: conn} do
     job = queued_space_sync("MFS")
 
@@ -85,13 +98,30 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncQueueTest do
     # The dashboard abandons a "running" run whose node is gone, so this one has
     # to look alive: the lease is the mirror's own way of saying so.
     hold_gate()
-    start_running_run(%{"pages" => 120, "changed" => 120, "phase" => "details"})
+    run = start_running_run(%{"pages" => 120, "changed" => 120, "phase" => "details"})
 
     {:ok, view, _html} = live(conn, ~p"/admin")
 
     assert has_element?(view, "#sync-progress")
     assert view |> element("#sync-phase") |> render() =~ "comments, files and restrictions"
     assert render(view) =~ "120"
+
+    # The run's number is what the log and the API name it by, and the button
+    # that stops it sits in its own row, beside the Drop of a queued job.
+    assert view |> element("#sync-run-#{run.id}") |> render() =~ ">#{run.id}<"
+    assert has_element?(view, "#sync-run-#{run.id} #cancel-sync-#{run.id}")
+  end
+
+  test "cancelling a running sync records the request", %{conn: conn} do
+    hold_gate()
+    run = start_running_run(%{"pages" => 10, "changed" => 10, "phase" => "details"})
+
+    {:ok, view, _html} = live(conn, ~p"/admin")
+
+    view |> element("#cancel-sync-#{run.id}") |> render_click()
+
+    assert Repo.get!(ConfluencePhxMirror.Sync.SyncRun, run.id).cancel_requested_at
+    assert render(view) =~ "the run is being stopped now"
   end
 
   defp hold_gate do

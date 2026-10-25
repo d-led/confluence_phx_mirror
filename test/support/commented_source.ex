@@ -19,8 +19,12 @@ defmodule ConfluencePhxMirror.Confluence.CommentedSource do
   @filename "screenshot.png"
   @bytes <<137, 80, 78, 71, 13, 10, 26, 10>>
   # Confluence's export view rewrites a comment's image to the page's download
-  # path, not the comment's — observed on a real site.
-  @body ~s(<p>Looks good to me</p><img src="/wiki/download/attachments/1002/screenshot.png?api=v2" />)
+  # path, not the comment's — observed on a real site. It also writes an emoji
+  # from Confluence's own set as its shortcode, which is why the storage below
+  # is the only thing that says `:big_grin:` was a pick and not a word.
+  @body ~s(<p>Looks good to me :big_grin:</p><img src="/wiki/download/attachments/1002/screenshot.png?api=v2" />)
+
+  @storage ~s(<p>Looks good to me <ac:emoticon ac:name="blue-star" ac:emoji-shortname=":big_grin:" ac:emoji-id="atlassian-big_grin" ac:emoji-fallback=":big_grin:" /> !!!</p>)
 
   @doc "The page the comment was left on."
   def page_id, do: @page_id
@@ -111,6 +115,7 @@ defmodule ConfluencePhxMirror.Confluence.CommentedSource do
       author: "Jane Doe",
       author_account_id: "acc-jane",
       body_export: @body,
+      body_storage: @storage,
       version_number: 1,
       created_at: now,
       updated_at: now,

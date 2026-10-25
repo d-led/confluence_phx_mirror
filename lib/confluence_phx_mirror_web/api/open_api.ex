@@ -46,6 +46,11 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
     },
     %{"name" => "Stats", "description" => "Content counters and the last sync."},
     %{
+      "name" => "Sync runs",
+      "description" =>
+        "The sync history: a window at a time, and the whole of it as a stream. Administrator-only."
+    },
+    %{
       "name" => "Identities",
       "description" =>
         "The Confluence accounts the content names, and pairing one with an account here. Administrator-only."
@@ -438,6 +443,51 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
         tag: "Stats",
         summary: "Content counters and the last sync",
         responses: %{200 => ok("Stats")}
+      },
+      {"get", "/api/v1/sync-runs"} => %{
+        tag: "Sync runs",
+        summary: "The sync history, newest first",
+        description:
+          "Administrator-only. One row per run — every schedule tick, every one-page sync and every webhook " <>
+            "delivery — so the table grows for as long as the mirror exists. This endpoint is a window with the " <>
+            "total beside it; `_links.next` carries the next window while there is one.",
+        params: [
+          query_param("start", %{"type" => "integer", "minimum" => 0}, "Offset, default 0."),
+          query_param(
+            "limit",
+            %{"type" => "integer", "minimum" => 1, "maximum" => 500},
+            "Window size, default 50, at most 500."
+          )
+        ],
+        responses: %{
+          200 => ok("SyncRunList"),
+          403 => error("The token does not belong to an administrator.")
+        }
+      },
+      {"get", "/api/v1/sync-runs/export"} => %{
+        tag: "Sync runs",
+        summary: "The whole sync history as a stream",
+        description:
+          "Administrator-only. `format=jsonl` (the default here is CSV for a browser, JSON lines for a " <>
+            "script) writes one run per line as it is read, oldest first, in keyset batches — a hundred " <>
+            "thousand runs cost one batch of memory and hold no transaction open while the download crawls.",
+        params: [
+          query_param(
+            "format",
+            %{"type" => "string", "enum" => ["jsonl", "ndjson", "csv"]},
+            "`jsonl`/`ndjson`, or `csv` for a spreadsheet."
+          )
+        ],
+        responses: %{
+          200 => %{
+            "description" => "The history, streamed as a file.",
+            "content" => %{
+              "application/x-ndjson" => %{"schema" => %{"type" => "string"}},
+              "text/csv" => %{"schema" => %{"type" => "string"}}
+            }
+          },
+          403 => error("The token does not belong to an administrator.")
+        }
       },
       {"get", "/api/v1/identities"} => %{
         tag: "Identities",
@@ -849,6 +899,27 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
         envelope("SearchResult", %{
           "cql" => string("The CQL text that was run.")
         }),
+      "SyncRunList" => list_of("SyncRun"),
+      "SyncRun" =>
+        object(
+          %{
+            "id" => integer("The run's number, the one the audit log and the dashboard print."),
+            "source" => string("The reader it synced through, e.g. `confluence-http`."),
+            "mode" => string("`snapshot`, `incremental` or `webhook`."),
+            "scope" => string("What it covered: the site, a space, or one page."),
+            "status" => string("`running`, `succeeded`, `partial`, `failed` or `cancelled`."),
+            "startedAt" => string("ISO 8601 date-time."),
+            "finishedAt" => %{"type" => ["string", "null"]},
+            "durationMs" => %{
+              "type" => ["integer", "null"],
+              "description" => "Null while the run has not finished."
+            },
+            "cancelRequestedAt" => %{"type" => ["string", "null"]},
+            "stats" => %{"type" => "object"},
+            "error" => %{"type" => ["string", "null"]}
+          },
+          ~w(id source mode status startedAt stats)
+        ),
       "Stats" =>
         object(
           %{

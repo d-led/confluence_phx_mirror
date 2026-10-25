@@ -278,8 +278,11 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   # filter the sidebar uses is applied to each.
   defp readable_pages(conn), do: &Authorization.restrict_pages(&1, scope(conn))
 
+  # The storage a page already carries is what tells its emoji shortcodes apart
+  # from the same words in prose, so the view hands it to both passes.
   defp with_emoticons(%{body_export: body} = content) when is_binary(body) do
-    %{content | body_export: Emoticons.html(body)}
+    storage = Map.get(content, :body_storage)
+    %{content | body_export: body |> Emoticons.from_storage(storage) |> Emoticons.html()}
   end
 
   defp with_emoticons(content), do: content
