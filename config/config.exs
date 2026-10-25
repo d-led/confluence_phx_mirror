@@ -26,19 +26,26 @@ config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
 # Background jobs. Sync work is retried per source page, notification e-mails are
 # retried separately so a broken mailer never blocks the mirror.
 #
-# `Lifeline` is what keeps the queue honest when a node dies mid-job: without
-# it a job whose process disappeared stays `executing` forever, nothing retries
-# it and `/admin/jobs` keeps listing work that nobody is doing. A restarted
-# machine (a deploy, an OOM kill) is exactly how a long sync ends, so the
-# rescuer is not optional here.
+# Three of Oban's built-in plugins are configured by name here, which is why
+# they are keys and not entries in `plugins:`.
+#
+# `pruner` — a finished job is the only per-job evidence a sweep leaves behind
+# ("space LOAD431: done, 935 pages"), and the queue's default is to delete one a
+# minute after it ends, so the jobs page would only ever show work in flight.
+# A day is long enough to read what ran overnight and short enough to stay a few
+# thousand rows. The durable record is still `sync_runs`, one row per run.
+#
+# `lifeline` — what keeps the queue honest when a node dies mid-job: without it
+# a job whose process disappeared stays `executing` for ever, nothing retries it
+# and `/admin/jobs` keeps listing work that nobody is doing. A restarted machine
+# (a deploy, an OOM kill) is exactly how a long sync ends, so the rescuer is not
+# optional here.
 config :confluence_phx_mirror, Oban,
   repo: ConfluencePhxMirror.Repo,
   queues: [sync: 4, notifications: 10],
-  plugins: [
-    Oban.Plugins.Pruner,
-    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)},
-    {Oban.Plugins.Cron, crontab: [{"0 * * * *", ConfluencePhxMirror.Notifications.DigestWorker}]}
-  ]
+  pruner: [max_age: {1, :day}],
+  lifeline: [rescue_after: :timer.minutes(30)],
+  cron: [crontab: [{"0 * * * *", ConfluencePhxMirror.Notifications.DigestWorker}]]
 
 # Where the mirrored content comes from. `DemoSource` ships a rich offline
 # snapshot so the mirror can be demoed without Confluence credentials; use
