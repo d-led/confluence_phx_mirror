@@ -2,10 +2,12 @@ Config.CSRF: Missing CSRF Protections,lib/confluence_phx_mirror_web/router.ex:32
 Config.HTTPS: HTTPS Not Enabled,config/prod.exs:0,2B5C077
 Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/confluence_phx_mirror/build_info.ex:112,62944
 Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/build_info.ex:151,2A1A70
-Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/export/site.ex:153,5A9BB26
+Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/export/site.ex:170,1E5FE20
 Traversal.FileModule: Directory Traversal in `File.write!`,lib/confluence_phx_mirror/build_info.ex:114,80D4C9
-XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:253,208A276
-XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:381,1A06E89
+XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:274,6D9E1E2
+XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:314,5645EF
+XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:331,2BAA5BD
+XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:461,7BCCADA
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/components/layouts/root.html.heex:14,200047D
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/components/layouts/root.html.heex:22,6FC37FB
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/error_html/403.html.heex:10,1C73E04

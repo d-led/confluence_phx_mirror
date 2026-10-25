@@ -81,7 +81,9 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
     var entries = documents.map(prepare);
     var input = document.getElementById("search-q");
     var status = document.getElementById("search-status");
+    var progress = document.getElementById("search-progress");
     var results = document.getElementById("search-results");
+    var spinner = document.getElementById("search-spinner");
 
     var MAX_RESULTS = 50;
 
@@ -183,17 +185,8 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
       return total;
     }
 
-    function search(query) {
-      var needles = words(query);
-      if (needles.length === 0) return [];
-
-      var hits = [];
-
-      for (var i = 0; i < entries.length; i++) {
-        var total = scoreEntry(entries[i], needles);
-        if (total > 0) hits.push({entry: entries[i], score: total});
-      }
-
+    // Best first, and no more than the page can usefully show.
+    function rank(hits) {
       hits.sort(function (a, b) {
         if (b.score !== a.score) return b.score - a.score;
         return String(b.entry.page.updated || "").localeCompare(
@@ -300,31 +293,134 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
       return item;
     }
 
-    function render(query) {
-      var needles = words(query);
-      var hits = search(query);
+    function catalogue() {
+      return (
+        documents.length +
+        (documents.length === 1 ? " page" : " pages") +
+        " in this copy. Type a word to search titles, spaces, labels and text."
+      );
+    }
 
+    function clear() {
       while (results.firstChild) results.removeChild(results.firstChild);
+    }
 
-      if (needles.length === 0) {
-        status.textContent =
-          documents.length +
-          (documents.length === 1 ? " page" : " pages") +
-          " in this copy. Type a word to search titles, spaces, labels and text.";
-        return;
-      }
+    function show(hits, needles) {
+      var best = rank(hits);
+      clear();
 
-      if (hits.length === 0) {
+      if (best.length === 0) {
         status.textContent = "Nothing matches that.";
         return;
       }
 
+      // The list stops at MAX_RESULTS; the count does not, so a broad query
+      // says how much it left out rather than pretending to have found fifty.
       status.textContent =
-        hits.length + (hits.length === 1 ? " page matches." : " pages match.");
+        best.length === hits.length
+          ? hits.length + (hits.length === 1 ? " page matches." : " pages match.")
+          : "The first " + best.length + " of " + hits.length + " matching pages.";
 
-      hits.forEach(function (hit) {
+      best.forEach(function (hit) {
         results.appendChild(resultNode(hit.entry.page, needles));
       });
+    }
+
+    // --- running a query ------------------------------------------------------
+    //
+    // A whole-site index is six figures of documents, and scoring it is not
+    // instant. Two things keep that from feeling like a broken field: the scan
+    // waits for a pause in typing, and it runs in slices, so the page keeps
+    // painting a "Searching… n%" status while it works. A newer query cancels
+    // the slices of the older one, so a result can never land under the wrong
+    // text.
+
+    var SETTLE_MS = 150;
+    var SLICE_MS = 12;
+    var settling = null;
+    var scanning = null;
+
+    function busy(on) {
+      if (spinner) spinner.hidden = !on;
+      results.setAttribute("aria-busy", on ? "true" : "false");
+      if (!on) progress.textContent = "";
+    }
+
+    // The running commentary: visible, but never read out. A screen reader
+    // hears the result, not eighty percentage updates.
+    function working(text) {
+      progress.textContent = text;
+      status.textContent = "";
+    }
+
+    function cancelScan() {
+      if (scanning) scanning.cancelled = true;
+      scanning = null;
+    }
+
+    function run(query) {
+      cancelScan();
+
+      var needles = words(query);
+
+      if (needles.length === 0) {
+        busy(false);
+        clear();
+        status.textContent = catalogue();
+        return;
+      }
+
+      var scan = {cancelled: false};
+      var hits = [];
+      var at = 0;
+
+      scanning = scan;
+      busy(true);
+      working("Searching…");
+
+      function slice() {
+        if (scan.cancelled) return;
+
+        var until = Date.now() + SLICE_MS;
+
+        while (at < entries.length && Date.now() < until) {
+          var entry = entries[at++];
+          var total = scoreEntry(entry, needles);
+          if (total > 0) hits.push({entry: entry, score: total});
+        }
+
+        if (at < entries.length) {
+          working("Searching… " + Math.round((at / entries.length) * 100) + "%");
+          window.setTimeout(slice, 0);
+          return;
+        }
+
+        scanning = null;
+        busy(false);
+        show(hits, needles);
+      }
+
+      window.setTimeout(slice, 0);
+    }
+
+    function settle(query) {
+      if (settling) window.clearTimeout(settling);
+
+      cancelScan();
+
+      if (words(query).length === 0) {
+        settling = null;
+        run(query);
+        return;
+      }
+
+      busy(true);
+      working("Searching…");
+
+      settling = window.setTimeout(function () {
+        settling = null;
+        run(query);
+      }, SETTLE_MS);
     }
 
     var initial = "";
@@ -335,11 +431,11 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
     }
 
     input.value = initial;
-    render(initial);
+    run(initial);
     input.focus();
 
     input.addEventListener("input", function () {
-      render(input.value);
+      settle(input.value);
     });
   })();
   """

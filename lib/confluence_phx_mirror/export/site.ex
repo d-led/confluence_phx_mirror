@@ -7,8 +7,10 @@ defmodule ConfluencePhxMirror.Export.Site do
 
       index.html                          every space in the archive
       search.html                         search over this copy, offline
-      spaces/<KEY>/index.html             a space: description and page tree
-      spaces/<KEY>/pages/<id>.html        one page, chrome and body
+      labels/index.html                   every label, with what it holds
+      labels/<label>.html                 every page carrying one label
+      spaces/<KEY>/index.html             a space: description, categories, page tree
+      spaces/<KEY>/pages/<id>.html        one page: body, files and discussion
       spaces/<KEY>/pages/<id>.md          the same page as Markdown
       spaces/<KEY>/icon.<ext>             the space's icon, when it has one
       attachments/<KEY>/<page>/<file>     one file per mirrored attachment
@@ -36,7 +38,7 @@ defmodule ConfluencePhxMirror.Export.Site do
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Blobs.{Key, Store}
   alias ConfluencePhxMirror.Export
-  alias ConfluencePhxMirror.Export.Site.{Content, HTML, Search}
+  alias ConfluencePhxMirror.Export.Site.{Chrome, Content, HTML, Search}
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Page, Space, URLs}
   alias ConfluencePhxMirror.Repo
@@ -49,6 +51,9 @@ defmodule ConfluencePhxMirror.Export.Site do
   # phrase and to show why it matched, not a second copy of the wiki. The
   # truncation is done by Postgres, so the plan never holds a whole body.
   @excerpt_chars 400
+  # The label pages live one folder down, so every link they build is relative
+  # to `labels/`, not to the archive root.
+  @labels_prefix "../"
 
   @type plan :: %{
           space: Space.t(),
@@ -108,6 +113,18 @@ defmodule ConfluencePhxMirror.Export.Site do
   @doc "The search page's matcher."
   def search_script_path, do: "assets/search.js"
 
+  @doc "Folding the page tree and switching the theme."
+  def site_script_path, do: "assets/site.js"
+
+  @doc "The pinned theme variant, applied before the first paint."
+  def theme_script_path, do: "assets/theme.js"
+
+  @doc "The archive's label catalogue."
+  def labels_path, do: "labels/index.html"
+
+  @doc "Everything carrying one label."
+  def label_path(label), do: "labels/#{label_key(label)}.html"
+
   @doc "An attachment's bytes, named the way the page links to them."
   def attachment_path(space_key, page_confluence_id, attachment_id, filename) do
     "attachments/#{space_key}/#{page_confluence_id}/#{attachment_id}/" <>
@@ -156,8 +173,16 @@ defmodule ConfluencePhxMirror.Export.Site do
     end
   end
 
-  @doc "The attributes `<html>` needs to paint the site's theme, following the OS."
-  def html_attributes, do: Skins.attributes(Skins.theme(), "system")
+  @doc """
+  The attributes `<html>` needs to paint the site's theme, following the OS.
+
+  `data-theme-name` names the theme for the scripts: a compiled theme is
+  switched by rewriting `data-theme` to `light`/`dark`, an emitted one by
+  pinning `data-scheme`, and only the page knows which kind it is looking at.
+  """
+  def html_attributes do
+    Map.put(Skins.attributes(Skins.theme(), "system"), "data-theme-name", Skins.theme())
+  end
 
   # ---------------------------------------------------------------------------
   # Entries
@@ -172,11 +197,17 @@ defmodule ConfluencePhxMirror.Export.Site do
       {search_script_path(), Search.script()}
     ]
 
-    index = [{index_path(), fn -> render_site(plans, generated) end} | search]
+    labels = label_entries(plans, generated)
+    index = [{index_path(), fn -> render_site(plans, generated) end} | search ++ labels]
+
+    chrome = [
+      {site_script_path(), Chrome.script()},
+      {theme_script_path(), Chrome.theme_script()}
+    ]
 
     case Keyword.get_lazy(opts, :stylesheet, &stylesheet/0) do
-      "" -> index
-      css -> index ++ [{"assets/site.css", css}]
+      "" -> index ++ chrome
+      css -> index ++ chrome ++ [{"assets/site.css", css}]
     end
   end
 
@@ -219,16 +250,18 @@ defmodule ConfluencePhxMirror.Export.Site do
 
   defp entries_for_page(plan, row, context, generated) do
     # Read once per page and shared by its two files: the body for the page,
-    # the same body converted for the Markdown beside it.
+    # the same body converted for the Markdown beside it, and the discussion
+    # that hangs off it.
     page = find_page(row.confluence_id)
-    attachments = attachments(page)
+    files = attachments(page)
+    thread = comments(page)
     file = page_path(plan.space.key, row.confluence_id)
 
     [
-      {file, fn -> render_page(plan, row, page, attachments, context, generated) end},
+      {file, fn -> render_page(plan, row, page, files, thread, context, generated) end},
       {markdown_path(plan.space.key, row.confluence_id),
-       fn -> render_markdown(plan, row, page, attachments) end}
-    ] ++ Enum.map(attachments, &attachment_entry(plan, row, &1))
+       fn -> render_markdown(plan, row, page, own_files(files)) end}
+    ] ++ Enum.map(files, &attachment_entry(plan, row, &1))
   end
 
   defp attachment_entry(plan, row, attachment) do
@@ -246,6 +279,69 @@ defmodule ConfluencePhxMirror.Export.Site do
     case Store.read(key) do
       {:ok, data} -> data
       {:error, _missing} -> ""
+    end
+  end
+
+  # A label is a way into the archive the space tree cannot give: "everything
+  # about deployment", whichever space it lives in. The mirror has a label
+  # catalogue; the archive carries the same two screens, built from labels the
+  # plan already holds — no query of their own.
+  defp label_entries(plans, generated) do
+    groups = label_groups(plans)
+
+    [{labels_path(), fn -> render_labels(plans, groups, generated) end}] ++
+      Enum.map(groups, fn {key, group} ->
+        {label_path(key), fn -> render_label(plans, group, generated) end}
+      end)
+  end
+
+  defp label_groups(plans) do
+    plans
+    |> Enum.flat_map(fn plan ->
+      Enum.flat_map(plan.pages, fn page ->
+        Enum.map(page.labels || [], &{label_key(&1), &1, plan.space, page})
+      end)
+    end)
+    |> Enum.group_by(&elem(&1, 0))
+    |> Map.new(fn {key, entries} -> {key, group(key, entries)} end)
+  end
+
+  defp group(_key, entries) do
+    pages =
+      entries
+      |> Enum.map(fn {_key, _label, space, page} ->
+        %{
+          title: page.title,
+          confluence_id: page.confluence_id,
+          space_key: space.key,
+          space_name: space.name
+        }
+      end)
+      |> Enum.uniq_by(&{&1.space_key, &1.confluence_id})
+      |> Enum.sort_by(&{&1.space_name, &1.title})
+
+    %{name: most_common(Enum.map(entries, &elem(&1, 1))), pages: pages}
+  end
+
+  # Two spellings can share a file name; the catalogue shows the one most pages
+  # carry, so a label reads as the site spells it.
+  defp most_common(names) do
+    names
+    |> Enum.frequencies()
+    |> Enum.max_by(fn {name, count} -> {count, name} end)
+    |> elem(0)
+  end
+
+  defp label_key(name) do
+    name
+    |> to_string()
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9._-]+/u, "-")
+    |> String.trim("-")
+    |> String.replace(~r/^\.+/, "")
+    |> case do
+      "" -> "label"
+      key -> key
     end
   end
 
@@ -350,6 +446,52 @@ defmodule ConfluencePhxMirror.Export.Site do
     |> to_binary()
   end
 
+  defp render_labels(plans, groups, generated) do
+    labels =
+      groups
+      |> Enum.map(fn {key, group} ->
+        %{
+          name: group.name,
+          href: label_path(key),
+          count: length(group.pages),
+          spaces: group.pages |> Enum.map(& &1.space_key) |> Enum.uniq() |> length()
+        }
+      end)
+      |> Enum.sort_by(&String.downcase(&1.name))
+
+    HTML.labels(%{
+      title: "Labels · #{Sites.name()}",
+      prefix: @labels_prefix,
+      spaces: space_cards(plans, @labels_prefix),
+      labels: labels,
+      generated: stamp(generated),
+      mirror_name: Sites.name(),
+      mirror_url: Sites.url(),
+      html_attributes: html_attributes()
+    })
+    |> to_binary()
+  end
+
+  defp render_label(plans, group, generated) do
+    pages =
+      Enum.map(group.pages, fn page ->
+        Map.put(page, :href, @labels_prefix <> page_path(page.space_key, page.confluence_id))
+      end)
+
+    HTML.label(%{
+      title: "#{group.name} · Labels · #{Sites.name()}",
+      prefix: @labels_prefix,
+      spaces: space_cards(plans, @labels_prefix),
+      label: group.name,
+      pages: pages,
+      generated: stamp(generated),
+      mirror_name: Sites.name(),
+      mirror_url: Sites.url(),
+      html_attributes: html_attributes()
+    })
+    |> to_binary()
+  end
+
   defp space_cards(plans, prefix) do
     Enum.map(plans, fn plan ->
       %{
@@ -398,9 +540,11 @@ defmodule ConfluencePhxMirror.Export.Site do
     |> to_binary()
   end
 
-  defp render_page(plan, row, page, attachments, context, generated) do
+  defp render_page(plan, row, page, files, thread, context, generated) do
     file = page_path(plan.space.key, row.confluence_id)
     prefix = prefix(file)
+    comment_context = Map.put(context, :prefix, prefix)
+    comments = comment_thread(thread, comment_context)
 
     HTML.page(%{
       title: "#{row.title} · #{plan.space.name} · #{Sites.name()}",
@@ -414,7 +558,9 @@ defmodule ConfluencePhxMirror.Export.Site do
       path: path_nodes(plan, row, prefix),
       children: children(plan, row, prefix),
       crumbs: crumbs(plan, row, prefix),
-      attachments: attachment_links(plan, row, attachments, prefix),
+      attachments: attachment_links(plan, row, own_files(files), prefix),
+      comments: comments,
+      comment_count: Enum.sum(Enum.map(comments, &(1 + length(&1.replies)))),
       original: page && page.external_url,
       markdown_href: prefix <> markdown_path(plan.space.key, row.confluence_id),
       generated: stamp(generated),
@@ -449,6 +595,41 @@ defmodule ConfluencePhxMirror.Export.Site do
 
   defp page_data(row, _page),
     do: Map.merge(row, %{author_name: nil, version_number: nil, labels: []})
+
+  # A discussion is roots and one level of replies, the way the reader screen
+  # draws it. A comment's body is Confluence HTML like a page's, so it goes
+  # through the same rewrite: a link to another page stays inside the archive.
+  defp comment_thread(comments, context) do
+    replies = Enum.group_by(Enum.reject(comments, &is_nil(&1.parent_id)), & &1.parent_id)
+
+    comments
+    |> Enum.filter(&is_nil(&1.parent_id))
+    |> Enum.map(fn comment ->
+      Map.put(
+        comment_data(comment, context),
+        :replies,
+        Enum.map(replies[comment.id] || [], &comment_data(&1, context))
+      )
+    end)
+  end
+
+  defp comment_data(comment, context) do
+    %{
+      author: comment.author_name || "Anonymous",
+      initial: initial(comment.author_name),
+      at: stamp(comment.external_created_at),
+      body: Content.rewrite(comment.body_export, context)
+    }
+  end
+
+  defp initial(nil), do: "?"
+
+  defp initial(name) do
+    case name |> to_string() |> String.first() do
+      nil -> "?"
+      first -> String.upcase(first)
+    end
+  end
 
   defp tree_nodes(plan, prefix) do
     Enum.map(plan.tree, &tree_node(plan.space.key, &1, prefix))
@@ -593,8 +774,25 @@ defmodule ConfluencePhxMirror.Export.Site do
     end
   end
 
+  # Every file the page carries, including the ones a comment added: a
+  # screenshot pasted into a reply is content of the page it hangs off, and the
+  # body links to it under the page, so it has to travel in the archive.
   defp attachments(nil), do: []
-  defp attachments(%Page{} = page), do: Mirror.attachments(page)
+
+  defp attachments(%Page{} = page) do
+    from(a in Attachment,
+      where: a.page_id == ^page.id,
+      order_by: [asc: a.filename]
+    )
+    |> Repo.all()
+  end
+
+  # The page's own files, for the rail and the Markdown beside it: a reply's
+  # screenshot is not an attachment of the page.
+  defp own_files(files), do: Enum.reject(files, & &1.comment_id)
+
+  defp comments(nil), do: []
+  defp comments(%Page{} = page), do: Mirror.comments(page)
 
   defp excerpt(nil), do: ""
   defp excerpt(text), do: String.slice(to_string(text), 0, @description_chars)

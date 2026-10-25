@@ -12,6 +12,8 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
 
   use Phoenix.Component
 
+  alias ConfluencePhxMirror.Export.Site
+
   @doc """
   The archive's front page.
 
@@ -47,6 +49,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
             </a>
           </li>
         </ul>
+        <.labels_link prefix="" />
       </:nav>
 
       <h1 class="text-2xl font-semibold tracking-tight">{@title}</h1>
@@ -129,6 +132,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
           <span class="badge badge-ghost badge-xs">{@space.key}</span>
         </p>
         <.tree nodes={@tree} />
+        <.labels_link prefix={@prefix} />
       </:nav>
 
       <header class="flex flex-wrap items-start gap-3">
@@ -149,6 +153,13 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
 
       <p :if={@space.description not in [nil, ""]} class="mt-3 max-w-3xl text-sm">
         {@space.description}
+      </p>
+
+      <p :if={@space.labels not in [nil, []]} class="mt-3 flex flex-wrap items-center gap-1">
+        <span class="text-[11px] font-medium uppercase tracking-wider text-base-content/70">
+          Categories
+        </span>
+        <span :for={label <- @space.labels} class="badge badge-outline badge-xs">{label}</span>
       </p>
 
       <p :if={@home} class="mt-4 text-sm">
@@ -187,6 +198,8 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
   attr :children, :list, default: []
   attr :crumbs, :list, default: []
   attr :attachments, :list, default: []
+  attr :comments, :list, default: []
+  attr :comment_count, :integer, default: 0
   attr :original, :string, default: nil
   attr :markdown_href, :string, required: true
   attr :generated, :string, required: true
@@ -224,6 +237,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
           </li>
           <li class="truncate font-medium" aria-current="page">{@page.title}</li>
         </ol>
+        <.labels_link prefix={@prefix} />
       </:nav>
 
       <article>
@@ -245,7 +259,14 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
             <a href={@markdown_href} download class="link">Markdown</a>
           </div>
           <p :if={@page.labels not in [nil, []]} class="mt-2 flex flex-wrap gap-1">
-            <span :for={label <- @page.labels} class="badge badge-outline badge-xs">{label}</span>
+            <a
+              :for={label <- @page.labels}
+              href={@prefix <> Site.label_path(label)}
+              class="badge badge-outline badge-xs hover:border-primary/50 hover:bg-base-200/50"
+              title={"Everything labelled #{label}"}
+            >
+              {label}
+            </a>
           </p>
         </header>
 
@@ -270,6 +291,51 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
             </li>
           </ul>
         </nav>
+        <section id="comments" class="mt-8 border-t border-base-300/70 pt-4">
+          <h2 class="mb-4 flex items-center gap-2 text-sm font-semibold">
+            Comments <span class="badge badge-ghost badge-sm">{@comment_count}</span>
+          </h2>
+          <p :if={@comments == []} class="text-sm text-base-content/70">
+            No comments on the original page.
+          </p>
+          <div class="space-y-5">
+            <article :for={comment <- @comments} class="flex gap-3">
+              <span class="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-base-200 text-xs font-semibold text-base-content/70">
+                {comment.initial}
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-baseline gap-2">
+                  <span class="text-sm font-medium">{comment.author}</span>
+                  <span :if={comment.at} class="text-[11px] text-base-content/70">
+                    {comment.at}
+                  </span>
+                </div>
+                <div class="confluence-content mt-1 text-sm">
+                  {Phoenix.HTML.raw(comment.body)}
+                </div>
+                <div
+                  :for={reply <- comment.replies}
+                  class="mt-3 flex gap-3 border-l-2 border-base-300/70 pl-3"
+                >
+                  <span class="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-base-200 text-[10px] font-semibold text-base-content/70">
+                    {reply.initial}
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-baseline gap-2">
+                      <span class="text-xs font-medium">{reply.author}</span>
+                      <span :if={reply.at} class="text-[10px] text-base-content/70">
+                        {reply.at}
+                      </span>
+                    </div>
+                    <div class="confluence-content mt-1 text-sm">
+                      {Phoenix.HTML.raw(reply.body)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
       </article>
 
       <:rail>
@@ -289,6 +355,10 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
             <div class="flex gap-2">
               <dt class="w-24 shrink-0 text-base-content/70">Updated</dt>
               <dd>{@updated || "unknown"}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="w-24 shrink-0 text-base-content/70">Comments</dt>
+              <dd>{@comment_count}</dd>
             </div>
           </dl>
         </section>
@@ -349,6 +419,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
             </a>
           </li>
         </ul>
+        <.labels_link prefix="" />
       </:nav>
 
       <h1 class="text-2xl font-semibold tracking-tight">Search this copy</h1>
@@ -370,8 +441,17 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
         />
       </div>
 
-      <p id="search-status" role="status" class="mt-3 text-xs text-base-content/70"></p>
-      <ol id="search-results" aria-label="Results" class="mt-3 space-y-2"></ol>
+      <div class="mt-3 flex items-center gap-2">
+        <span
+          id="search-spinner"
+          hidden
+          aria-hidden="true"
+          class="loading loading-spinner loading-xs text-primary"
+        ></span>
+        <p id="search-progress" aria-hidden="true" class="text-xs text-base-content/70"></p>
+        <p id="search-status" role="status" class="text-xs text-base-content/70"></p>
+      </div>
+      <ol id="search-results" aria-label="Results" aria-busy="false" class="mt-3 space-y-2"></ol>
 
       <script
         id="search-index"
@@ -382,6 +462,134 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
       </script>
       <script src="assets/search.js" defer>
       </script>
+    </.shell>
+    """
+  end
+
+  @doc """
+  The label catalogue: every label the archive carries, with what it holds.
+
+  `:labels` are `%{name, href, count, spaces}` maps.
+  """
+  attr :title, :string, required: true
+  attr :prefix, :string, required: true
+  attr :spaces, :list, required: true
+  attr :labels, :list, required: true
+  attr :generated, :string, required: true
+  attr :mirror_name, :string, required: true
+  attr :mirror_url, :string, default: nil
+  attr :html_attributes, :map, default: %{}
+
+  def labels(assigns) do
+    ~H"""
+    <.shell
+      title={@title}
+      prefix={@prefix}
+      mirror_name={@mirror_name}
+      mirror_url={@mirror_url}
+      html_attributes={@html_attributes}
+      note={"#{plural(length(@labels), "label")}, copied #{@generated}."}
+    >
+      <:nav>
+        <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-base-content/70">
+          Spaces
+        </p>
+        <ul class="menu menu-sm w-full gap-1 p-0">
+          <li :for={space <- @spaces}>
+            <a href={space.href} class="truncate">
+              {space.name}
+              <span class="badge badge-ghost badge-xs">{space.key}</span>
+            </a>
+          </li>
+        </ul>
+      </:nav>
+
+      <h1 class="text-2xl font-semibold tracking-tight">Labels</h1>
+      <p class="mt-1 max-w-2xl text-sm text-base-content/70">
+        A way into the archive the page tree cannot give: everything about one subject,
+        whichever space it lives in.
+      </p>
+
+      <ul class="mt-5 flex flex-wrap gap-2">
+        <li :for={label <- @labels}>
+          <a
+            href={label.href}
+            class="inline-flex items-center gap-1.5 rounded-lg border border-base-300/70 bg-base-100 px-2.5 py-1.5 text-xs transition hover:border-primary/40 hover:bg-base-200/40"
+          >
+            <span class="font-medium">{label.name}</span>
+            <span class="badge badge-ghost badge-xs">{label.count}</span>
+            <span class="text-[10px] uppercase tracking-wide text-base-content/70">
+              {plural(label.spaces, "space")}
+            </span>
+          </a>
+        </li>
+      </ul>
+
+      <p :if={@labels == []} class="mt-4 text-sm text-base-content/70">
+        No page in this copy carries a label.
+      </p>
+    </.shell>
+    """
+  end
+
+  @doc "Everything carrying one label."
+  attr :title, :string, required: true
+  attr :prefix, :string, required: true
+  attr :spaces, :list, required: true
+  attr :label, :string, required: true
+  attr :pages, :list, required: true
+  attr :generated, :string, required: true
+  attr :mirror_name, :string, required: true
+  attr :mirror_url, :string, default: nil
+  attr :html_attributes, :map, default: %{}
+
+  def label(assigns) do
+    ~H"""
+    <.shell
+      title={@title}
+      prefix={@prefix}
+      mirror_name={@mirror_name}
+      mirror_url={@mirror_url}
+      html_attributes={@html_attributes}
+      note={"Copied #{@generated}."}
+      crumbs={[%{title: "All labels", href: @prefix <> "labels/index.html"}]}
+    >
+      <:nav>
+        <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-base-content/70">
+          Spaces
+        </p>
+        <ul class="menu menu-sm w-full gap-1 p-0">
+          <li :for={space <- @spaces}>
+            <a href={space.href} class="truncate">
+              {space.name}
+              <span class="badge badge-ghost badge-xs">{space.key}</span>
+            </a>
+          </li>
+        </ul>
+      </:nav>
+
+      <h1 class="text-2xl font-semibold tracking-tight">{@label}</h1>
+      <p class="mt-1 text-xs uppercase tracking-wide text-base-content/70">
+        {plural(length(@pages), "page")} in {plural(
+          @pages |> Enum.map(& &1.space_key) |> Enum.uniq() |> length(),
+          "space"
+        )}
+      </p>
+
+      <ul class="mt-4 divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100">
+        <li :for={page <- @pages}>
+          <a
+            href={page.href}
+            class="flex min-h-11 items-baseline gap-2 px-3 py-2 text-sm transition hover:bg-base-200/40"
+          >
+            <span class="truncate">{page.title}</span>
+            <span class="ml-auto flex shrink-0 items-baseline gap-2">
+              <span class="text-[11px] text-base-content/70">{page.space_name}</span>
+              <span class="badge badge-ghost badge-xs">{page.space_key}</span>
+            </span>
+          </a>
+        </li>
+      </ul>
     </.shell>
     """
   end
@@ -413,11 +621,51 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
         <meta name="generator" content="Confluence mirror static export" />
         <title>{@title}</title>
         <link rel="stylesheet" href={@prefix <> "assets/site.css"} />
+        <script src={@prefix <> "assets/theme.js"}>
+        </script>
       </head>
       <body class="min-h-screen bg-base-100 text-base-content antialiased">
         <div class="flex min-h-screen flex-col">
-          <header class="border-b border-base-300/70 bg-base-100">
-            <div class="mx-auto flex w-full max-w-[1600px] items-center gap-3 px-3 py-2 sm:px-5">
+          <header data-print="hide" class="border-b border-base-300/70 bg-base-100 print:hidden">
+            <div class="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-2 px-3 py-2 sm:flex-nowrap sm:gap-3 sm:px-5">
+              <button
+                type="button"
+                data-site-sidebar-toggle
+                aria-controls="site-sidebar"
+                aria-expanded="true"
+                aria-label="Hide the page tree"
+                title="Hide the page tree"
+                class="group -ml-1 grid size-11 shrink-0 place-items-center rounded-lg text-base-content/70 transition hover:bg-base-200 hover:text-base-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 lg:size-9"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="size-5 group-aria-expanded:hidden"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M9 3v18" />
+                  <path d="m14 9 3 3-3 3" />
+                </svg>
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="hidden size-5 group-aria-expanded:block"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M9 3v18" />
+                  <path d="m16 15-3-3 3-3" />
+                </svg>
+              </button>
               <a
                 href={@prefix <> "index.html"}
                 class="flex items-center gap-2.5 rounded-lg px-1 py-1 transition hover:bg-base-200/70"
@@ -427,7 +675,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
                 </span>
                 <span class="flex flex-col leading-tight">
                   <span class="text-sm font-semibold">{@mirror_name}</span>
-                  <span class="text-[11px] uppercase tracking-wide text-base-content/70">
+                  <span class="max-sm:hidden text-[11px] uppercase tracking-wide text-base-content/70">
                     static copy
                   </span>
                 </span>
@@ -436,26 +684,38 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
                 action={@prefix <> "search.html"}
                 method="get"
                 role="search"
-                class="ml-auto flex items-center"
+                class="flex min-w-0 items-center max-sm:order-last max-sm:w-full sm:ml-auto sm:flex-1 sm:justify-end"
               >
                 <input
                   type="search"
                   name="q"
-                  placeholder="Search"
+                  placeholder="Search this copy"
                   aria-label="Search this copy"
                   autocomplete="off"
-                  class="input input-sm w-32 rounded-lg bg-base-100 sm:w-48"
+                  class="input input-sm w-full rounded-lg bg-base-100 sm:w-48"
                 />
               </form>
-              <a
-                :if={@mirror_url}
-                href={@mirror_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-xs font-medium text-primary hover:underline"
+              <button
+                type="button"
+                data-site-theme
+                aria-label="Theme: system"
+                title="Theme: system"
+                class="grid size-9 shrink-0 place-items-center rounded-lg text-base-content/70 transition hover:bg-base-200 hover:text-base-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
               >
-                The live site
-              </a>
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="size-5"
+                >
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4m11.4-11.4 1.4-1.4" />
+                </svg>
+              </button>
             </div>
             <div
               :if={@crumbs != []}
@@ -470,37 +730,62 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
             </div>
           </header>
 
+          <div
+            data-site-backdrop
+            hidden
+            aria-hidden="true"
+            class="fixed inset-0 z-40 bg-base-content/40 backdrop-blur-sm lg:hidden"
+          >
+          </div>
+
           <div class="mx-auto flex w-full max-w-[1600px] flex-1 items-stretch">
             <aside
-              class="hidden w-72 shrink-0 border-r border-base-300/60 bg-base-200/25 lg:block"
+              id="site-sidebar"
+              tabindex="-1"
               aria-label="Navigation"
+              data-print="hide"
+              class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] -translate-x-full overflow-y-auto overscroll-contain border-r border-base-300/60 bg-base-100 shadow-lg transition-transform duration-200 focus:outline-none motion-reduce:transition-none data-[open]:translate-x-0 print:hidden lg:static lg:z-auto lg:w-72 lg:max-w-none lg:translate-x-0 lg:bg-base-200/25 lg:shadow-none lg:data-[collapsed]:hidden"
             >
-              <div class="p-4">
+              <div class="p-4 lg:sticky lg:top-[57px] lg:max-h-[calc(100vh-57px)] lg:overflow-y-auto">
                 {render_slot(@nav)}
               </div>
             </aside>
 
             <main class="min-w-0 flex-1">
-              <div class="w-full max-w-[88rem] px-4 py-5 sm:px-8">
+              <div class="w-full max-w-[88rem] px-4 py-5 sm:px-8 print:max-w-none print:p-0">
                 {render_slot(@inner_block)}
               </div>
             </main>
 
             <aside
               :if={@rail != []}
-              class="hidden w-80 shrink-0 space-y-5 border-l border-base-300/60 p-5 xl:block"
+              data-print="hide"
+              class="hidden w-80 shrink-0 space-y-5 border-l border-base-300/60 p-5 print:hidden xl:block"
             >
               {render_slot(@rail)}
             </aside>
           </div>
 
-          <footer class="border-t border-base-300/70 bg-base-200/30">
+          <footer data-print="hide" class="border-t border-base-300/70 bg-base-200/30 print:hidden">
             <div class="mx-auto flex w-full max-w-[1600px] flex-col gap-1 px-4 py-5 text-xs text-base-content/70 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <span class="font-medium text-base-content/80">{@mirror_name}</span>
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="font-medium text-base-content/80">{@mirror_name}</span>
+                <a
+                  :if={@mirror_url}
+                  href={@mirror_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-primary hover:underline"
+                >
+                  The live site
+                </a>
+              </span>
               <span>{@note}</span>
             </div>
           </footer>
         </div>
+        <script src={@prefix <> "assets/site.js"} defer>
+        </script>
       </body>
     </html>
     """
@@ -542,6 +827,19 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
         </div>
       </li>
     </ul>
+    """
+  end
+
+  attr :prefix, :string, required: true
+
+  defp labels_link(assigns) do
+    ~H"""
+    <a
+      href={@prefix <> "labels/index.html"}
+      class="mt-3 block text-[11px] font-medium text-primary hover:underline"
+    >
+      All labels →
+    </a>
     """
   end
 

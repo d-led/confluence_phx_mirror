@@ -82,12 +82,75 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       refute page =~ "pages/#{Demo.restricted_page()}.html"
     end
 
-    test "needs no script: the heading permalinks are already in the page", %{files: files} do
+    test "reads without scripts: its anchors and its text are already there", %{files: files} do
       page = files["spaces/ENG/pages/#{Demo.open_page()}.html"]
 
       assert page =~ ~s(class="heading-anchor")
-      # The only script is the search page's, which asks for its own file.
-      refute page =~ "<script"
+      # The two scripts only add a folding tree and a theme switch; neither
+      # builds the content, so the page reads the same with them blocked.
+      assert page =~ ~s(src="../../../assets/theme.js")
+      assert page =~ ~s(src="../../../assets/site.js")
+    end
+
+    test "lets the reader fold the page tree away", %{files: files} do
+      page = files["spaces/ENG/pages/#{Demo.open_page()}.html"]
+
+      assert page =~ "data-site-sidebar-toggle"
+      assert page =~ ~s(aria-controls="site-sidebar")
+      assert page =~ ~s(id="site-sidebar")
+      assert page =~ "data-site-backdrop"
+    end
+
+    test "follows the system's theme until the reader pins one", %{files: files} do
+      page = files["spaces/ENG/pages/#{Demo.open_page()}.html"]
+
+      # The name is what the scripts switch on; the variant they apply is the
+      # reader's, and it is applied before the body, so no page flashes white.
+      assert page =~ "data-theme-name="
+      assert page =~ "data-site-theme"
+
+      head = page |> String.split("<body", parts: 2) |> hd()
+      assert head =~ ~s(src="../../../assets/theme.js")
+    end
+
+    test "the scripts travel with the folder and ask nothing of the network", %{files: files} do
+      assert files["assets/site.js"] =~ "mirror-export:sidebar"
+      assert files["assets/theme.js"] =~ "mirror-export:variant"
+      refute files["assets/site.js"] =~ "http"
+      refute files["assets/theme.js"] =~ "http"
+    end
+
+    test "a page carries its comments, replies included", %{files: files} do
+      page = files["spaces/ENG/pages/#{Demo.open_page_parent()}.html"]
+
+      assert page =~ ~s(id="comments")
+      assert page =~ "Sam Rivera"
+      assert page =~ "VPN steps"
+      # The reply hangs under its parent, the way the reader screen draws it.
+      assert page =~ "Jane Doe"
+    end
+
+    test "carries a label catalogue and a page for each label", %{files: files} do
+      catalogue = files["labels/index.html"]
+
+      assert catalogue =~ "architecture"
+      assert catalogue =~ "labels/architecture.html"
+
+      labelled = files["labels/architecture.html"]
+      assert labelled =~ Demo.open_page_title()
+      # The label pages sit one folder down: their links are relative to it.
+      assert labelled =~ ~s(href="../spaces/ENG/pages/#{Demo.open_page()}.html")
+      assert catalogue =~ ~s(href="../assets/site.css")
+    end
+
+    test "a page's label chips lead into the catalogue", %{files: files} do
+      page = files["spaces/ENG/pages/#{Demo.open_page()}.html"]
+
+      assert page =~ ~s(href="../../../labels/architecture.html")
+    end
+
+    test "a space front page shows its categories", %{files: files} do
+      assert files["spaces/ENG/index.html"] =~ "platform"
     end
 
     test "carries a search index and the page that searches it", %{files: files} do
@@ -105,6 +168,31 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       assert search =~ ~s(id="search-index")
       assert search =~ ~s(src="assets/search.js")
       assert search =~ Demo.open_page_title()
+    end
+
+    test "a search says it is working, and how far it has got", %{files: files} do
+      search = files["search.html"]
+
+      assert search =~ ~s(id="search-spinner" hidden)
+      assert search =~ ~s(aria-busy="false")
+
+      # The running commentary is for the eye; only the finished count is
+      # announced, so a screen reader is not read the progress bar.
+      assert search =~ ~s(id="search-progress" aria-hidden="true")
+      assert search =~ ~s(id="search-status" role="status")
+
+      script = files["assets/search.js"]
+      assert script =~ "Searching…"
+      assert script =~ ~s(results.setAttribute("aria-busy")
+    end
+
+    test "a search waits for the typing to settle before it scans", %{files: files} do
+      script = files["assets/search.js"]
+
+      # Every keystroke settles the field; none of them starts a scan of its
+      # own, so a word typed at speed is scanned once, not once per letter.
+      assert script =~ "settle(input.value)"
+      refute script =~ "run(input.value)"
     end
 
     test "every page links to the copy's own search", %{files: files} do

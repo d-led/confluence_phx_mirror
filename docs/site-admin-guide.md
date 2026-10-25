@@ -315,12 +315,16 @@ The static site contains:
 ```text
 index.html                        every space in the archive
 search.html                       search over this copy (works offline)
-spaces/<KEY>/index.html           description, icon and the whole page tree
-spaces/<KEY>/pages/<id>.html      one page, with the mirror's own chrome
+labels/index.html                 every label, with a count and how many spaces
+labels/<label>.html               every page carrying one label
+spaces/<KEY>/index.html           description, categories, icon and the page tree
+spaces/<KEY>/pages/<id>.html      one page: body, files, child pages, comments
 spaces/<KEY>/pages/<id>.md        the same page as Markdown
 spaces/<KEY>/icon.<ext>           the space icon, when the mirror has it
 attachments/<KEY>/<page>/<file>   the mirrored attachments
 assets/site.css                   the site's compiled theme
+assets/site.js                    folding the page tree, switching the theme
+assets/theme.js                   the pinned theme, applied before the first paint
 assets/search.json                the search index, for other tools
 assets/search.js                  the matcher search.html runs
 ```
@@ -337,11 +341,34 @@ serves — the theme an administrator picked, custom skins included — and ever
 page is written with the same markup as the reader screens. Heading permalinks
 are in the HTML rather than added by script, so a page needs no JavaScript.
 
+**Reading a page is as comfortable as in the mirror.** The page tree folds away
+and stays folded (`site.js` remembers the choice in the browser, like the reader
+screens do), the theme cycles system → light → dark from the button in the
+header, and the prose keeps the reader's measure — a line about eighty
+characters wide — however wide the window is. `theme.js` runs in the head, so a
+reader who pinned dark never sees a white flash first. Printing hides the tree,
+the rail, the header and the footer, drops the heading permalinks, and gives the
+column the page's width. All of it is optional: with scripts blocked the page
+still reads, follows the system's theme, and shows the tree.
+
+**Comments travel with their page.** A page carries its discussion — roots and
+replies, with the same rewriting as the body — and a screenshot pasted into a
+reply is exported under the page it hangs off, so the link in the comment
+resolves. Label chips lead into `labels/`, which is the way in the page tree
+cannot give: everything about one subject, whichever space it lives in.
+
 **Search is part of the folder.** `search.html` carries the index inline, so
 it works when the archive is opened from `file://` (where a page may not fetch
 its own files). Each document is a page's title, space, labels, date and the
 first 400 characters of its text; matching is client-side and ranks titles
 above spaces and labels, above the body.
+
+Typing into the field says what is happening: the search waits for a pause in
+typing (150 ms) and then scans in slices, showing a spinner and "Searching… n%"
+while it works, so a site of a hundred thousand pages neither looks dead nor
+freezes the field. A newer query abandons the older scan, so a result can never
+land under the wrong word. The percentage is hidden from screen readers; they
+hear the settled count ("23 pages match") once.
 
 Every page carries the trail that leads to it — space, then each parent — and
 a link to the space's front page, which holds the space's whole page tree
