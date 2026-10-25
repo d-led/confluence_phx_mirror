@@ -416,7 +416,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             href="/admin/export/site.zip"
             id="export-site"
             class="btn btn-outline btn-sm gap-1.5"
-            title="Every space, page and attachment as a static site (personal spaces are left out)"
+            title={export_hint()}
           >
             <.icon name="hero-arrow-down-tray" class="size-4" /> Static site
           </a>
@@ -759,6 +759,21 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
   defp admin_dashboard? do
     Application.get_env(:confluence_phx_mirror, :admin_dashboard, false)
+  end
+
+  # What the download holds, according to what this deployment does with
+  # personal spaces — the same switch `Export.site_archive/2` reads, so the
+  # sentence cannot claim a policy the archive does not follow.
+  defp export_hint do
+    if export_personal_spaces?() do
+      "Every space, page and attachment as a static site, personal spaces included (CM_EXPORT_PERSONAL_SPACES is on)"
+    else
+      "Every shared space, page and attachment as a static site — personal spaces are left out (CM_EXPORT_PERSONAL_SPACES=1 includes them)"
+    end
+  end
+
+  defp export_personal_spaces? do
+    Application.get_env(:confluence_phx_mirror, :export_personal_spaces, false)
   end
 
   # One list in the order an operator waits through it: what is queued, then
