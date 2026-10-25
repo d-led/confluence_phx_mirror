@@ -55,6 +55,26 @@ defmodule ConfluencePhxMirrorWeb.PageStaleTest do
     refute has_element?(view, "#page-stale-notice")
   end
 
+  # A page the mirror has not read yet (a copy that arrived without a stamp)
+  # is stale the first time anything is written: there is nothing to compare
+  # against, so the write is news.
+  test "a copy with no stamp at all is news the first time", %{conn: conn} do
+    {:ok, view, _html} =
+      live_isolated(conn, ConfluencePhxMirrorWeb.PageStaleLive,
+        session: %{"stale_page_id" => @page_id, "stale_path" => @path}
+      )
+
+    write(@read_at)
+
+    assert has_element?(view, "#page-stale-notice")
+  end
+
+  test "a write that does not say when it happened is not news", %{view: view} do
+    write(nil)
+
+    refute has_element?(view, "#page-stale-notice")
+  end
+
   test "dismissing puts it away, and the next write offers it again", %{view: view} do
     write(@later)
     assert has_element?(view, "#page-stale-notice")
