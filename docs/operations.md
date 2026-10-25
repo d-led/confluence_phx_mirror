@@ -342,6 +342,17 @@ dashboard — `catalogue_metrics: true` makes the poller publish how many pages,
 spaces and attachments the mirror holds, and every rendered page publishes a
 `confluence_mirror.page.view` event.
 
+Its **OS Data** page (CPU load, memory, every mount, with history) appears
+because the release starts `os_mon`; without that application the page does not
+exist. Two differences from the overview's own Resources strip are worth
+knowing before reading either: LiveDashboard counts memory *free* where the
+overview counts *available* — on a healthy Linux box those are 99% and 83% of
+the same machine — and it lists every mount, where the overview names the one
+the blob root is on. The route is served with its own content policy
+(`Plugs.DashboardCSP`), because LiveDashboard injects one inline script its
+bundle depends on and the reader pages forbid inline script; that exception is
+one route wide and exists only when the dashboard is compiled in.
+
 ## Rate limiting
 
 Three meters, in two directions:

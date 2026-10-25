@@ -481,6 +481,21 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
         title="Resources"
         subtitle="What this node occupies, and the room left beside it."
       >
+        <:actions>
+          <%!-- This strip is the point-in-time view, mirror-specific figures
+          included (the blob mount, the database). The BEAM's own dashboard has
+          the same OS numbers as graphs with history, when the deployment mounts
+          it; its memory figure counts *free*, ours counts *available*. --%>
+          <a
+            :if={admin_dashboard?()}
+            href="/admin/runtime/os_mon"
+            id="resources-os-data"
+            title="CPU load, memory and every mount, with history — LiveDashboard's OS Data page"
+            class="link text-xs"
+          >
+            CPU and memory graphs →
+          </a>
+        </:actions>
         <div class="grid gap-3 sm:grid-cols-3">
           <.resource_meter
             id="resources-blob-mount"

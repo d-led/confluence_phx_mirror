@@ -379,8 +379,15 @@ defmodule ConfluencePhxMirrorWeb.Router do
   if Application.compile_env(:confluence_phx_mirror, :admin_dashboard, false) do
     import Phoenix.LiveDashboard.Router
 
+    # LiveDashboard injects one inline script its own bundle depends on, which
+    # the reader pages' policy would drop; this pipeline replaces that policy
+    # for the dashboard route only (see Plugs.DashboardCSP).
+    pipeline :admin_runtime do
+      plug Plugs.DashboardCSP
+    end
+
     scope "/admin" do
-      pipe_through :browser
+      pipe_through [:browser, :admin_runtime]
 
       live_dashboard "/runtime",
         metrics: ConfluencePhxMirrorWeb.Telemetry,
