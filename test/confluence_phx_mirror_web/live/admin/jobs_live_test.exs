@@ -81,20 +81,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
     assert view |> element("#job-#{job.id}-scope") |> render() =~ "—"
   end
 
-  test "a job says what its run has done so far, and links to that run's log", %{conn: conn} do
+  test "a job's own column carries what its record says, and links to that run's log", %{
+    conn: conn
+  } do
     job = sync_job("MFS") |> with_state("executing")
     run = run_of(job, "running", %{"pages" => 120, "changed" => 100, "phase" => "details"})
 
     {:ok, view, _html} = live(conn, ~p"/admin/jobs")
 
-    progress = view |> element("#job-#{job.id}-progress") |> render()
+    details = view |> element("#job-#{job.id}-details") |> render()
 
-    assert progress =~ "running"
-    assert progress =~ "120 pages so far"
-    assert progress =~ "/admin/sync-log?run=#{run.id}"
+    assert details =~ "120 pages so far"
+    assert details =~ "/admin/sync-log?run=#{run.id}"
+    # The state is a column of its own; the cell does not repeat the badge.
+    refute details =~ "badge"
   end
 
-  test "a run that ended says how, and why", %{conn: conn} do
+  test "the details column says why a job ended badly, in the open", %{conn: conn} do
     job = sync_job("MFS") |> with_state("executing")
 
     run_of(job, "failed", %{"pages" => 40},
@@ -103,18 +106,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/admin/jobs")
 
-    progress = view |> element("#job-#{job.id}-progress") |> render()
+    details = view |> element("#job-#{job.id}-details") |> render()
 
-    assert progress =~ "failed after 40 pages"
-    assert progress =~ "the process running this sync stopped before it finished"
+    assert details =~ "failed after 40 pages"
+    assert details =~ "the process running this sync stopped before it finished"
   end
 
-  test "a job that started no run says so rather than guessing", %{conn: conn} do
+  test "a job whose record says nothing shows a dash rather than a blank", %{conn: conn} do
     job = sync_job("MFS") |> with_state("executing")
 
     {:ok, view, _html} = live(conn, ~p"/admin/jobs")
 
-    assert view |> element("#job-#{job.id}-progress") |> render() =~ "—"
+    assert view |> element("#job-#{job.id}-details") |> render() =~ "—"
   end
 
   test "the filter shows one state at a time", %{conn: conn} do

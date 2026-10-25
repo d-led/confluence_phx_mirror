@@ -148,11 +148,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
 
   # The tone a record's own status carries; the page knows these five and nothing
   # about which statuses exist, which is what lets a new record use it as is.
-  defp tone_class(:ok), do: "badge-success"
-  defp tone_class(:warn), do: "badge-warning"
-  defp tone_class(:error), do: "badge-error"
-  defp tone_class(:running), do: "badge-info"
-  defp tone_class(:idle), do: "badge-ghost"
+  # The tone a record gives its own words. The state is a column of its own, so
+  # this cell borrows only the colour.
+  defp tone_text(:ok), do: "text-success"
+  defp tone_text(:warn), do: "text-warning"
+  defp tone_text(:error), do: "text-error"
+  defp tone_text(_tone), do: ""
 
   defp state_class("executing"), do: "badge-warning"
   defp state_class("available"), do: "badge-info"
@@ -215,12 +216,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
             <th title="The worker that runs it, and who asked for it">Job</th>
             <th title="What this job acts on, as its own arguments name it">Scope</th>
             <th>State</th>
-            <th title="What the job is doing: the run it started, and a link to that run's lines in the sync log">
-              Progress
-            </th>
             <th title="Attempts made out of the attempts allowed">Tries</th>
             <th title="When the job was queued">Queued</th>
             <th>Last attempt, or when it is due</th>
+            <th title="Whatever the job's own record says: a line of progress, why it ended, and a link to its log. The one column a job fills in for itself.">
+              Details
+            </th>
             <th><span class="sr-only">Stop</span></th>
           </:head>
           <:row :let={row}>
@@ -251,31 +252,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
             <td>
               <span class={["badge badge-sm", state_class(job.state)]}>{job.state}</span>
             </td>
-            <td class="text-xs" id={"job-#{job.id}-progress"}>
-              <%= if row.work do %>
-                <% {state, tone} = Progress.state(row.work) %>
-                <span class={["badge badge-xs", tone_class(tone)]}>{state}</span>
-                <span class="ml-1 text-base-content/70" title={Progress.detail(row.work)}>
-                  {Progress.summary(row.work)}
-                </span>
-                <%= if log = Progress.log(row.work) do %>
-                  <.link
-                    navigate={elem(log, 1)}
-                    class="ml-1 link link-hover text-primary"
-                    title={"Open the #{elem(log, 0)} of this job's work"}
-                  >
-                    {elem(log, 0)}
-                  </.link>
-                <% end %>
-              <% else %>
-                <span
-                  class="text-base-content/70"
-                  title="No record of this job is kept yet. A job that has not started has none, and a job queued before the mirror recorded job ids cannot point at its work."
-                >
-                  —
-                </span>
-              <% end %>
-            </td>
             <td class="text-xs tabular-nums">{job.attempt}/{job.max_attempts}</td>
             <td class="whitespace-nowrap text-xs">
               <.local_time at={job.inserted_at}>{Time.ago(job.inserted_at)}</.local_time>
@@ -298,6 +274,38 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
                 </span>
               <% else %>
                 <.local_time at={job.scheduled_at}>{Time.ago(job.scheduled_at)}</.local_time>
+              <% end %>
+            </td>
+            <%!-- The one column a job fills in for itself. `Jobs.Progress` is a
+            protocol over the record a worker writes, so a kind of job that
+            arrives later brings its own words and its own log link and this
+            page does not change. --%>
+            <td class="text-xs" id={"job-#{job.id}-details"}>
+              <%= if row.work do %>
+                <% {_state, tone} = Progress.state(row.work) %>
+                <span class={["block", tone_text(tone)]}>{Progress.summary(row.work)}</span>
+                <span
+                  :if={Progress.detail(row.work)}
+                  class="block text-[11px] text-base-content/70"
+                >
+                  {Progress.detail(row.work)}
+                </span>
+                <%= if log = Progress.log(row.work) do %>
+                  <.link
+                    navigate={elem(log, 1)}
+                    class="link link-hover text-primary"
+                    title={"Open the #{elem(log, 0)} of this job's work"}
+                  >
+                    {elem(log, 0)}
+                  </.link>
+                <% end %>
+              <% else %>
+                <span
+                  class="text-base-content/70"
+                  title="This job's own record says nothing yet. A job that has not started has none, and a job queued before the mirror recorded job ids cannot point at its work."
+                >
+                  —
+                </span>
               <% end %>
             </td>
             <td class="text-right">
