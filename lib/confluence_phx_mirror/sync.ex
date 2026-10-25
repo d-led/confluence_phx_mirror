@@ -1205,30 +1205,39 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   defp sync_pages_of(spaces, source, opts) do
-    Enum.reduce(spaces, {[], %{changed: 0, unchanged: 0}, [], 0}, fn space,
-                                                                     {entries, counts, errors,
-                                                                      deleted} ->
-      check_cancelled!(opts)
+    {entries, counts, errors, deleted} =
+      Enum.reduce(spaces, {[], %{changed: 0, unchanged: 0}, [], 0}, fn space,
+                                                                       {entries, counts, errors,
+                                                                        deleted} ->
+        check_cancelled!(opts)
 
-      case source.pages(space.key, opts) do
-        {:ok, dtos} ->
-          {upserted, space_counts, page_errors} = upsert_entries(dtos, [space], opts)
-          {deleted_count, guard_errors} = reconcile_deletions(space, dtos)
+        case source.pages(space.key, opts) do
+          {:ok, dtos} ->
+            {upserted, space_counts, page_errors} = upsert_entries(dtos, [space], opts)
+            {deleted_count, guard_errors} = reconcile_deletions(space, dtos)
 
-          if deleted_count > 0 do
-            Audit.log(Audit.system_actor(), Space.audit_event_pages_deleted(space, deleted_count))
-          end
+            if deleted_count > 0 do
+              Audit.log(
+                Audit.system_actor(),
+                Space.audit_event_pages_deleted(space, deleted_count)
+              )
+            end
 
-          counts = add_counts(counts, space_counts)
-          record_progress(opts, counts)
+            counts = add_counts(counts, space_counts)
+            record_progress(opts, counts)
 
-          {entries ++ upserted, counts, errors ++ page_errors ++ guard_errors,
-           deleted + deleted_count}
+            # `Enum.reverse(list, acc)` prepends a whole space at once: `entries
+            # ++ upserted` copies every entry of every space before it, which is
+            # quadratic in the size of the site (50k pages: 5.8 s of pure copy).
+            {Enum.reverse(upserted, entries), counts, errors ++ page_errors ++ guard_errors,
+             deleted + deleted_count}
 
-        {:error, reason} ->
-          {entries, counts, [error("space", space.key, reason) | errors], deleted}
-      end
-    end)
+          {:error, reason} ->
+            {entries, counts, [error("space", space.key, reason) | errors], deleted}
+        end
+      end)
+
+    {Enum.reverse(entries), counts, errors, deleted}
   end
 
   defp add_counts(left, right) do
@@ -1266,7 +1275,7 @@ defmodule ConfluencePhxMirror.Sync do
   # rendered and asked for their attachments and comments.
   defp upsert_entries(dtos, spaces, opts) do
     by_key = Map.new(spaces, &{&1.key, &1})
-    existing = existing_pages()
+    existing = existing_pages(dtos)
     forced = Keyword.get(opts, :force, MapSet.new())
 
     {entries, counts, errors} =
@@ -1309,8 +1318,15 @@ defmodule ConfluencePhxMirror.Sync do
   # Only the fields change detection needs: a page body can be megabytes, and
   # keeping 400k of them in memory to compare them would defeat the purpose.
   # Confluence bumps the version on every edit, which is the signal we need.
-  defp existing_pages do
+  # The pages in hand, and only those: a snapshot walks every space, and asking
+  # the table for its whole contents once per space is a full scan each time
+  # plus a map of the entire mirror held while a handful of ids are looked up.
+  # `confluence_id` is unique, so this is one index probe per page listed.
+  defp existing_pages(dtos) do
+    ids = Enum.map(dtos, & &1.id)
+
     from(p in Page,
+      where: p.confluence_id in ^ids,
       select: {p.confluence_id, p.version_number, p.title, p.type, not is_nil(p.body_export)}
     )
     |> Repo.all()
