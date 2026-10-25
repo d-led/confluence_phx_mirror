@@ -191,6 +191,18 @@ are in [performance.md](performance.md). Search is the one screen whose cost
 still grows with the site: ranking a query that matches every page is a pass over
 every match, inherent to `ts_rank_cd`.
 
+**A page that changed while it is open is announced, not swapped.** A sync can
+write the page under a reader — a webhook delivery, a schedule tick, an
+administrator's re-read — and a mirror that reloaded the tab itself would take
+the paragraph away mid-sentence. The page carries one more island
+(`PageStaleLive`) for this: it subscribes to the page's `PageUpdates` topic,
+and a sync announces a page once its transaction has committed. The reader then
+gets a small notice in the corner with a reload and a dismiss, and nothing moves
+until they take one. The announcement carries the moment the mirror read the
+page, so a tab that already shows that copy — opened in the middle of a run —
+stays quiet. The island costs no query: everything it needs arrives in its
+session.
+
 ## Emoticons and comments in search
 
 `export_view` renders an emoticon as an image on the Confluence host, not as its

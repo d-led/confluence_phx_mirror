@@ -217,4 +217,16 @@
 
     <.comment_thread page={@page} comments={@comments} />
   </article>
+
+  <%!-- A sync can replace this page while it is being read. The notice is an
+  island of its own because a controller response has no process to hear that:
+  it offers a reload, and never takes it. --%>
+  {live_render(@conn, ConfluencePhxMirrorWeb.PageStaleLive,
+    container: {:div, [id: "page-stale"]},
+    session: %{
+      "stale_page_id" => @page.id,
+      "stale_path" => ConfluencePhxMirror.Mirror.URLs.content_path(@space.key, @page),
+      "stale_synced_at" => Time.iso(@page.synced_at)
+    }
+  )}
 </Layouts.app>

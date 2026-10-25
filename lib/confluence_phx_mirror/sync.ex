@@ -26,6 +26,7 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
   alias ConfluencePhxMirror.Notifications
+  alias ConfluencePhxMirror.PageUpdates
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sites
   alias Oban.Job
@@ -61,6 +62,8 @@ defmodule ConfluencePhxMirror.Sync do
     * `:trigger` – why the run happened, in words: "the hourly schedule",
       "the admin dashboard, by jane@acme.com"
     * `:source` – upstream source module, defaults to the configured one
+    * `:job_id` – the Oban job that asked for this run, so the admin jobs page
+      can show a job's progress and its log; absent for `mix confluence.sync`
   """
   @spec run(mode(), keyword()) :: report()
   def run(mode, opts \\ []) do
@@ -1464,6 +1467,10 @@ defmodule ConfluencePhxMirror.Sync do
       # unreferenced file, which is harmless, never a row pointing at nothing.
       discard_blobs(pruned)
 
+      # The page is on disk whole, so a tab still reading the old copy can be
+      # told — offered a reload, never given one.
+      PageUpdates.page_synced(page)
+
       page = Map.put(page, :space, space)
       {notifications, notification_errors} = notify(change, page, space)
       audit_change(change, page, space, dto)
@@ -1879,6 +1886,7 @@ defmodule ConfluencePhxMirror.Sync do
         source: source.name(),
         mode: mode_to_string(mode),
         scope: scope_of(mode, opts),
+        job_id: opts[:job_id],
         status: "running",
         started_at: now(),
         stats: trigger_stats(trigger)
