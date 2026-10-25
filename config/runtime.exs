@@ -242,6 +242,13 @@ if allow = System.get_env("MIRROR_ALLOW_SITE_DISABLED_READERS") do
   config :confluence_phx_mirror, allow_site_disabled_readers: allow in ~w(1 true yes)
 end
 
+# The whole-site export leaves personal spaces out unless this is set: a site
+# archive is handed around, and somebody's own corner of the site is not part of
+# it. One space's own archive is unaffected.
+if export_personal = System.get_env("CM_EXPORT_PERSONAL_SPACES") do
+  config :confluence_phx_mirror, export_personal_spaces: export_personal in ~w(1 true yes)
+end
+
 if header = System.get_env("CM_PROXY_AUTH_HEADER") do
   config :confluence_phx_mirror, :proxy_auth_header, String.downcase(header)
 end

@@ -52,6 +52,13 @@ config :confluence_phx_mirror, Oban,
 # `ConfluencePhxMirror.Confluence.HttpSource` against a real site.
 config :confluence_phx_mirror, :source, ConfluencePhxMirror.Confluence.DemoSource
 
+# The whole-site static export is a file that leaves the building, so it carries
+# the spaces everybody shares and not the personal ones — somebody's drafts and
+# notes are not part of "the site". `CM_EXPORT_PERSONAL_SPACES=1` turns them on
+# for a mirror whose personal spaces are meant to travel; a single space is
+# still exportable on its own either way.
+config :confluence_phx_mirror, export_personal_spaces: false
+
 # Themes beyond the built-in default ship as standalone packs: modules
 # implementing `ConfluencePhxMirrorWeb.Skins.Pack`. `FreshBlue` is the reference
 # extension and the theme the mirror ships with.

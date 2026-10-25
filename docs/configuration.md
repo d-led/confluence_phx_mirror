@@ -155,6 +155,12 @@ delivery does, are in the [site admin guide](site-admin-guide.md#webhooks).
 | --- | --- | --- |
 | `CM_API_DOCS` | on in dev/test, off in a release | serve `/api/docs` (the page) and `/api/openapi.json` (OpenAPI 3.1); when off both answer `404` |
 
+## Exports
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CM_EXPORT_PERSONAL_SPACES` | `false` | include personal spaces in the whole-site static archive (`/admin/export/site.zip`). Off by default: a site archive is a file that leaves the building, and somebody's own space — drafts, notes, half-finished pages — is not part of "the site". One space's own archive is unaffected either way |
+
 ## Mail and notifications
 
 | Variable | Default | Purpose |

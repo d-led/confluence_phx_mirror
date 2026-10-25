@@ -416,7 +416,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             href="/admin/export/site.zip"
             id="export-site"
             class="btn btn-outline btn-sm gap-1.5"
-            title="Every space, page and attachment as a static site"
+            title="Every space, page and attachment as a static site (personal spaces are left out)"
           >
             <.icon name="hero-arrow-down-tray" class="size-4" /> Static site
           </a>
