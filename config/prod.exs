@@ -29,6 +29,20 @@ config :confluence_phx_mirror, ConfluencePhxMirrorWeb.Endpoint,
     ]
   ]
 
+# The BEAM dashboard at /admin/runtime. The route is a compile-time decision
+# (`Application.compile_env/3` in the router), so this is a rebuild, not a
+# restart. It is reached only through the administrator hook, and on the public
+# app by way of the proxy — but it can kill a process with one click, so read
+# "The runtime dashboard, if you want it in production" in docs/operations.md
+# before turning it off or on.
+config :confluence_phx_mirror, admin_dashboard: true
+
+# Publish the catalogue gauges (pages, spaces, attachments, the trash, bytes)
+# every ten seconds so the dashboard's charts have a line to draw. The counts
+# come from `Mirror.Counters`, so a quiet mirror answers without scanning, and
+# a finished sync publishes the same numbers the moment it ends.
+config :confluence_phx_mirror, catalogue_metrics: true
+
 # Configure Swoosh API Client
 config :swoosh, api_client: Swoosh.ApiClient.Req
 

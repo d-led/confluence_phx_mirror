@@ -389,8 +389,12 @@ defmodule ConfluencePhxMirrorWeb.Router do
     scope "/admin" do
       pipe_through [:browser, :admin_runtime]
 
+      # Without `metrics_history` the Metrics page plots only what arrives
+      # while it is open, which reads as an empty chart to anyone who looks
+      # for the last two hours.
       live_dashboard "/runtime",
         metrics: ConfluencePhxMirrorWeb.Telemetry,
+        metrics_history: {ConfluencePhxMirror.MetricsHistory, :metrics_history, []},
         on_mount: [{LiveUserAuth, :admin}]
     end
   end
