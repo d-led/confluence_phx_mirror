@@ -25,6 +25,7 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Confluence.Traffic
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
+  alias ConfluencePhxMirror.Metrics
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.PageUpdates
   alias ConfluencePhxMirror.Repo
@@ -75,8 +76,15 @@ defmodule ConfluencePhxMirror.Sync do
     case Gate.exclusive(fn gate_owner ->
            run_locked(mode, Keyword.put(opts, :gate_owner, gate_owner))
          end) do
-      {:ok, result} -> result
-      {:error, :already_running} = busy -> busy
+      {:ok, result} ->
+        # The run just moved the mirror: publish the totals now, rather than
+        # leaving it to the poller's next tick. A run that changed nothing
+        # publishes the same numbers, which costs one point on a chart.
+        Metrics.publish()
+        result
+
+      {:error, :already_running} = busy ->
+        busy
     end
   end
 

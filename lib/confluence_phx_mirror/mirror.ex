@@ -2299,10 +2299,13 @@ defmodule ConfluencePhxMirror.Mirror do
   defp limit_rows(query, limit), do: limit(query, ^limit)
 
   @doc """
-  What the mirror holds: spaces, pages, attachments, comments and labels.
+  What the mirror holds: spaces, pages, attachments, comments and labels — and
+  what is in its trash.
 
-  Five aggregates over tables that grow with the site, so it is computed once
-  per content version rather than once per request.
+  Aggregates over tables that grow with the site, so it is computed once per
+  content version rather than once per request. The trash is part of the same
+  answer because an operator asking "how big is this" is also asking "how much
+  of it is deleted but not gone yet".
   """
   def stats do
     Counters.fetch(:stats, fn ->
@@ -2314,7 +2317,9 @@ defmodule ConfluencePhxMirror.Mirror do
             pages: fragment("(SELECT count(*) FROM pages WHERE deleted_at IS NULL)"),
             attachments: fragment("(SELECT count(*) FROM attachments)"),
             comments: fragment("(SELECT count(*) FROM comments WHERE deleted_at IS NULL)"),
-            labels: fragment("(SELECT count(*) FROM labels)")
+            labels: fragment("(SELECT count(*) FROM labels)"),
+            trashed_pages: fragment("(SELECT count(*) FROM pages WHERE deleted_at IS NOT NULL)"),
+            trashed_spaces: fragment("(SELECT count(*) FROM spaces WHERE deleted_at IS NOT NULL)")
           }
         )
       )

@@ -17,6 +17,9 @@ defmodule ConfluencePhxMirror.Application do
     children = [
       ConfluencePhxMirror.Repo,
       ConfluencePhxMirror.Mirror.Counters,
+      # Keeps the last couple of hours of the catalogue gauges in memory, for the
+      # runtime dashboard's charts; attaches its telemetry handler at boot.
+      ConfluencePhxMirror.MetricsHistory,
       # Measures the blob mount once at boot and once a minute: the walk is the
       # one expensive thing on the admin page, and it does not belong to a
       # request.

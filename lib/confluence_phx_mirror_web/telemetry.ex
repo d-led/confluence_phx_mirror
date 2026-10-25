@@ -2,8 +2,6 @@ defmodule ConfluencePhxMirrorWeb.Telemetry do
   use Supervisor
   import Telemetry.Metrics
 
-  alias ConfluencePhxMirror.Mirror
-
   def start_link(arg) do
     Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
   end
@@ -93,17 +91,39 @@ defmodule ConfluencePhxMirrorWeb.Telemetry do
       # Two shapes, because two questions. `last_value` answers "how much is
       # there right now", which the poller samples; `counter` answers "how
       # often has this happened", which the request itself reports.
+      # Counts carry no unit: the chart's y-axis is a fixed 70px, and a suffix
+      # like "123551.000 page" is truncated to "000 page".
       last_value("confluence_mirror.catalogue.pages",
-        unit: :page,
         description: "Pages the mirror holds"
       ),
       last_value("confluence_mirror.catalogue.spaces",
-        unit: :space,
         description: "Spaces the mirror holds"
       ),
       last_value("confluence_mirror.catalogue.attachments",
-        unit: :attachment,
         description: "Attachments the mirror holds"
+      ),
+      last_value("confluence_mirror.catalogue.comments",
+        description: "Comments the mirror holds"
+      ),
+      last_value("confluence_mirror.catalogue.labels",
+        description: "Labels the mirror holds"
+      ),
+      last_value("confluence_mirror.catalogue.trashed_pages",
+        description: "Pages in the trash, restorable until purged"
+      ),
+      last_value("confluence_mirror.catalogue.trashed_spaces",
+        description: "Spaces in the trash, restorable until purged"
+      ),
+      last_value("confluence_mirror.catalogue.users",
+        description: "Accounts the mirror knows"
+      ),
+      last_value("confluence_mirror.catalogue.blob_bytes",
+        unit: :byte,
+        description: "Bytes the attachments and icons occupy on the blob mount"
+      ),
+      last_value("confluence_mirror.catalogue.database_bytes",
+        unit: :byte,
+        description: "Bytes the database occupies"
       ),
       counter("confluence_mirror.page.view.count",
         tags: [:kind],
@@ -116,19 +136,12 @@ defmodule ConfluencePhxMirrorWeb.Telemetry do
   Publishes what the mirror holds, so the catalogue can be charted over time.
 
   Called by the poller rather than by a request: the totals move when a sync
-  writes, which is not an event this process sees. The counting itself is
+  writes, which is not an event this process sees — a run publishes the same
+  numbers itself when it ends (`ConfluencePhxMirror.Metrics`). The counting is
   cached against the content's version (`Mirror.Counters`), so a quiet mirror
   answers with its existing totals instead of scanning.
   """
-  def measure_catalogue do
-    %{pages: pages, spaces: spaces, attachments: attachments} = Mirror.stats()
-
-    :telemetry.execute(
-      [:confluence_mirror, :catalogue],
-      %{pages: pages, spaces: spaces, attachments: attachments},
-      %{}
-    )
-  end
+  def measure_catalogue, do: ConfluencePhxMirror.Metrics.publish()
 
   # Polled measurements are the ones with no event to hook: a gauge needs a
   # value even when nothing happens. Only where someone is watching, because
