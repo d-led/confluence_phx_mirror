@@ -234,6 +234,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       Enum.map_join(tables, ", ", fn {name, bytes} -> "#{name} #{human_bytes(bytes)}" end)
   end
 
+  # Postgres says what it uses and never what is left, so a bar is only honest
+  # when the deployment told us how big the volume is.
+  defp database_percent(_database, capacity) when not is_integer(capacity), do: nil
+
+  defp database_percent(%{tablespace_bytes: used}, capacity) do
+    round(used * 100 / capacity)
+  end
+
+  defp database_line(%{bytes: bytes, tablespace_bytes: on_disk}, nil) do
+    "#{human_bytes(bytes)} database, " <>
+      "#{human_bytes(on_disk)} in the default tablespace (WAL and any other database in it)"
+  end
+
+  defp database_line(%{bytes: bytes}, capacity) do
+    "#{human_bytes(bytes)} database of a #{human_bytes(capacity)} volume"
+  end
+
   # "2.8 GB free of 16 GB" — memory is read the way a disk is, and the mirror's
   # own heap sits underneath it, because that is the part a sync grows.
   defp memory_line(%{available_bytes: available, total_bytes: total}) do
@@ -269,6 +286,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       # database a catalogue lookup on this tick.
       resources: Resources.mount(),
       database: Resources.database(),
+      database_capacity: Resources.database_capacity(),
       memory: Resources.memory(),
       # The shell's switcher draws a window of the directory, so the dashboard
       # sends a window.
@@ -477,8 +495,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             id="resources-database"
             label="Postgres"
             value={@database.bytes}
+            percent={database_percent(@database, @database_capacity)}
+            detail={database_line(@database, @database_capacity)}
             note={table_line(@database.tables)}
-            hint="the database's own files, on the machine that serves them"
+            hint="size from Postgres itself; a percentage needs CM_DATABASE_CAPACITY_GB"
           />
           <.resource_meter
             id="resources-memory"

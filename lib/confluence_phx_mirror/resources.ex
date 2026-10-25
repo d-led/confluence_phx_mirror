@@ -55,14 +55,18 @@ defmodule ConfluencePhxMirror.Resources do
   @doc """
   The running database, in bytes, and its biggest tables.
 
-  The database is usually another machine (Fly attaches it separately), so this
-  is a figure without a percentage: its own disk is not the one above.
+  `bytes` is the database; `tablespace_bytes` is everything the default
+  tablespace holds, WAL included — the figure that grows when a sync writes hard
+  and the one that fills a volume. Postgres has no function that answers "how
+  much is left": there is no `statvfs` behind SQL, so free space can only be
+  computed against a device size the deployment knows
+  (`CM_DATABASE_CAPACITY_GB`, see `database_capacity/0`).
   """
   def database do
-    %{rows: [[bytes]]} =
+    %{rows: [[bytes, tablespace_bytes]]} =
       Ecto.Adapters.SQL.query!(
         ConfluencePhxMirror.Repo,
-        "select pg_database_size(current_database())",
+        "select pg_database_size(current_database()), pg_tablespace_size('pg_default')",
         []
       )
 
@@ -76,8 +80,15 @@ defmodule ConfluencePhxMirror.Resources do
         []
       )
 
-    %{bytes: bytes, tables: Enum.map(rows, fn [name, size] -> {name, size} end)}
+    %{
+      bytes: bytes,
+      tablespace_bytes: tablespace_bytes,
+      tables: Enum.map(rows, fn [name, size] -> {name, size} end)
+    }
   end
+
+  @doc "How big the database's device is, when the deployment says so."
+  def database_capacity, do: Application.get_env(:confluence_phx_mirror, :database_capacity_bytes)
 
   @doc """
   The machine's memory, and how much of it this VM holds.

@@ -391,6 +391,13 @@ whether a sync can keep going; Postgres lives on another machine, so its figure
 carries no percentage. Memory comes from `os_mon` (`memsup`), which the release
 starts with the application.
 
+Postgres can say what it **uses** and never what is **left**: `pg_database_size`,
+`pg_tablespace_size` and `pg_total_relation_size` are all it has, and there is no
+SQL function over `statvfs`. The database card therefore shows the database, its
+on-disk footprint including WAL, and its biggest tables; set
+`CM_DATABASE_CAPACITY_GB` to the size of its volume (on Fly: `fly volumes list`)
+and it also draws a percentage, the same way the blob mount does.
+
 An open overview is read at two speeds: the run in flight every five seconds,
 because that is what an operator sits and watches, and everything else — the
 totals, the run table, the audit tail, the resource figures — on

@@ -28,6 +28,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.ResourcesTest do
 
     assert database =~ "Postgres"
     assert database =~ "biggest:"
+    # Postgres reports what it uses, never what is left, so without a configured
+    # volume size the card says what it does know: the tablespace footprint.
+    assert database =~ "in the default tablespace (WAL"
 
     memory = view |> render() |> text_of("#resources-memory")
 

@@ -159,11 +159,15 @@ if blob_root = System.get_env("MIRROR_BLOB_ROOT") do
   config :confluence_phx_mirror, blob_root: blob_root
 end
 
-# How often an open admin overview re-reads its totals. The run in flight has its
-# own five-second cadence; this is the slower one, and it is a knob because a
-# deployment may watch a thousand pages a second or a site that changes monthly.
 if stats_refresh = System.get_env("CM_ADMIN_STATS_REFRESH_SECONDS") do
   config :confluence_phx_mirror, admin_stats_refresh_seconds: String.to_integer(stats_refresh)
+end
+
+# Postgres reports what it uses and never what is left — no SQL function reaches
+# statvfs — so the database figure gets a percentage only when the size of its
+# volume is known. On Fly that is the volume's own size (`fly volumes list`).
+if capacity = System.get_env("CM_DATABASE_CAPACITY_GB") do
+  config :confluence_phx_mirror, database_capacity_bytes: String.to_integer(capacity) * 1024 ** 3
 end
 
 # The three switch columns from here on hand out identity without a sign-in.
