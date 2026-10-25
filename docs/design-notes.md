@@ -211,6 +211,11 @@ an unrelated paragraph of the page.
 
 ## Known limitations
 
+* Confluence's own emoji set (`:big_grin:`, the blue-star family) has no Unicode
+  character. `export_view` renders it as that shortcode text — its glyph exists
+  only as a Confluence-hosted image in `body.view` — so the mirror shows the
+  shortcode, exactly as Confluence's export does. Standard emoji and the classic
+  emoticons carry `data-emoji-fallback` or a classic name and are converted.
 * Comments are read-only and rendered flat (one reply level styled).
 * Confluence Cloud does not expose *space* permissions for reading, so they are
   mirrored only when a source can supply them; page restrictions are synced.

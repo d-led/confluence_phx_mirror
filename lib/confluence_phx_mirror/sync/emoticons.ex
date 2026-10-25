@@ -27,6 +27,11 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
   `html/1` applies the same rule to a body that was mirrored before this
   existed: it is the reason a mirror needs no resync for its emoticons to
   appear, and it changes nothing on a body the sync already converted.
+
+  Confluence's own emoji set (`:big_grin:`, the blue-star family) has no
+  Unicode character: `export_view` writes its shortcode as text, and the glyph
+  lives only in `body.view` as a Confluence-hosted image. Nothing in the export
+  distinguishes that text from prose, so it stays as it is.
   """
 
   # The classic emoticon set: what `<ac:name>` says before emoji short names
