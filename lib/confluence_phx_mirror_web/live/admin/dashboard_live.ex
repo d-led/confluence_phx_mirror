@@ -258,7 +258,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   defp share_percent(_bytes, total) when total <= 0, do: nil
 
   defp share_percent(bytes, total),
-    do: bytes * 100 / total |> Float.round(1) |> min(100)
+    do: (bytes * 100 / total) |> Float.round(1) |> min(100)
 
   # "2.8 GB free of 16 GB" — memory is read the way a disk is, and the mirror's
   # own heap sits underneath it, because that is the part a sync grows.
@@ -511,7 +511,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             label="Data mount"
             value={@resources.used_bytes}
             percent={@resources.device && @resources.device.percent}
-            share={@resources.device && share_percent(@resources.used_bytes, @resources.device.total_bytes)}
+            share={
+              @resources.device && share_percent(@resources.used_bytes, @resources.device.total_bytes)
+            }
             detail={device_line(@resources)}
             note={"#{@resources.files} files, measured #{Time.ago(@resources.measured_at)}"}
             hint={@resources.path}
