@@ -29,6 +29,12 @@ defmodule ConfluencePhxMirror.Sync.SweepWorker do
 
   @default_trigger "the sweep"
 
+  # How far apart the space jobs are due. One sync runs at a time, so jobs due
+  # sooner than their turn only wake up to find the gate taken and snooze; a
+  # minute between them keeps the queue a few rows deep instead of a hundred
+  # and fifty, and a slow space is never waited for by more than a handful.
+  @spacing_seconds 60
+
   @impl true
   def perform(%Oban.Job{args: args}) do
     trigger = trigger(args)
@@ -41,15 +47,21 @@ defmodule ConfluencePhxMirror.Sync.SweepWorker do
         {:error, reason} -> raise "could not list the site's spaces: #{inspect(reason)}"
       end
 
-    Enum.each(spaces, &queue(&1.key, trigger))
-    Logger.info("sweep queued #{length(spaces)} spaces", trigger: trigger)
+    spaces
+    |> Enum.with_index()
+    |> Enum.each(fn {space, position} -> queue(space.key, trigger, position) end)
+
+    Logger.info("sweep queued #{length(spaces)} spaces, #{@spacing_seconds}s apart",
+      trigger: trigger
+    )
+
     :ok
   end
 
-  defp queue(space_key, trigger) do
-    case %{"space_key" => space_key, "trigger" => trigger}
-         |> SpaceWorker.new()
-         |> Oban.insert() do
+  defp queue(space_key, trigger, position) do
+    args = %{"space_key" => space_key, "trigger" => trigger}
+
+    case args |> SpaceWorker.new(schedule_in: position * @spacing_seconds) |> Oban.insert() do
       {:ok, _job} -> :ok
       {:error, reason} -> raise "could not queue a sync of #{space_key}: #{inspect(reason)}"
     end

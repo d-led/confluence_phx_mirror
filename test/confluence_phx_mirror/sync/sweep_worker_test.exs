@@ -27,6 +27,21 @@ defmodule ConfluencePhxMirror.Sync.SweepWorkerTest do
     assert all_enqueued(worker: SpaceWorker) |> Enum.all?(&(&1.args["trigger"] == "the sweep"))
   end
 
+  test "spaces come due a minute apart, so the queue is never a hundred deep" do
+    assert :ok = perform_job(SweepWorker, %{"trigger" => "an administrator"})
+
+    due =
+      all_enqueued(worker: SpaceWorker)
+      |> Enum.map(& &1.scheduled_at)
+      |> Enum.sort(DateTime)
+
+    gaps =
+      due |> Enum.chunk_every(2, 1, :discard) |> Enum.map(fn [a, b] -> DateTime.diff(b, a) end)
+
+    assert length(due) > 1
+    assert Enum.all?(gaps, &(&1 == 60))
+  end
+
   test "a site that cannot be listed queues nothing and fails" do
     configure_source(FailingSource)
 

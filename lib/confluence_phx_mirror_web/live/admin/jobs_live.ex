@@ -117,12 +117,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
   defp trigger(%{args: %{"trigger" => trigger}}) when is_binary(trigger), do: trigger
   defp trigger(_job), do: nil
 
-  # What the job acts on, read off its arguments. The page knows no worker by
-  # name — a job added tomorrow says its own scope without a change here — so
-  # the only thing spelled out is how an argument names itself on the page:
-  # `space_key` reads as "space", the rest keep their key. `trigger` is left
-  # out because who asked is a column of its own.
+  # What the job acts on. A worker that can say it better passes a `scope`
+  # argument and it is printed as written ("every space", "the whole site, what
+  # changed"); otherwise the page reads the arguments back to the reader, which
+  # is why it knows no worker by name — a job added tomorrow says its own scope
+  # without a change here. The only thing spelled out is how an argument names
+  # itself: `space_key` reads as "space", the rest keep their key. `trigger` is
+  # left out because who asked is a column of its own.
   @argument_names %{"space_key" => "space", "confluence_id" => "page"}
+
+  defp scope(%{args: %{"scope" => scope}}) when is_binary(scope), do: scope
 
   defp scope(%{args: args}) do
     case args |> Map.delete("trigger") |> Enum.map_join(", ", &name_argument/1) do

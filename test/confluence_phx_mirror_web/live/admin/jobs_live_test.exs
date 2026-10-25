@@ -81,6 +81,22 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
     assert view |> element("#job-#{job.id}-scope") |> render() =~ "—"
   end
 
+  test "a worker that knows how to say its scope is printed as it wrote it", %{conn: conn} do
+    {:ok, job} =
+      ConfluencePhxMirror.Sync.SnapshotWorker.new(%{
+        "trigger" => "the hourly schedule",
+        "mode" => "incremental",
+        "scope" => "the whole site, what changed"
+      })
+      |> Oban.insert()
+
+    Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "available"])
+
+    {:ok, view, _html} = live(conn, ~p"/admin/jobs")
+
+    assert view |> element("#job-#{job.id}-scope") |> render() =~ "the whole site, what changed"
+  end
+
   test "a job's own column carries what its record says, and links to that run's log", %{
     conn: conn
   } do

@@ -134,6 +134,12 @@ http_defaults =
 config :confluence_phx_mirror,
        ConfluencePhxMirror.Confluence.HttpSource,
        Keyword.merge(http_defaults,
+         # Pages a run reads and writes at once. Each one holds a database
+         # connection for the length of its own transaction, so this is also
+         # how hard a re-read leans on Postgres: a shared-CPU database is
+         # happier at 2 than at 4 (see "A re-read, sized" in
+         # docs/operations.md).
+         sync_concurrency: String.to_integer(System.get_env("CM_SYNC_CONCURRENCY") || "4"),
          base_url: System.get_env("CM_CONFLUENCE_SITE"),
          email: System.get_env("CM_ATL_EMAIL"),
          api_token: System.get_env("CM_ATL_TOKEN"),

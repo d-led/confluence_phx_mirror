@@ -328,7 +328,37 @@ Two consequences worth knowing:
 
 A node that dies mid-job leaves its Oban row `executing`; `Oban.Plugins.Lifeline`
 rescues those after thirty minutes and retries them, so the queue never keeps
-listing work nobody is doing.
+listing work nobody is doing. `Oban.Pruner` keeps a finished job for a day
+(`max_age: {1, :day}`) instead of the queue's default minute, because the job
+row is the only per-space evidence a sweep leaves behind — "space LOAD431: 935
+pages, done".
+
+### A re-read, sized
+
+The arithmetic behind the two settings in `fly.toml` (`CM_SYNC_CONCURRENCY`,
+`POOL_TIMEOUT_MS`), measured on a 123,000-page site of 151 spaces:
+
+* **Pace.** A full re-read wrote 14,621 pages in 86 minutes — about **2.8 pages
+  per second**, network- and rate-limit-bound, on one shared vCPU.
+* **A space** of ~935 pages therefore takes **5–6 minutes**; runs measured 3 to
+  6. Two spaces is a coffee break, the whole site is **~12 hours** of continuous
+  work (123,000 ÷ 2.8 ÷ 3600).
+* **A sweep** is that work cut into 151 jobs, due **60 s apart**
+  (`SweepWorker`). Spacing does not change the total; it keeps the queue a few
+  rows deep instead of a hundred and fifty, and it means a restart costs the
+  space in flight rather than the sweep.
+* **Connections.** Each page in flight holds one database connection for its
+  own transaction (page row, labels, properties, then text, links, comments).
+  With `POOL_SIZE=10` and a four-page concurrency, a re-read put four writers on
+  a one-vCPU database; transactions slowed, checkouts queued, and the pool's
+  15 s patience ran out — `client … timed out because it queued and checked out
+  the connection for longer than 15000ms` — which severs the connection and
+  fails the whole run at the page it was writing. Hence **two pages at a time**
+  and a **60 s** checkout: a slow write is waited for instead of killed.
+* **What it costs.** Postgres is the bottleneck, not the app: the mirror's
+  machine holds ~391 MB and the blob mount 1.5 MB, while the database has
+  ~161 MB of data and one shared core to serve it. If a sweep still ends short,
+  the next step is the database machine's size, not more app concurrency.
 
 ## Watching it
 

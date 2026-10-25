@@ -111,7 +111,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   end
 
   defp snapshot(_params, socket) do
-    %{"trigger" => requested_by(socket)}
+    %{"trigger" => requested_by(socket), "scope" => "the whole site, what changed"}
     |> SnapshotWorker.new()
     |> Oban.insert()
 
@@ -119,7 +119,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   end
 
   defp full_sync(_params, socket) do
-    %{"trigger" => "#{requested_by(socket)}, re-reading everything"}
+    %{"trigger" => "#{requested_by(socket)}, re-reading everything", "scope" => "every space"}
     |> SweepWorker.new()
     |> Oban.insert()
 

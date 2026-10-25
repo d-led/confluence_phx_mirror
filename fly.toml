@@ -68,6 +68,18 @@ primary_region = "ams"
   # max_connections budget (docs/operations.md, "Sizing the connection pool").
   POOL_SIZE = "10"
 
+  # How long a caller waits for a connection before the pool severs it. The
+  # 15 s default is sized for a request; a full re-read writes a page's text,
+  # links and comments in one transaction against a shared-CPU database, and a
+  # checkout that queues past 15 s used to kill the run mid-space. See "A
+  # re-read, sized" in docs/operations.md for the arithmetic.
+  POOL_TIMEOUT_MS = "60000"
+
+  # Pages a run reads and writes at once; each holds a connection for its own
+  # transaction. Two, not four: the re-read is the heaviest thing this database
+  # is asked to do, and it has one shared vCPU.
+  CM_SYNC_CONCURRENCY = "2"
+
   # CM_ADMINS is *not* here on purpose: it names real people, and this file is
   # in a public repository. It is a secret — see `fly secrets list`.
 
