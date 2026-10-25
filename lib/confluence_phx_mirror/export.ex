@@ -42,10 +42,11 @@ defmodule ConfluencePhxMirror.Export do
   end
 
   @doc "Filename offered to the browser for one page."
-  def page_filename(%Page{} = page), do: sanitise(page.title) <> ".md"
+  def page_filename(%Page{} = page), do: slug(page.title, "page_#{page.confluence_id}") <> ".md"
 
   @doc "Filename offered to the browser for a space archive."
-  def archive_name(%Space{} = space), do: sanitise(space.name) <> ".zip"
+  def archive_name(%Space{} = space, at \\ DateTime.utc_now()),
+    do: download_name([space_name(space), "markdown"], at) <> ".zip"
 
   @doc """
   The mirror as a static site: every space the reader may see, as HTML pages,
@@ -82,11 +83,27 @@ defmodule ConfluencePhxMirror.Export do
     Site.archive([space], scope, opts)
   end
 
-  @doc "Filename offered for the whole-site static archive."
-  def site_archive_name, do: sanitise(Sites.name()) <> " site.zip"
+  @doc """
+  Filename offered for the whole-site static archive.
 
-  @doc "Filename offered for one space's static archive."
-  def space_site_archive_name(%Space{} = space), do: sanitise(space.name) <> " site.zip"
+      confluence_mirror_site_20261026T101530Z.zip
+  """
+  @spec site_archive_name(DateTime.t()) :: String.t()
+  def site_archive_name(at \\ DateTime.utc_now()),
+    do: download_name([slug(Sites.name(), "confluence_mirror"), "site"], at) <> ".zip"
+
+  @doc """
+  Filename offered for one space's static archive.
+
+      engineering_handbook_site_20261026T101530Z.zip
+  """
+  @spec space_site_archive_name(Space.t(), DateTime.t()) :: String.t()
+  def space_site_archive_name(%Space{} = space, at \\ DateTime.utc_now()),
+    do: download_name([space_name(space), "site"], at) <> ".zip"
+
+  # A space's own name, or its key when the name is written in a script a file
+  # name cannot carry: `Привет` becomes `privet`, not `untitled`.
+  defp space_name(%Space{} = space), do: slug(space.name, slug(space.key, "space"))
 
   @doc """
   Stream of `{path_in_zip, data_or_fun}` entries for a space archive.
@@ -260,6 +277,32 @@ defmodule ConfluencePhxMirror.Export do
     |> String.slice(0, 80)
     |> case do
       "" -> "Untitled"
+      safe -> safe
+    end
+  end
+
+  # A download's name says what the file is and when it was made:
+  # `dled_site_20261026T101530Z.zip`. Underscores only — a save dialog, an
+  # archive tool and a shared drive all keep them as they are.
+  defp download_name(parts, at) do
+    stamp = at |> DateTime.shift_zone!("Etc/UTC") |> Calendar.strftime("%Y%m%dT%H%M%SZ")
+
+    (Enum.map(parts, &slug/1) ++ [stamp]) |> Enum.join("_")
+  end
+
+  # Lowercase words joined by underscores, so `My first space` and
+  # `Café: notes/ideas` both become names nobody has to quote.
+  defp slug(value, fallback \\ "archive") do
+    value
+    |> to_string()
+    |> String.normalize(:nfd)
+    |> String.replace(~r/[^A-Za-z0-9]+/u, "_")
+    |> String.trim("_")
+    |> String.downcase()
+    |> String.slice(0, 80)
+    |> String.trim("_")
+    |> case do
+      "" -> slug(fallback)
       safe -> safe
     end
   end

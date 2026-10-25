@@ -275,11 +275,34 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       assert Map.has_key?(archive, "spaces/ENG/pages/#{Demo.open_page()}.html")
     end
 
-    test "names the download after the site" do
-      assert Export.site_archive_name() == "Confluence Mirror site.zip"
+    test "names the download after the site and the moment it was made" do
+      at = ~U[2026-10-26 10:15:30Z]
 
-      assert Export.space_site_archive_name(Mirror.get_space_by_key("ENG")) =~
-               "Engineering Handbook site.zip"
+      assert Export.site_archive_name(at) == "confluence_mirror_site_20261026T101530Z.zip"
+
+      assert Export.space_site_archive_name(Mirror.get_space_by_key("ENG"), at) ==
+               "engineering_handbook_site_20261026T101530Z.zip"
+    end
+
+    test "turns a space's own name into words a save dialog keeps" do
+      at = ~U[2026-10-26 10:15:30Z]
+      space = %Mirror.Space{name: "Café: notes/ideas"}
+
+      assert Export.space_site_archive_name(space, at) ==
+               "cafe_notes_ideas_site_20261026T101530Z.zip"
+
+      assert Export.archive_name(space, at) ==
+               "cafe_notes_ideas_markdown_20261026T101530Z.zip"
+    end
+
+    test "falls back to a key or an id when a name will not survive a file name" do
+      at = ~U[2026-10-26 10:15:30Z]
+      space = %Mirror.Space{name: "Привет", key: "PRIVET"}
+
+      assert Export.space_site_archive_name(space, at) == "privet_site_20261026T101530Z.zip"
+
+      page = %Mirror.Page{title: "Привет", confluence_id: 4_242}
+      assert Export.page_filename(page) == "page_4242.md"
     end
   end
 

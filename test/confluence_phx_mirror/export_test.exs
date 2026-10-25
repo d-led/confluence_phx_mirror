@@ -26,7 +26,7 @@ defmodule ConfluencePhxMirror.ExportTest do
     end
 
     test "names the file after the title" do
-      assert Export.page_filename(Mirror.get_page!(1002)) == "Architecture Overview.md"
+      assert Export.page_filename(Mirror.get_page!(1002)) == "architecture_overview.md"
     end
   end
 

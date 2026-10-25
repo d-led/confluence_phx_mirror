@@ -14,7 +14,7 @@ defmodule ConfluencePhxMirrorWeb.ExportControllerTest do
     assert conn.status == 200
     assert conn.resp_body =~ "## Overview"
     assert header(conn, "content-type") =~ "text/markdown"
-    assert header(conn, "content-disposition") =~ "Architecture Overview.md"
+    assert header(conn, "content-disposition") =~ "architecture_overview.md"
   end
 
   test "offers a space as a ZIP download", %{conn: conn} do
@@ -22,7 +22,7 @@ defmodule ConfluencePhxMirrorWeb.ExportControllerTest do
 
     assert conn.status == 200
     assert header(conn, "content-type") =~ "application/zip"
-    assert header(conn, "content-disposition") =~ "Engineering Handbook.zip"
+    assert header(conn, "content-disposition") =~ "engineering_handbook_markdown_"
   end
 
   test "offers a space as a static site", %{conn: conn} do
@@ -30,7 +30,7 @@ defmodule ConfluencePhxMirrorWeb.ExportControllerTest do
 
     assert conn.status == 200
     assert header(conn, "content-type") =~ "application/zip"
-    assert header(conn, "content-disposition") =~ "Engineering Handbook site.zip"
+    assert header(conn, "content-disposition") =~ "engineering_handbook_site_"
   end
 
   test "an unknown space is a 404", %{conn: conn} do

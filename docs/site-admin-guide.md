@@ -310,6 +310,20 @@ no network, no build step.
 | `/admin/export/site.zip` (admin dashboard → Static site) | every space as one static site | administrators only |
 | `/spaces/:key/export.zip` | that space as Markdown + attachments | anyone who may read the space |
 
+**A download says what it is and when it was made**, in lowercase words joined
+by underscores, with the moment in UTC:
+
+```text
+dled_site_20261026T101530Z.zip                  the whole site, as a static site
+engineering_handbook_site_20261026T101530Z.zip   one space, as a static site
+engineering_handbook_markdown_20261026T101530Z.zip  one space, as Markdown
+architecture_overview.md                        one page
+```
+
+So two copies of the same space sit side by side in a downloads folder instead
+of the second replacing the first, and nothing in a name needs quoting on a
+command line or in a URL.
+
 The static site contains:
 
 ```text

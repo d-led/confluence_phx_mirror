@@ -43,7 +43,7 @@ defmodule ConfluencePhxMirrorWeb.AdminSiteExportTest do
 
       assert conn.status == 200
       assert conn |> get_resp_header("content-type") |> hd() =~ "application/zip"
-      assert conn |> get_resp_header("content-disposition") |> hd() =~ "site.zip"
+      assert conn |> get_resp_header("content-disposition") |> hd() =~ "site_"
     end
   end
 
