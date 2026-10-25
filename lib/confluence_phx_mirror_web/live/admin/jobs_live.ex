@@ -109,6 +109,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
   defp trigger(%{args: %{"trigger" => trigger}}) when is_binary(trigger), do: trigger
   defp trigger(_job), do: nil
 
+  # What the job is *for*. A queue of identical "SpaceWorker" rows says nothing
+  # about which space each one reads, which is the only thing an operator
+  # looking at a re-read wants to know.
+  defp subject(%{worker: worker, args: args}) do
+    case {worker_name(worker), args} do
+      {"SpaceWorker", %{"space_key" => key}} -> "space #{key}"
+      {"SnapshotWorker", %{"mode" => "snapshot"}} -> "the whole site, re-read"
+      {"SnapshotWorker", _args} -> "the whole site, what changed"
+      {"SweepWorker", _args} -> "every space, one job each"
+      _other -> nil
+    end
+  end
+
   # "Long-running" is said only about a job that has been executing longer than
   # any run this mirror has measured; a shorter one is simply working.
   defp overdue?(%{state: "executing", attempted_at: %DateTime{} = at}, now) do
@@ -189,7 +202,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
               Progress
             </th>
             <th title="Attempts made out of the attempts allowed">Tries</th>
-            <th>Inserted</th>
+            <th title="When the job was queued">Queued</th>
             <th>Last attempt, or when it is due</th>
             <th><span class="sr-only">Stop</span></th>
           </:head>
@@ -197,9 +210,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
             <% job = row.job %>
             <td class="text-xs tabular-nums text-base-content/70">{job.id}</td>
             <td class="text-xs">
-              {worker_name(job.worker)}
+              <span class="font-medium">{worker_name(job.worker)}</span>
+              <span :if={subject(job)} class="text-base-content/70"> · {subject(job)}</span>
               <span :if={trigger(job)} class="block text-[11px] text-base-content/70">
-                {trigger(job)}
+                by {trigger(job)}
               </span>
             </td>
             <td>

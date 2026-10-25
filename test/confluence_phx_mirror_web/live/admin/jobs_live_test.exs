@@ -57,6 +57,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
     assert render(view) =~ worker_name(SpaceWorker)
   end
 
+  test "a job names the space it reads and who asked for it", %{conn: conn} do
+    job = sync_job("MFS") |> with_state("available")
+
+    {:ok, view, _html} = live(conn, ~p"/admin/jobs")
+
+    # A queue of identical "SpaceWorker" rows says nothing about which space
+    # each one reads, which is the only thing worth knowing about them.
+    row = view |> element("#job-#{job.id}") |> render()
+
+    assert row =~ "SpaceWorker"
+    assert row =~ "space MFS"
+    assert row =~ "by a test"
+  end
+
   test "a job says what its run has done so far, and links to that run's log", %{conn: conn} do
     job = sync_job("MFS") |> with_state("executing")
     run = run_of(job, "running", %{"pages" => 120, "changed" => 100, "phase" => "details"})
