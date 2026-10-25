@@ -382,10 +382,21 @@ var/mirror/spaces/ENG/pages/1002/attachments/9001/diagram.svg
 a disk fills: **Resources** shows what `MIRROR_BLOB_ROOT` holds (every file
 under it, counted once a minute by `ConfluencePhxMirror.Resources`), the room
 left on the device that path is on (`df`, in total and in percent, amber from
-75% and red from 90%), and the size of the running database with its biggest
-tables. On Fly the blob root is its own volume (`mirror_blobs`, 1 GB by
-default), so that is the number that decides whether a sync can keep going;
-Postgres lives on another machine, so its figure carries no percentage.
+75% and red from 90%), the size of the running database with its biggest
+tables, and the machine's memory — total minus *available*, so a page cache is
+not read as an emergency — with the part this VM holds underneath it, which is
+the half of the answer a large sync grows. On Fly the blob root is its own
+volume (`mirror_blobs`, 1 GB by default), so that is the number that decides
+whether a sync can keep going; Postgres lives on another machine, so its figure
+carries no percentage. Memory comes from `os_mon` (`memsup`), which the release
+starts with the application.
+
+An open overview is read at two speeds: the run in flight every five seconds,
+because that is what an operator sits and watches, and everything else — the
+totals, the run table, the audit tail, the resource figures — on
+`CM_ADMIN_STATS_REFRESH_SECONDS` (30 by default), because a mirror's totals do
+not move between heartbeats. A finished run refreshes the slow half at once, so
+the table never says "running" after the strip is gone.
 
 ## Notifications
 

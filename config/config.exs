@@ -67,6 +67,11 @@ config :confluence_phx_mirror,
   accounts: [login_token_minutes: 15],
   # How far back an incremental pull starts when the source has no cursor.
   sync: [lookback_seconds: 3600, personal_spaces: false, detail_backlog: 200],
+  # How often an open admin overview re-reads its totals, the run table and the
+  # resource figures. The run in flight has its own five-second cadence: this is
+  # the slower one, because a mirror's totals do not move between heartbeats.
+  # `CM_ADMIN_STATS_REFRESH_SECONDS` overrides it.
+  admin_stats_refresh_seconds: 30,
   # Simulated / production users get auto-provisioned in dev and test.
   auto_admin: false,
   self_signup: false,

@@ -28,6 +28,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.ResourcesTest do
 
     assert database =~ "Postgres"
     assert database =~ "biggest:"
+
+    memory = view |> render() |> text_of("#resources-memory")
+
+    assert memory =~ "Memory"
+    assert memory =~ "available of"
+    assert memory =~ "this VM:"
   end
 
   defp text_of(html, selector) do

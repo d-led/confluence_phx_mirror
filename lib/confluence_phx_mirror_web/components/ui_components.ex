@@ -92,7 +92,7 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
         class={["progress mt-1.5 h-1.5 w-full", meter_class(@percent)]}
         value={@percent}
         max="100"
-        aria-label={"#{@label}: #{@percent}% of its device is used"}
+        aria-label={"#{@label}: #{@percent}% used"}
       ></progress>
       <p :if={@detail} class="mt-1 text-[11px] text-base-content/70">{@detail}</p>
       <p :if={@note} class="text-[11px] text-base-content/60">{@note}</p>

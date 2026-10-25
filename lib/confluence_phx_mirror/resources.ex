@@ -79,6 +79,34 @@ defmodule ConfluencePhxMirror.Resources do
     %{bytes: bytes, tables: Enum.map(rows, fn [name, size] -> {name, size} end)}
   end
 
+  @doc """
+  The machine's memory, and how much of it this VM holds.
+
+  `used_bytes` counts what cannot be handed out — the total minus the memory
+  that is *available*, not the memory that is free: a healthy Linux box keeps
+  most of its RAM in the page cache, and calling that "99% used" would be an
+  alarm nobody should act on. `beam_bytes` is this node's own heap, which is
+  the half of the answer a sync can blow up.
+
+  `nil` when the operating system has not reported yet (memsup samples on its
+  own schedule), which is a reason to draw nothing rather than a zero.
+  """
+  def memory do
+    data = :memsup.get_system_memory_data()
+    total = Keyword.get(data, :system_total_memory) || Keyword.get(data, :total_memory)
+    available = Keyword.get(data, :available_memory) || Keyword.get(data, :free_memory)
+
+    if is_integer(total) and total > 0 and is_integer(available) do
+      %{
+        total_bytes: total,
+        available_bytes: available,
+        used_bytes: total - available,
+        percent: round((total - available) * 100 / total),
+        beam_bytes: :erlang.memory(:total)
+      }
+    end
+  end
+
   # Everything under the root, one entry at a time. `lstat` and not `stat`: a
   # symlink is not a file the store wrote, and following one could walk out of
   # the tree or round in a circle.

@@ -159,6 +159,13 @@ if blob_root = System.get_env("MIRROR_BLOB_ROOT") do
   config :confluence_phx_mirror, blob_root: blob_root
 end
 
+# How often an open admin overview re-reads its totals. The run in flight has its
+# own five-second cadence; this is the slower one, and it is a knob because a
+# deployment may watch a thousand pages a second or a site that changes monthly.
+if stats_refresh = System.get_env("CM_ADMIN_STATS_REFRESH_SECONDS") do
+  config :confluence_phx_mirror, admin_stats_refresh_seconds: String.to_integer(stats_refresh)
+end
+
 # The three switch columns from here on hand out identity without a sign-in.
 # They belong to development and to the bundled demo, so a production release
 # that mirrors a real site refuses to start with them on rather than quietly

@@ -54,6 +54,22 @@ defmodule ConfluencePhxMirror.ResourcesTest do
     assert %{used_bytes: 0, files: 0} = Resources.measure(store)
   end
 
+  test "memory is what cannot be handed out, and this VM's share of it" do
+    assert %{
+             total_bytes: total,
+             available_bytes: available,
+             used_bytes: used,
+             percent: percent,
+             beam_bytes: beam
+           } = Resources.memory()
+
+    assert total > 0
+    assert available >= 0
+    assert used == total - available
+    assert percent in 0..100
+    assert beam > 0 and beam < total
+  end
+
   defp store(dir, path, bytes) do
     full = Path.join(dir, path)
     File.mkdir_p!(Path.dirname(full))

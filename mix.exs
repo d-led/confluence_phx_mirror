@@ -29,7 +29,11 @@ defmodule ConfluencePhxMirror.MixProject do
   def application do
     [
       mod: {ConfluencePhxMirror.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      # os_mon is what answers "how much memory is left": memsup samples the
+      # machine, which is the number the admin overview shows next to the
+      # mirror's own heap. It also raises a system alarm when the disk or the
+      # memory crosses its watermark, which lands in the log for free.
+      extra_applications: [:logger, :runtime_tools, :os_mon]
     ]
   end
 

@@ -26,14 +26,26 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   alias ConfluencePhxMirrorWeb.Plugs
   alias ConfluencePhxMirrorWeb.Time
 
-  @refresh_ms 5_000
+  # Two cadences, because two kinds of number live here. What a run is doing
+  # moves by the second and is the thing an operator sits and watches, so the
+  # strip above the totals is re-read every five seconds. The totals, the run
+  # table, the audit tail and the resource figures move slowly — a mirror's page
+  # count does not change between heartbeats — so they are re-read on their own,
+  # longer interval, which a deployment can set
+  # (`CM_ADMIN_STATS_REFRESH_SECONDS`, 30 by default).
+  @progress_ms 5_000
+  @stats_seconds 30
+
   # The "sync one space" panel narrows in the database and takes a window: a
   # site with hundreds of spaces should not feel like a list of hundreds.
   @space_window 20
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: :timer.send_interval(@refresh_ms, self(), :refresh)
+    if connected?(socket) do
+      :timer.send_interval(@progress_ms, self(), :progress)
+      :timer.send_interval(stats_refresh_ms(), self(), :stats)
+    end
 
     {:ok,
      assign(socket,
@@ -46,7 +58,30 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   end
 
   @impl true
-  def handle_info(:refresh, socket), do: {:noreply, load(socket)}
+  def handle_info(:stats, socket), do: {:noreply, assign_stats(socket)}
+
+  def handle_info(:progress, socket) do
+    refreshed = assign_progress(socket)
+
+    # A run that just ended is the one moment the slow numbers are wrong in a
+    # way an operator notices: the strip is gone and the row still says
+    # "running". Catching the table up here costs one read, once per run.
+    if socket.assigns.running && is_nil(refreshed.assigns.running) do
+      {:noreply, assign_stats(refreshed)}
+    else
+      {:noreply, refreshed}
+    end
+  end
+
+  # The configuration says how long an admin waits for the totals to move; the
+  # timer wants milliseconds, and a zero or negative setting would mean a
+  # request loop, so a nonsense value falls back to the default.
+  defp stats_refresh_ms do
+    case Application.get_env(:confluence_phx_mirror, :admin_stats_refresh_seconds) do
+      seconds when is_integer(seconds) and seconds > 0 -> seconds * 1000
+      _unset -> @stats_seconds * 1000
+    end
+  end
 
   # Every event is a name and a handler: the clauses are one line each, so this
   # function reads as the table of what the dashboard can be asked to do.
@@ -199,6 +234,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       Enum.map_join(tables, ", ", fn {name, bytes} -> "#{name} #{human_bytes(bytes)}" end)
   end
 
+  # "2.8 GB free of 16 GB" — memory is read the way a disk is, and the mirror's
+  # own heap sits underneath it, because that is the part a sync grows.
+  defp memory_line(%{available_bytes: available, total_bytes: total}) do
+    "#{human_bytes(available)} available of #{human_bytes(total)}"
+  end
+
   # The audit log answers "who asked for this?" for every run, so a manual one
   # carries the address of the admin who pressed the button.
   defp requested_by(socket) do
@@ -208,12 +249,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     end
   end
 
-  defp load(socket) do
-    # A "running" run whose node is gone would otherwise sit at the top of this
-    # table forever. The check is one advisory-lock probe while a sync runs and
-    # one indexed select while none does.
-    Sync.abandon_abandoned_runs()
+  defp load(socket), do: socket |> assign_stats() |> assign_progress()
 
+  # Everything that changes slowly enough to be read on the configured interval:
+  # the totals, the run table, the audit tail, the recent pages, and what this
+  # node occupies.
+  defp assign_stats(socket) do
     runs =
       Repo.all(
         from r in SyncRun,
@@ -228,20 +269,36 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       # database a catalogue lookup on this tick.
       resources: Resources.mount(),
       database: Resources.database(),
+      memory: Resources.memory(),
       # The shell's switcher draws a window of the directory, so the dashboard
-      # sends a window: this reloads every five seconds.
+      # sends a window.
       spaces: Mirror.list_spaces(limit: Plugs.SiteContext.switcher_limit()),
       # Queue and history are one list: what waits is what an operator can still
       # stop, and it reads next to what already ran.
       rows: sync_rows(Sync.queued(), runs),
-      # The one the cancel button acts on: only ever zero or one, because the
-      # mirror runs one sync at a time.
-      running: Enum.find(runs, &(&1.status == "running")),
-      progress: progress(Enum.find(runs, &(&1.status == "running"))),
       audit: Audit.recent(18),
       recent_pages: Mirror.recent_pages(8),
       last_sync: Mirror.last_successful_sync_run()
     )
+  end
+
+  # The one thing that moves by the second: the run in flight. Only ever zero or
+  # one, because the mirror runs one sync at a time.
+  defp assign_progress(socket) do
+    # A "running" run whose node is gone would otherwise sit at the top of this
+    # table forever. The check is one advisory-lock probe while a sync runs and
+    # one indexed select while none does.
+    Sync.abandon_abandoned_runs()
+
+    running =
+      Repo.one(
+        from r in SyncRun,
+          where: r.status == "running",
+          order_by: [desc: r.started_at],
+          limit: 1
+      )
+
+    assign(socket, running: running, progress: progress(running))
   end
 
   @impl true
@@ -406,7 +463,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
         title="Resources"
         subtitle="What this node occupies, and the room left beside it."
       >
-        <div class="grid gap-3 sm:grid-cols-2">
+        <div class="grid gap-3 sm:grid-cols-3">
           <.resource_meter
             id="resources-blob-mount"
             label="Data mount"
@@ -423,6 +480,24 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             note={table_line(@database.tables)}
             hint="the database's own files, on the machine that serves them"
           />
+          <.resource_meter
+            id="resources-memory"
+            label="Memory"
+            value={@memory.used_bytes}
+            percent={@memory.percent}
+            detail={memory_line(@memory)}
+            note={"this VM: #{human_bytes(@memory.beam_bytes)}"}
+            hint="the machine's memory, and the part of it this node holds"
+          />
+          <%!-- memsup samples on its own schedule; before its first sample there
+          is a figure nobody should invent. --%>
+          <p
+            :if={is_nil(@memory)}
+            id="resources-memory"
+            class="rounded-lg border border-base-300/70 bg-base-100 px-3 py-2 text-[11px] text-base-content/60"
+          >
+            Memory: the system has not reported it yet.
+          </p>
         </div>
       </.section>
 
