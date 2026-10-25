@@ -411,7 +411,7 @@ defmodule ConfluencePhxMirror.Export.Site do
       space_name: plan.space.name,
       space_key: plan.space.key,
       space_href: prefix <> space_index_path(plan.space.key),
-      tree: tree_nodes(plan, prefix),
+      path: path_nodes(plan, row, prefix),
       children: children(plan, row, prefix),
       crumbs: crumbs(plan, row, prefix),
       attachments: attachment_links(plan, row, attachments, prefix),
@@ -461,6 +461,18 @@ defmodule ConfluencePhxMirror.Export.Site do
       href: prefix <> page_path(space_key, row.confluence_id),
       children: Enum.map(row.children, &tree_node(space_key, &1, prefix))
     }
+  end
+
+  # The way from the space's root to this page's parent: what a reader needs to
+  # place the page, and O(depth) rather than O(pages in the space).
+  defp path_nodes(plan, row, prefix) do
+    row.ancestors
+    |> Enum.reject(&(&1 == plan.space.homepage_confluence_id))
+    |> Enum.map(&plan.by_id[&1])
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(fn ancestor ->
+      %{title: ancestor.title, href: prefix <> page_path(plan.space.key, ancestor.confluence_id)}
+    end)
   end
 
   defp children(plan, row, prefix) do

@@ -343,12 +343,22 @@ its own files). Each document is a page's title, space, labels, date and the
 first 400 characters of its text; matching is client-side and ranks titles
 above spaces and labels, above the body.
 
+Every page carries the trail that leads to it — space, then each parent — and
+a link to the space's front page, which holds the space's whole page tree
+once. That is deliberate: a tree in every page makes the archive quadratic, and
+a space of 900 pages would ship its tree 900 times.
+
+The ZIP deflates what deflation helps (HTML, Markdown, JSON) and stores what it
+does not (attachments are usually already compressed), and it is written in the
+ZIP64 format when a site needs it — more than 65,535 files, or more than 4 GiB —
+so the archive stays readable. As a guide: a 935-page space is about 2 MB; a
+site of 120,000 mostly-title-only pages is a few hundred MB, and takes minutes
+to prepare.
+
 What it does not do: content Confluence renders only in the browser (Jira
 issues, page trees, gadgets) already reads as the mirror's "cannot be shown in
 the static mirror" note, and syntax highlighting — a reader-screen script —
-is not applied to exported code blocks. The archive is a snapshot taken while
-the download runs; on a large site that takes minutes, and the ZIP is stored
-rather than deflated, so its size is close to the sum of its files.
+is not applied to exported code blocks.
 
 ## Who may read what
 

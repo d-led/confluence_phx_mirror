@@ -168,7 +168,12 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
 
   `:page` is the mirrored page; `:body` the HTML already rewritten for the
   archive; `:attachments` are `%{name, href, size}` rows; `:children` and
-  `:crumbs` are `%{title, href}` maps; `:original` is the Confluence URL.
+  `:crumbs` are `%{title, href}` maps; `:path` is the trail from the space's
+  root down to this page's parent; `:original` is the Confluence URL.
+
+  The navigation is that trail, not the space's whole page tree: a tree in
+  every page makes the archive quadratic — a space of 900 pages would carry its
+  whole tree 900 times — so the tree lives once, on the space's front page.
   """
   attr :title, :string, required: true
   attr :prefix, :string, required: true
@@ -178,7 +183,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
   attr :space_name, :string, required: true
   attr :space_key, :string, required: true
   attr :space_href, :string, required: true
-  attr :tree, :list, required: true
+  attr :path, :list, default: []
   attr :children, :list, default: []
   attr :crumbs, :list, default: []
   attr :attachments, :list, default: []
@@ -205,7 +210,20 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
           <a href={@space_href} class="truncate hover:text-primary">{@space_name}</a>
           <span class="badge badge-ghost badge-xs">{@space_key}</span>
         </p>
-        <.tree nodes={@tree} current={@page.confluence_id} />
+        <a
+          href={@space_href}
+          class="mb-3 block text-[11px] font-medium text-primary hover:underline"
+        >
+          All pages in {@space_key} →
+        </a>
+        <ol class="space-y-1 text-xs">
+          <li :for={node <- @path}>
+            <a href={node.href} class="block truncate text-base-content/70 hover:text-primary">
+              {node.title}
+            </a>
+          </li>
+          <li class="truncate font-medium" aria-current="page">{@page.title}</li>
+        </ol>
       </:nav>
 
       <article>

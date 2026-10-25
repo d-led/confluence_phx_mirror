@@ -16,6 +16,12 @@ defmodule ConfluencePhxMirrorWeb.ArchiveDownload do
 
   alias ConfluencePhxMirror.Export.Zip
 
+  # A site is hundreds of thousands of files; one socket write per file spends
+  # more time in the kernel than in the archive. Entries are gathered into
+  # batches first — the first really goes out only when the batch is full, so a
+  # reader still sees the download start immediately.
+  @batch 64
+
   @doc "Sends `entries` — `{path, data_or_fun}` pairs — as `filename`."
   @spec send(Plug.Conn.t(), Enumerable.t(), String.t()) :: Plug.Conn.t()
   def send(conn, entries, filename) do
@@ -32,6 +38,7 @@ defmodule ConfluencePhxMirrorWeb.ArchiveDownload do
   defp stream(conn, entries) do
     entries
     |> Zip.chunks()
+    |> Stream.chunk_every(@batch)
     |> Enum.reduce_while(conn, fn data, conn ->
       case chunk(conn, IO.iodata_to_binary(data)) do
         {:ok, conn} -> {:cont, conn}

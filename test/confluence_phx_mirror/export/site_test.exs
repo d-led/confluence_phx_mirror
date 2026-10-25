@@ -73,6 +73,15 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       assert page =~ "Original on Confluence"
     end
 
+    test "a page carries its own trail, not the whole space tree", %{files: files} do
+      page = files["spaces/ENG/pages/#{Demo.open_page()}.html"]
+
+      assert page =~ "All pages in ENG"
+      # The tree would link every sibling; the trail links only the way here,
+      # and the tree itself is on the space's front page, once.
+      refute page =~ "pages/#{Demo.restricted_page()}.html"
+    end
+
     test "needs no script: the heading permalinks are already in the page", %{files: files} do
       page = files["spaces/ENG/pages/#{Demo.open_page()}.html"]
 
