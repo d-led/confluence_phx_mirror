@@ -12,6 +12,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
 
   @tabs [
     {:overview, "Overview", "hero-squares-2x2"},
+    {:jobs, "Jobs", "hero-queue-list"},
     {:sync_log, "Sync log", "hero-bars-arrow-down"},
     {:webhooks, "Webhooks", "hero-bolt"},
     {:audit, "Audit", "hero-clipboard-document-list"},
@@ -226,6 +227,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
   end
 
   defp tab_path(:overview), do: ~p"/admin"
+  defp tab_path(:jobs), do: ~p"/admin/jobs"
   defp tab_path(:sync_log), do: ~p"/admin/sync-log"
   defp tab_path(:webhooks), do: ~p"/admin/webhooks"
   defp tab_path(:audit), do: ~p"/admin/audit"

@@ -111,6 +111,17 @@ defmodule ConfluencePhxMirror.AuditDescriptionTest do
     assert sentence("space.created", %{}) == "space.created"
   end
 
+  # A cancelled job names the worker and the state it was in, because "cancelled
+  # a waiting job" and "cancelled one that was left executing" are different
+  # incidents, and only the row knows which.
+  test "a cancelled job says which job, and what it was doing" do
+    assert sentence("job.cancelled", %{
+             "worker" => "Elixir.App.SnapshotWorker",
+             "state" => "executing"
+           }) ==
+             "Cancelled job 7 (Elixir.App.SnapshotWorker, executing)"
+  end
+
   test "the actor is a person's address, the system's name, or a webhook" do
     assert Audit.actor(%Event{actor_type: "user", actor_label: "jane@acme.com"}) ==
              "jane@acme.com"
@@ -122,7 +133,7 @@ defmodule ConfluencePhxMirror.AuditDescriptionTest do
     assert Audit.actor(%Event{actor_type: "user", actor_label: nil}) == "user"
   end
 
-  defp sentence(action, metadata) do
-    Audit.describe(%Event{action: action, metadata: metadata})
+  defp sentence(action, metadata, entity_id \\ 7) do
+    Audit.describe(%Event{action: action, metadata: metadata, entity_id: entity_id})
   end
 end

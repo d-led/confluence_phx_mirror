@@ -88,6 +88,42 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
     refute render(view) =~ "attachment pruned: another.svg"
   end
 
+  # A job's row on the jobs page links here with the run it started, because the
+  # log is one tail for every run and "what is this job doing?" is a question
+  # about one of them.
+  test "a run in the address narrows the log to that run's lines", %{conn: conn} do
+    Log.add(:info, "pages listed for run 7", sync_run_id: 7)
+    Log.add(:info, "details rendered for run 8", sync_run_id: 8)
+
+    {:ok, view, html} = live(conn, ~p"/admin/sync-log?run=7")
+
+    assert html =~ "pages listed for run 7"
+    refute html =~ "details rendered for run 8"
+    assert has_element?(view, "#sync-log-run-filter")
+
+    # A line of another run arriving now is not this run's business either.
+    write(:info, "another line for run 8", sync_run_id: 8)
+    refute render(view) =~ "another line for run 8"
+
+    write(:info, "another line for run 7", sync_run_id: 7)
+    assert render(view) =~ "another line for run 7"
+  end
+
+  test "a run filter can be taken off again", %{conn: conn} do
+    Log.add(:info, "pages listed for run 7", sync_run_id: 7)
+    Log.add(:info, "details rendered for run 8", sync_run_id: 8)
+
+    {:ok, view, _html} = live(conn, ~p"/admin/sync-log?run=7")
+
+    assert has_element?(view, "#sync-log-run-filter a[href='/admin/sync-log']")
+
+    # Without the parameter the page is what it always was: every run's lines.
+    {:ok, _everything, html} = live(conn, ~p"/admin/sync-log")
+
+    assert html =~ "details rendered for run 8"
+    refute html =~ "sync-log-run-filter"
+  end
+
   test "a filter decides what arrives after it is set", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
 
@@ -239,8 +275,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
     assert html =~ "answers=200×3"
   end
 
-  defp write(level, message) do
-    Log.add(level, message)
+  defp write(level, message, details \\ []) do
+    Log.add(level, message, details)
     # The log takes a line as a cast and broadcasts it to this page's process
     # before it answers a call, so reading the ring waits for both.
     Log.entries()

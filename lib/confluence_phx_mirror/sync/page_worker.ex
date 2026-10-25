@@ -20,9 +20,10 @@ defmodule ConfluencePhxMirror.Sync.PageWorker do
   @actor {:system, "page-worker"}
 
   @impl true
-  def perform(%Oban.Job{args: %{"confluence_id" => id} = args}) do
+  def perform(%Oban.Job{id: job_id, args: %{"confluence_id" => id} = args}) do
     case Sync.run(:page,
            confluence_id: confluence_id(id),
+           job_id: job_id,
            actor: @actor,
            trigger: trigger(args)
          ) do

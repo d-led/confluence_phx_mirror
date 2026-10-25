@@ -31,8 +31,8 @@ defmodule ConfluencePhxMirror.Sync.SnapshotWorker do
   @actor {:system, "snapshot-worker"}
 
   @impl true
-  def perform(%Oban.Job{args: args}) do
-    case Sync.run(mode(args), actor: @actor, trigger: trigger(args)) do
+  def perform(%Oban.Job{id: job_id, args: args}) do
+    case Sync.run(mode(args), job_id: job_id, actor: @actor, trigger: trigger(args)) do
       {:ok, _run} ->
         :ok
 

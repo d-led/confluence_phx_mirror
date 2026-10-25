@@ -116,6 +116,7 @@ defmodule ConfluencePhxMirror.Audit do
   """
   def describe(%{action: "user." <> kind} = event), do: user_sentence(kind, event)
   def describe(%{action: "sync." <> kind} = event), do: sync_sentence(kind, event)
+  def describe(%{action: "job." <> kind} = event), do: job_sentence(kind, event)
   def describe(%{action: "api_token." <> kind} = event), do: token_sentence(kind, event)
 
   def describe(%{action: "subscription." <> kind, metadata: meta}),
@@ -165,6 +166,16 @@ defmodule ConfluencePhxMirror.Audit do
   defp sync_sentence("failed", %{metadata: meta}), do: "A sync failed: #{meta["error"]}"
 
   defp sync_sentence(_kind, %{action: action}), do: action
+
+  # A job is what Oban holds rather than what a run did, so the sentence names
+  # the job and the state it was stopped in: a waiting job cancelled is a
+  # different incident from an executing one that was left behind.
+  defp job_sentence("cancelled", %{entity_id: id, metadata: meta}) do
+    detail = [meta["worker"], meta["state"]] |> Enum.reject(&is_nil/1) |> Enum.join(", ")
+    "Cancelled job #{id} (#{detail})"
+  end
+
+  defp job_sentence(_kind, %{action: action}), do: action
 
   # "an incremental pull", "a snapshot": the sentence is read, not parsed.
   defp article("incremental"), do: "an"

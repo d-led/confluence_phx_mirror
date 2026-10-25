@@ -41,17 +41,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   @levels %{"info" => ~w(info warn error)a, "warn" => ~w(warn error)a, "error" => ~w(error)a}
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     if connected?(socket), do: Phoenix.PubSub.subscribe(ConfluencePhxMirror.PubSub, Log.topic())
 
     %{entries: entries, counts: counts, held: held} = Log.snapshot()
-    shown = filter_entries(entries, "all", "")
+    run = run_from_params(params)
+    shown = filter_entries(entries, "all", "", run)
 
     {:ok,
      socket
      |> assign(
        level: "all",
        query: "",
+       run: run,
        follow?: true,
        level_options: @level_options,
        counts: counts,
@@ -63,6 +65,30 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
      )
      |> stream(:log, shown, limit: -Log.limit())}
   end
+
+  # A job's row links here with `?run=<id>`, which is the whole filter: the lines
+  # that run wrote, out of the one tail every run writes into. `mount/3` reads it
+  # for the first paint; this reads it again because the link that removes it is
+  # a live navigation, which keeps this process mounted and only changes the URL.
+  @impl true
+  def handle_params(params, _uri, socket) do
+    run = run_from_params(params)
+
+    if run == socket.assigns.run do
+      {:noreply, socket}
+    else
+      {:noreply, socket |> assign(:run, run) |> refilter()}
+    end
+  end
+
+  defp run_from_params(%{"run" => run}) do
+    case Integer.parse(to_string(run)) do
+      {id, ""} -> id
+      _not_an_id -> nil
+    end
+  end
+
+  defp run_from_params(_params), do: nil
 
   @impl true
   # The level and the words are one filter, so they are one form and one event:
@@ -120,7 +146,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   # One line is one insert: the lines already in the browser are not rendered
   # again, not re-counted, and not sent.
   defp add_line(socket, entry) do
-    if passes?(entry, socket.assigns.level, socket.assigns.query) do
+    if passes?(entry, socket.assigns.level, socket.assigns.query, socket.assigns.run) do
       socket
       |> stream_insert(:log, entry, at: -1, limit: -Log.limit())
       |> assign(:shown, min(socket.assigns.shown + 1, Log.limit()))
@@ -135,7 +161,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   # keep its place anyway.
   defp refilter(socket) do
     %{entries: entries, counts: counts, held: held} = Log.snapshot()
-    shown = filter_entries(entries, socket.assigns.level, socket.assigns.query)
+
+    shown =
+      filter_entries(entries, socket.assigns.level, socket.assigns.query, socket.assigns.run)
 
     socket
     |> assign(counts: counts, held: held, shown: length(shown), newest_id: newest_id(entries))
@@ -164,13 +192,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
 
   defp shown_tooltip(_held), do: "Every line the log holds."
 
-  defp filter_entries(entries, level, query), do: Enum.filter(entries, &passes?(&1, level, query))
+  defp filter_entries(entries, level, query, run),
+    do: Enum.filter(entries, &passes?(&1, level, query, run))
 
-  defp passes?(entry, level, query) do
+  defp passes?(entry, level, query, run) do
     needle = String.downcase(query)
     levels = Map.get(@levels, level, @everything)
 
     entry.level in levels and
+      (is_nil(run) or entry.run_id == run) and
       (needle == "" or String.contains?(String.downcase(entry.message), needle) or
          String.contains?(String.downcase(inspect(entry.details)), needle))
   end
@@ -313,6 +343,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
           <span data-copy-label>Copy</span>
         </button>
       </div>
+
+      <p :if={@run} id="sync-log-run-filter" class="mt-2 flex flex-wrap items-center gap-2">
+        <span class="badge badge-outline badge-sm">run #{@run}</span>
+        <span class="text-[11px] text-base-content/70">
+          Only the lines this run wrote — the log is one tail for every run, so this is a view of it.
+        </span>
+        <.link navigate={~p"/admin/sync-log"} class="link link-hover text-[11px] text-primary">
+          Show every run
+        </.link>
+      </p>
 
       <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-base-content/70">
         <span>{@counts.info} info</span>

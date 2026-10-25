@@ -16,9 +16,10 @@ defmodule ConfluencePhxMirror.Sync.SpaceWorker do
   @actor {:system, "space-worker"}
 
   @impl true
-  def perform(%Oban.Job{args: %{"space_key" => space_key} = args}) do
+  def perform(%Oban.Job{id: job_id, args: %{"space_key" => space_key} = args}) do
     case Sync.run(:space,
            space_key: space_key,
+           job_id: job_id,
            actor: @actor,
            trigger: trigger(args)
          ) do

@@ -23,6 +23,9 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
     field :cancel_requested_at, :utc_datetime
     field :stats, :map, default: %{}
     field :error, :string
+    # The job Oban was holding while this run did the work, when a job asked for
+    # it: a run started from `mix confluence.sync` has none.
+    field :job_id, :integer
 
     timestamps(type: :utc_datetime)
   end
@@ -38,7 +41,8 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
       :finished_at,
       :cancel_requested_at,
       :stats,
-      :error
+      :error,
+      :job_id
     ])
     |> validate_required([:source, :mode, :status, :started_at])
     |> validate_inclusion(:mode, @modes)

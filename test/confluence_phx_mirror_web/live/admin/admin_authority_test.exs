@@ -70,6 +70,14 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminAuthorityTest do
     assert {:error, {:redirect, %{to: "/"}}} = live(conn, ~p"/admin/trash")
   end
 
+  # Oban's own rows name every job the mirror runs, and stopping one ends a
+  # sync, so the page is administration like the rest of `/admin`.
+  test "a member cannot open the jobs page", %{conn: conn, reader: reader} do
+    conn = Plug.Test.init_test_session(conn, %{"user_id" => reader.id})
+
+    assert {:error, {:redirect, %{to: "/"}}} = live(conn, ~p"/admin/jobs")
+  end
+
   test "a demoted administrator cannot empty a trash left open in a tab", %{
     conn: conn,
     keeper: keeper

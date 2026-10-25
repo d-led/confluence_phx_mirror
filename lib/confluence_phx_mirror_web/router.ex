@@ -176,6 +176,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
       pipe_through :browser
 
       live "/", DashboardLive, :index
+      live "/jobs", JobsLive, :index
       live "/webhooks", WebhooksLive, :index
       live "/users", UsersLive, :index
       live "/identities", IdentitiesLive, :index
