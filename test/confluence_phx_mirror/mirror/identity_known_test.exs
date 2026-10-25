@@ -12,8 +12,6 @@ defmodule ConfluencePhxMirror.Mirror.IdentityKnownTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Mirror.Comment
-  alias ConfluencePhxMirror.Repo
 
   test "a member of a synced group is known, whatever the case of the address" do
     {:ok, _} = Mirror.replace_group_members("confluence-users", [%{email: "Jane@Example.com"}])
@@ -68,16 +66,5 @@ defmodule ConfluencePhxMirror.Mirror.IdentityKnownTest do
     refute Mirror.identity_known?(["stranger@example.com"])
     refute Mirror.identity_known?([])
     refute Mirror.identity_known?([nil])
-  end
-
-  defp comment_fixture(page, attrs) do
-    id = System.unique_integer([:positive])
-
-    {:ok, comment} =
-      %Comment{page_id: page.id}
-      |> Comment.changeset(Map.merge(%{confluence_id: id}, attrs))
-      |> Repo.insert()
-
-    comment
   end
 end

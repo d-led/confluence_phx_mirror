@@ -114,6 +114,13 @@ legacy, each next to the shape it would take today. Fly's
 long version of this section — the rename is its worked example of getting the
 order wrong.
 
+**One concurrent index build per table per migration.** Two
+`CREATE INDEX CONCURRENTLY` statements on the same table deadlock against each
+other — the first waits for the second's snapshot while the second waits for the
+table's `ShareUpdateExclusiveLock` — and the migration is the side Postgres
+aborts. If a table needs two indexes, write two migrations, or reconsider the
+second index.
+
 ## Sizing the connection pool
 
 The pool is DBConnection's (`Ecto.Adapters.Postgres` → Postgrex →

@@ -268,4 +268,36 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       refute text =~ "data-colorid="
     end
   end
+
+  describe "emoticons" do
+    test "an export-view emoticon image becomes the character, not an external image" do
+      html = """
+      <p>Ship it <img class="emoticon emoticon-tick" data-emoticon-name="tick"
+                      alt="(tick)" src="https://dled.atlassian.net/wiki/images/icons/emoticons/check.png" /></p>
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ "Ship it ✅"
+      refute result.html =~ "<img"
+      assert result.text =~ "✅"
+    end
+
+    test "an emoji keeps the character Confluence stored for it" do
+      html = """
+      <p>Party <img class="emoticon emoticon-smile" data-emoji-shortname=":slight_smile:"
+                      data-emoji-fallback="🙂" src="https://dled.atlassian.net/wiki/images/icons/emoticons/smile.png"
+                      alt="(smile)" /></p>
+      """
+
+      assert Renderer.render(html, context()).html =~ "Party 🙂"
+    end
+
+    test "an image it cannot name stays an image" do
+      html =
+        ~s(<p>Odd <img class="transform-error" src="https://dled.atlassian.net/placeholder/error" /></p>)
+
+      assert Renderer.render(html, context()).html =~ "<img"
+    end
+  end
 end

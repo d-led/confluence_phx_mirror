@@ -18,27 +18,6 @@ defmodule ConfluencePhxMirror.TrashTest do
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Trash
 
-  defp comment_fixture(page, attrs \\ %{}) do
-    id = Map.get(attrs, :confluence_id) || System.unique_integer([:positive])
-
-    {:ok, comment} =
-      %Comment{}
-      |> Comment.changeset(
-        Map.merge(
-          %{
-            confluence_id: id,
-            page_id: page.id,
-            author_name: "Reader",
-            body_export: "<p>a comment</p>"
-          },
-          attrs
-        )
-      )
-      |> Repo.insert()
-
-    comment
-  end
-
   describe "a page that disappears upstream" do
     test "is trashed with its comments" do
       space = space_fixture()

@@ -6,7 +6,7 @@ defmodule ConfluencePhxMirror.Fixtures do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Blobs.Store
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Mirror.{Attachment, Page, Space}
+  alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
 
@@ -65,5 +65,26 @@ defmodule ConfluencePhxMirror.Fixtures do
       |> Repo.insert()
 
     attachment
+  end
+
+  @doc "A mirrored comment (a reply, with `parent_id`) on a page."
+  def comment_fixture(%Page{} = page, attrs \\ %{}) do
+    id = Map.get(attrs, :confluence_id) || System.unique_integer([:positive])
+
+    defaults = %{
+      confluence_id: id,
+      page_id: page.id,
+      author_name: "Sam Rivera",
+      body_export: "<p>Looks good.</p>",
+      body_text: "Looks good.",
+      external_created_at: ~U[2026-10-01 12:00:00Z]
+    }
+
+    {:ok, comment} =
+      %Comment{}
+      |> Comment.changeset(Map.merge(defaults, attrs))
+      |> Repo.insert()
+
+    comment
   end
 end

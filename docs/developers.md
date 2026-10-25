@@ -85,7 +85,7 @@ ones specific to the mirror.
 |---|---|---|
 | Source | `Confluence.Source` | Behaviour; `HttpSource` (REST) and `DemoSource` |
 | Ingestion | `Sync` | snapshot / incremental / space / page; per-page error isolation |
-| Rendering | `Sync.Renderer` | keeps `export_view`, rewrites links, sanitises, converts expand macros to native `<details>` |
+| Rendering | `Sync.Renderer` | keeps `export_view`, rewrites links, sanitises, converts expand macros to native `<details>`, turns emoticon images into their character |
 | Content | `Mirror` | Ecto queries for pages, trees, backlinks, labels |
 | Search | `Mirror.Search` + `Mirror.Search.CQL` | CQL → parameterised SQL over `tsvector` |
 | Blobs | `Blobs.Store` / `Blobs.LocalStore` | path-based; S3 can implement the behaviour |

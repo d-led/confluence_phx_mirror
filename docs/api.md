@@ -90,6 +90,12 @@ page, GIN-indexed — answers it in one statement, without walking the tree.
 Confluence query language. Default and maximum result counts are
 `CM_SEARCH_DEFAULT_LIMIT` (25) and `CM_SEARCH_MAX_RESULTS` (100).
 
+Text search reads pages **and their comments**. A hit that matched in a comment
+would otherwise be a page whose snippet has none of the words, so each hit
+carries a `comment` — `id`, `author`, `created` — when that is where the words
+were, and `null` when the page itself matched. The snippet is the comment's own
+text in that case.
+
 ### Identities: the only writes
 
 `GET /api/v1/identities?q=&limit=&offset=` lists the Confluence accounts the
@@ -148,7 +154,14 @@ Operators: `=`, `!=`, `~`, `>`, `<`, `>=`, `<=`; `AND`, `OR`, `NOT`, parentheses
 `pages.search_vector` is a **stored generated column** (`title` weighted `A`,
 body `B`) with a GIN index; labels and ancestors are `text[]`/`bigint[]` arrays
 with GIN indexes, so structured filters never walk the tree. `pg_trgm` backs
-typo-tolerant title matching.
+typo-tolerant title matching. Comments are indexed too, through an expression
+index over their author and body text (see `Mirror.Search`), so `text ~` and the
+structured `q` find a page through what a comment says.
+
+There is deliberately no second, trigram index on comment text: two
+`CREATE INDEX CONCURRENTLY` builds on one table in a single migration deadlock
+against each other. A word *inside* a comment word is therefore not found; word
+prefixes are.
 
 The reader UI's LiveView at `/search` compiles the same structured filters to
 internal CQL; raw CQL is public only on this Confluence-compatible surface.

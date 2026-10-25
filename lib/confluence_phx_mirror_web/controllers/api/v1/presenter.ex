@@ -161,6 +161,23 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.Presenter do
   end
 
   @doc """
+  The comment a search hit matched in, when the page's own text did not match.
+
+  A hit that names no comment was found in the page itself; a hit that names one
+  says whose words the snippet quotes.
+  """
+  def search_comment(nil), do: nil
+
+  def search_comment(comment) do
+    %{
+      "id" => to_string(comment.confluence_id),
+      "author" => comment.author_name,
+      "created" => Time.iso(comment.external_created_at),
+      "_links" => %{"original" => comment.external_url}
+    }
+  end
+
+  @doc """
   A page in a subtree listing: the summary, plus how it hangs below the page the
   request named.
 

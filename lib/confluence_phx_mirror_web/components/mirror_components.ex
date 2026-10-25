@@ -617,6 +617,16 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
           <span>Updated {Time.ago(@result.page.external_updated_at)}</span>
         </div>
       </div>
+      <p
+        :if={@result.comment}
+        data-comment-hit
+        class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-base-content/70"
+      >
+        <.icon name="hero-chat-bubble-left-right" class="size-3" />
+        <span>Comment by {@result.comment.author_name || "Anonymous"}</span>
+        <span aria-hidden="true">·</span>
+        <span>{Time.ago(@result.comment.external_created_at)}</span>
+      </p>
       <p class="mt-2 line-clamp-2 text-xs leading-relaxed text-base-content/70">
         {highlight(@result.snippet, @terms)}
       </p>

@@ -8,8 +8,6 @@ defmodule ConfluencePhxMirror.Mirror.PeopleTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Mirror.Comment
-  alias ConfluencePhxMirror.Repo
 
   test "membership can be recorded one person at a time" do
     {:ok, 2} =
@@ -49,16 +47,5 @@ defmodule ConfluencePhxMirror.Mirror.PeopleTest do
     comment_fixture(page, %{author_name: "Sam Rivera", author_account_id: "557058:sam"})
 
     assert Enum.map(Mirror.known_identities(), & &1.display_name) == ["Sam Rivera"]
-  end
-
-  defp comment_fixture(page, attrs) do
-    id = System.unique_integer([:positive])
-
-    {:ok, comment} =
-      %Comment{page_id: page.id}
-      |> Comment.changeset(Map.merge(%{confluence_id: id}, attrs))
-      |> Repo.insert()
-
-    comment
   end
 end

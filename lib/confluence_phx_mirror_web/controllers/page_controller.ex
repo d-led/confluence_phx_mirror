@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   alias ConfluencePhxMirror.Mirror.Page
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Notifications
+  alias ConfluencePhxMirror.Sync.Emoticons
   alias ConfluencePhxMirror.Sync.PageWorker
   alias ConfluencePhxMirror.Webhooks
   alias ConfluencePhxMirrorWeb.NotFound
@@ -233,6 +234,11 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   defp do_render_page(conn, page, kind) do
     :telemetry.execute([:confluence_mirror, :page, :view], %{count: 1}, %{kind: kind})
 
+    # A body mirrored before the renderer knew about emoticons still carries
+    # Confluence's own emoticon images, which an anonymous reader cannot load.
+    # Converting on the way out is what lets an existing mirror show them
+    # without a resync; on a body the sync already converted it changes nothing.
+    page = with_emoticons(page)
     space = page.space
     user = conn.assigns[:current_user]
     watching = watched(user, [{"page", page.id}, {"space", space.id}])
@@ -256,7 +262,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       children: children_window(scope(conn), page),
       child_count: Mirror.count_children(page, filter: filter),
       attachments: Mirror.attachments(page),
-      comments: Mirror.comments(page),
+      comments: page |> Mirror.comments() |> Enum.map(&with_emoticons/1),
       backlinks: Mirror.backlinks(page, filter: filter),
       outgoing_links: Mirror.outgoing_links(page, filter: filter),
       subscribed?: MapSet.member?(watching, {"page", page.id}),
@@ -271,6 +277,12 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   # points at. None of them may name a page its reader cannot open, so the same
   # filter the sidebar uses is applied to each.
   defp readable_pages(conn), do: &Authorization.restrict_pages(&1, scope(conn))
+
+  defp with_emoticons(%{body_export: body} = content) when is_binary(body) do
+    %{content | body_export: Emoticons.html(body)}
+  end
+
+  defp with_emoticons(content), do: content
 
   # A front page in a big space has hundreds of children, and a page that lists
   # them all is a page nobody scrolls: the view shows a window, the count says

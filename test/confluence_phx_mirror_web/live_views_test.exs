@@ -16,6 +16,13 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
     assert has_element?(view, "mark", "Architecture")
   end
 
+  test "a hit that matched in a comment shows the comment's words", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/search?q=checklist")
+
+    assert has_element?(view, "article[data-hit] [data-comment-hit]", "Sam Rivera")
+    assert has_element?(view, "article[data-hit] mark", "checklist")
+  end
+
   test "a search hit is clickable across its whole card", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search?q=architecture")
 

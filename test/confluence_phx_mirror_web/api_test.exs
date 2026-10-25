@@ -147,6 +147,23 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       refute Enum.any?(body["results"], &(&1["title"] == "Release 2.0"))
     end
 
+    test "a hit that matched in a comment names the comment", %{conn: conn} do
+      body = conn |> get(~p"/api/v1/search?q=checklist") |> json_response(200)
+
+      [%{"title" => "Getting Started", "comment" => comment, "snippet" => snippet}] =
+        body["results"]
+
+      assert comment["author"] == "Sam Rivera"
+      assert snippet =~ "Nice checklist"
+    end
+
+    test "a page's own words keep the hit their own", %{conn: conn} do
+      body = conn |> get(~p"/api/v1/search?q=poll") |> json_response(200)
+
+      architecture = Enum.find(body["results"], &(&1["title"] == "Architecture Overview"))
+      assert architecture["comment"] == nil
+    end
+
     test "rejects a search without any criteria", %{conn: conn} do
       body = conn |> get(~p"/api/v1/search") |> json_response(400)
       assert body["error"] == "missing_query"

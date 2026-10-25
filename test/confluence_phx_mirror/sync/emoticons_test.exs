@@ -1,0 +1,115 @@
+defmodule ConfluencePhxMirror.Sync.EmoticonsTest do
+  use ExUnit.Case, async: true
+
+  alias ConfluencePhxMirror.Sync.Emoticons
+
+  describe "from_attributes/1" do
+    test "a classic emoticon name is the symbol Confluence draws" do
+      assert Emoticons.from_attributes([{"ac:name", "tick"}]) == "✅"
+    end
+
+    test "the stored fallback character wins, because it is what Confluence shows" do
+      assert Emoticons.from_attributes([
+               {"ac:name", "rocket"},
+               {"ac:emoji-shortname", ":rocket:"},
+               {"ac:emoji-fallback", "🚀"}
+             ]) == "🚀"
+    end
+
+    test "a short name without a fallback still resolves" do
+      assert Emoticons.from_attributes([{"ac:emoji-shortname", ":check_mark:"}]) == "✅"
+    end
+
+    test "a fallback that is itself a shortcode is not a character" do
+      assert Emoticons.from_attributes([
+               {"ac:name", "smile"},
+               {"ac:emoji-fallback", ":smile:"}
+             ]) == "🙂"
+    end
+
+    test "a code point names the emoji when nothing else does" do
+      assert Emoticons.from_attributes([{"ac:emoji-id", "1f44d"}]) == "👍"
+      assert Emoticons.from_attributes([{"ac:emoji-id", "1f1e9-1f1ea"}]) == "🇩🇪"
+    end
+
+    test "unknown markup has no character" do
+      assert Emoticons.from_attributes([{"ac:name", "no-such-emoticon"}]) == nil
+    end
+  end
+
+  describe "from_image/1" do
+    test "an export-view emoticon image is its symbol" do
+      assert Emoticons.from_image(
+               attributes("""
+               <img class="emoticon emoticon-tick" data-emoji-id="atlassian-check_mark"
+                    data-emoji-shortname=":check_mark:" data-emoji-fallback=":check_mark:"
+                    src="https://dled.atlassian.net/wiki/s/-1509737426/6452/_/images/icons/emoticons/check.png"
+                    width="16" height="16" data-emoticon-name="tick" alt="(tick)" />
+               """)
+             ) == "✅"
+    end
+
+    test "the character Confluence stored for a modern emoji wins" do
+      assert Emoticons.from_image(
+               attributes("""
+               <img class="emoticon emoticon-smile" data-emoji-id="1f642"
+                    data-emoji-shortname=":slight_smile:" data-emoji-fallback="🙂"
+                    src="https://dled.atlassian.net/wiki/images/icons/emoticons/smile.png"
+                    alt="(smile)" />
+               """)
+             ) == "🙂"
+    end
+
+    test "the file name still names the emoticon when no data attributes survive" do
+      assert Emoticons.from_image([
+               {"class", "emoticon"},
+               {"src", "/wiki/images/icons/emoticons/thumbs-up.svg"}
+             ]) == "👍"
+    end
+
+    test "another image stays an image, even when its name sounds like a face" do
+      assert Emoticons.from_image([
+               {"class", "confluence-embedded-image"},
+               {"src", "/download/attachments/1/smile.png"}
+             ]) == nil
+    end
+  end
+
+  describe "html/1" do
+    test "a body mirrored before this existed gets its emoticons" do
+      html = """
+      <p>Ship it <img class="emoticon emoticon-tick" data-emoticon-name="tick"
+                      alt="(tick)" src="https://dled.atlassian.net/wiki/images/icons/emoticons/check.png" />
+         and <ac:emoticon ac:name="smile"/> — but :) and (y) are prose.</p>
+      """
+
+      converted = Emoticons.html(html)
+
+      assert converted =~ "Ship it ✅"
+      assert converted =~ "and 🙂"
+      assert converted =~ "but :) and (y) are prose"
+      refute converted =~ "<img"
+      refute converted =~ "ac:emoticon"
+    end
+
+    test "a body that already carries the characters is unchanged" do
+      html = "<p>Ship it ✅</p>"
+
+      assert Emoticons.html(html) == html
+    end
+
+    test "an image it cannot name is left alone" do
+      html =
+        ~s(<img class="transform-error" src="https://dled.atlassian.net/placeholder/error" />)
+
+      assert Emoticons.html(html) == html
+    end
+  end
+
+  # The attribute list of a tag, the way the renderer sees it.
+  defp attributes(tag) do
+    ~r/([\w:-]+)\s*=\s*"([^"]*)"/
+    |> Regex.scan(tag, capture: :all_but_first)
+    |> Enum.map(fn [name, value] -> {name, value} end)
+  end
+end

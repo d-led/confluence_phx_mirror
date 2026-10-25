@@ -140,6 +140,17 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Search do
     |> Pages.summary()
     |> Map.put("snippet", snippet(result.snippet))
     |> Map.put("rank", Float.round(result.rank * 1.0, 4))
+    |> Map.put("matchedComment", comment(result.comment))
+  end
+
+  defp comment(nil), do: nil
+
+  defp comment(comment) do
+    %{
+      "id" => to_string(comment.confluence_id),
+      "author" => comment.author_name,
+      "created" => Pages.iso(comment.external_created_at)
+    }
   end
 
   defp results_text([]) do
@@ -151,8 +162,20 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Search do
       summary = Pages.summary(result.page)
 
       "#{index}. #{summary["title"]} (id #{summary["id"]}, #{summary["space"]})\n" <>
-        "   #{summary["url"]}" <> snippet_line(result.snippet)
+        "   #{summary["url"]}" <> snippet_line(result.snippet) <> comment_line(result.comment)
     end)
+  end
+
+  # A hit found in a comment quotes the comment, so the line says whose words
+  # those are — the page itself did not say them.
+  defp comment_line(nil), do: ""
+
+  defp comment_line(comment) do
+    "\n   matched in a comment by #{comment.author_name || "Anonymous"}" <>
+      case Pages.iso(comment.external_created_at) do
+        nil -> ""
+        date -> " on #{date}"
+      end
   end
 
   defp snippet_line(snippet) do

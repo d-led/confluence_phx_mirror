@@ -10,15 +10,25 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
   Label and ancestor filters are array containment checks backed by GIN
   indexes, so structured filters never walk the page tree.
+
+  Text is not only a page's own: a comment is content a reader remembers just
+  as often, so a page whose comment matches is a hit, and the result says which
+  comment it matched in so the screen can show those words instead of an
+  unrelated paragraph of the page.
   """
 
   import Ecto.Query
 
-  alias ConfluencePhxMirror.Mirror.Page
+  alias ConfluencePhxMirror.Mirror.{Comment, Page}
   alias ConfluencePhxMirror.Mirror.Search.{CQL, Filters, TextQuery}
   alias ConfluencePhxMirror.Repo
 
   @language "simple"
+
+  # The same expression as `comments_search_vector_idx` (see the migration): an
+  # expression index is only used for an identical expression, so the two must
+  # stay in step.
+  @comment_vector "to_tsvector('#{@language}', coalesce(c.author_name, '') || ' ' || coalesce(c.body_text, ''))"
 
   # Paging is deployment-sized (see config/runtime.exs), not a code constant.
   defp search_config, do: Application.get_env(:confluence_phx_mirror, :search, [])
@@ -34,7 +44,8 @@ defmodule ConfluencePhxMirror.Mirror.Search do
           page: Page.t(),
           space: ConfluencePhxMirror.Mirror.Space.t(),
           rank: float(),
-          snippet: String.t()
+          snippet: String.t(),
+          comment: Comment.t() | nil
         }
 
   @doc """
@@ -129,7 +140,12 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
   @doc """
   Full-text search across every indexed field (title, body, labels, author,
-  space and attachment filenames).
+  space and attachment filenames), and across comments.
+
+  A comment is authored content, so a page whose comment matches is a hit; the
+  result carries that comment so the snippet shows the words the reader typed
+  rather than an unrelated part of the page. A page's own match wins over its
+  comments, so one page is one result.
 
   Plain words are ANDed and matched by prefix; `AND`/`OR`/`NOT` (uppercase),
   parentheses, quoted phrases and a leading `-` are supported. Malformed input
@@ -139,7 +155,8 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   index matches lexeme prefixes, so "escal" finds "Escalation" and "scal" does
   not. What the second pass finds is appended, never interleaved — a word that
   starts with the query is a better match than one that merely contains it, and
-  the reader sees that order.
+  the reader sees that order. Comments take part in the word pass only: the
+  fragment pass is an extra over page text, not a promise about comments.
 
   `scal*` asks for that first band alone: a star on the end of the last word is
   the usual way to say "a word that begins like this", and it turns the fragment
@@ -225,45 +242,100 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
   defp fragment_results(rows, terms) do
     rows
-    |> Enum.map(fn [id, _score] -> id end)
-    |> load_pages()
-    |> Enum.map(fn page ->
-      %{page: page, space: page.space, rank: 0.0, snippet: snippet(page, terms)}
-    end)
+    |> Enum.map(fn [id, _score] -> [id, 0.0, nil] end)
+    |> results(terms)
   end
 
   # The SQL is a template: every user value becomes a $N parameter (see
   # param/2), and the only interpolations are the fixed language/function names
   # and the integer limit/offset.
+  #
+  # A page and a comment are two rows that mean one hit: the page's own text is
+  # preferred, so the comment branch skips pages the page branch already found,
+  # and `band` keeps every page hit above every comment hit whatever the two
+  # ranks happen to be. One row per page keeps paging honest.
   # sobelow_skip ["SQL.Query"]
   defp run_text(parameter, function, terms, limit, offset) do
+    tsquery = "#{function}('#{@language}', $1)"
+
     sql = """
-    SELECT p.id, ts_rank_cd(p.search_vector, #{function}('#{@language}', $1)) AS rank
-    FROM pages p
-    JOIN spaces s ON s.id = p.space_id
-    WHERE p.deleted_at IS NULL
-      AND p.search_vector @@ #{function}('#{@language}', $1)
-    ORDER BY rank DESC, p.external_updated_at DESC NULLS LAST
+    SELECT page_id, rank, comment_id
+    FROM (
+      SELECT p.id AS page_id,
+             ts_rank_cd(p.search_vector, #{tsquery}) AS rank,
+             NULL::bigint AS comment_id,
+             1 AS band,
+             p.external_updated_at AS updated_at
+      FROM pages p
+      JOIN spaces s ON s.id = p.space_id
+      WHERE p.deleted_at IS NULL
+        AND p.search_vector @@ #{tsquery}
+
+      UNION ALL
+
+      SELECT best.page_id, best.rank, best.comment_id, 0, best.updated_at
+      FROM (
+        SELECT DISTINCT ON (p.id)
+               p.id AS page_id,
+               ts_rank_cd(#{@comment_vector}, #{tsquery}) AS rank,
+               c.id AS comment_id,
+               p.external_updated_at AS updated_at
+        FROM comments c
+        JOIN pages p ON p.id = c.page_id
+        JOIN spaces s ON s.id = p.space_id
+        WHERE c.deleted_at IS NULL
+          AND p.deleted_at IS NULL
+          AND #{@comment_vector} @@ #{tsquery}
+          AND NOT EXISTS (
+            SELECT 1 FROM pages p2
+            WHERE p2.id = p.id AND p2.search_vector @@ #{tsquery}
+          )
+        ORDER BY p.id, rank DESC
+      ) best
+    ) hits
+    ORDER BY band DESC, rank DESC, updated_at DESC NULLS LAST
     LIMIT #{Integer.to_string(limit)} OFFSET #{Integer.to_string(offset)}
     """
 
-    rows = Repo.query!(sql, [parameter]).rows
-    ids = Enum.map(rows, fn [id, _rank] -> id end)
-    rank_by_id = Map.new(rows, fn [id, rank] -> {id, rank} end)
+    {:ok, Repo.query!(sql, [parameter]).rows |> results(terms)}
+  end
 
-    results =
-      ids
-      |> load_pages()
-      |> Enum.map(fn page ->
-        %{
-          page: page,
-          space: page.space,
-          rank: rank_by_id[page.id] || 0.0,
-          snippet: snippet(page, terms)
-        }
-      end)
+  # One row per page: `[page_id, rank, comment_id]`. The comment is loaded for
+  # the rows that name one, in a single statement for the whole page of results.
+  defp results(rows, terms) do
+    pages = rows |> Enum.map(&hd/1) |> load_pages() |> Map.new(&{&1.id, &1})
+    comments = rows |> Enum.map(fn [_, _, comment_id] -> comment_id end) |> load_comments()
 
-    {:ok, results}
+    Enum.flat_map(rows, fn [id, rank, comment_id] ->
+      case pages[id] do
+        nil -> []
+        page -> [result(page, rank, comments[comment_id], terms)]
+      end
+    end)
+  end
+
+  defp result(page, rank, nil, terms) do
+    %{page: page, space: page.space, rank: rank, snippet: snippet(page, terms), comment: nil}
+  end
+
+  defp result(page, rank, comment, terms) do
+    %{
+      page: page,
+      space: page.space,
+      rank: rank,
+      snippet: snippet(comment, terms),
+      comment: comment
+    }
+  end
+
+  defp load_comments(ids) do
+    ids = ids |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    if ids == [] do
+      %{}
+    else
+      Repo.all(from c in Comment, where: c.id in ^ids) |> Map.new(&{&1.id, &1})
+    end
   end
 
   defp fallback_terms(query) do
@@ -275,6 +347,9 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
   @doc """
   Parses and executes `cql`.
+
+  `text ~` reads pages and their comments, the same question the structured
+  search answers.
 
   Options: `:start` (offset, default 0) and `:limit` (default 25, max 100).
   """
@@ -297,18 +372,54 @@ defmodule ConfluencePhxMirror.Mirror.Search do
     {sql, params} = build_sql(query, text_query, limit, offset)
     rows = Repo.query!(sql, params).rows
 
-    ids = Enum.map(rows, fn [id, _rank] -> id end)
-    rank_by_id = Map.new(rows, fn [id, rank] -> {id, rank} end)
+    ids = Enum.map(rows, fn [id | _] -> id end)
+    rank_by_id = Map.new(rows, fn [id, rank | _] -> {id, rank} end)
+    comments = comment_hits(rows, text_query)
 
     load_pages(ids)
     |> Enum.map(fn page ->
+      comment = comments[page.id]
+
       %{
         page: page,
         space: page.space,
         rank: rank_by_id[page.id] || 0.0,
-        snippet: snippet(page, terms)
+        snippet: snippet(comment || page, terms),
+        comment: comment
       }
     end)
+  end
+
+  # A page the text clause found through a comment has no matching words of its
+  # own, so the best matching comment is asked for separately — one statement
+  # for the whole page of results, and only when some row says the page itself
+  # did not match.
+  defp comment_hits(_rows, ""), do: %{}
+
+  # The two identifiers are the fixed expression and language above; the page
+  # ids and the query are parameters.
+  # sobelow_skip ["SQL.Query"]
+  defp comment_hits(rows, text_query) do
+    page_ids = for [id, _rank, false] <- rows, do: id
+
+    if page_ids == [] do
+      %{}
+    else
+      sql = """
+      SELECT DISTINCT ON (c.page_id) c.page_id, c.id
+      FROM comments c
+      WHERE c.page_id = ANY($1)
+        AND c.deleted_at IS NULL
+        AND #{@comment_vector} @@ websearch_to_tsquery('#{@language}', $2)
+      ORDER BY c.page_id,
+               ts_rank_cd(#{@comment_vector}, websearch_to_tsquery('#{@language}', $2)) DESC
+      """
+
+      rows = Repo.query!(sql, [page_ids, text_query]).rows
+      comments = rows |> Enum.map(fn [_page_id, comment_id] -> comment_id end) |> load_comments()
+
+      Map.new(rows, fn [page_id, comment_id] -> {page_id, comments[comment_id]} end)
+    end
   end
 
   defp load_pages([]), do: []
@@ -338,7 +449,8 @@ defmodule ConfluencePhxMirror.Mirror.Search do
     {order_sql, builder} = order_sql(order_by, text_query, builder)
 
     sql = """
-    SELECT p.id, ts_rank_cd(p.search_vector, websearch_to_tsquery('#{@language}', #{text_param})) AS rank
+    SELECT p.id, ts_rank_cd(p.search_vector, websearch_to_tsquery('#{@language}', #{text_param})) AS rank,
+           p.search_vector @@ websearch_to_tsquery('#{@language}', #{text_param}) AS page_matched
     FROM pages p
     JOIN spaces s ON s.id = p.space_id
     WHERE p.deleted_at IS NULL AND (#{condition})
@@ -374,8 +486,19 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
   defp comparison(:text, :contains, value, builder) do
     {placeholder, builder} = param(builder, value)
+    matches = "websearch_to_tsquery('#{@language}', #{placeholder})"
 
-    {"p.search_vector @@ websearch_to_tsquery('#{@language}', #{placeholder})", builder}
+    condition = """
+    (p.search_vector @@ #{matches}
+     OR EXISTS (
+       SELECT 1 FROM comments c
+       WHERE c.page_id = p.id
+         AND c.deleted_at IS NULL
+         AND #{@comment_vector} @@ #{matches}
+     ))
+    """
+
+    {condition, builder}
   end
 
   defp comparison(:title, :contains, value, builder) do
@@ -500,24 +623,31 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   def terms({:cmp, field, :contains, value}) when field in [:text, :title], do: [value]
   def terms({:cmp, _, _, _}), do: []
 
-  @doc "A short plain-text snippet around the first matching term."
-  def snippet(%Page{body_text: nil}, _terms), do: ""
-  def snippet(%Page{body_text: ""}, _terms), do: ""
-
   # The snippet opens on a word boundary: a cut inside a word reads as corrupt
   # text ("ry platform service has a runbook"), so the window starts after the
   # next space and says, with an ellipsis, that it started mid-sentence.
   @snippet_lead 80
   @snippet_length 240
 
-  def snippet(%Page{body_text: text}, terms) when is_binary(text) do
+  @doc "A short plain-text snippet around the first matching term."
+  def snippet(%Page{body_text: nil}, _terms), do: ""
+  def snippet(%Page{body_text: ""}, _terms), do: ""
+  def snippet(%Comment{body_text: nil}, _terms), do: ""
+  def snippet(%Comment{body_text: ""}, _terms), do: ""
+  def snippet(%Page{body_text: text}, terms) when is_binary(text), do: text_snippet(text, terms)
+
+  def snippet(%Comment{body_text: text}, terms) when is_binary(text),
+    do: text_snippet(text, terms)
+
+  def snippet(%Page{}, _terms), do: ""
+  def snippet(%Comment{}, _terms), do: ""
+
+  defp text_snippet(text, terms) do
     case first_match(text, terms) do
       nil -> text |> String.slice(0, @snippet_length) |> String.trim()
       start -> text |> window(start) |> String.trim()
     end
   end
-
-  def snippet(%Page{}, _terms), do: ""
 
   defp window(text, start) do
     from = max(start - @snippet_lead, 0)

@@ -30,6 +30,7 @@ defmodule ConfluencePhxMirrorWeb.Api.Confluence.SearchController do
               |> Presenter.summary()
               |> Map.put("snippet", result.snippet)
               |> Map.put("rank", result.rank)
+              |> Map.put("comment", Presenter.search_comment(result.comment))
             end)
 
           body =

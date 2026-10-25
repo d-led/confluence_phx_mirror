@@ -191,6 +191,24 @@ are in [performance.md](performance.md). Search is the one screen whose cost
 still grows with the site: ranking a query that matches every page is a pass over
 every match, inherent to `ts_rank_cd`.
 
+## Emoticons and comments in search
+
+`export_view` renders an emoticon as an image on the Confluence host, not as its
+character: `ac:emoticon` never reaches the mirror, and typed `:)` stays text in
+the export. An image on the Confluence host is not loadable by an anonymous
+reader of the mirror, so `Sync.Emoticons` replaces the markup with the character
+it stands for — the emoji Confluence stored in `data-emoji-fallback` when there
+is one, the classic name (`tick`, `smile`, …) otherwise. The page view runs the
+same conversion over a stored body, which is why an existing mirror needs no
+resync for its emoticons to appear; a body synced after the change is converted
+once, at sync time, and its `body_text` carries the character too.
+
+Search reads comments as well as pages. They are indexed by an expression over
+`comments.author_name` and `comments.body_text` — both already stored — so
+nothing has to be re-read from Confluence for a comment to become findable. A
+hit remembers which comment matched, and the screen says so rather than quoting
+an unrelated paragraph of the page.
+
 ## Known limitations
 
 * Comments are read-only and rendered flat (one reply level styled).

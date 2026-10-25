@@ -11,6 +11,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     * links to pages that were not mirrored stay absolute back to Confluence,
       so a reader can always open the original,
     * attachment links and images point at the mirrored blob,
+    * Confluence's emoticons become the characters they stand for,
     * active content (`script`, event handler attributes, `javascript:` URLs)
       is removed, because the mirror renders third-party HTML.
 
@@ -19,6 +20,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   """
 
   alias ConfluencePhxMirror.Mirror.URLs
+  alias ConfluencePhxMirror.Sync.Emoticons
 
   @type page_ref :: %{space_key: String.t(), confluence_id: integer(), slug: String.t()}
 
@@ -200,7 +202,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
         {"a", rewrite_anchor(attrs, children, context), children}
 
       {"img", attrs, children} ->
-        {"img", rewrite_image(attrs, context), children}
+        case Emoticons.from_image(attrs) do
+          nil -> {"img", rewrite_image(attrs, context), children}
+          glyph -> glyph
+        end
 
       {"div", attrs, children} ->
         if has_class?(attrs, "expand-container") do

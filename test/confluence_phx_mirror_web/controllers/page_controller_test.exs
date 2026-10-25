@@ -25,6 +25,27 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert Enum.empty?(LazyHTML.query(document, "main #header-search-input"))
   end
 
+  test "a page mirrored before emoticons were converted still shows them", %{conn: conn} do
+    # The mirror stores the HTML it rendered at sync time. A body stored before
+    # the renderer knew about emoticons still carries Confluence's own image,
+    # which an anonymous reader cannot load; the page view converts it on the
+    # way out, so no resync is needed for it to appear.
+    space = space_fixture(%{key: "EMO", name: "Emoticons"})
+    page = page_fixture(space, %{confluence_id: 9601, slug: "ship-it", title: "Ship it"})
+
+    body = """
+    <p>Ship it <img class="emoticon emoticon-tick" data-emoticon-name="tick" alt="(tick)"
+                    src="https://dled.atlassian.net/wiki/images/icons/emoticons/check.png" /></p>
+    """
+
+    {:ok, _} = ConfluencePhxMirror.Mirror.update_rendered(page, %{body_export: body})
+
+    html = conn |> get(~p"/spaces/EMO/pages/9601/ship-it") |> html_response(200)
+
+    assert html =~ "Ship it ✅"
+    refute html =~ "images/icons/emoticons/check.png"
+  end
+
   test "a deep page collapses its breadcrumb into an ellipsis dropdown", %{conn: conn} do
     html = conn |> get("/spaces/ENG/pages/1205/Emergency+Revocation") |> html_response(200)
 
