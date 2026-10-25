@@ -4,6 +4,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.FullRereadTest do
   page and attachment fetched and rendered again, changed or not. So it is not
   one of the everyday actions in the header, it says what it costs where it
   stands, and it asks before it queues.
+
+  What it queues is a sweep — one sync per space — rather than a single
+  site-sized run, because that run is what a 1 GB node cannot hold in memory.
   """
   use ConfluencePhxMirrorWeb.ConnCase, async: false
   use Oban.Testing, repo: ConfluencePhxMirror.Repo
@@ -11,7 +14,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.FullRereadTest do
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
 
-  alias ConfluencePhxMirror.Sync.SnapshotWorker
+  alias ConfluencePhxMirror.Sync.SweepWorker
 
   setup %{conn: conn} do
     ops = user_fixture(%{email: "ops@example.com", role: "admin"})
@@ -39,14 +42,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.FullRereadTest do
     assert button =~ "runs for hours"
   end
 
-  test "once confirmed, it queues a snapshot that re-reads rather than a diff", %{conn: conn} do
+  test "once confirmed, it queues a sweep that re-reads rather than a diff", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/admin")
 
     view |> element("#full-sync") |> render_click()
 
     assert render(view) =~ "Full re-read queued"
 
-    assert [job] = all_enqueued(worker: SnapshotWorker)
-    assert job.args["mode"] == "snapshot"
+    assert [job] = all_enqueued(worker: SweepWorker)
+    assert job.args["trigger"] =~ "re-reading everything"
+    # A diff is the schedule's job; a re-read must not be queued as one.
+    assert all_enqueued(worker: ConfluencePhxMirror.Sync.SnapshotWorker) == []
   end
 end

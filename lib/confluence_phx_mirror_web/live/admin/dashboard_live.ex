@@ -21,7 +21,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Resources
   alias ConfluencePhxMirror.Sync
-  alias ConfluencePhxMirror.Sync.{SnapshotWorker, SpaceWorker}
+  alias ConfluencePhxMirror.Sync.{SnapshotWorker, SpaceWorker, SweepWorker}
   alias ConfluencePhxMirror.Sync.SyncRun
   alias ConfluencePhxMirrorWeb.Plugs
   alias ConfluencePhxMirrorWeb.Time
@@ -119,11 +119,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   end
 
   defp full_sync(_params, socket) do
-    %{"trigger" => "#{requested_by(socket)}, re-reading everything", "mode" => "snapshot"}
-    |> SnapshotWorker.new()
+    %{"trigger" => "#{requested_by(socket)}, re-reading everything"}
+    |> SweepWorker.new()
     |> Oban.insert()
 
-    {:noreply, put_flash(socket, :info, "Full re-read queued: every page will be fetched again.")}
+    {:noreply,
+     put_flash(
+       socket,
+       :info,
+       "Full re-read queued: every space is re-read, one at a time."
+     )}
   end
 
   defp sync_space(%{"key" => key}, socket) do
@@ -684,8 +689,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           data-confirm={
             "Re-read every page and attachment, changed or not?\n\n" <>
               "This is the slowest sync there is: on a large site it runs for hours " <>
-              "and keeps Confluence busy the whole time. Nobody loses access meanwhile, " <>
-              "and the run can be cancelled from this page.\n\nQueue it?"
+              "and keeps Confluence busy the whole time. It goes space by space, " <>
+              "so a restart costs one space rather than the whole sweep. Nobody " <>
+              "loses access meanwhile.\n\nQueue it?"
           }
         >
           <.icon name="hero-arrow-path-rounded-square" class="size-4" /> Re-read everything

@@ -304,6 +304,32 @@ Everything that is *not* in those two places is rebuildable: a snapshot
 re-creates content, permissions and icons from the source, at the cost of the
 requests it takes.
 
+### A full re-read is a queue of spaces, not one run
+
+"Re-read everything" on `/admin` queues **one sync per space** rather than a
+single site-sized run. The reason is memory: a snapshot keeps every page's
+source DTO and row alive from its first listing to its last detail call, which
+on a hundred-thousand-page site is gigabytes — more than a 1 GB machine has, so
+the node is killed rather than the run failing. The record it leaves is
+`the process running this sync stopped before it finished`, and the next
+schedule starts the same work from zero. Per space, the footprint is one
+space's pages, a restart costs one space, and the sweep resumes where it stopped
+by running again.
+
+Two consequences worth knowing:
+
+* **A sweep never trashes.** A snapshot trashes the spaces its listing no longer
+  names; a sweep cannot tell a space that disappeared upstream from one it has
+  not reached yet. Use `mix confluence.sync snapshot` (or the `:snapshot` mode)
+  when spaces are deleted at the source.
+* **Spaces are listed from the source, not from the mirror**, so a space the
+  mirror has never seen is included — that is how a mirror whose snapshots kept
+  dying finds the fifty spaces it never had.
+
+A node that dies mid-job leaves its Oban row `executing`; `Oban.Plugins.Lifeline`
+rescues those after thirty minutes and retries them, so the queue never keeps
+listing work nobody is doing.
+
 ## Watching it
 
 * `/health` — database check, content counters, last sync. No auth, so it can
