@@ -162,7 +162,35 @@ can move between them without going back to a hub:
   (calls, bytes, retries, throttled time, failures and the answers the site
   gave), held in memory while the run is fresh, with level and text filters.
   Lines can be selected like any text; **Copy** takes the ones on screen, one
-  per line, as time, level, line and run.
+  per line, as time, level, line and run. A job's **log** link opens the same
+  page narrowed to that job's run (`/admin/sync-log?run=72`), which is a view of
+  the one tail rather than a separate log; the chip above the lines says which
+  run, and takes the filter off again.
+* `/admin/jobs` (**live**, refreshes every 5 s) – what Oban itself holds, in
+  every state: waiting, scheduled, retrying, executing, completed, cancelled and
+  discarded, with the trigger that asked for each job. It is not a sync screen:
+  every background worker the mirror runs appears here, and a feature that adds
+  one needs no change to the page. The overview's run list shows only the syncs
+  still *waiting*, because a sync that has not started can still be prevented; a
+  job that is *executing* belongs here, and that is what makes this page worth
+  having after a deploy. A job whose node went away stays `executing` for ever —
+  nothing in Oban writes to that row again — so it holds one of the queue's slots
+  while being invisible everywhere else. **Stop** cancels any job that has not
+  finished, records it in the audit log, and, for one that is really running,
+  stops it: what it already wrote stays. A job executing for longer than any sync
+  run this mirror has measured is labelled **long-running**, which is a hint for
+  the operator, not a diagnosis: only a job that is actually running can tell the
+  two apart.
+
+  **Progress** answers "what is this job doing?" from the record the job writes,
+  not from a list of known workers: the record's status and colour, one line of
+  counters ("120 pages so far", "40 listed · 12 changed"), the reason it failed
+  in the tooltip, and a link to its own log. For a sync that record is the run —
+  `sync_runs.job_id` says which job wrote it, which is why a page sync's row
+  links into the sync log narrowed to that run. A row written before that column
+  existed shows a dash: the two records cannot be joined after the fact. A worker
+  that keeps no record simply shows a dash too; giving it one is a schema with a
+  job id and three one-line functions (`ConfluencePhxMirror.Jobs.Progress`).
 * `/admin/webhooks` (**live**, refreshes every 5 s) – what Confluence sent and
   whether its signature checked out, including rejected deliveries, plus
   whether a secret and fixed tokens are configured.
