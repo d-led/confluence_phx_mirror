@@ -378,6 +378,15 @@ var/mirror/spaces/ENG/pages/1002/attachments/9001/diagram.svg
 * Never in Postgres and never under `priv/static`.
 * `Blobs.Store` is a behaviour, so an S3 implementation is a drop-in.
 
+`/admin` answers the two sizing questions an operator asks when a sync dies or
+a disk fills: **Resources** shows what `MIRROR_BLOB_ROOT` holds (every file
+under it, counted once a minute by `ConfluencePhxMirror.Resources`), the room
+left on the device that path is on (`df`, in total and in percent, amber from
+75% and red from 90%), and the size of the running database with its biggest
+tables. On Fly the blob root is its own volume (`mirror_blobs`, 1 GB by
+default), so that is the number that decides whether a sync can keep going;
+Postgres lives on another machine, so its figure carries no percentage.
+
 ## Notifications
 
 Delivery state is an outbox row per notification with its own status; Oban

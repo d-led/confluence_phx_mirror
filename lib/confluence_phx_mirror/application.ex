@@ -17,6 +17,10 @@ defmodule ConfluencePhxMirror.Application do
     children = [
       ConfluencePhxMirror.Repo,
       ConfluencePhxMirror.Mirror.Counters,
+      # Measures the blob mount once at boot and once a minute: the walk is the
+      # one expensive thing on the admin page, and it does not belong to a
+      # request.
+      ConfluencePhxMirror.Resources,
       # After the repo and the counters: the first poll runs as soon as the
       # poller starts, and the catalogue gauge has to ask the database.
       ConfluencePhxMirrorWeb.Telemetry,

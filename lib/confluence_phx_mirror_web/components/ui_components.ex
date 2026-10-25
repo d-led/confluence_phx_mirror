@@ -63,7 +63,64 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
     """
   end
 
+  @doc """
+  A byte figure, with how full its device is when that is known.
+
+  `value` is what the resource holds; `percent` is the device's usage, not the
+  resource's share of it — "how much is left on the box" is the question this
+  answers, and a mirror can hold two megabytes on a disk that is 94% full.
+  """
+  attr :id, :string, required: true, doc: "DOM id; the figure inside it is `-value`"
+  attr :label, :string, required: true
+  attr :value, :integer, required: true, doc: "what this holds, in bytes"
+  attr :percent, :integer, default: nil, doc: "how much of its device is used, 0-100"
+  attr :detail, :string, default: nil
+  attr :note, :string, default: nil
+  attr :hint, :string, default: nil, doc: "the path or the caveat, shown truncated"
+
+  def resource_meter(assigns) do
+    assigns = assign(assigns, :percent, assigns.percent && min(assigns.percent, 100))
+
+    ~H"""
+    <div id={@id} class="rounded-lg border border-base-300/70 bg-base-100 px-3 py-2">
+      <div class="flex items-baseline justify-between gap-2">
+        <span class="text-[11px] uppercase tracking-wider text-base-content/70">{@label}</span>
+        <span id={"#{@id}-value"} class="font-semibold tabular-nums">{human_bytes(@value)}</span>
+      </div>
+      <progress
+        :if={@percent}
+        class={["progress mt-1.5 h-1.5 w-full", meter_class(@percent)]}
+        value={@percent}
+        max="100"
+        aria-label={"#{@label}: #{@percent}% of its device is used"}
+      ></progress>
+      <p :if={@detail} class="mt-1 text-[11px] text-base-content/70">{@detail}</p>
+      <p :if={@note} class="text-[11px] text-base-content/60">{@note}</p>
+      <p :if={@hint} class="truncate text-[11px] text-base-content/50" title={@hint}>{@hint}</p>
+    </div>
+    """
+  end
+
+  # A disk is full long before it says so: the mirror cannot write when the last
+  # byte is gone, and a sync that dies at 98% is worse than one that warned.
+  defp meter_class(percent) when percent >= 90, do: "progress-error"
+  defp meter_class(percent) when percent >= 75, do: "progress-warning"
+  defp meter_class(_percent), do: "progress-primary"
+
+  @doc "A byte count as a person reads it: B, KB, MB, GB, TB."
+  def human_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
+  def human_bytes(bytes) when bytes < 1024 * 1024, do: "#{round(bytes / 1024)} KB"
+
+  def human_bytes(bytes) when bytes < 1024 * 1024 * 1024,
+    do: "#{Float.round(bytes / (1024 * 1024), 1)} MB"
+
+  def human_bytes(bytes) when bytes < 1024 * 1024 * 1024 * 1024,
+    do: "#{Float.round(bytes / (1024 * 1024 * 1024), 1)} GB"
+
+  def human_bytes(bytes), do: "#{Float.round(bytes / (1024 * 1024 * 1024 * 1024), 2)} TB"
+
   @doc "A titled region with an action slot and an optional metadata line."
+  attr :id, :string, default: nil
   attr :title, :string, required: true
   attr :subtitle, :string, default: nil
   attr :class, :any, default: "mt-6"
@@ -73,7 +130,7 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
 
   def section(assigns) do
     ~H"""
-    <section class={@class}>
+    <section id={@id} class={@class}>
       <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div>
           <h2 class="text-sm font-semibold uppercase tracking-wider text-base-content/70">

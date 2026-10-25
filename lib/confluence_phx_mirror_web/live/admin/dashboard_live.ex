@@ -19,6 +19,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   alias ConfluencePhxMirror.Confluence.Traffic
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Resources
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.{SnapshotWorker, SpaceWorker}
   alias ConfluencePhxMirror.Sync.SyncRun
@@ -183,9 +184,21 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   defp phase_label(nil), do: "talking to the site"
   defp phase_label(phase), do: Map.get(@phases, phase, phase)
 
-  defp human_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
-  defp human_bytes(bytes) when bytes < 1024 * 1024, do: "#{round(bytes / 1024)} KB"
-  defp human_bytes(bytes), do: "#{Float.round(bytes / (1024 * 1024), 1)} MB"
+  # "58 GB free of 926 GB on /data": the sentence an operator reads when a sync
+  # is about to run out of room.
+  defp device_line(%{device: nil}), do: "the device did not report its size"
+
+  defp device_line(%{device: device}) do
+    "#{human_bytes(device.free_bytes)} free of #{human_bytes(device.total_bytes)} on #{device.mount}"
+  end
+
+  defp table_line([]), do: "the database did not report its tables"
+
+  defp table_line(tables) do
+    "biggest: " <>
+      Enum.map_join(tables, ", ", fn {name, bytes} -> "#{name} #{human_bytes(bytes)}" end)
+  end
+
   # The audit log answers "who asked for this?" for every run, so a manual one
   # carries the address of the admin who pressed the button.
   defp requested_by(socket) do
@@ -210,6 +223,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
     assign(socket,
       stats: Mirror.stats(),
+      # What this node occupies and the room beside it: the mount is the last
+      # measurement (a walk of every attachment file, once a minute), the
+      # database a catalogue lookup on this tick.
+      resources: Resources.mount(),
+      database: Resources.database(),
       # The shell's switcher draws a window of the directory, so the dashboard
       # sends a window: this reloads every five seconds.
       spaces: Mirror.list_spaces(limit: Plugs.SiteContext.switcher_limit()),
@@ -379,6 +397,34 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           </:hint>
         </.stat>
       </section>
+
+      <%!-- What the box costs: the mount the attachments live on, the room left
+      on that device, and the database behind it. A deployment usually keeps the
+      database on another machine, so it is a figure rather than a share. --%>
+      <.section
+        id="resources"
+        title="Resources"
+        subtitle="What this node occupies, and the room left beside it."
+      >
+        <div class="grid gap-3 sm:grid-cols-2">
+          <.resource_meter
+            id="resources-blob-mount"
+            label="Data mount"
+            value={@resources.used_bytes}
+            percent={@resources.device && @resources.device.percent}
+            detail={device_line(@resources)}
+            note={"#{@resources.files} files, measured #{Time.ago(@resources.measured_at)}"}
+            hint={@resources.path}
+          />
+          <.resource_meter
+            id="resources-database"
+            label="Postgres"
+            value={@database.bytes}
+            note={table_line(@database.tables)}
+            hint="the database's own files, on the machine that serves them"
+          />
+        </div>
+      </.section>
 
       <.section title="Sync runs">
         <:actions>
