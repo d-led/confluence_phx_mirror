@@ -25,11 +25,18 @@ config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
 
 # Background jobs. Sync work is retried per source page, notification e-mails are
 # retried separately so a broken mailer never blocks the mirror.
+#
+# `Lifeline` is what keeps the queue honest when a node dies mid-job: without
+# it a job whose process disappeared stays `executing` forever, nothing retries
+# it and `/admin/jobs` keeps listing work that nobody is doing. A restarted
+# machine (a deploy, an OOM kill) is exactly how a long sync ends, so the
+# rescuer is not optional here.
 config :confluence_phx_mirror, Oban,
   repo: ConfluencePhxMirror.Repo,
   queues: [sync: 4, notifications: 10],
   plugins: [
     Oban.Plugins.Pruner,
+    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)},
     {Oban.Plugins.Cron, crontab: [{"0 * * * *", ConfluencePhxMirror.Notifications.DigestWorker}]}
   ]
 
