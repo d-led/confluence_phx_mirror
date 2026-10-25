@@ -301,7 +301,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
           <div class="space-y-5">
             <article :for={comment <- @comments} class="flex gap-3">
               <span class="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-base-200 text-xs font-semibold text-base-content/70">
-                {comment.initial}
+                {initial(comment.author)}
               </span>
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-baseline gap-2">
@@ -318,7 +318,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
                   class="mt-3 flex gap-3 border-l-2 border-base-300/70 pl-3"
                 >
                   <span class="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-base-200 text-[10px] font-semibold text-base-content/70">
-                    {reply.initial}
+                    {initial(reply.author)}
                   </span>
                   <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-baseline gap-2">

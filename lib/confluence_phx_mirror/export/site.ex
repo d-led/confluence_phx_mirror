@@ -616,19 +616,9 @@ defmodule ConfluencePhxMirror.Export.Site do
   defp comment_data(comment, context) do
     %{
       author: comment.author_name || "Anonymous",
-      initial: initial(comment.author_name),
       at: stamp(comment.external_created_at),
       body: Content.rewrite(comment.body_export, context)
     }
-  end
-
-  defp initial(nil), do: "?"
-
-  defp initial(name) do
-    case name |> to_string() |> String.first() do
-      nil -> "?"
-      first -> String.upcase(first)
-    end
   end
 
   defp tree_nodes(plan, prefix) do
