@@ -301,8 +301,8 @@ Confluence-compatible REST surface — see [api.md](api.md#search-cql-on-postgre
 
 ## Exporting the mirror
 
-Two downloads, one shape: a folder of files that works from disk — no server,
-no network, no build step.
+Two ZIPs and a page, one shape: files that work from disk — no server, no
+network, no build step.
 
 | Where | What | Who |
 | --- | --- | --- |
@@ -352,8 +352,10 @@ that reader may open.
 
 **The look is the site's.** `assets/site.css` is the stylesheet this instance
 serves — the theme an administrator picked, custom skins included — and every
-page is written with the same markup as the reader screens. Heading permalinks
-are in the HTML rather than added by script, so a page needs no JavaScript.
+page is written with the same markup as the reader screens. Nothing on a page
+is built by script: the heading permalinks are in the HTML, and the two scripts
+an archive carries only fold the page tree away and switch the theme, so a page
+with scripts blocked still reads.
 
 **Reading a page is as comfortable as in the mirror.** The page tree folds away
 and stays folded (`site.js` remembers the choice in the browser, like the reader
