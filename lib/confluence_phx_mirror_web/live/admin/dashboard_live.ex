@@ -363,17 +363,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           >
             <.icon name="hero-arrow-path" class="size-4" /> Sync now
           </button>
-          <%!-- The whole mirror as one folder of files: a plain download, so it
-          is a link rather than an event — nothing to ask the server for but
-          the bytes. --%>
-          <a
-            href="/admin/export/site.zip"
-            id="export-site"
-            class="btn btn-outline btn-sm gap-1.5"
-            title="Every space, page and attachment as a static site"
-          >
-            <.icon name="hero-arrow-down-tray" class="size-4" /> Static site
-          </a>
           <%!-- The same shape as the search screen's filter menus: the button
           opens a panel whose find box takes the keyboard, and the list is
           narrowed in the database, not in the browser. --%>
@@ -419,6 +408,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             </div>
           </div>
           <a :if={admin_dashboard?()} href="/admin/runtime" class="link text-xs">LiveDashboard</a>
+          <%!-- The whole mirror as one folder of files. It comes last and
+          behind a divider because it is not a sync: it reads what is already
+          mirrored and asks the server for nothing but the bytes. --%>
+          <span aria-hidden="true" class="mx-1 h-6 w-px bg-base-300/70"></span>
+          <a
+            href="/admin/export/site.zip"
+            id="export-site"
+            class="btn btn-outline btn-sm gap-1.5"
+            title="Every space, page and attachment as a static site"
+          >
+            <.icon name="hero-arrow-down-tray" class="size-4" /> Static site
+          </a>
         </:actions>
       </.admin_header>
 
