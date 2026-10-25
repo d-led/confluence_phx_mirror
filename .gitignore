@@ -229,3 +229,4 @@ priv/build_info.json
 
 # database dumps taken by scripts/fly-pg-backup.sh
 backups/
+.sobelow-skips
