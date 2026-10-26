@@ -18,6 +18,10 @@ defmodule ConfluencePhxMirror.Sync.ReconcileWorker do
   # for the same reason: a period is measured from the job's `inserted_at`, so a
   # pass over a hundred thousand pages would otherwise stop blocking while it was
   # still running.
+  # `max_attempts: 3` is safe now that the pass records what it learned space by
+  # space: a retry — including the one `lifeline` performs on a job whose node
+  # died, which is how a long pass usually ends — continues where it stopped
+  # instead of asking the whole site again.
   use Oban.Worker,
     queue: :sync,
     max_attempts: 3,

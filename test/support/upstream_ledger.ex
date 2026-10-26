@@ -31,7 +31,7 @@ defmodule ConfluencePhxMirror.UpstreamLedger do
   to subtract the last one.
   """
   def configure(answers) do
-    Agent.update(__MODULE__, fn state -> %{answers: Map.new(answers), calls: []} end)
+    Agent.update(__MODULE__, fn _state -> %{answers: Map.new(answers), calls: []} end)
   end
 
   @doc "What the source was asked, oldest first: `{:counts, key}` / `{:page_ids, key}`."
