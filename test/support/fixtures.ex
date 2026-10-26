@@ -22,6 +22,10 @@ defmodule ConfluencePhxMirror.Fixtures do
   The rows are deleted inside the test's transaction, so the committed copy is
   untouched and comes back when the test ends. `@tag :empty_mirror` (or
   `@moduletag`) asks `DataCase` to do this before the test body runs.
+
+  A test that empties the mirror must not run beside another one: the deletes
+  cascade into the same committed rows from both sides, and two of them meet on
+  the foreign keys and deadlock (`40P01`). Tagged files are `async: false`.
   """
   @spec empty_mirror!() :: :ok
   def empty_mirror! do

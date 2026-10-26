@@ -4,7 +4,7 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
   does to the address, because the address is what a reader can share.
   """
 
-  use ConfluencePhxMirrorWeb.ConnCase, async: true
+  use ConfluencePhxMirrorWeb.ConnCase, async: false
 
   @moduletag :empty_mirror
 

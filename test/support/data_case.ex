@@ -56,7 +56,9 @@ defmodule ConfluencePhxMirror.DataCase do
     # The suite commits one copy of the demo site before the first test, so a
     # test that wants it pays a read. A test that wants a mirror holding only
     # what it built tags itself `:empty_mirror` and gets a blank one — emptied
-    # inside its own transaction, so the shared copy survives.
+    # inside its own transaction, so the shared copy survives. Such a file must
+    # also be `async: false`: two of them empty the same committed rows and the
+    # foreign keys deadlock.
     if tags[:empty_mirror] do
       ConfluencePhxMirror.Fixtures.empty_mirror!()
     end

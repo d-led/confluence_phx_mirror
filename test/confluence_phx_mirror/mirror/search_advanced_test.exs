@@ -4,7 +4,7 @@ defmodule ConfluencePhxMirror.Mirror.SearchAdvancedTest do
   a contributor and an explicit sort — the questions a reader with a wide mirror
   actually asks, expressed as the engine's query language.
   """
-  use ConfluencePhxMirror.DataCase, async: true
+  use ConfluencePhxMirror.DataCase, async: false
 
   @moduletag :empty_mirror
 

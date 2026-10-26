@@ -4,7 +4,7 @@ defmodule ConfluencePhxMirror.Sync.MembershipsTest do
   is in this group", so a live sync learns membership from the people its
   content names.
   """
-  use ConfluencePhxMirror.DataCase, async: true
+  use ConfluencePhxMirror.DataCase, async: false
 
   @moduletag :empty_mirror
 

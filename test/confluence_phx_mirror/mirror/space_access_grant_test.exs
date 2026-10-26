@@ -8,7 +8,7 @@ defmodule ConfluencePhxMirror.Mirror.SpaceAccessGrantTest do
   one more reader through one that was narrowed.
   """
 
-  use ConfluencePhxMirror.DataCase, async: true
+  use ConfluencePhxMirror.DataCase, async: false
 
   @moduletag :empty_mirror
 

@@ -7,7 +7,7 @@ defmodule ConfluencePhxMirror.CatalogTest do
   about filtering rather than as a description of the demo snapshot.
   """
 
-  use ConfluencePhxMirror.DataCase, async: true
+  use ConfluencePhxMirror.DataCase, async: false
 
   @moduletag :empty_mirror
 

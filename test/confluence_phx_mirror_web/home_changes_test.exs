@@ -4,7 +4,7 @@ defmodule ConfluencePhxMirrorWeb.HomeChangesTest do
   saying what happened, who did it and where, with the whole feed one click
   away. It never ships the feed itself.
   """
-  use ConfluencePhxMirrorWeb.ConnCase, async: true
+  use ConfluencePhxMirrorWeb.ConnCase, async: false
 
   @moduletag :empty_mirror
 
