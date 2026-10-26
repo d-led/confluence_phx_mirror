@@ -39,11 +39,7 @@ defmodule ConfluencePhxMirror.Sync.TrashAbsentWorker do
         # already settled should not add a line to the audit trail.
         if trashed > 0 do
           Audit.log(actor(args), Space.audit_event_pages_deleted(space, trashed))
-
-          Logger.info("trashed #{trashed} absent pages of #{space.key}",
-            space: space.key,
-            pages: trashed
-          )
+          Logger.info("trashed #{trashed} absent pages of #{space.key}")
         end
 
         :ok

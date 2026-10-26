@@ -39,13 +39,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
   end
 
   def handle_event("retention_days", %{"days" => days}, socket) do
-    case Integer.parse(String.trim(days)) do
-      {value, ""} when value >= 0 ->
-        {:noreply, assign(socket, days: value, due: Trash.due(value))}
-
-      _not_a_number ->
-        {:noreply, socket}
-    end
+    {:noreply, change_retention(socket, days)}
   end
 
   def handle_event("ask_to_purge_due", _params, socket) do
@@ -57,67 +51,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
   end
 
   def handle_event("purge_due", _params, socket) do
-    days = socket.assigns.days
-    due = socket.assigns.due
-    args = %{"older_than_days" => days, "asked_by" => who(socket)}
-
-    case args |> PurgeWorker.new() |> Oban.insert() do
-      {:ok, _job} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           "Deleting #{length(due.spaces)} spaces and #{length(due.pages)} pages in the " <>
-             "background; watch it in Jobs."
-         )
-         |> assign(retention_confirming: false)}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Could not queue it: #{inspect(reason)}")}
-    end
+    {:noreply, queue_retention_purge(socket)}
   end
 
   def handle_event("empty", _params, socket) do
-    spaces = length(socket.assigns.spaces)
-    pages = length(socket.assigns.pages)
-
-    Enum.each(socket.assigns.spaces, fn {space, _pages} ->
-      Trash.purge_space(actor(socket), space)
-    end)
-
-    Enum.each(socket.assigns.pages, fn {page, _space} ->
-      Trash.purge_page(actor(socket), page)
-    end)
-
-    {:noreply,
-     socket
-     |> put_flash(:info, "Purged #{spaces} spaces and #{pages} pages for good.")
-     |> load()}
+    {:noreply, purge_everything(socket)}
   end
 
   def handle_event("purge_space", %{"key" => key}, socket) do
-    with {space, _pages} <-
-           Enum.find(socket.assigns.spaces, fn {space, _} -> space.key == key end),
-         {:ok, %{pages: pages}} <- Trash.purge_space(actor(socket), space) do
-      {:noreply,
-       socket
-       |> put_flash(:info, "#{space.key} purged with #{pages} pages.")
-       |> load()}
-    else
-      nil -> {:noreply, put_flash(socket, :error, "#{key} is no longer in the trash.")}
-      {:error, :not_trashed} -> {:noreply, put_flash(socket, :error, "#{key} is live again.")}
-    end
+    {:noreply, purge_space(socket, key)}
   end
 
   def handle_event("purge_page", %{"id" => id}, socket) do
-    with {page, _space} <-
-           Enum.find(socket.assigns.pages, fn {page, _} -> to_string(page.id) == id end),
-         {:ok, :page} <- Trash.purge_page(actor(socket), page) do
-      {:noreply, socket |> put_flash(:info, "“#{page.title}” purged.") |> load()}
-    else
-      nil -> {:noreply, put_flash(socket, :error, "That page is no longer in the trash.")}
-      {:error, :not_trashed} -> {:noreply, put_flash(socket, :error, "That page is live again.")}
-    end
+    {:noreply, purge_page(socket, id)}
   end
 
   @impl true
@@ -340,6 +286,78 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
       due: Trash.due(days),
       empty?: spaces == [] and pages == []
     )
+  end
+
+  # The purge walks every expired row and its attachment files, so it is a job
+  # rather than work done in the click that asked for it.
+  defp queue_retention_purge(socket) do
+    %{days: days, due: due} = socket.assigns
+
+    case %{"older_than_days" => days, "asked_by" => who(socket)}
+         |> PurgeWorker.new()
+         |> Oban.insert() do
+      {:ok, _job} ->
+        socket
+        |> put_flash(
+          :info,
+          "Deleting #{length(due.spaces)} spaces and #{length(due.pages)} pages in the " <>
+            "background; watch it in Jobs."
+        )
+        |> assign(retention_confirming: false)
+
+      {:error, reason} ->
+        put_flash(socket, :error, "Could not queue it: #{inspect(reason)}")
+    end
+  end
+
+  defp change_retention(socket, days) do
+    case Integer.parse(String.trim(days)) do
+      {value, ""} when value >= 0 -> assign(socket, days: value, due: Trash.due(value))
+      _not_a_number -> socket
+    end
+  end
+
+  defp purge_everything(socket) do
+    spaces = length(socket.assigns.spaces)
+    pages = length(socket.assigns.pages)
+
+    Enum.each(socket.assigns.spaces, fn {space, _pages} ->
+      Trash.purge_space(actor(socket), space)
+    end)
+
+    Enum.each(socket.assigns.pages, fn {page, _space} ->
+      Trash.purge_page(actor(socket), page)
+    end)
+
+    socket
+    |> put_flash(:info, "Purged #{spaces} spaces and #{pages} pages for good.")
+    |> load()
+  end
+
+  defp purge_space(socket, key) do
+    with {space, _pages} <-
+           Enum.find(socket.assigns.spaces, fn {space, _} -> space.key == key end),
+         {:ok, %{pages: pages}} <- Trash.purge_space(actor(socket), space) do
+      socket
+      |> put_flash(:info, "#{space.key} purged with #{pages} pages.")
+      |> load()
+    else
+      nil -> put_flash(socket, :error, "#{key} is no longer in the trash.")
+      {:error, :not_trashed} -> put_flash(socket, :error, "#{key} is live again.")
+    end
+  end
+
+  defp purge_page(socket, id) do
+    with {page, _space} <-
+           Enum.find(socket.assigns.pages, fn {page, _} -> to_string(page.id) == id end),
+         {:ok, :page} <- Trash.purge_page(actor(socket), page) do
+      socket
+      |> put_flash(:info, "“#{page.title}” purged.")
+      |> load()
+    else
+      nil -> put_flash(socket, :error, "That page is no longer in the trash.")
+      {:error, :not_trashed} -> put_flash(socket, :error, "That page is live again.")
+    end
   end
 
   defp actor(socket), do: {:user, socket.assigns.current_user}
