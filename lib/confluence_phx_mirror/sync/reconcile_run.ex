@@ -156,31 +156,6 @@ defmodule ConfluencePhxMirror.Sync.ReconcileRun do
     |> Repo.all()
   end
 
-  @doc """
-  The newest facts of a pass, for a screen watching it work, with the total.
-
-  Newest first, because the interesting row is the one that just arrived. The
-  total is what the screen counts against, so a pass over a thousand spaces shows
-  fifty rows and a number, not a thousand rows.
-  """
-  @spec progress_facts(t(), pos_integer()) :: %{
-          facts: [ReconcileObservation.t()],
-          settled: non_neg_integer()
-        }
-  def progress_facts(%__MODULE__{} = run, limit) do
-    %{
-      facts:
-        from(o in ReconcileObservation,
-          where: o.run_id == ^run.id,
-          order_by: [desc: o.observed_at, desc: o.id],
-          limit: ^limit,
-          preload: [:space]
-        )
-        |> Repo.all(),
-      settled: count_facts(run)
-    }
-  end
-
   @doc "How many spaces a pass has settled."
   @spec count_facts(t()) :: non_neg_integer()
   def count_facts(%__MODULE__{} = run) do
@@ -196,10 +171,17 @@ defmodule ConfluencePhxMirror.Sync.ReconcileRun do
   half of that comparison — the ids the site answered with — and `counted` is how
   many spaces could be settled by a count instead of a full listing, which is
   zero on a Confluence that cannot report per-space totals.
+
+  `at_odds` is how many spaces had pages the site did not name; the pages
+  themselves are the review screen's other tables, so this is a number rather than
+  a second list of the same spaces. `failed` is how many spaces the source would
+  not answer for, which is a hole in the comparison and is never left silent.
   """
   @spec summary(t()) :: %{
           settled: non_neg_integer(),
           counted: non_neg_integer(),
+          at_odds: non_neg_integer(),
+          failed: non_neg_integer(),
           named: non_neg_integer(),
           marked: non_neg_integer(),
           cleared: non_neg_integer()
@@ -209,16 +191,18 @@ defmodule ConfluencePhxMirror.Sync.ReconcileRun do
       Repo.all(
         from(o in ReconcileObservation,
           where: o.run_id == ^run.id,
-          select: {o.counted, o.named, o.marked, o.cleared}
+          select: {o.verdict, o.counted, o.named, o.marked, o.cleared}
         )
       )
 
     %{
       settled: length(rows),
-      counted: Enum.count(rows, fn {counted, _named, _marked, _cleared} -> counted end),
-      named: rows |> Enum.map(&elem(&1, 1)) |> Enum.sum(),
-      marked: rows |> Enum.map(&elem(&1, 2)) |> Enum.sum(),
-      cleared: rows |> Enum.map(&elem(&1, 3)) |> Enum.sum()
+      counted: Enum.count(rows, &elem(&1, 1)),
+      at_odds: Enum.count(rows, &(elem(&1, 3) > 0)),
+      failed: Enum.count(rows, &(elem(&1, 0) == "failed")),
+      named: rows |> Enum.map(&elem(&1, 2)) |> Enum.sum(),
+      marked: rows |> Enum.map(&elem(&1, 3)) |> Enum.sum(),
+      cleared: rows |> Enum.map(&elem(&1, 4)) |> Enum.sum()
     }
   end
 

@@ -1498,6 +1498,11 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
+  @doc "How many live spaces the mirror holds — what a check has to get through."
+  def count_spaces do
+    Repo.aggregate(from(s in Space, where: is_nil(s.deleted_at)), :count)
+  end
+
   @doc """
   How many absent pages each space holds, most first.
 

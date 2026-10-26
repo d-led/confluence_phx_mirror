@@ -37,7 +37,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
   } do
     {:ok, _view, html} = live(conn, ~p"/admin/upstream")
 
-    assert html =~ "Nobody has checked this mirror against the site yet"
+    assert html =~ "Nobody has checked this against Confluence yet"
     refute html =~ "found every page the site lists"
   end
 
@@ -46,8 +46,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
 
     {:ok, _view, html} = live(conn, ~p"/admin/upstream")
 
-    assert html =~ "compared 12 spaces and found every page the site lists"
-    assert html =~ "That is a statement about that moment, not about now"
+    assert html =~ "Nothing is missing"
+    assert html =~ "12 spaces"
+    assert html =~ "True as of that date, not for ever"
   end
 
   test "a clean check says what it compared, not only what it concluded", %{
@@ -75,10 +76,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
 
     {:ok, view, html} = live(conn, ~p"/admin/upstream")
 
-    assert html =~ "The site named 1000 ids in them"
+    # The numbers are the point; markup whitespace is not.
+    assert html =~ "1000 pages"
+    assert html =~ "all found"
 
     assert view |> element("#upstream-no-counts") |> render() =~
-             "reports no per-space total, so every space had to be listed in full"
+             "so every space is compared page by page"
 
     assert space.id
   end
@@ -95,7 +98,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     assert html =~ "Vanished Page"
     assert html =~ "ENG"
     assert has_element?(view, "#absent-#{absent.id} time[data-local-time]")
-    assert has_element?(view, "#space-ENG", "Trash all 1")
+    assert has_element?(view, "#space-ENG", "Move all 1 to trash")
   end
 
   test "listing the page does not trash it", %{conn: conn, space: space, absent: absent} do
@@ -146,49 +149,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     assert view |> element("#absent-total") |> render() =~ "1 page in 1 space"
   end
 
-  test "facts appear as the pass records them, without a reload", %{conn: conn, space: space} do
-    run = ReconcileRun.start(%{trigger: "a test"})
-
-    {:ok, view, html} = live(conn, ~p"/admin/upstream")
-
-    assert html =~ "What this check has settled"
-    refute has_element?(view, "#fact-ENG")
-
-    # What `Reconcile` does after it has counted, listed and marked a space.
-    ReconcileRun.observe(run, space, %{
-      verdict: :listed,
-      asked: 1,
-      counted: false,
-      named: 934,
-      marked: 3,
-      cleared: 0,
-      error: nil
-    })
-
-    assert has_element?(view, "#fact-ENG")
-    assert view |> element("#upstream-facts") |> render() =~ "named its ids"
-  end
-
-  test "the progress list names the newest facts and counts the rest", %{conn: conn} do
-    run = ReconcileRun.start(%{trigger: "a test"})
-
-    for n <- 1..55 do
-      ReconcileRun.observe(run, space_fixture(%{key: "S#{n}"}), %{
-        verdict: :agreed,
-        asked: 1,
-        counted: true,
-        named: 0,
-        marked: 0,
-        cleared: 0,
-        error: nil
-      })
-    end
-
-    {:ok, view, _html} = live(conn, ~p"/admin/upstream")
-
-    assert view |> element("#upstream-facts") |> render() =~ "Showing the newest 50 of 55"
-  end
-
   test "a whole space's absent pages are queued as a job, not done in the click", %{
     conn: conn,
     space: space,
@@ -200,9 +160,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/admin/upstream")
 
-    html = view |> element("#space-ENG button", "Trash all 2") |> render_click()
+    html = view |> element("#space-ENG button", "Move all 2 to trash") |> render_click()
 
-    assert html =~ "Trashing 2 pages of ENG in the background"
+    assert html =~ "Moving 2 pages of ENG to the trash"
     assert_enqueued(worker: TrashAbsentWorker)
 
     # The job has not run yet, so nothing has moved and the review still shows it.
@@ -216,7 +176,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
 
     html = view |> element("#check-upstream") |> render_click()
 
-    assert html =~ "A verify pass is queued"
+    assert html =~ "Checking. It only asks Confluence what it has"
     assert_enqueued(worker: ReconcileWorker)
   end
 
@@ -226,16 +186,45 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     view |> element("#check-upstream") |> render_click()
     html = view |> element("#check-upstream") |> render_click()
 
-    assert html =~ "already queued or running"
+    assert html =~ "A check is already queued or running"
     assert length(all_enqueued(worker: ReconcileWorker)) == 1
   end
 
-  test "a check Oban still holds is reported as queued or running", %{conn: conn} do
+  test "the list fills in as the check finds pages, without a reload", %{
+    conn: conn,
+    space: space,
+    absent: absent
+  } do
+    run = ReconcileRun.start(%{trigger: "a test"})
+
+    {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+
+    refute has_element?(view, "#absent-#{absent.id}")
+
+    # What `Reconcile` does for one space: mark what the site left out, then record
+    # the fact. The screen is subscribed, so it fills in by itself.
+    Mirror.mark_absent(space, [])
+
+    ReconcileRun.observe(run, space, %{
+      verdict: :listed,
+      asked: 1,
+      counted: false,
+      named: 0,
+      marked: 1,
+      cleared: 0,
+      error: nil
+    })
+
+    assert has_element?(view, "#absent-#{absent.id}")
+    assert view |> element("#absent-total") |> render() =~ "1 page in 1 space"
+  end
+
+  test "a check Oban still holds is reported as a check in progress", %{conn: conn} do
     {:ok, _job} = ReconcileWorker.new(%{"trigger" => "a test"}) |> Oban.insert()
 
     {:ok, view, _html} = live(conn, ~p"/admin/upstream")
 
-    assert view |> element("#upstream-in-flight") |> render() =~ "queued or running"
+    assert view |> element("#upstream-in-flight") |> render() =~ "Checking Confluence now"
     refute has_element?(view, "#upstream-unchecked")
   end
 
@@ -255,7 +244,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/admin/upstream")
 
-    assert view |> element("#upstream-interrupted") |> render() =~ "did not finish"
+    assert view |> element("#upstream-interrupted") |> render() =~ "stopped early"
     refute has_element?(view, "#upstream-in-flight")
   end
 

@@ -31,10 +31,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   # second is faster than a person reads and cheaper than a query per space.
   @refresh_ms 1_000
 
-  # How many settled spaces the progress list names; the count beside it says how
-  # many there are in all.
-  @facts_window 50
-
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -42,7 +38,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
     end
 
     {:ok,
-     assign(socket, page_title: "Not upstream", refresh_timer: nil, refresh_pending?: false)
+     assign(socket, page_title: "Missing pages", refresh_timer: nil, refresh_pending?: false)
      |> load()}
   end
 
@@ -90,7 +86,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   def handle_event("trash_space", %{"key" => key}, socket) do
     case Enum.find(socket.assigns.spaces, fn %{space: space} -> space.key == key end) do
       nil ->
-        {:noreply, put_flash(socket, :error, "#{key} has nothing absent.")}
+        {:noreply, put_flash(socket, :error, "#{key} has nothing to move.")}
 
       %{space: space, pages: absent} ->
         # A space can hold thousands of absent pages; the job takes them so the
@@ -103,11 +99,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
              put_flash(
                socket,
                :info,
-               "Trashing #{absent} pages of #{space.key} in the background; watch it in Jobs."
+               "Moving #{plural(absent, "page")} of #{space.key} to the trash. This runs in the background."
              )}
 
           {:error, reason} ->
-            {:noreply, put_flash(socket, :error, "Could not queue it: #{inspect(reason)}")}
+            {:noreply, put_flash(socket, :error, "Could not start it: #{inspect(reason)}")}
         end
     end
   end
@@ -125,17 +121,17 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       mirror_url={@mirror_url}
       mirror_host={@mirror_host}
       mirror_source={@mirror_source}
-      page_title="Not upstream"
+      page_title="Pages Confluence doesn't have"
       sidebar?={false}
     >
       <.admin_header
         current={:upstream}
-        title="Not upstream"
-        subtitle="Pages the mirror holds that Confluence did not name. They are still readable until you trash them."
+        title="Pages Confluence doesn't have"
+        subtitle="We still show them. Confluence doesn't."
       >
         <:actions>
           <button type="button" phx-click="check" id="check-upstream" class="btn btn-outline btn-sm">
-            Check the site again
+            Check Confluence
           </button>
         </:actions>
       </.admin_header>
@@ -145,13 +141,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
         id="upstream-in-flight"
         class="mt-6 rounded-xl border border-info/40 bg-info/10 p-4 text-sm text-base-content/80"
       >
-        <span class="font-semibold">A check is queued or running.</span>
-        <%= if @unfinished do %>
-          It has settled {@unfinished.observed} spaces so far, and each one is written down as it
-          goes — an interrupted job continues from there rather than starting over. What it finds
-          lands here when it finishes.
+        <span class="font-semibold">Checking Confluence now.</span>
+        <%= if @progress && @progress.settled > 0 do %>
+          {@progress.settled} of {@spaces_count} spaces done — new findings appear below.<%= if @progress.failed > 0 do %>
+            {@progress.failed} spaces could not be read.
+          <% end %>
         <% else %>
-          It counts and names ids for every space, reads no page, and records what it found here.
+          Starting. It only asks Confluence what it has — nothing is copied.
         <% end %>
       </p>
 
@@ -160,12 +156,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
         id="upstream-interrupted"
         class="mt-6 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm text-base-content/80"
       >
-        <span class="font-semibold">The last check did not finish.</span>
-        <%= if @unfinished.observed == 0 do %>
-          It stopped before it settled any space, so the next check starts from the beginning.
+        <span class="font-semibold">The last check stopped early.</span>
+        <%= if @progress && @progress.settled > 0 do %>
+          It got through {@progress.settled} of {@spaces_count} spaces. Whatever it already found is
+          below, and the next check carries on from there.
         <% else %>
-          It stopped with {@unfinished.observed} spaces settled. Those are written down, so the next
-          check continues from there instead of asking the site about them again.
+          It stopped before finishing any space, so the next check starts over. Nothing below is
+          new since then.
         <% end %>
       </p>
 
@@ -174,45 +171,51 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
         id="upstream-unchecked"
         class="mt-6 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm text-base-content/80"
       >
-        <span class="font-semibold">Nobody has checked this mirror against the site yet.</span>
-        Nothing here knows which pages Confluence still lists — an untouched mirror and one the
-        site agrees with look exactly the same from the inside. “Check the site again” counts and
-        names ids for every space (two requests each), reads no page, and records what it found.
+        <span class="font-semibold">Nobody has checked this against Confluence yet.</span>
+        Until someone does, nobody knows which pages Confluence still has. Press “Check Confluence”
+        — it only reads, and takes a while on a big site.
       </p>
 
       <div
-        :if={@absent == 0 and not is_nil(@last_check)}
+        :if={@absent == 0 and not is_nil(@last_check) and not @in_flight}
         id="upstream-none"
         class="mt-6 rounded-xl border border-base-300/70 bg-base-100 p-4 text-sm text-base-content/70"
       >
         <p>
-          The last check,
-          <.local_time at={@last_check.finished_at} />, compared {@last_check.spaces} spaces and found every page the site lists.
-          <%= if @summary.named > 0 do %>
-            The site named {@summary.named} ids in them, and every page the mirror held in those spaces was among them.
-          <% end %>
+          <span class="font-semibold">Nothing is missing.</span>
+          Last checked
+          <.local_time at={@last_check.finished_at} />: {@last_check.spaces} spaces<%= if @summary.named > 0 do %>
+            and {@summary.named} pages
+          <% end %>, all found.
         </p>
         <p
           :if={@summary.counted == 0 and @summary.settled > 0}
           id="upstream-no-counts"
           class="mt-1 text-xs"
         >
-          This Confluence reports no per-space total, so every space had to be listed in full — {@summary.settled} listings and no counts at all.
-        </p>
-        <p :if={@summary.counted > 0} class="mt-1 text-xs">
-          {@summary.counted} spaces agreed on their counts; {@summary.settled - @summary.counted} had to be listed.
+          Confluence won't say how many pages a space has, so every space is compared page by page.
+          That's why a check takes a while.
         </p>
         <p class="mt-1 text-xs">
-          That is a statement about that moment, not about now — a page deleted since then is
-          still mirrored until the next pass says otherwise.
+          True as of that date, not for ever. A page deleted upstream appears here at the next check.
         </p>
       </div>
 
-      <section :if={@progress} id="upstream-facts" class="mt-6">
-        <h2 class="text-sm font-semibold">What this check has settled</h2>
+      <section :if={@spaces != []} class="mt-6">
+        <h2 class="text-sm font-semibold">
+          <span id="absent-total">{plural(@absent, "page")} in {plural(length(@spaces), "space")}</span>
+          not in Confluence any more
+        </h2>
+        <p :if={@checked_at} class="mt-0.5 text-xs text-base-content/70">
+          Confluence stopped listing them at the last check, <.local_time at={@checked_at} />.
+          Missing can also mean Confluence hid the page from us, so nothing moves without you.
+        </p>
+        <p :if={is_nil(@checked_at)} class="mt-0.5 text-xs text-base-content/70">
+          No finished check has confirmed this yet. Check again before acting on it.
+        </p>
         <p class="mt-0.5 text-xs text-base-content/70">
-          {@progress.settled} spaces written down so far, newest first. Each fact is one space
-          counted, listed and marked — the page list below grows as they arrive.
+          Moving them to the trash hides them here. Deleting for good happens later, on the Trash
+          page.
         </p>
 
         <div class="mt-2 overflow-x-auto rounded-xl border border-base-300/70">
@@ -220,64 +223,17 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
             <thead>
               <tr>
                 <th>Space</th>
-                <th>Result</th>
-                <th class="text-right">Named</th>
-                <th class="text-right">Marked absent</th>
-                <th>When</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={fact <- @progress.facts} id={"fact-#{fact.space.key}"}>
-                <td class="font-mono text-xs">{fact.space.key}</td>
-                <td class="text-xs">{result_text(fact)}</td>
-                <td class="text-right tabular-nums">{fact.named}</td>
-                <td class="text-right tabular-nums">{fact.marked}</td>
-                <td class="text-xs text-base-content/70">
-                  <.local_time at={fact.observed_at} />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <p :if={@progress.settled > length(@progress.facts)} class="mt-2 text-xs text-base-content/70">
-          Showing the newest {length(@progress.facts)} of {@progress.settled}; the rest are written
-          down and counted in the totals.
-        </p>
-      </section>
-
-      <section :if={@spaces != []} class="mt-6">
-        <h2 class="text-sm font-semibold">
-          Spaces holding absent pages
-          <span id="absent-total" class="ml-1 font-normal text-base-content/70">
-            — {plural(@absent, "page")} in {plural(length(@spaces), "space")}
-          </span>
-        </h2>
-        <p :if={@checked_at} class="mt-0.5 text-xs text-base-content/70">
-          The site did not name these pages when this mirror last asked, at
-          <.local_time at={@checked_at} />. A lost permission looks exactly like a deletion from
-          here, which is why nothing moves without you.
-        </p>
-        <p :if={is_nil(@checked_at)} class="mt-0.5 text-xs text-base-content/70">
-          The site did not name these pages, but no check has finished since they were marked — the
-          pass that marked them did not complete. Check again before acting on it.
-        </p>
-
-        <div class="mt-2 overflow-x-auto rounded-xl border border-base-300/70">
-          <table class="table table-sm">
-            <thead>
-              <tr>
-                <th>Key</th>
-                <th>Name</th>
-                <th class="text-right">Absent</th>
-                <th>First noticed</th>
+                <th class="text-right">Pages</th>
+                <th>Missing since</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               <tr :for={entry <- @spaces} id={"space-#{entry.space.key}"}>
-                <td class="font-mono text-xs">{entry.space.key}</td>
-                <td class="max-w-64 truncate">{entry.space.name}</td>
+                <td class="max-w-72 truncate">
+                  <span class="font-mono text-xs">{entry.space.key}</span>
+                  <span class="ml-1 text-base-content/70">{entry.space.name}</span>
+                </td>
                 <td class="text-right tabular-nums">{entry.pages}</td>
                 <td class="text-xs text-base-content/70">
                   <.local_time at={entry.since} />
@@ -289,7 +245,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
                     phx-value-key={entry.space.key}
                     class="btn btn-ghost btn-xs"
                   >
-                    Trash all {entry.pages}
+                    Move all {entry.pages} to trash
                   </button>
                 </td>
               </tr>
@@ -299,16 +255,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       </section>
 
       <section :if={@pages != []} class="mt-8">
-        <h2 class="text-sm font-semibold">Pages not named by the site</h2>
+        <h2 class="text-sm font-semibold">The same pages, one by one</h2>
 
         <div class="mt-2 overflow-x-auto rounded-xl border border-base-300/70">
           <table class="table table-sm">
             <thead>
               <tr>
-                <th>Title</th>
+                <th>Page</th>
                 <th>Space</th>
-                <th>Type</th>
-                <th>Absent since</th>
+                <th>Missing since</th>
                 <th></th>
               </tr>
             </thead>
@@ -316,7 +271,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
               <tr :for={{page, space} <- @pages} id={"absent-#{page.id}"}>
                 <td class="max-w-96 truncate">{page.title}</td>
                 <td class="font-mono text-xs">{space.key}</td>
-                <td class="text-xs">{page.type}</td>
                 <td class="text-xs text-base-content/70">
                   <.local_time at={page.absent_since} />
                 </td>
@@ -328,7 +282,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
                     id={"trash-#{page.id}"}
                     class="btn btn-ghost btn-xs"
                   >
-                    Trash
+                    Move to trash
                   </button>
                 </td>
               </tr>
@@ -337,7 +291,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
         </div>
 
         <p :if={@more_pages?} class="mt-2 text-xs text-base-content/70">
-          Showing the newest {@page_window}; each space's own button takes the rest.
+          The newest {@page_window} are listed. The button by each space clears all of them.
         </p>
       </section>
     </Layouts.app>
@@ -357,7 +311,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       spaces_list: Enum.map(spaces, & &1.space),
       absent: Mirror.count_absent(),
       # What the last finished pass found, or `nil` when nobody has asked yet —
-      # the difference between "nothing is absent" and "we do not know".
+      # the difference between "nothing is missing" and "we do not know".
       last_check: last_check,
       checked_at: last_check && last_check.finished_at,
       # Two different questions, from two different places. `in_flight` asks Oban
@@ -366,9 +320,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       # that rather than call a dead pass "running".
       in_flight: Jobs.unfinished?(ReconcileWorker),
       unfinished: unfinished,
-      # The facts of the pass being watched, so they can be read while it works.
-      progress: unfinished && ReconcileRun.progress_facts(unfinished.run, @facts_window),
-      # What the last finished pass compared, so "nothing is absent" comes with
+      # How far the pass being watched has got, and how much there is to get
+      # through — the two numbers the status sentence needs.
+      progress: unfinished && ReconcileRun.summary(unfinished.run),
+      spaces_count: Mirror.count_spaces(),
+      # What the last finished pass compared, so "nothing is missing" comes with
       # the numbers behind it.
       summary: last_check && ReconcileRun.summary(last_check),
       more_pages?: length(all_pages) > @page_window,
@@ -393,12 +349,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
     assign(socket, :refresh_timer, nil)
   end
 
-  # One word for what the pass concluded about a space, in the operator's terms.
-  defp result_text(%{verdict: "agreed"}), do: "in step"
-  defp result_text(%{verdict: "listed"}), do: "named its ids"
-  defp result_text(%{verdict: "empty"}), do: "named nothing"
-  defp result_text(%{verdict: "failed", error: error}), do: "not answered: #{error}"
-
   defp plural(1, word), do: "1 #{word}"
   defp plural(count, word), do: "#{count} #{word}s"
 
@@ -412,20 +362,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
         put_flash(
           socket,
           :info,
-          "A check is already queued or running, so this click was folded into it. " <>
-            "Its result lands here when it finishes."
+          "A check is already queued or running. This click joined it."
         )
 
       {:ok, _job} ->
         put_flash(
           socket,
           :info,
-          "A verify pass is queued. It counts and names ids — it does not read pages — " <>
-            "so it finishes in seconds per space."
+          "Checking. It only asks Confluence what it has, and the result appears here."
         )
 
       {:error, reason} ->
-        put_flash(socket, :error, "Could not queue the pass: #{inspect(reason)}")
+        put_flash(socket, :error, "Could not start the check: #{inspect(reason)}")
     end
   end
 
