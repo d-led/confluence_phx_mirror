@@ -7,6 +7,8 @@ defmodule ConfluencePhxMirror.SettingsTest do
 
   use ConfluencePhxMirror.DataCase, async: false
 
+  @moduletag :empty_mirror
+
   alias ConfluencePhxMirror.{Audit, Settings}
 
   @actor {:system, "test"}

@@ -8,6 +8,8 @@ defmodule ConfluencePhxMirror.TrashTest do
   """
   use ConfluencePhxMirror.DataCase, async: false
 
+  @moduletag :empty_mirror
+
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Blobs.Store

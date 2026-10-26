@@ -6,6 +6,8 @@ defmodule ConfluencePhxMirror.Sync.MembershipsTest do
   """
   use ConfluencePhxMirror.DataCase, async: true
 
+  @moduletag :empty_mirror
+
   alias ConfluencePhxMirror.Confluence.MembershipSource
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Sync

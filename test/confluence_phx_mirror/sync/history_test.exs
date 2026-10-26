@@ -7,6 +7,8 @@ defmodule ConfluencePhxMirror.Sync.HistoryTest do
   """
   use ConfluencePhxMirror.DataCase, async: true
 
+  @moduletag :empty_mirror
+
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.{History, SyncRun}
 

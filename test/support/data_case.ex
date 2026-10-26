@@ -52,6 +52,16 @@ defmodule ConfluencePhxMirror.DataCase do
       Ecto.Adapters.SQL.Sandbox.start_owner!(ConfluencePhxMirror.Repo, shared: not tags[:async])
 
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+
+    # The suite commits one copy of the demo site before the first test, so a
+    # test that wants it pays a read. A test that wants a mirror holding only
+    # what it built tags itself `:empty_mirror` and gets a blank one — emptied
+    # inside its own transaction, so the shared copy survives.
+    if tags[:empty_mirror] do
+      ConfluencePhxMirror.Fixtures.empty_mirror!()
+    end
+
+    :ok
   end
 
   @doc """

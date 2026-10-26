@@ -6,6 +6,8 @@ defmodule ConfluencePhxMirrorWeb.HomeChangesTest do
   """
   use ConfluencePhxMirrorWeb.ConnCase, async: true
 
+  @moduletag :empty_mirror
+
   import ConfluencePhxMirror.Fixtures
 
   test "says what happened to each change, and who", %{conn: conn} do

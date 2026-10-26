@@ -11,6 +11,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.RefreshCadenceTest do
 
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
+  @moduletag :empty_mirror
+
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
 

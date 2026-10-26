@@ -41,6 +41,7 @@ defmodule ConfluencePhxMirror.SyncGateTest do
 
     test "a sync that finds the lock taken starts nothing" do
       test_process = self()
+      runs_before = Repo.aggregate(SyncRun, :count)
 
       holder =
         Task.async(fn ->
@@ -55,7 +56,7 @@ defmodule ConfluencePhxMirror.SyncGateTest do
 
       assert_receive :locked
       assert {:error, :already_running} = Sync.run(:snapshot)
-      assert Repo.aggregate(SyncRun, :count) == 0
+      assert Repo.aggregate(SyncRun, :count) == runs_before
 
       send(holder.pid, :release)
       Task.await(holder)

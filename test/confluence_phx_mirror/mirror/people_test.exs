@@ -5,6 +5,8 @@ defmodule ConfluencePhxMirror.Mirror.PeopleTest do
   """
   use ConfluencePhxMirror.DataCase, async: true
 
+  @moduletag :empty_mirror
+
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Mirror

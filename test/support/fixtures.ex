@@ -11,11 +11,34 @@ defmodule ConfluencePhxMirror.Fixtures do
   alias ConfluencePhxMirror.Sync
 
   @doc """
-  Mirrors the bundled demo snapshot and returns the finished sync run.
+  Starts this test from an empty mirror.
 
-  No gate: the sandbox gives this test a database of its own, so the run here is
-  the only run in that mirror (see `ConfluencePhxMirror.UnclaimedGate`).
+  The suite mirrors the demo site once, before any test, and commits it — see
+  `test/test_helper.exs` — so a test that wants the demo content pays for a
+  read rather than for a thousand inserts. This is the other half of that
+  bargain: a test whose subject is "a mirror with exactly what I built" says so,
+  and gets its own blank one.
+
+  The rows are deleted inside the test's transaction, so the committed copy is
+  untouched and comes back when the test ends. `@tag :empty_mirror` (or
+  `@moduletag`) asks `DataCase` to do this before the test body runs.
   """
+  @spec empty_mirror!() :: :ok
+  def empty_mirror! do
+    # Children first: the foreign keys point up at pages and spaces.
+    for table <- ~w(
+          page_properties page_labels page_restrictions links labels group_members
+          comments attachments pages spaces
+          sync_runs audit_events sync_gate
+        ) do
+      ConfluencePhxMirror.Repo.query!("DELETE FROM #{table}")
+    end
+
+    ConfluencePhxMirror.Mirror.Counters.clear()
+    :ok
+  end
+
+  @doc "Mirrors the bundled demo snapshot and returns the finished sync run."
   def demo_snapshot! do
     {:ok, run} = Sync.run(:snapshot, gate: ConfluencePhxMirror.UnclaimedGate)
     run

@@ -1,6 +1,8 @@
 defmodule ConfluencePhxMirrorWeb.AdminAuditExportTest do
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
+  @moduletag :empty_mirror
+
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Accounts.User

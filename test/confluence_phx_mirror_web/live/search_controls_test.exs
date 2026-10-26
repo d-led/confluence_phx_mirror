@@ -6,6 +6,8 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchControlsTest do
 
   use ConfluencePhxMirrorWeb.ConnCase, async: true
 
+  @moduletag :empty_mirror
+
   import Phoenix.LiveViewTest
   import ConfluencePhxMirror.Fixtures
 
