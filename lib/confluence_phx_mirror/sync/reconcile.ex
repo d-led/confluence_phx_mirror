@@ -33,6 +33,15 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
   A listing that names nothing for a space marks nothing: an empty answer is far
   more likely to be a filtering or permission problem than a deleted space, and
   the same rule guards the sync (`Sync.reconcile_deletions/2`).
+
+  ## Surviving an interruption
+
+  A site of a thousand spaces takes a while, and a long job meets deploys. Each
+  space is therefore settled and *recorded* on its own
+  (`ReconcileObservation`), and an unfinished pass is continued rather than
+  restarted — a resumed attempt asks only about the spaces the last one did not
+  reach, and its report covers the whole pass. Each fact carries the time it was
+  observed, because a pass resumed hours later is old at its first space.
   """
 
   alias ConfluencePhxMirror.Confluence.Source
@@ -61,11 +70,11 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
         }
 
   @doc """
-  Runs the pass over every live space in the mirror.
+  Runs the pass over every live space in the mirror, continuing an interrupted
+  one.
 
-  Options: `:source` (defaults to the configured one) and `:spaces` (a list of
-  live `%Space{}` to limit the pass to, which is what the admin screen uses when
-  it re-checks one space).
+  Options: `:source` (defaults to the configured one) and `:trigger` (why the
+  pass happened, kept for the record).
 
   A space whose source failed is named in the report's `:failed` rather than
   ending the pass: a site with three hundred spaces should not lose the other
@@ -77,45 +86,46 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
     # A pass leaves a record whether or not it finishes: an interrupted one has
     # still marked absences, and the screen must be able to say when it last
     # knew rather than guess.
-    run_record = ReconcileRun.start(%{trigger: Keyword.get(opts, :trigger)})
+    # A pass that was interrupted is continued, not restarted: the spaces it
+    # recorded are done, and asking the site the same question twice is the cost
+    # this pass exists to avoid.
+    run_record = ReconcileRun.resume_or_start(%{trigger: Keyword.get(opts, :trigger)})
 
-    case live_spaces(opts) do
-      [] ->
-        empty_report() |> tap(&ReconcileRun.finish(run_record, &1))
+    Enum.each(pending_spaces(run_record), &settle(source, run_record, &1))
 
-      spaces ->
-        # A `:counters` process keeps the request tally honest without threading
-        # a number through every call site.
-        tally = :counters.new(1, [])
+    report = run_record |> ReconcileRun.facts() |> summarise(Mirror.count_absent())
+    ReconcileRun.finish(run_record, report)
 
-        results = Enum.map(spaces, &check(source, &1, tally))
-
-        spaces
-        |> report(results, :counters.get(tally, 1))
-        |> tap(&ReconcileRun.finish(run_record, &1))
-    end
+    report
   end
 
-  defp empty_report do
-    %{spaces: 0, agreed: 0, listed: [], absent: 0, asked: 0, failed: [], empty: []}
+  # The spaces this pass has not settled yet, which is the whole list on a first
+  # attempt and the remainder on a resumed one.
+  defp pending_spaces(run_record) do
+    settled = ReconcileRun.observed_space_ids(run_record)
+
+    Enum.reject(Mirror.list_spaces(), &MapSet.member?(settled, &1.id))
   end
 
-  defp live_spaces(opts) do
-    case Keyword.get(opts, :spaces) do
-      nil -> Mirror.list_spaces()
-      spaces -> spaces
-    end
+  # One space, in the cheapest way that settles it. The recorded fact is written
+  # only after the marking, so a pass never claims work it did not do; a pass
+  # killed in between repeats one space, and marking is idempotent.
+  defp settle(source, run_record, space) do
+    {space, fact} = check(source, space)
+    ReconcileRun.observe(run_record, space, fact)
   end
 
-  # One space, in the cheapest way that settles it: a count when the source can
-  # answer one, a listing when it cannot or when the count disagrees.
-  defp check(source, space, tally) do
-    case count(source, space, tally) do
+  # A count is one question; a space the count could not settle costs that
+  # question and a listing, which is what the observation records.
+  defp check(source, space) do
+    case count(source, space) do
       {:ok, upstream} ->
-        if in_step?(upstream, space), do: {:agreed, space}, else: list(source, space, tally)
+        if in_step?(upstream, space),
+          do: fact(space, :agreed, asked: 1),
+          else: list(source, space, 2)
 
       _cannot_count ->
-        list(source, space, tally)
+        list(source, space, 1)
     end
   end
 
@@ -138,10 +148,8 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
 
   # A count is two requests (a page asks for one type at a time). A source that
   # cannot count, or whose count fails, simply says so and the space is listed.
-  defp count(source, space, tally) do
+  defp count(source, space) do
     if function_exported?(source, :counts, 2) do
-      :counters.add(tally, 1, 1)
-
       case source.counts(space.key, []) do
         {:ok, counts} -> {:ok, counts}
         {:error, reason} -> {:error, reason}
@@ -152,31 +160,41 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
   end
 
   # The id-only listing: the same pagination as a sync, with nothing in it.
-  defp list(source, space, tally) do
-    :counters.add(tally, 1, 1)
-
+  defp list(source, space, asked) do
     case source.page_ids(space.key, []) do
       {:ok, %{page: [], blogpost: []}} ->
-        {:empty, space}
+        fact(space, :empty, asked: asked)
 
       {:ok, ids} ->
-        {marked, cleared} = Mirror.mark_absent(space, Map.values(ids) |> List.flatten())
-        {:listed, space, marked, cleared}
+        {marked, cleared} = Mirror.mark_absent(space, ids |> Map.values() |> List.flatten())
+        fact(space, :listed, asked: asked, marked: marked, cleared: cleared)
 
       {:error, reason} ->
-        {:failed, space, reason}
+        fact(space, :failed, asked: asked, error: error_text(reason))
     end
   end
 
-  defp report(spaces, results, asked) do
+  defp fact(space, verdict, attrs) do
+    default = %{verdict: verdict, asked: 0, marked: 0, cleared: 0, error: nil}
+    {space, Map.merge(default, Map.new(attrs))}
+  end
+
+  # The record is read by people and by grep, so a reason is text and not a term.
+  defp error_text(reason) when is_binary(reason), do: reason
+  defp error_text(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp error_text(reason), do: inspect(reason)
+
+  # The report is a summary of the facts, not of this attempt: a pass resumed
+  # after an interruption reports every space it settled, not just the last few.
+  defp summarise(facts, absent) do
     %{
-      spaces: length(spaces),
-      agreed: Enum.count(results, &match?({:agreed, _}, &1)),
-      listed: for({:listed, space, marked, _cleared} <- results, do: {space, marked}),
-      absent: Mirror.count_absent(),
-      asked: asked,
-      failed: for({:failed, space, reason} <- results, do: {space.key, reason}),
-      empty: for({:empty, space} <- results, do: space.key)
+      spaces: length(facts),
+      agreed: Enum.count(facts, &(&1.verdict == "agreed")),
+      listed: for(%{verdict: "listed"} = fact <- facts, do: {fact.space, fact.marked}),
+      absent: absent,
+      asked: facts |> Enum.map(& &1.asked) |> Enum.sum(),
+      failed: for(%{verdict: "failed"} = fact <- facts, do: {fact.space.key, fact.error}),
+      empty: for(%{verdict: "empty"} = fact <- facts, do: fact.space.key)
     }
   end
 end

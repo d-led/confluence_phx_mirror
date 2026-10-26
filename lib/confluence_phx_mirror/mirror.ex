@@ -114,7 +114,7 @@ defmodule ConfluencePhxMirror.Mirror do
 
     space
     |> Space.changeset(attrs)
-    |> revive(space)
+    |> revive_space()
     |> Repo.insert_or_update()
   end
 
@@ -1099,7 +1099,7 @@ defmodule ConfluencePhxMirror.Mirror do
 
     page
     |> Page.changeset(Map.put(attrs, :space_id, space.id))
-    |> revive(page)
+    |> revive_page()
     |> Repo.insert_or_update()
   end
 
@@ -1523,8 +1523,35 @@ defmodule ConfluencePhxMirror.Mirror do
   # The counterpart of trashing: something that disappeared and came back — a
   # page restored from Confluence's trash, a space someone deleted by mistake —
   # is live again the moment a sync sees it. Nothing revives on its own.
-  defp revive(changeset, %{deleted_at: nil}), do: changeset
-  defp revive(changeset, _trashed), do: Ecto.Changeset.put_change(changeset, :deleted_at, nil)
+  #
+  # Two halves to that, because the trash holds two different things:
+  #
+  #   * "vanished" is the mirror's own inference, drawn from a listing that left
+  #     the page out. A page the site has just handed us disproves it, so it is
+  #     lifted;
+  #   * "manual" is an administrator's decision, and stays (`lift_vanishing/1`).
+  #
+  # A page we have just read is also not *absent*: an absence is a verdict from a
+  # listing that is older than this write, and carrying it further would keep a
+  # page we hold in the review list of pages the site no longer names. A space has
+  # only the first of those two states, so it is cleared by its own helper.
+  defp revive_page(changeset) do
+    changeset
+    |> Ecto.Changeset.put_change(:absent_since, nil)
+    |> lift_vanishing()
+  end
+
+  # A page an administrator trashed (`mark_deleted/2`) stays trashed: a sync does
+  # not get to undo a person's decision, and the page waits for a purge.
+  defp lift_vanishing(%{data: %{deleted_reason: "manual"}} = changeset), do: changeset
+
+  defp lift_vanishing(changeset) do
+    changeset
+    |> Ecto.Changeset.put_change(:deleted_at, nil)
+    |> Ecto.Changeset.put_change(:deleted_reason, nil)
+  end
+
+  defp revive_space(changeset), do: Ecto.Changeset.put_change(changeset, :deleted_at, nil)
 
   defp trash_pages([], _now, _reason), do: 0
 

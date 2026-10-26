@@ -20,7 +20,10 @@ defmodule ConfluencePhxMirror.Sync.SweepWorker do
   that cannot report changes; this is the dashboard's "re-read everything".
   """
 
-  use Oban.Worker, queue: :sync, max_attempts: 1, unique: [period: 600]
+  use Oban.Worker,
+    queue: :sync,
+    max_attempts: 1,
+    unique: [period: :infinity, fields: [:worker, :queue], states: :incomplete]
 
   require Logger
 

@@ -12,7 +12,10 @@ defmodule ConfluencePhxMirror.Sync.PageWorker do
   webhook said a page changed, and snoozing keeps that promise.
   """
 
-  use Oban.Worker, queue: :sync, max_attempts: 5, unique: [period: 60, keys: [:confluence_id]]
+  use Oban.Worker,
+    queue: :sync,
+    max_attempts: 5,
+    unique: [period: 60, keys: [:confluence_id], states: :incomplete]
 
   alias ConfluencePhxMirror.Sync
 

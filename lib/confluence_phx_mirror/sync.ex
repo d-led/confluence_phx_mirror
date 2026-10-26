@@ -1339,19 +1339,30 @@ defmodule ConfluencePhxMirror.Sync do
 
     from(p in Page,
       where: p.confluence_id in ^ids,
-      select: {p.confluence_id, p.version_number, p.title, p.type, not is_nil(p.body_export)}
+      select:
+        {p.confluence_id, p.version_number, p.title, p.type, not is_nil(p.body_export),
+         p.deleted_at, p.deleted_reason, p.absent_since}
     )
     |> Repo.all()
-    |> Map.new(fn {id, version, title, type, rendered?} ->
-      {id, light(version, title, type, rendered?)}
+    |> Map.new(fn {id, version, title, type, rendered?, deleted_at, reason, absent_since} ->
+      current? = is_nil(absent_since) and (is_nil(deleted_at) or reason == "manual")
+      {id, light(version, title, type, rendered?, current?)}
     end)
   end
 
-  defp light(version, title, type, rendered?),
-    do: %{version_number: version, title: title, type: type, rendered?: rendered?}
+  defp light(version, title, type, rendered?, current?) do
+    %{version_number: version, title: title, type: type, rendered?: rendered?, current?: current?}
+  end
 
-  defp light(%Page{} = page),
-    do: light(page.version_number, page.title, page.type, not is_nil(page.body_export))
+  defp light(%Page{} = page) do
+    light(
+      page.version_number,
+      page.title,
+      page.type,
+      not is_nil(page.body_export),
+      is_nil(page.absent_since) and (is_nil(page.deleted_at) or page.deleted_reason == "manual")
+    )
+  end
 
   defp light(nil), do: nil
 
@@ -1394,6 +1405,14 @@ defmodule ConfluencePhxMirror.Sync do
       previous.title != attrs.title -> :updated
       previous.type != attrs.type -> :updated
       not previous.rendered? -> :updated
+      # A page we hold as absent, or as vanished, is behind the site whatever its
+      # version says. Confluence does not bump a version when it restores a page
+      # from its trash, and nothing else would ever write that page again — the
+      # version test alone leaves it dead for good. Writing it counts as an
+      # update, because that is what it is: a record rewritten, with a reason.
+      # A page an administrator trashed stays `current?` on purpose: a sync does
+      # not undo a person's decision, and rewriting it every run would say it had.
+      not previous.current? -> :updated
       true -> :unchanged
     end
   end

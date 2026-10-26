@@ -23,9 +23,15 @@ defmodule ConfluencePhxMirror.UpstreamLedger do
     Agent.start_link(fn -> %{answers: Map.new(answers), calls: []} end, name: __MODULE__)
   end
 
-  @doc "Changes what the source answers without restarting it."
+  @doc """
+  Changes what the source answers without restarting it.
+
+  The ledger starts empty again: a new set of answers is a new round of
+  questions, and a test that asks "what was this attempt charged" should not have
+  to subtract the last one.
+  """
   def configure(answers) do
-    Agent.update(__MODULE__, fn state -> %{state | answers: Map.new(answers)} end)
+    Agent.update(__MODULE__, fn state -> %{answers: Map.new(answers), calls: []} end)
   end
 
   @doc "What the source was asked, oldest first: `{:counts, key}` / `{:page_ids, key}`."
@@ -50,6 +56,10 @@ defmodule ConfluencePhxMirror.UpstreamLedger do
 
     case configured do
       :unconfigured -> {:error, {:not_configured, call}}
+      # A question that kills the caller is how a test interrupts a pass: from the
+      # database's side, a killed job and a raised one leave the same half-done
+      # pass behind.
+      :interrupt -> raise "the pass was interrupted here"
       {:error, _reason} = error -> error
       answer -> {:ok, answer}
     end

@@ -124,6 +124,34 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     assert_enqueued(worker: ReconcileWorker)
   end
 
+  test "a second click while one is queued says so instead of queueing another", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+
+    view |> element("#check-upstream") |> render_click()
+    html = view |> element("#check-upstream") |> render_click()
+
+    assert html =~ "already queued or running"
+    assert length(all_enqueued(worker: ReconcileWorker)) == 1
+  end
+
+  test "a pass in flight is an answer about now, not 'nobody has checked'", %{conn: conn} do
+    # An interrupted pass leaves its settled spaces recorded and its row open.
+    interrupted = ReconcileRun.start(%{trigger: "a test"})
+
+    ReconcileRun.observe(interrupted, Mirror.get_space_by_key("ENG"), %{
+      verdict: :agreed,
+      asked: 1,
+      marked: 0,
+      cleared: 0,
+      error: nil
+    })
+
+    {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+
+    assert view |> element("#upstream-running") |> render() =~ "settled 1 spaces"
+    refute has_element?(view, "#upstream-unchecked")
+  end
+
   # The verify pass is what sets this, so the test sets it the same way rather
   # than reaching into the page row.
   defp mark_absent(space, page) do

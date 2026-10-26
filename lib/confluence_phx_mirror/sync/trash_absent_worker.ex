@@ -13,7 +13,13 @@ defmodule ConfluencePhxMirror.Sync.TrashAbsentWorker do
   four thousand identical lines would hide the decision instead of recording it.
   """
 
-  use Oban.Worker, queue: :sync, max_attempts: 1, unique: [period: 300]
+  # One job per space: the arguments name the space and who asked, and only the
+  # space decides what the work is. Two people asking for the same space is one
+  # job; two spaces are two.
+  use Oban.Worker,
+    queue: :sync,
+    max_attempts: 1,
+    unique: [period: :infinity, keys: [:space_key], states: :incomplete]
 
   require Logger
 

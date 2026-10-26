@@ -23,6 +23,7 @@ defmodule ConfluencePhxMirror.SyncTest do
   alias ConfluencePhxMirror.Notifications.{EmailWorker, Notification}
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.Log
+  alias ConfluencePhxMirror.Trash
 
   setup do
     clean_blobs()
@@ -374,6 +375,49 @@ defmodule ConfluencePhxMirror.SyncTest do
 
       assert run.status == "succeeded"
       assert run.stats["pages"] == 0
+    end
+
+    test "a page that comes back is served again on the next sync" do
+      demo_snapshot!()
+      space = Repo.get_by!(Space, key: "ENG")
+      page = Repo.get_by!(Page, confluence_id: 1009)
+
+      assert {:ok, _trashed} = Trash.trash_page({:system, "a test"}, page, space)
+      assert {:error, :not_found} = Mirror.find_page(1009)
+
+      demo_snapshot!()
+
+      assert {:ok, back} = Mirror.find_page(1009)
+      assert back.deleted_at == nil, "the site lists it, so it is live again"
+      assert back.deleted_reason == nil, "and the reason it was deleted is gone with it"
+      assert {:ok, _page} = Mirror.find_page(1009)
+    end
+
+    test "a page an administrator trashed is not resurrected by a sync" do
+      demo_snapshot!()
+      page = Repo.get_by!(Page, confluence_id: 1009)
+
+      assert {:ok, _trashed} = Mirror.mark_deleted(1009, "manual")
+
+      demo_snapshot!()
+
+      assert {:error, :not_found} = Mirror.find_page(1009), "a person's decision outlives a sync"
+      assert Repo.get!(Page, page.id).deleted_reason == "manual"
+    end
+
+    test "a page the site lists again is no longer reported absent" do
+      demo_snapshot!()
+      space = Repo.get_by!(Space, key: "ENG")
+
+      {_marked, 0} = Mirror.mark_absent(space, [1000, 1001, 1002])
+      assert {:ok, absent} = Mirror.find_page(1009)
+      assert absent.absent_since
+
+      demo_snapshot!()
+
+      assert {:ok, back} = Mirror.find_page(1009)
+      assert back.absent_since == nil, "we just read it, so it is not missing"
+      assert Mirror.absent_pages() == []
     end
   end
 

@@ -61,7 +61,19 @@ defmodule ConfluencePhxMirror.AuditSearchTest do
   end
 
   test "a query with SQL wildcards is treated literally" do
-    assert Audit.search(query: "%") == []
+    jane = Accounts.get_user_by_email("jane@example.com")
+
+    # A group whose name carries a percent sign: the reader typed a percent, so a
+    # percent is what the log must look for.
+    {:ok, _} = Accounts.update_groups(jane, ["100%"], {:user, jane})
+
+    matching = Audit.search(query: "%")
+
+    assert Enum.any?(matching, &(&1.metadata["to"] == "100%")),
+           "a percent finds the event that carries one"
+
+    assert length(matching) < length(Audit.search()),
+           "and does not find everything, the way a wildcard would"
   end
 
   test "every word has to match, and each may match a different part of the event" do

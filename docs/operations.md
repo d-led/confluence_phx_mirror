@@ -387,6 +387,31 @@ Two numbers to size it by: a 150-space site costs ~300 count requests when
 nothing is wrong (~1 minute at the polite 5/second pace), and only the spaces
 that disagree pay a listing.
 
+A pass over a large site outlives a deploy, so it is **resumable**: every space it
+settles is written down (`reconcile_observations`) as it is settled, and an
+unfinished pass is *continued* rather than restarted — the next attempt asks only
+about the spaces the last one did not reach, and its report still covers the whole
+pass. Only one pass is ever in flight (the worker's uniqueness is keyed on the
+worker, not on the arguments, so two operators cannot start two). A pass left
+unfinished for more than a day is abandoned instead: its first spaces would be a
+day old, and a stale answer is worse than a new question. The screen shows a pass
+in flight, with how many spaces it has settled, rather than saying nobody has
+checked.
+
+### Content that comes back
+
+A page the site names again is live again. Two things make that true:
+
+- a verify pass clears `absent_since` for every page its listing names;
+- a sync that *reads* a page clears the absence and lifts a trash it caused
+  itself. Confluence does not bump a page's version when it restores it from its
+  own trash, so the version test alone would leave the page dead for good: the
+  sync therefore also writes any page the mirror holds as absent or as vanished.
+
+A page an operator trashed by hand (`deleted_reason: "manual"`) is the exception.
+That was a decision, not an inference, and a sync does not undo it — the page
+waits in the trash until somebody purges it.
+
 ### Deleting the trash later
 
 The trash is a holding area, not a bin. `/admin/trash` has a **Delete it later**

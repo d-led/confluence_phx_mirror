@@ -33,20 +33,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
 
   @impl true
   def handle_event("check", _params, socket) do
-    case ReconcileWorker.new(%{"trigger" => "the admin screen, by #{who(socket)}"})
-         |> Oban.insert() do
-      {:ok, _job} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :info,
-           "A verify pass is queued. It counts and names ids — it does not read pages — " <>
-             "so it finishes in seconds per space."
-         )}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Could not queue the pass: #{inspect(reason)}")}
-    end
+    {:noreply, queue_check(socket)}
   end
 
   def handle_event("trash_page", %{"id" => id}, socket) do
@@ -117,7 +104,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       </.admin_header>
 
       <p
-        :if={@absent == 0 and is_nil(@last_check)}
+        :if={@running}
+        id="upstream-running"
+        class="mt-6 rounded-xl border border-info/40 bg-info/10 p-4 text-sm text-base-content/80"
+      >
+        <span class="font-semibold">A check is running.</span>
+        It has settled {@running.observed} spaces so far, and each one is written down as it
+        goes — if the job is interrupted it continues from there rather than starting over. What
+        it finds lands here when it finishes.
+      </p>
+
+      <p
+        :if={@absent == 0 and is_nil(@last_check) and is_nil(@running)}
         id="upstream-unchecked"
         class="mt-6 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm text-base-content/80"
       >
@@ -250,9 +248,39 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       # the difference between "nothing is absent" and "we do not know".
       last_check: last_check,
       checked_at: last_check && last_check.finished_at,
+      # A pass in flight, so the screen can say that rather than "nobody has
+      # checked" while one is plainly running.
+      running: ReconcileRun.progress(),
       more_pages?: length(all_pages) > @page_window,
       page_window: @page_window
     )
+  end
+
+  # One pass at a time (see `ReconcileWorker`'s uniqueness). Oban reports the
+  # avoided duplicate as `conflict?: true` rather than an error, so a second
+  # click while one is queued or running says so instead of saying nothing.
+  defp queue_check(socket) do
+    case ReconcileWorker.new(%{"trigger" => "the admin screen, by #{who(socket)}"})
+         |> Oban.insert() do
+      {:ok, %{conflict?: true}} ->
+        put_flash(
+          socket,
+          :info,
+          "A check is already queued or running, so this click was folded into it. " <>
+            "Its result lands here when it finishes."
+        )
+
+      {:ok, _job} ->
+        put_flash(
+          socket,
+          :info,
+          "A verify pass is queued. It counts and names ids — it does not read pages — " <>
+            "so it finishes in seconds per space."
+        )
+
+      {:error, reason} ->
+        put_flash(socket, :error, "Could not queue the pass: #{inspect(reason)}")
+    end
   end
 
   defp actor(socket), do: {:user, socket.assigns.current_user}

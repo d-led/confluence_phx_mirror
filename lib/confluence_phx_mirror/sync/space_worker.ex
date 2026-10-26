@@ -8,7 +8,10 @@ defmodule ConfluencePhxMirror.Sync.SpaceWorker do
   A sync already in flight makes this job wait rather than drop the refresh.
   """
 
-  use Oban.Worker, queue: :sync, max_attempts: 3, unique: [period: 120, keys: [:space_key]]
+  use Oban.Worker,
+    queue: :sync,
+    max_attempts: 3,
+    unique: [period: 120, keys: [:space_key], states: :incomplete]
 
   alias ConfluencePhxMirror.Sync
 

@@ -21,7 +21,10 @@ defmodule ConfluencePhxMirror.Sync.SnapshotWorker do
   tick is soon enough.
   """
 
-  use Oban.Worker, queue: :sync, max_attempts: 3, unique: [period: 300]
+  use Oban.Worker,
+    queue: :sync,
+    max_attempts: 3,
+    unique: [period: :infinity, fields: [:worker, :queue], states: :incomplete]
 
   require Logger
 

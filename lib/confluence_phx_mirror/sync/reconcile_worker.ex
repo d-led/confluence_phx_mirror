@@ -8,7 +8,20 @@ defmodule ConfluencePhxMirror.Sync.ReconcileWorker do
   and it never reads a page, only names and counts.
   """
 
-  use Oban.Worker, queue: :sync, max_attempts: 1, unique: [period: 300]
+  # One pass at a time, whatever it was asked for. Uniqueness on the default
+  # fields would key on the arguments, and the arguments carry the operator's
+  # address — so two people pressing the button, or one whose address changed,
+  # would each get their own pass reading the whole site twice. `fields:
+  # [:worker, :queue]` ignores the arguments, and `states: :incomplete` refuses a
+  # second job while the first is queued, running or retrying while still
+  # allowing a fresh check the moment one finishes. `period: :infinity` matters
+  # for the same reason: a period is measured from the job's `inserted_at`, so a
+  # pass over a hundred thousand pages would otherwise stop blocking while it was
+  # still running.
+  use Oban.Worker,
+    queue: :sync,
+    max_attempts: 3,
+    unique: [period: :infinity, fields: [:worker, :queue], states: :incomplete]
 
   require Logger
 

@@ -112,7 +112,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
       page_ids: %{"ENG" => %{page: [1001, 1002], blogpost: [2001]}}
     )
 
-    report = reconcile(spaces: [space])
+    report = reconcile()
 
     assert report.listed == [{space, 0}], "the counts disagreed, so the space was listed"
     assert report.absent == 0
@@ -126,7 +126,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
 
     report = reconcile()
 
-    assert report.failed == [{"ENG", :unreachable}]
+    assert report.failed == [{"ENG", "unreachable"}], "the reason is kept as text: people read it"
     assert report.listed == []
     assert report.absent == 0
     assert Enum.sort(live_titles(space)) == ["Gone", "Kept"]
@@ -147,6 +147,65 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
     assert run.asked == 1
     assert run.finished_at != nil
     assert space.id
+  end
+
+  describe "a pass that was interrupted" do
+    setup do
+      # A second space, so the pass has somewhere to stop halfway. `list_spaces`
+      # is by name, so "Engineering" is settled before "Operations".
+      ops = space_fixture(%{key: "OPS", name: "Operations"})
+      page_fixture(ops, %{confluence_id: 3001})
+
+      %{ops: ops}
+    end
+
+    test "is continued rather than restarted, so a settled space is not asked twice" do
+      ledger(counts: %{"ENG" => %{page: 2, blogpost: 0}, "OPS" => :interrupt})
+
+      assert_raise RuntimeError, "the pass was interrupted here", fn -> reconcile() end
+
+      assert ReconcileRun.last_finished() == nil, "a pass that did not finish is not a check"
+
+      ledger(counts: %{"ENG" => %{page: 2, blogpost: 0}, "OPS" => %{page: 1, blogpost: 0}})
+      report = reconcile()
+
+      assert UpstreamLedger.calls() == [{:counts, "OPS"}],
+             "the space the last attempt settled is not asked about again"
+
+      assert report.spaces == 2, "the report is the pass, not the last attempt"
+      assert report.agreed == 2
+      assert report.asked == 2, "two questions for two spaces, one attempt apart"
+
+      assert [_the_only_pass] = ReconcileRun.history(10),
+             "the attempt that finished is the pass that was interrupted"
+    end
+
+    test "is abandoned instead of continued once it is a day old" do
+      ledger(counts: %{"ENG" => %{page: 2, blogpost: 0}, "OPS" => :interrupt})
+      assert_raise RuntimeError, fn -> reconcile() end
+
+      age_interrupted_pass(30)
+      ledger(counts: %{"ENG" => %{page: 2, blogpost: 0}, "OPS" => %{page: 1, blogpost: 0}})
+
+      report = reconcile()
+
+      assert UpstreamLedger.calls() == [{:counts, "ENG"}, {:counts, "OPS"}],
+             "a stale pass is a new pass: every space is asked again"
+
+      assert report.spaces == 2
+      assert length(ReconcileRun.history(10)) == 2, "the stale pass stays in the history"
+    end
+  end
+
+  # A pass is a statement about the site now, so one left half-done for too long
+  # is not continued; the test moves the clock instead of waiting.
+  defp age_interrupted_pass(hours) do
+    from(r in ReconcileRun, where: is_nil(r.finished_at))
+    |> Repo.update_all(
+      set: [
+        started_at: DateTime.add(DateTime.utc_now(), -hours, :hour) |> DateTime.truncate(:second)
+      ]
+    )
   end
 
   test "the record counts the spaces that needed a listing, because they are the cost" do

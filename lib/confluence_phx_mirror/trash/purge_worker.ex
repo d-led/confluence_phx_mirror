@@ -13,7 +13,12 @@ defmodule ConfluencePhxMirror.Trash.PurgeWorker do
   "delete these 412" and the job's work are the same question asked once more.
   """
 
-  use Oban.Worker, queue: :sync, max_attempts: 1, unique: [period: 300]
+  # One purge at a time: two of them would walk the same expired rows, take the
+  # same locks and audit the same work twice.
+  use Oban.Worker,
+    queue: :sync,
+    max_attempts: 1,
+    unique: [period: :infinity, fields: [:worker, :queue], states: :incomplete]
 
   require Logger
 
