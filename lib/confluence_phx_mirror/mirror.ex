@@ -1225,18 +1225,140 @@ defmodule ConfluencePhxMirror.Mirror do
       )
       |> Repo.all()
 
-    trash_pages(ids, now)
+    trash_pages(ids, now, "vanished")
     length(ids)
   end
 
-  def mark_deleted(confluence_id) do
+  @doc """
+  Records which of `space`'s pages the site's own listing did not name.
+
+  A page the listing names is one the site still publishes, so whatever absence
+  it carried is cleared. A page it does not name gets `absent_since` — the first
+  time the mirror noticed, kept on later passes so the review screen can say how
+  long something has been gone.
+
+  Nothing is trashed here. A listing is evidence, and what a listing leaves out
+  can also be a permission the token lost or a space it may no longer read, so
+  an administrator decides (see `ConfluencePhxMirror.Trash`). Returns
+  `{newly_absent, still_there}`.
+  """
+  @spec mark_absent(Space.t(), [integer()]) :: {non_neg_integer(), non_neg_integer()}
+  def mark_absent(%Space{} = space, seen_confluence_ids) do
+    now = now()
+    seen = Enum.to_list(seen_confluence_ids)
+
+    {cleared, _} =
+      from(p in Page,
+        where:
+          p.space_id == ^space.id and not is_nil(p.absent_since) and
+            p.confluence_id in ^seen
+      )
+      |> Repo.update_all(set: [absent_since: nil, updated_at: now])
+
+    ids =
+      from(p in Page,
+        where:
+          p.space_id == ^space.id and is_nil(p.deleted_at) and
+            is_nil(p.absent_since) and p.confluence_id not in ^seen,
+        select: p.id
+      )
+      |> Repo.all()
+
+    {marked, _} =
+      from(p in Page, where: p.id in ^ids)
+      |> Repo.update_all(set: [absent_since: now, updated_at: now])
+
+    {marked, cleared}
+  end
+
+  @doc """
+  Live pages the site did not list, newest absence first.
+
+  Options: `:space_id`, `:limit`.
+  """
+  def absent_pages(opts \\ []) do
+    query =
+      from(p in Page,
+        join: s in assoc(p, :space),
+        where: is_nil(p.deleted_at) and not is_nil(p.absent_since),
+        order_by: [desc: p.absent_since, asc: p.title],
+        limit: ^Keyword.get(opts, :limit),
+        select: {p, s}
+      )
+
+    case Keyword.get(opts, :space_id) do
+      nil -> query
+      space_id -> where(query, [p, _s], p.space_id == ^space_id)
+    end
+    |> Repo.all()
+  end
+
+  @doc """
+  How many absent pages each space holds, most first.
+
+  The review screen starts here: an operator sees which spaces disagree with the
+  site before reading a single page title.
+  """
+  def absent_spaces do
+    from(p in Page,
+      join: s in assoc(p, :space),
+      where: is_nil(p.deleted_at) and not is_nil(p.absent_since),
+      group_by: [s.id, s.key, s.name],
+      order_by: [desc: count(p.id)],
+      select: %{space: s, pages: count(p.id), since: min(p.absent_since)}
+    )
+    |> Repo.all()
+  end
+
+  @doc "How many live pages the site did not list."
+  def count_absent do
+    Repo.one(
+      from p in Page,
+        where: is_nil(p.deleted_at) and not is_nil(p.absent_since),
+        select: count(p.id)
+    )
+  end
+
+  @doc "How many live pages of `space` the site did not list."
+  def count_absent(space_id) do
+    Repo.one(
+      from p in Page,
+        where: p.space_id == ^space_id and is_nil(p.deleted_at) and not is_nil(p.absent_since),
+        select: count(p.id)
+    )
+  end
+
+  @doc """
+  Moves absent pages to the trash, saying why they left.
+
+  The mirror keeps them (and their comments) for the audit trail; an
+  administrator purges them from `/admin/trash` when the decision is final.
+  """
+  @spec trash_absent_pages([Page.t()] | [integer()]) :: non_neg_integer()
+  def trash_absent_pages(pages) do
+    ids = Enum.map(pages, &if(is_struct(&1), do: &1.id, else: &1))
+    trash_pages(ids, now(), "vanished")
+  end
+
+  @doc """
+  Marks one page deleted, keeping it for the audit trail and the trash.
+
+  `reason` is `"manual"` when an administrator chose the page and `"vanished"`
+  when a listing left it out.
+  """
+  def mark_deleted(confluence_id, reason \\ "manual") do
     case Repo.get_by(Page, confluence_id: confluence_id) do
       nil ->
         {:error, :not_found}
 
       page ->
         now = now()
-        page = page |> Ecto.Changeset.change(deleted_at: now) |> Repo.update!()
+
+        page =
+          page
+          |> Ecto.Changeset.change(deleted_at: now, deleted_reason: reason)
+          |> Repo.update!()
+
         trash_comments([page.id], now)
         {:ok, page}
     end
@@ -1269,7 +1391,7 @@ defmodule ConfluencePhxMirror.Mirror do
       from(p in Page, where: p.space_id == ^space.id and is_nil(p.deleted_at), select: p.id)
       |> Repo.all()
 
-    trash_pages(ids, now)
+    trash_pages(ids, now, "vanished")
 
     from(s in Space, where: s.id == ^space.id and is_nil(s.deleted_at))
     |> Repo.update_all(set: [deleted_at: now, updated_at: now])
@@ -1379,12 +1501,14 @@ defmodule ConfluencePhxMirror.Mirror do
   defp revive(changeset, %{deleted_at: nil}), do: changeset
   defp revive(changeset, _trashed), do: Ecto.Changeset.put_change(changeset, :deleted_at, nil)
 
-  defp trash_pages([], _now), do: 0
+  defp trash_pages([], _now, _reason), do: 0
 
-  defp trash_pages(ids, now) do
+  defp trash_pages(ids, now, reason) do
     {pages, _} =
       from(p in Page, where: p.id in ^ids)
-      |> Repo.update_all(set: [deleted_at: now, updated_at: now])
+      |> Repo.update_all(
+        set: [deleted_at: now, deleted_reason: reason, absent_since: nil, updated_at: now]
+      )
 
     trash_comments(ids, now)
     pages
@@ -1985,6 +2109,27 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc "How many pages the mirror holds, across every space."
   def count_pages do
     Repo.one(from p in Page, where: is_nil(p.deleted_at), select: count(p.id))
+  end
+
+  @doc """
+  Live pages of `space`, counted per content type.
+
+  A verify pass compares these with what the site says it holds
+  (`ConfluencePhxMirror.Sync.Reconcile`): when the two agree there is nothing to
+  list, which is the whole reason the pass is cheap.
+  """
+  @spec count_pages_by_type(integer()) :: %{page: non_neg_integer(), blogpost: non_neg_integer()}
+  def count_pages_by_type(space_id) do
+    counts =
+      from(p in Page,
+        where: p.space_id == ^space_id and is_nil(p.deleted_at),
+        group_by: p.type,
+        select: {p.type, count(p.id)}
+      )
+      |> Repo.all()
+      |> Map.new()
+
+    %{page: Map.get(counts, "page", 0), blogpost: Map.get(counts, "blogpost", 0)}
   end
 
   @doc """

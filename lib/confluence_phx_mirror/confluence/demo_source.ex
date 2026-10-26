@@ -114,6 +114,24 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
     {:ok, pages}
   end
 
+  # The demo site answers both cheap questions from the same constant it mirrors,
+  # so a verify pass against it costs nothing at all.
+  @impl true
+  def counts(space_key, _opts) do
+    ids = ids_of(space_key)
+    {:ok, %{page: length(ids.page), blogpost: length(ids.blogpost)}}
+  end
+
+  @impl true
+  def page_ids(space_key, _opts), do: {:ok, ids_of(space_key)}
+
+  defp ids_of(space_key) do
+    DemoContent.pages()
+    |> Enum.filter(&(&1.space_key == space_key))
+    |> Enum.group_by(&Map.get(&1, :type, "page"), & &1.id)
+    |> then(&%{page: Map.get(&1, "page", []), blogpost: Map.get(&1, "blogpost", [])})
+  end
+
   defp present(page) do
     Map.put(page, :ancestors, ancestors(page.id, DemoContent.pages()))
   end

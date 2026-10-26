@@ -41,6 +41,15 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     # read, so a run that missed them can find the page again.
     field :details_synced_at, :utc_datetime
     field :deleted_at, :utc_datetime
+    # Set by a verify pass that read the site's listing and did not find this
+    # page in it; cleared the moment the site lists it again. It is a question
+    # for an administrator, not a deletion: nothing moves to the trash until
+    # somebody says so. See `ConfluencePhxMirror.Sync.Reconcile`.
+    field :absent_since, :utc_datetime
+    # Why a row is in the trash: `"vanished"` when the site stopped listing it,
+    # `"manual"` when an administrator chose it. Reads like an audit fact, so it
+    # is written by the code that trashes and never cast from a source.
+    field :deleted_reason, :string
     field :search_text, :string, default: ""
 
     belongs_to :space, ConfluencePhxMirror.Mirror.Space
@@ -161,6 +170,21 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     Entry.new("page.purged", "page", to_string(page.confluence_id), %{
       title: page.title,
       type: page.type
+    })
+  end
+
+  @doc """
+  The audit entry for a page moved to the trash: reversible, unlike a purge.
+
+  It names the space because the review screen trashes pages from several spaces
+  in one go, and "which space was this?" is the first question about a row in the
+  trash.
+  """
+  def audit_event_trashed(%__MODULE__{} = page, %{key: space_key}) do
+    Entry.new("page.trashed", "page", to_string(page.confluence_id), %{
+      title: page.title,
+      type: page.type,
+      space: space_key
     })
   end
 end

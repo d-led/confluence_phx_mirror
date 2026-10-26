@@ -234,7 +234,9 @@ defmodule ConfluencePhxMirror.Webhooks do
   end
 
   defp mark_deleted(delivery, id, event) do
-    case Mirror.mark_deleted(id) do
+    # The site itself says the page is gone, so the trash records it as vanished
+    # rather than as somebody's decision here.
+    case Mirror.mark_deleted(id, "vanished") do
       {:ok, _page} ->
         Audit.log(actor(delivery), Delivery.audit_event_page_deleted(delivery, id, event))
         finish(delivery, "processed", nil)

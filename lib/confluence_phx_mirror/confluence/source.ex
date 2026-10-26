@@ -142,6 +142,35 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   """
   @callback changed_since(DateTime.t(), keyword()) :: {:ok, [page()]} | {:error, term()}
 
+  @doc """
+  How much of each content type a space holds, as the site itself counts it.
+
+  Two numbers for two requests — one per type, because Confluence Cloud does not
+  filter on a comma-separated type list. `ConfluencePhxMirror.Sync.Reconcile`
+  compares them with the mirror's own counts and, when they agree, lists nothing
+  at all: on a healthy mirror this is the entire cost of a verify pass.
+
+  `:page` and `:blogpost` are the types the mirror keeps; a source that cannot
+  count leaves the callback out and the pass lists the space instead.
+  """
+  @callback counts(space_key :: String.t(), keyword()) ::
+              {:ok, %{page: non_neg_integer(), blogpost: non_neg_integer()}}
+              | {:error, term()}
+
+  @doc """
+  Every content id a space holds, per content type, and nothing else.
+
+  The cheap half of `pages/2`: same pagination, no bodies, no comments, no
+  attachments, no version expansion. It exists so that "name everything you
+  have" costs requests whose answers are tiny — which is what a verify pass
+  needs, and what a sync never does because it has to read the content anyway.
+
+  A source without it leaves the callback out; nothing but the verify pass uses
+  it.
+  """
+  @callback page_ids(space_key :: String.t(), keyword()) ::
+              {:ok, %{page: [integer()], blogpost: [integer()]}} | {:error, term()}
+
   @typedoc """
   What moved in a window besides the pages themselves.
 
@@ -245,6 +274,8 @@ defmodule ConfluencePhxMirror.Confluence.Source do
 
   @optional_callbacks changed_since: 2,
                       touched_since: 2,
+                      counts: 2,
+                      page_ids: 2,
                       restrictions: 2,
                       space_permissions: 2,
                       space_icon: 2,

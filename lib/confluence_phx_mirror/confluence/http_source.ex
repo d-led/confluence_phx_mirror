@@ -89,6 +89,48 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     }
   end
 
+  # The id-only listing a verify pass uses: same pagination, no bodies, no
+  # comments, no attachments, no expansion. Two requests per page of results
+  # instead of two megabytes.
+  @impl true
+  def page_ids(space_key, _opts) do
+    with {:ok, pages} <- paginate_json("/content", ids_params(space_key, "page")),
+         {:ok, posts} <- paginate_json("/content", ids_params(space_key, "blogpost")) do
+      {:ok,
+       %{
+         page: Enum.map(pages, &parse_id(&1["id"])),
+         blogpost: Enum.map(posts, &parse_id(&1["id"]))
+       }}
+    end
+  end
+
+  defp ids_params(space_key, type) do
+    %{"spaceKey" => space_key, "type" => type, "status" => "current", "limit" => page_limit()}
+  end
+
+  # How much a space holds, counted by the site rather than by reading it. CQL
+  # is the one listing endpoint that answers with a total, and `limit=1` keeps
+  # the answer down to a single row. A site that does not send the total says so
+  # instead of being guessed at: the caller then lists the space.
+  @impl true
+  def counts(space_key, _opts) do
+    with {:ok, pages} <- total_of(space_key, "page"),
+         {:ok, posts} <- total_of(space_key, "blogpost") do
+      {:ok, %{page: pages, blogpost: posts}}
+    end
+  end
+
+  defp total_of(space_key, type) do
+    cql = ~s(space="#{space_key |> to_string() |> String.replace("\"", "")}" and type=#{type})
+
+    with {:ok, body} <- request_json("/content/search", %{"cql" => cql, "limit" => 1}) do
+      case body["totalSize"] do
+        total when is_integer(total) -> {:ok, total}
+        _no_total -> {:error, :no_total}
+      end
+    end
+  end
+
   @impl true
   def page(confluence_id, _opts) do
     path = "/content/#{confluence_id}"
