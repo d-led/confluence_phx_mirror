@@ -17,7 +17,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
   import Phoenix.LiveViewTest
 
   alias ConfluencePhxMirror.{Mirror, Trash}
-  alias ConfluencePhxMirror.Sync.{ReconcileWorker, TrashAbsentWorker}
+  alias ConfluencePhxMirror.Sync.{ReconcileRun, ReconcileWorker, TrashAbsentWorker}
 
   setup %{conn: conn} do
     ops = user_fixture(%{email: "ops-upstream@example.com", role: "admin"})
@@ -32,10 +32,22 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
      }}
   end
 
-  test "a mirror the site agrees with says there is nothing to review", %{conn: conn} do
+  test "an unchecked mirror says so instead of claiming there is nothing to review", %{
+    conn: conn
+  } do
     {:ok, _view, html} = live(conn, ~p"/admin/upstream")
 
-    assert html =~ "Every page the mirror holds is one Confluence still lists"
+    assert html =~ "Nobody has checked this mirror against the site yet"
+    refute html =~ "found every page the site lists"
+  end
+
+  test "after a check that found nothing, it cites the check rather than promising", %{conn: conn} do
+    record_check(%{spaces: 12, agreed: 12, listed: 0, absent: 0, asked: 12})
+
+    {:ok, _view, html} = live(conn, ~p"/admin/upstream")
+
+    assert html =~ "compared 12 spaces and found every page the site lists"
+    assert html =~ "That is a statement about that moment, not about now"
   end
 
   test "an absent page is listed with its space and when it was noticed", %{
@@ -116,7 +128,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
   # than reaching into the page row.
   defp mark_absent(space, page) do
     Mirror.mark_absent(space, [])
+    record_check(%{spaces: 1, agreed: 0, listed: 1, absent: 1, asked: 2})
     {:ok, marked} = Mirror.find_page(page.confluence_id)
     marked
+  end
+
+  # The record counts the spaces that needed a listing, so the helper takes the
+  # count and hands `finish/2` the list the real pass would have.
+  defp record_check(report) do
+    run = ReconcileRun.start(%{trigger: "a test"})
+
+    report
+    |> Map.update!(:listed, fn count -> List.duplicate(:a_listed_space, count) end)
+    |> Map.merge(%{failed: [], empty: []})
+    |> then(&ReconcileRun.finish(run, &1))
   end
 end

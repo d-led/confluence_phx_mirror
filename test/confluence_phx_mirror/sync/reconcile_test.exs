@@ -13,7 +13,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Sync.Reconcile
+  alias ConfluencePhxMirror.Sync.{Reconcile, ReconcileRun}
   alias ConfluencePhxMirror.UpstreamLedger
 
   setup do
@@ -130,6 +130,34 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
     assert report.listed == []
     assert report.absent == 0
     assert Enum.sort(live_titles(space)) == ["Gone", "Kept"]
+  end
+
+  test "a pass is recorded, so 'nothing absent' can be dated", %{space: space} do
+    ledger(counts: %{"ENG" => %{page: 2, blogpost: 0}})
+
+    body = reconcile(trigger: "a test")
+
+    assert body.agreed == 1
+    assert %ReconcileRun{} = run = ReconcileRun.last_finished()
+    assert run.trigger == "a test"
+    assert run.spaces == 1
+    assert run.agreed == 1
+    assert run.listed == 0
+    assert run.absent == 0
+    assert run.asked == 1
+    assert run.finished_at != nil
+    assert space.id
+  end
+
+  test "the record counts the spaces that needed a listing, because they are the cost" do
+    ledger(
+      counts: %{"ENG" => %{page: 1, blogpost: 0}},
+      page_ids: %{"ENG" => %{page: [1001], blogpost: []}}
+    )
+
+    reconcile()
+
+    assert %ReconcileRun{listed: 1, absent: 1} = ReconcileRun.last_finished()
   end
 
   defp reconcile(opts \\ []) do

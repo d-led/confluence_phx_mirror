@@ -19,7 +19,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   import ConfluencePhxMirrorWeb.AdminComponents
 
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Sync.{ReconcileWorker, TrashAbsentWorker}
+  alias ConfluencePhxMirror.Sync.{ReconcileRun, ReconcileWorker, TrashAbsentWorker}
   alias ConfluencePhxMirror.Trash
 
   # A mirror that lost a space can have thousands of absent pages; the page shows
@@ -117,19 +117,41 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       </.admin_header>
 
       <p
-        :if={@absent == 0}
+        :if={@absent == 0 and is_nil(@last_check)}
+        id="upstream-unchecked"
+        class="mt-6 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm text-base-content/80"
+      >
+        <span class="font-semibold">Nobody has checked this mirror against the site yet.</span>
+        Nothing here knows which pages Confluence still lists — an untouched mirror and one the
+        site agrees with look exactly the same from the inside. “Check the site again” counts and
+        names ids for every space (two requests each), reads no page, and records what it found.
+      </p>
+
+      <div
+        :if={@absent == 0 and not is_nil(@last_check)}
         id="upstream-none"
         class="mt-6 rounded-xl border border-base-300/70 bg-base-100 p-4 text-sm text-base-content/70"
       >
-        Every page the mirror holds is one Confluence still lists. Nothing to review;
-        “Check the site again” asks the site without reading a single page.
-      </p>
+        <p>
+          The last check, <.local_time at={@last_check.finished_at} />,
+          compared {@last_check.spaces} spaces and found every page the site lists. {@last_check.listed} needed a listing; the rest were settled by their counts, for {@last_check.asked} questions in all.
+        </p>
+        <p class="mt-1 text-xs">
+          That is a statement about that moment, not about now — a page deleted since then is
+          still mirrored until the next pass says otherwise.
+        </p>
+      </div>
 
       <section :if={@spaces != []} class="mt-6">
         <h2 class="text-sm font-semibold">Spaces holding absent pages</h2>
-        <p class="mt-0.5 text-xs text-base-content/70">
-          The site did not name these pages the last time anyone checked. A lost permission looks
-          exactly like a deletion from here, which is why nothing moves without you.
+        <p :if={@checked_at} class="mt-0.5 text-xs text-base-content/70">
+          The site did not name these pages when this mirror last asked, at
+          <.local_time at={@checked_at} />. A lost permission looks exactly like a deletion from
+          here, which is why nothing moves without you.
+        </p>
+        <p :if={is_nil(@checked_at)} class="mt-0.5 text-xs text-base-content/70">
+          The site did not name these pages, but no check has finished since they were marked — the
+          pass that marked them did not complete. Check again before acting on it.
         </p>
 
         <div class="mt-2 overflow-x-auto rounded-xl border border-base-300/70">
@@ -217,12 +239,17 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
     spaces = Mirror.absent_spaces()
     all_pages = Mirror.absent_pages(limit: @page_window + 1)
     pages = Enum.take(all_pages, @page_window)
+    last_check = ReconcileRun.last_finished()
 
     assign(socket,
       spaces: spaces,
       pages: pages,
       spaces_list: Enum.map(spaces, & &1.space),
       absent: Mirror.count_absent(),
+      # What the last finished pass found, or `nil` when nobody has asked yet —
+      # the difference between "nothing is absent" and "we do not know".
+      last_check: last_check,
+      checked_at: last_check && last_check.finished_at,
       more_pages?: length(all_pages) > @page_window,
       page_window: @page_window
     )

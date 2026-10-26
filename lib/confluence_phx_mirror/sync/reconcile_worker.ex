@@ -16,7 +16,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileWorker do
 
   @impl true
   def perform(%Oban.Job{args: args}) do
-    report = Reconcile.run(source: source(args))
+    report = Reconcile.run(source: source(args), trigger: trigger(args))
 
     Logger.info(
       "verify pass over #{report.spaces} spaces (#{report.agreed} already in step, " <>
@@ -30,4 +30,8 @@ defmodule ConfluencePhxMirror.Sync.ReconcileWorker do
   # The job names no source: a verify pass asks the same site the sync mirrors,
   # and a job that carried a module name would let any enqueuer choose it.
   defp source(_args), do: ConfluencePhxMirror.Confluence.Source.source()
+
+  # Why the pass happened, in words, for the record `Reconcile` keeps.
+  defp trigger(%{"trigger" => trigger}) when is_binary(trigger), do: trigger
+  defp trigger(_args), do: "the admin screen"
 end

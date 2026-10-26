@@ -38,6 +38,7 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
   alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.Space
+  alias ConfluencePhxMirror.Sync.ReconcileRun
 
   @typedoc """
   What the pass found and what it spent.
@@ -73,10 +74,14 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
   @spec run(keyword()) :: report()
   def run(opts \\ []) do
     source = Keyword.get(opts, :source, Source.source())
+    # A pass leaves a record whether or not it finishes: an interrupted one has
+    # still marked absences, and the screen must be able to say when it last
+    # knew rather than guess.
+    run_record = ReconcileRun.start(%{trigger: Keyword.get(opts, :trigger)})
 
     case live_spaces(opts) do
       [] ->
-        %{spaces: 0, agreed: 0, listed: [], absent: 0, asked: 0, failed: [], empty: []}
+        empty_report() |> tap(&ReconcileRun.finish(run_record, &1))
 
       spaces ->
         # A `:counters` process keeps the request tally honest without threading
@@ -85,8 +90,14 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
 
         results = Enum.map(spaces, &check(source, &1, tally))
 
-        report(spaces, results, :counters.get(tally, 1))
+        spaces
+        |> report(results, :counters.get(tally, 1))
+        |> tap(&ReconcileRun.finish(run_record, &1))
     end
+  end
+
+  defp empty_report do
+    %{spaces: 0, agreed: 0, listed: [], absent: 0, asked: 0, failed: [], empty: []}
   end
 
   defp live_spaces(opts) do
