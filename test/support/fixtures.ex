@@ -10,9 +10,14 @@ defmodule ConfluencePhxMirror.Fixtures do
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
 
-  @doc "Mirrors the bundled demo snapshot and returns the finished sync run."
+  @doc """
+  Mirrors the bundled demo snapshot and returns the finished sync run.
+
+  No gate: the sandbox gives this test a database of its own, so the run here is
+  the only run in that mirror (see `ConfluencePhxMirror.UnclaimedGate`).
+  """
   def demo_snapshot! do
-    {:ok, run} = Sync.run(:snapshot)
+    {:ok, run} = Sync.run(:snapshot, gate: ConfluencePhxMirror.UnclaimedGate)
     run
   end
 

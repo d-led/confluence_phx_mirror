@@ -65,15 +65,19 @@ defmodule ConfluencePhxMirror.Sync do
     * `:source` – upstream source module, defaults to the configured one
     * `:job_id` – the Oban job that asked for this run, so the admin jobs page
       can show a job's progress and its log; absent for `mix confluence.sync`
+    * `:gate` – what keeps two runs apart, defaults to `Sync.Gate`; a caller that
+      owns the mirror outright (a test with its own database) may pass its own
   """
   @spec run(mode(), keyword()) :: report()
   def run(mode, opts \\ []) do
+    gate = Keyword.get(opts, :gate, Gate)
+
     # A `running` row whose owner is gone is not a run in flight. Clear those
     # before taking the lock, because while we hold it we cannot tell ours from
     # anyone else's.
     abandon_abandoned_runs()
 
-    case Gate.exclusive(fn gate_owner ->
+    case gate.exclusive(fn gate_owner ->
            run_locked(mode, Keyword.put(opts, :gate_owner, gate_owner))
          end) do
       {:ok, result} ->
