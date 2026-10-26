@@ -1331,14 +1331,22 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc """
   Moves absent pages to the trash, saying why they left.
 
+  Takes what `absent_pages/1` returns — `{page, space}` pairs — as well as bare
+  pages or ids, because the callers are a review screen that needs the space's
+  key and a job that only needs the work done.
+
   The mirror keeps them (and their comments) for the audit trail; an
   administrator purges them from `/admin/trash` when the decision is final.
   """
-  @spec trash_absent_pages([Page.t()] | [integer()]) :: non_neg_integer()
+  @spec trash_absent_pages([{Page.t(), Space.t()}] | [Page.t()] | [integer()]) ::
+          non_neg_integer()
   def trash_absent_pages(pages) do
-    ids = Enum.map(pages, &if(is_struct(&1), do: &1.id, else: &1))
-    trash_pages(ids, now(), "vanished")
+    trash_pages(Enum.map(pages, &page_id/1), now(), "vanished")
   end
+
+  defp page_id({%Page{id: id}, _space}), do: id
+  defp page_id(%Page{id: id}), do: id
+  defp page_id(id) when is_integer(id), do: id
 
   @doc """
   Marks one page deleted, keeping it for the audit trail and the trash.

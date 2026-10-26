@@ -17,7 +17,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
   import Phoenix.LiveViewTest
 
   alias ConfluencePhxMirror.{Mirror, Trash}
-  alias ConfluencePhxMirror.Sync.ReconcileWorker
+  alias ConfluencePhxMirror.Sync.{ReconcileWorker, TrashAbsentWorker}
 
   setup %{conn: conn} do
     ops = user_fixture(%{email: "ops-upstream@example.com", role: "admin"})
@@ -81,7 +81,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     refute has_element?(view, "#absent-#{absent.id}")
   end
 
-  test "a whole space's absent pages go together", %{conn: conn, space: space, absent: absent} do
+  test "a whole space's absent pages are queued as a job, not done in the click", %{
+    conn: conn,
+    space: space,
+    absent: absent
+  } do
     mark_absent(space, absent)
     other = page_fixture(space, %{confluence_id: 1003, title: "Also Gone"})
     mark_absent(space, other)
@@ -90,9 +94,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
 
     html = view |> element("#space-ENG button", "Trash all 2") |> render_click()
 
-    assert html =~ "2 pages of ENG moved to the trash"
-    assert Mirror.count_absent() == 0
-    assert length(Trash.pages()) == 2
+    assert html =~ "Trashing 2 pages of ENG in the background"
+    assert_enqueued(worker: TrashAbsentWorker)
+
+    # The job has not run yet, so nothing has moved and the review still shows it.
+    assert Mirror.count_absent() == 2
+    assert Trash.pages() == []
+    assert has_element?(view, "#absent-#{absent.id}")
   end
 
   test "asking for a verify pass queues the job and reads nothing", %{conn: conn} do

@@ -14,6 +14,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
   import ConfluencePhxMirrorWeb.AdminComponents
 
   alias ConfluencePhxMirror.Trash
+  alias ConfluencePhxMirror.Trash.PurgeWorker
 
   # A site that lost a space can have thousands of pages in the trash; the page
   # shows the newest and "Empty the trash" takes them all.
@@ -56,16 +57,24 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
   end
 
   def handle_event("purge_due", _params, socket) do
-    %{days: days, spaces: spaces, pages: pages} =
-      Trash.purge_due(actor(socket), socket.assigns.days)
+    days = socket.assigns.days
+    due = socket.assigns.due
+    args = %{"older_than_days" => days, "asked_by" => who(socket)}
 
-    {:noreply,
-     socket
-     |> put_flash(
-       :info,
-       "Purged #{spaces} spaces and #{pages} pages that had been here #{days} days or more."
-     )
-     |> load()}
+    case args |> PurgeWorker.new() |> Oban.insert() do
+      {:ok, _job} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "Deleting #{length(due.spaces)} spaces and #{length(due.pages)} pages in the " <>
+             "background; watch it in Jobs."
+         )
+         |> assign(retention_confirming: false)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not queue it: #{inspect(reason)}")}
+    end
   end
 
   def handle_event("empty", _params, socket) do
@@ -334,4 +343,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
   end
 
   defp actor(socket), do: {:user, socket.assigns.current_user}
+
+  defp who(socket) do
+    case socket.assigns.current_user do
+      %{email: email} -> email
+      _no_user -> "an administrator"
+    end
+  end
 end

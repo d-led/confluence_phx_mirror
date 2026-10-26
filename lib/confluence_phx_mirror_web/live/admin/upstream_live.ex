@@ -19,7 +19,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   import ConfluencePhxMirrorWeb.AdminComponents
 
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Sync.ReconcileWorker
+  alias ConfluencePhxMirror.Sync.{ReconcileWorker, TrashAbsentWorker}
   alias ConfluencePhxMirror.Trash
 
   # A mirror that lost a space can have thousands of absent pages; the page shows
@@ -68,17 +68,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       nil ->
         {:noreply, put_flash(socket, :error, "#{key} has nothing absent.")}
 
-      %{space: space} ->
-        pages = Mirror.absent_pages(space_id: space.id)
+      %{space: space, pages: absent} ->
+        # A space can hold thousands of absent pages; the job takes them so the
+        # click does not have to. `TrashAbsentWorker` is what moves them.
+        args = %{"space_key" => space.key, "asked_by" => who(socket)}
 
-        Enum.each(pages, fn {page, own_space} ->
-          Trash.trash_page(actor(socket), page, own_space)
-        end)
+        case args |> TrashAbsentWorker.new() |> Oban.insert() do
+          {:ok, _job} ->
+            {:noreply,
+             put_flash(
+               socket,
+               :info,
+               "Trashing #{absent} pages of #{space.key} in the background; watch it in Jobs."
+             )}
 
-        {:noreply,
-         socket
-         |> put_flash(:info, "#{length(pages)} pages of #{space.key} moved to the trash.")
-         |> load()}
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Could not queue it: #{inspect(reason)}")}
+        end
     end
   end
 

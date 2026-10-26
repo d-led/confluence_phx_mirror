@@ -5,11 +5,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLiveTest do
   """
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
+  use Oban.Testing, repo: ConfluencePhxMirror.Repo
+
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
 
   alias ConfluencePhxMirror.{Mirror, Repo, Trash}
   alias ConfluencePhxMirror.Mirror.{Page, Space}
+  alias ConfluencePhxMirror.Trash.PurgeWorker
 
   setup %{conn: conn} do
     ops = user_fixture(%{email: "ops-trash@example.com", role: "admin"})
@@ -117,9 +120,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLiveTest do
 
       html = view |> element("#confirm-purge-due") |> render_click()
 
-      assert html =~ "Purged 0 spaces and 1 pages that had been here 30 days or more."
-      assert Repo.get(Page, old.id) == nil
-      assert [_kept] = Trash.pages()
+      assert html =~ "Deleting 0 spaces and 1 pages in the background"
+      assert_enqueued(worker: PurgeWorker)
+
+      # Queued, not done: the job removes it when it runs.
+      assert Repo.get(Page, old.id)
+      assert length(Trash.pages()) == 2
     end
 
     test "offers nothing to delete while the trash is younger than the holding period", %{
