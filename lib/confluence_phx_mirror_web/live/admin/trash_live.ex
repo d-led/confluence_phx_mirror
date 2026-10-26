@@ -19,6 +19,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
   # shows the newest and "Empty the trash" takes them all.
   @page_window 200
 
+  # The holding period the screen starts with. "Delete it later" needs a later,
+  # and thirty days is long enough to notice a mistake and say so.
+  @retention_days 30
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok, assign(socket, page_title: "Trash") |> load()}
@@ -31,6 +35,37 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
 
   def handle_event("cancel_empty", _params, socket) do
     {:noreply, assign(socket, confirming: false)}
+  end
+
+  def handle_event("retention_days", %{"days" => days}, socket) do
+    case Integer.parse(String.trim(days)) do
+      {value, ""} when value >= 0 ->
+        {:noreply, assign(socket, days: value, due: Trash.due(value))}
+
+      _not_a_number ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("ask_to_purge_due", _params, socket) do
+    {:noreply, assign(socket, retention_confirming: true)}
+  end
+
+  def handle_event("cancel_purge_due", _params, socket) do
+    {:noreply, assign(socket, retention_confirming: false)}
+  end
+
+  def handle_event("purge_due", _params, socket) do
+    %{days: days, spaces: spaces, pages: pages} =
+      Trash.purge_due(actor(socket), socket.assigns.days)
+
+    {:noreply,
+     socket
+     |> put_flash(
+       :info,
+       "Purged #{spaces} spaces and #{pages} pages that had been here #{days} days or more."
+     )
+     |> load()}
   end
 
   def handle_event("empty", _params, socket) do
@@ -128,6 +163,60 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
         is moved here by the next snapshot, never deleted on the spot.
       </p>
 
+      <section :if={not @empty?} id="retention" class="mt-6 rounded-xl border border-base-300/70 p-4">
+        <h2 class="text-sm font-semibold">Delete it later</h2>
+        <p class="mt-0.5 text-xs text-base-content/70">
+          A mirror that keeps everything it ever saw grows without bound. Set how long the trash
+          holds something and it removes only what has been here that long — never anything younger,
+          never anything still published.
+        </p>
+
+        <form id="retention-form" phx-change="retention_days" class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <label for="retention-days" class="text-xs text-base-content/70">
+            Held for at least
+          </label>
+          <input
+            type="number"
+            min="0"
+            id="retention-days"
+            name="days"
+            value={@days}
+            phx-debounce="300"
+            class="input input-bordered input-sm w-20 tabular-nums"
+          />
+          <span class="text-xs text-base-content/70">days</span>
+          <span id="retention-count" class="ml-2 text-xs text-base-content/70">
+            {@due.spaces |> length()} spaces and {@due.pages |> length()} pages are older than that.
+          </span>
+        </form>
+
+        <div class="mt-3 flex flex-wrap gap-2">
+          <%= if @retention_confirming do %>
+            <button type="button" phx-click="cancel_purge_due" class="btn btn-ghost btn-sm">
+              Keep it
+            </button>
+            <button
+              type="button"
+              phx-click="purge_due"
+              id="confirm-purge-due"
+              class="btn btn-error btn-sm"
+            >
+              Delete {length(@due.spaces)} spaces and {length(@due.pages)} pages for good
+            </button>
+          <% else %>
+            <button
+              type="button"
+              phx-click="ask_to_purge_due"
+              id="purge-due"
+              class="btn btn-outline btn-sm"
+              disabled={@due.spaces == [] and @due.pages == []}
+            >
+              Delete what has been here {@days} days
+            </button>
+          <% end %>
+        </div>
+      </section>
+
       <section :if={@spaces != []} class="mt-6">
         <h2 class="text-sm font-semibold">Spaces</h2>
         <p class="mt-0.5 text-xs text-base-content/70">
@@ -221,6 +310,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
     spaces = Trash.spaces()
     all_pages = Trash.pages(limit: @page_window + 1)
     pages = Enum.take(all_pages, @page_window)
+    # Whatever holding period the operator typed survives a reload of the lists.
+    days = Map.get(socket.assigns, :days, @retention_days)
 
     assign(socket,
       spaces: spaces,
@@ -231,6 +322,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
       more_pages?: length(all_pages) > @page_window,
       page_window: @page_window,
       confirming: false,
+      retention_confirming: false,
+      days: days,
+      due: Trash.due(days),
       empty?: spaces == [] and pages == []
     )
   end

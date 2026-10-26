@@ -95,4 +95,49 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLiveTest do
     assert html =~ "BACK is live again"
     assert Repo.get(Space, space.id)
   end
+
+  describe "deleting it later" do
+    test "says what a holding period would delete, and deletes only that", %{conn: conn} do
+      space = space_fixture(%{key: "AGED"})
+      old = page_fixture(space, %{title: "Long gone"})
+      young = page_fixture(space, %{title: "Just gone"})
+      {:ok, old} = Trash.trash_page({:system, "test"}, old, space)
+      {:ok, _young} = Trash.trash_page({:system, "test"}, young, space)
+      age!(old, 40)
+
+      {:ok, view, html} = live(conn, ~p"/admin/trash")
+
+      assert html =~ "Delete it later"
+      assert has_element?(view, "#retention-count", "0 spaces and 1 pages")
+
+      view |> form("form[phx-change=retention_days]", %{"days" => "30"}) |> render_change()
+      html = view |> element("#purge-due") |> render_click()
+
+      assert html =~ "0 spaces and 1 pages for good"
+
+      html = view |> element("#confirm-purge-due") |> render_click()
+
+      assert html =~ "Purged 0 spaces and 1 pages that had been here 30 days or more."
+      assert Repo.get(Page, old.id) == nil
+      assert [_kept] = Trash.pages()
+    end
+
+    test "offers nothing to delete while the trash is younger than the holding period", %{
+      conn: conn
+    } do
+      space = space_fixture(%{key: "FRESH"})
+      page = page_fixture(space)
+      {:ok, _} = Trash.trash_page({:system, "test"}, page, space)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/trash")
+
+      assert has_element?(view, "#purge-due[disabled]")
+    end
+  end
+
+  defp age!(%_{} = row, days) do
+    at = DateTime.utc_now() |> DateTime.add(-days * 86_400, :second) |> DateTime.truncate(:second)
+
+    row |> Ecto.Changeset.change(deleted_at: at) |> Repo.update!()
+  end
 end

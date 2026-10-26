@@ -389,10 +389,11 @@ that disagree pay a listing.
 
 ### Deleting the trash later
 
-The trash is a holding area, not a bin. `Trash.due/1` says what has been in it
-for at least N days and `Trash.purge_due/2` removes exactly that — rows,
+The trash is a holding area, not a bin. `/admin/trash` has a **Delete it later**
+control: it says how many spaces and pages have been there longer than the
+holding period you type (30 days to begin with) and removes exactly those — rows,
 comments and attachment blobs, one audit entry per row. Nothing live is ever
-included, however old its absence.
+included, however old its absence. The same two steps are available in code:
 
 ```elixir
 ConfluencePhxMirror.Trash.due(30)              # what a policy would remove
