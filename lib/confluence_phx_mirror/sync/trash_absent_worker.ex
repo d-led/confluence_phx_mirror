@@ -3,10 +3,11 @@ defmodule ConfluencePhxMirror.Sync.TrashAbsentWorker do
   Moves a space's absent pages to the trash, off the request that asked.
 
   `/admin/upstream` reviews a space at a time because that is how an operator
-  thinks about it, but a space can hold thousands of pages the site stopped
-  listing — too many to move while somebody waits on a click. The job carries the
-  decision and the reason somebody made it; the work itself is
-  `Mirror.trash_absent_pages/1`, which is the same call the one-page button makes.
+  thinks about it, but a space can hold tens of thousands of pages the site
+  stopped listing — too many to move while somebody waits on a click, and too many
+  to name one by one in memory. The job carries the decision and the reason
+  somebody made it; the work itself is `Mirror.trash_absent_pages/1`, which moves
+  a space's pages in two statements that never list the ids.
 
   One audit entry per space rather than per page: the sync's own deletion sweep
   records a space's loss the same way (`Space.audit_event_pages_deleted/2`), and
@@ -36,8 +37,7 @@ defmodule ConfluencePhxMirror.Sync.TrashAbsentWorker do
         :ok
 
       %Space{} = space ->
-        pages = Mirror.absent_pages(space_id: space.id)
-        trashed = Mirror.trash_absent_pages(pages)
+        trashed = Mirror.trash_absent_pages(space)
 
         Mirror.Counters.clear()
 

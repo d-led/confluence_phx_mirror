@@ -26,9 +26,46 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   # the newest and each space's own button takes the rest.
   @page_window 200
 
+  # A pass settles a space every few seconds and a site can have a thousand of
+  # them. Showing the first fact at once and folding the rest into one redraw a
+  # second is faster than a person reads and cheaper than a query per space.
+  @refresh_ms 1_000
+
+  # How many settled spaces the progress list names; the count beside it says how
+  # many there are in all.
+  @facts_window 50
+
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "Not upstream") |> load()}
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(ConfluencePhxMirror.PubSub, ReconcileRun.topic())
+    end
+
+    {:ok,
+     assign(socket, page_title: "Not upstream", refresh_timer: nil, refresh_pending?: false)
+     |> load()}
+  end
+
+  # A pass writes its facts one space at a time; the screen follows them instead
+  # of asking the operator to reload and hope.
+  @impl true
+  def handle_info({:reconcile_observed, _run_id}, %{assigns: %{refresh_timer: nil}} = socket),
+    do: {:noreply, refresh_now(socket)}
+
+  def handle_info({:reconcile_observed, _run_id}, socket),
+    do: {:noreply, assign(socket, :refresh_pending?, true)}
+
+  def handle_info({:reconcile_finished, _run_id}, socket),
+    do: {:noreply, refresh_now(socket)}
+
+  def handle_info(:refresh_cooldown, socket) do
+    socket = assign(socket, refresh_timer: nil)
+
+    if socket.assigns.refresh_pending? do
+      {:noreply, socket |> assign(:refresh_pending?, false) |> refresh_now()}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -149,8 +186,21 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
         class="mt-6 rounded-xl border border-base-300/70 bg-base-100 p-4 text-sm text-base-content/70"
       >
         <p>
-          The last check, <.local_time at={@last_check.finished_at} />,
-          compared {@last_check.spaces} spaces and found every page the site lists. {@last_check.listed} needed a listing; the rest were settled by their counts, for {@last_check.asked} questions in all.
+          The last check,
+          <.local_time at={@last_check.finished_at} />, compared {@last_check.spaces} spaces and found every page the site lists.
+          <%= if @summary.named > 0 do %>
+            The site named {@summary.named} ids in them, and every page the mirror held in those spaces was among them.
+          <% end %>
+        </p>
+        <p
+          :if={@summary.counted == 0 and @summary.settled > 0}
+          id="upstream-no-counts"
+          class="mt-1 text-xs"
+        >
+          This Confluence reports no per-space total, so every space had to be listed in full — {@summary.settled} listings and no counts at all.
+        </p>
+        <p :if={@summary.counted > 0} class="mt-1 text-xs">
+          {@summary.counted} spaces agreed on their counts; {@summary.settled - @summary.counted} had to be listed.
         </p>
         <p class="mt-1 text-xs">
           That is a statement about that moment, not about now — a page deleted since then is
@@ -158,8 +208,51 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
         </p>
       </div>
 
+      <section :if={@progress} id="upstream-facts" class="mt-6">
+        <h2 class="text-sm font-semibold">What this check has settled</h2>
+        <p class="mt-0.5 text-xs text-base-content/70">
+          {@progress.settled} spaces written down so far, newest first. Each fact is one space
+          counted, listed and marked — the page list below grows as they arrive.
+        </p>
+
+        <div class="mt-2 overflow-x-auto rounded-xl border border-base-300/70">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Space</th>
+                <th>Result</th>
+                <th class="text-right">Named</th>
+                <th class="text-right">Marked absent</th>
+                <th>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={fact <- @progress.facts} id={"fact-#{fact.space.key}"}>
+                <td class="font-mono text-xs">{fact.space.key}</td>
+                <td class="text-xs">{result_text(fact)}</td>
+                <td class="text-right tabular-nums">{fact.named}</td>
+                <td class="text-right tabular-nums">{fact.marked}</td>
+                <td class="text-xs text-base-content/70">
+                  <.local_time at={fact.observed_at} />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p :if={@progress.settled > length(@progress.facts)} class="mt-2 text-xs text-base-content/70">
+          Showing the newest {length(@progress.facts)} of {@progress.settled}; the rest are written
+          down and counted in the totals.
+        </p>
+      </section>
+
       <section :if={@spaces != []} class="mt-6">
-        <h2 class="text-sm font-semibold">Spaces holding absent pages</h2>
+        <h2 class="text-sm font-semibold">
+          Spaces holding absent pages
+          <span id="absent-total" class="ml-1 font-normal text-base-content/70">
+            — {plural(@absent, "page")} in {plural(length(@spaces), "space")}
+          </span>
+        </h2>
         <p :if={@checked_at} class="mt-0.5 text-xs text-base-content/70">
           The site did not name these pages when this mirror last asked, at
           <.local_time at={@checked_at} />. A lost permission looks exactly like a deletion from
@@ -256,6 +349,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
     all_pages = Mirror.absent_pages(limit: @page_window + 1)
     pages = Enum.take(all_pages, @page_window)
     last_check = ReconcileRun.last_finished()
+    unfinished = ReconcileRun.unfinished()
 
     assign(socket,
       spaces: spaces,
@@ -271,11 +365,42 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       # killed job leaves the second without the first, and the screen must say
       # that rather than call a dead pass "running".
       in_flight: Jobs.unfinished?(ReconcileWorker),
-      unfinished: ReconcileRun.unfinished(),
+      unfinished: unfinished,
+      # The facts of the pass being watched, so they can be read while it works.
+      progress: unfinished && ReconcileRun.progress_facts(unfinished.run, @facts_window),
+      # What the last finished pass compared, so "nothing is absent" comes with
+      # the numbers behind it.
+      summary: last_check && ReconcileRun.summary(last_check),
       more_pages?: length(all_pages) > @page_window,
       page_window: @page_window
     )
   end
+
+  # The first fact after a quiet spell is shown at once; the ones that follow
+  # within the window are folded into the next redraw.
+  defp refresh_now(socket) do
+    socket
+    |> cancel_refresh()
+    |> assign(:refresh_pending?, false)
+    |> load()
+    |> assign(:refresh_timer, Process.send_after(self(), :refresh_cooldown, @refresh_ms))
+  end
+
+  defp cancel_refresh(%{assigns: %{refresh_timer: nil}} = socket), do: socket
+
+  defp cancel_refresh(%{assigns: %{refresh_timer: timer}} = socket) do
+    Process.cancel_timer(timer)
+    assign(socket, :refresh_timer, nil)
+  end
+
+  # One word for what the pass concluded about a space, in the operator's terms.
+  defp result_text(%{verdict: "agreed"}), do: "in step"
+  defp result_text(%{verdict: "listed"}), do: "named its ids"
+  defp result_text(%{verdict: "empty"}), do: "named nothing"
+  defp result_text(%{verdict: "failed", error: error}), do: "not answered: #{error}"
+
+  defp plural(1, word), do: "1 #{word}"
+  defp plural(count, word), do: "#{count} #{word}s"
 
   # One pass at a time (see `ReconcileWorker`'s uniqueness). Oban reports the
   # avoided duplicate as `conflict?: true` rather than an error, so a second

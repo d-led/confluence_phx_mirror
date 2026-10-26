@@ -27,6 +27,10 @@ defmodule ConfluencePhxMirror.Sync.ReconcileObservation do
     field :asked, :integer
     field :marked, :integer
     field :cleared, :integer
+    # The other half of the comparison: how many ids the listing named, and
+    # whether the cheaper count was available for this space at all.
+    field :named, :integer
+    field :counted, :boolean
     field :error, :string
     field :observed_at, :utc_datetime
 

@@ -116,16 +116,19 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
   end
 
   # A count is one question; a space the count could not settle costs that
-  # question and a listing, which is what the observation records.
+  # question and a listing, which is what the observation records. Whether the
+  # count was available at all is recorded too: on a Confluence that cannot report
+  # a per-space total, every space is listed in full, and the screen says so
+  # rather than letting "nothing absent" look cheap.
   defp check(source, space) do
     case count(source, space) do
       {:ok, upstream} ->
         if in_step?(upstream, space),
-          do: fact(space, :agreed, asked: 1),
-          else: list(source, space, 2)
+          do: fact(space, :agreed, asked: 1, counted: true),
+          else: list(source, space, true)
 
       _cannot_count ->
-        list(source, space, 1)
+        list(source, space, false)
     end
   end
 
@@ -160,22 +163,41 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
   end
 
   # The id-only listing: the same pagination as a sync, with nothing in it.
-  defp list(source, space, asked) do
+  defp list(source, space, counted?) do
+    asked = if counted?, do: 2, else: 1
+
     case source.page_ids(space.key, []) do
       {:ok, %{page: [], blogpost: []}} ->
-        fact(space, :empty, asked: asked)
+        fact(space, :empty, asked: asked, counted: counted?)
 
       {:ok, ids} ->
-        {marked, cleared} = Mirror.mark_absent(space, ids |> Map.values() |> List.flatten())
-        fact(space, :listed, asked: asked, marked: marked, cleared: cleared)
+        named = ids |> Map.values() |> List.flatten()
+        {marked, cleared} = Mirror.mark_absent(space, named)
+
+        fact(space, :listed,
+          asked: asked,
+          counted: counted?,
+          named: length(named),
+          marked: marked,
+          cleared: cleared
+        )
 
       {:error, reason} ->
-        fact(space, :failed, asked: asked, error: error_text(reason))
+        fact(space, :failed, asked: asked, counted: counted?, error: error_text(reason))
     end
   end
 
   defp fact(space, verdict, attrs) do
-    default = %{verdict: verdict, asked: 0, marked: 0, cleared: 0, error: nil}
+    default = %{
+      verdict: verdict,
+      asked: 0,
+      counted: false,
+      named: 0,
+      marked: 0,
+      cleared: 0,
+      error: nil
+    }
+
     {space, Map.merge(default, Map.new(attrs))}
   end
 

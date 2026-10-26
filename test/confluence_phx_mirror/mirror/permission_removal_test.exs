@@ -261,7 +261,8 @@ defmodule ConfluencePhxMirror.Mirror.PermissionRemovalTest do
 
       {:ok, _} = Mirror.remove_page_reader(page, "group", "leadership", {:user, admin})
 
-      assert 1 = Mirror.trash_absent_pages([page])
+      Mirror.mark_absent(space, [])
+      assert 1 = Mirror.trash_absent_pages(space)
 
       # The site's row stays for the audit trail; ours is gone.
       assert page_rows(page) == [{:synced, "user", "reader@example.com"}]

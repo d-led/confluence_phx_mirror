@@ -398,6 +398,38 @@ day old, and a stale answer is worse than a new question. The screen shows a pas
 in flight, with how many spaces it has settled, rather than saying nobody has
 checked.
 
+Those facts are readable **while the pass runs**: `/admin/upstream` subscribes to
+the pass and lists the newest fifty settled spaces with their verdicts, how many
+ids the site named and how many pages each marked absent, and the tables below it
+fill in as they arrive. A refresh per fact would be a query per space on a site
+with a thousand of them, so the first fact after a quiet second is shown at once
+and the rest are folded into one redraw.
+
+A finished pass cites its *comparison*, not only its conclusion: "compared 145
+spaces and found every page the site lists. The site named 123,551 ids in them,
+and every page the mirror held in those spaces was among them." That matters
+because "nothing is absent" is otherwise indistinguishable from a pass that
+compared almost nothing. When the source cannot report a per-space total —
+Confluence's CQL search answers `totalSize` on some deployments and nothing on
+others, and this mirror's source answers `:no_total` — the screen says so: every
+space had to be listed in full, and a check costs one full listing per space
+rather than two cheap counts. That is the difference between minutes and hours on
+a site with hundreds of spaces, so it is worth knowing which one you are paying.
+
+### Deleting what is not upstream
+
+The screen's per-space button moves a whole space's absent pages to the trash as
+a job (`TrashAbsentWorker`), and the one-page button moves a single page. Both are
+the reversible trash, not deletion: `/admin/trash` is where a retention policy
+deletes for good.
+
+Scale is a real concern rather than a hypothetical one — a single space can hold
+tens of thousands of absent pages. `Mirror.trash_absent_pages/1` therefore takes
+the *space*, not a list of pages: the ids never travel through Elixir, which would
+hold the whole list in memory and send it back as one `IN` clause (past Postgres'
+parameter limit, a job that cannot run at all). The pages, their comments and the
+mirror's own access decisions leave in three statements driven by a subquery.
+
 ### Content that comes back
 
 A page the site names again is live again. Two things make that true:

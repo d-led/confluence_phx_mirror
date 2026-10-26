@@ -27,6 +27,10 @@ defmodule ConfluencePhxMirror.Sync.ReconcileRun do
   # and starting again is the honest answer.
   @resume_window_seconds 24 * 60 * 60
 
+  # Where a settled space is announced, so an open screen can show the facts
+  # arriving instead of waiting for the pass to end.
+  @topic "reconcile_run"
+
   @type t :: %__MODULE__{}
 
   schema "reconcile_runs" do
@@ -79,27 +83,41 @@ defmodule ConfluencePhxMirror.Sync.ReconcileRun do
     |> Repo.one()
   end
 
+  @doc "Topic a settled space and a finished pass are announced on."
+  @spec topic() :: String.t()
+  def topic, do: @topic
+
   @doc """
   Records what the pass learned about one space.
 
   Writing the row is the promise that the space is settled: the pass marks
   before it records, so a row never stands for work that did not happen.
   `on_conflict: :nothing` keeps a retried space from being recorded twice.
+
+  The row is announced on `topic/0`, which is what lets `/admin/upstream` show the
+  facts as they arrive rather than after the last space.
   """
   @spec observe(t(), Space.t(), map()) :: ReconcileObservation.t()
   def observe(%__MODULE__{} = run, %Space{} = space, fact) do
-    %ReconcileObservation{}
-    |> Ecto.Changeset.change(%{
-      run_id: run.id,
-      space_id: space.id,
-      verdict: to_string(fact.verdict),
-      asked: fact.asked,
-      marked: fact.marked,
-      cleared: fact.cleared,
-      error: fact.error,
-      observed_at: now()
-    })
-    |> Repo.insert!(on_conflict: :nothing)
+    observation =
+      %ReconcileObservation{}
+      |> Ecto.Changeset.change(%{
+        run_id: run.id,
+        space_id: space.id,
+        verdict: to_string(fact.verdict),
+        asked: fact.asked,
+        counted: fact.counted,
+        named: fact.named,
+        marked: fact.marked,
+        cleared: fact.cleared,
+        error: fact.error,
+        observed_at: now()
+      })
+      |> Repo.insert!(on_conflict: :nothing)
+
+    broadcast({:reconcile_observed, run.id})
+
+    observation
   end
 
   @doc """
@@ -139,6 +157,72 @@ defmodule ConfluencePhxMirror.Sync.ReconcileRun do
   end
 
   @doc """
+  The newest facts of a pass, for a screen watching it work, with the total.
+
+  Newest first, because the interesting row is the one that just arrived. The
+  total is what the screen counts against, so a pass over a thousand spaces shows
+  fifty rows and a number, not a thousand rows.
+  """
+  @spec progress_facts(t(), pos_integer()) :: %{
+          facts: [ReconcileObservation.t()],
+          settled: non_neg_integer()
+        }
+  def progress_facts(%__MODULE__{} = run, limit) do
+    %{
+      facts:
+        from(o in ReconcileObservation,
+          where: o.run_id == ^run.id,
+          order_by: [desc: o.observed_at, desc: o.id],
+          limit: ^limit,
+          preload: [:space]
+        )
+        |> Repo.all(),
+      settled: count_facts(run)
+    }
+  end
+
+  @doc "How many spaces a pass has settled."
+  @spec count_facts(t()) :: non_neg_integer()
+  def count_facts(%__MODULE__{} = run) do
+    Repo.aggregate(from(o in ReconcileObservation, where: o.run_id == ^run.id), :count)
+  end
+
+  @doc """
+  What a pass compared and what it found, in numbers.
+
+  The screen needs this to show its work: "found every page the site lists" is a
+  conclusion, and a conclusion about a comparison nobody can see is
+  indistinguishable from a pass that compared very little. `named` is the other
+  half of that comparison — the ids the site answered with — and `counted` is how
+  many spaces could be settled by a count instead of a full listing, which is
+  zero on a Confluence that cannot report per-space totals.
+  """
+  @spec summary(t()) :: %{
+          settled: non_neg_integer(),
+          counted: non_neg_integer(),
+          named: non_neg_integer(),
+          marked: non_neg_integer(),
+          cleared: non_neg_integer()
+        }
+  def summary(%__MODULE__{} = run) do
+    rows =
+      Repo.all(
+        from(o in ReconcileObservation,
+          where: o.run_id == ^run.id,
+          select: {o.counted, o.named, o.marked, o.cleared}
+        )
+      )
+
+    %{
+      settled: length(rows),
+      counted: Enum.count(rows, fn {counted, _named, _marked, _cleared} -> counted end),
+      named: rows |> Enum.map(&elem(&1, 1)) |> Enum.sum(),
+      marked: rows |> Enum.map(&elem(&1, 2)) |> Enum.sum(),
+      cleared: rows |> Enum.map(&elem(&1, 3)) |> Enum.sum()
+    }
+  end
+
+  @doc """
   Records what the pass found.
 
   `listed` is a count of spaces rather than of pages: it is the number that
@@ -146,16 +230,21 @@ defmodule ConfluencePhxMirror.Sync.ReconcileRun do
   """
   @spec finish(t(), map()) :: t()
   def finish(%__MODULE__{} = run, report) do
-    run
-    |> Ecto.Changeset.change(%{
-      finished_at: now(),
-      spaces: report.spaces,
-      agreed: report.agreed,
-      listed: length(report.listed),
-      absent: report.absent,
-      asked: report.asked
-    })
-    |> Repo.update!()
+    finished =
+      run
+      |> Ecto.Changeset.change(%{
+        finished_at: now(),
+        spaces: report.spaces,
+        agreed: report.agreed,
+        listed: length(report.listed),
+        absent: report.absent,
+        asked: report.asked
+      })
+      |> Repo.update!()
+
+    broadcast({:reconcile_finished, run.id})
+
+    finished
   end
 
   @doc "The newest pass that finished, or `nil` when nobody has ever checked."
@@ -177,6 +266,10 @@ defmodule ConfluencePhxMirror.Sync.ReconcileRun do
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
+
+  defp broadcast(message) do
+    Phoenix.PubSub.broadcast(ConfluencePhxMirror.PubSub, @topic, message)
+  end
 
   defp begun_since do
     DateTime.utc_now()

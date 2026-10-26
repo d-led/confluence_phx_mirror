@@ -50,6 +50,39 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     assert html =~ "That is a statement about that moment, not about now"
   end
 
+  test "a clean check says what it compared, not only what it concluded", %{
+    conn: conn,
+    space: space
+  } do
+    # A pass of two spaces on a source that cannot report totals: the point is
+    # that the screen shows the comparison it made, so that "found everything"
+    # can be believed or doubted on evidence.
+    run = ReconcileRun.start(%{trigger: "a test"})
+
+    for {key, pages} <- [{"ENG", 934}, {"OPS", 66}] do
+      ReconcileRun.observe(run, space_fixture(%{key: key}), %{
+        verdict: :listed,
+        asked: 1,
+        counted: false,
+        named: pages,
+        marked: 0,
+        cleared: 0,
+        error: nil
+      })
+    end
+
+    ReconcileRun.finish(run, %{spaces: 2, agreed: 0, listed: ["ENG", "OPS"], absent: 0, asked: 2})
+
+    {:ok, view, html} = live(conn, ~p"/admin/upstream")
+
+    assert html =~ "The site named 1000 ids in them"
+
+    assert view |> element("#upstream-no-counts") |> render() =~
+             "reports no per-space total, so every space had to be listed in full"
+
+    assert space.id
+  end
+
   test "an absent page is listed with its space and when it was noticed", %{
     conn: conn,
     space: space,
@@ -84,6 +117,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/admin/upstream")
 
+    assert view |> element("#absent-total") |> render() =~ "1 page in 1 space"
+
     html = view |> element("#trash-#{absent.id}") |> render_click()
 
     assert html =~ "moved to the trash"
@@ -91,6 +126,67 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     assert [{trashed, ^space}] = Trash.pages()
     assert trashed.deleted_reason == "vanished"
     refute has_element?(view, "#absent-#{absent.id}")
+  end
+
+  test "the count says how much is waiting, and goes down as pages leave", %{
+    conn: conn,
+    space: space,
+    absent: absent
+  } do
+    mark_absent(space, absent)
+    other = page_fixture(space, %{confluence_id: 1004, title: "Also Gone"})
+    mark_absent(space, other)
+
+    {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+
+    assert view |> element("#absent-total") |> render() =~ "2 pages in 1 space"
+
+    view |> element("#trash-#{absent.id}") |> render_click()
+
+    assert view |> element("#absent-total") |> render() =~ "1 page in 1 space"
+  end
+
+  test "facts appear as the pass records them, without a reload", %{conn: conn, space: space} do
+    run = ReconcileRun.start(%{trigger: "a test"})
+
+    {:ok, view, html} = live(conn, ~p"/admin/upstream")
+
+    assert html =~ "What this check has settled"
+    refute has_element?(view, "#fact-ENG")
+
+    # What `Reconcile` does after it has counted, listed and marked a space.
+    ReconcileRun.observe(run, space, %{
+      verdict: :listed,
+      asked: 1,
+      counted: false,
+      named: 934,
+      marked: 3,
+      cleared: 0,
+      error: nil
+    })
+
+    assert has_element?(view, "#fact-ENG")
+    assert view |> element("#upstream-facts") |> render() =~ "named its ids"
+  end
+
+  test "the progress list names the newest facts and counts the rest", %{conn: conn} do
+    run = ReconcileRun.start(%{trigger: "a test"})
+
+    for n <- 1..55 do
+      ReconcileRun.observe(run, space_fixture(%{key: "S#{n}"}), %{
+        verdict: :agreed,
+        asked: 1,
+        counted: true,
+        named: 0,
+        marked: 0,
+        cleared: 0,
+        error: nil
+      })
+    end
+
+    {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+
+    assert view |> element("#upstream-facts") |> render() =~ "Showing the newest 50 of 55"
   end
 
   test "a whole space's absent pages are queued as a job, not done in the click", %{

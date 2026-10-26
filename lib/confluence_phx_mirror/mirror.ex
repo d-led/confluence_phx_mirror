@@ -1534,24 +1534,52 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
-  Moves absent pages to the trash, saying why they left.
+  Moves every absent page of `space` to the trash, saying why they left.
 
-  Takes what `absent_pages/1` returns — `{page, space}` pairs — as well as bare
-  pages or ids, because the callers are a review screen that needs the space's
-  key and a job that only needs the work done.
+  One statement for the pages and one for their comments, both driven by a
+  subquery — the ids never travel through Elixir. That is what makes a space with
+  tens of thousands of absent pages safe to clear: reading them first would hold
+  the whole list in memory and then send it back as one `IN` clause, which is
+  both slow and, past Postgres' parameter limit, a job that cannot run at all.
 
-  The mirror keeps them (and their comments) for the audit trail; an
+  The mirror keeps the rows (and their comments) for the audit trail; an
   administrator purges them from `/admin/trash` when the decision is final.
+  Returns how many pages moved.
   """
-  @spec trash_absent_pages([{Page.t(), Space.t()}] | [Page.t()] | [integer()]) ::
-          non_neg_integer()
-  def trash_absent_pages(pages) do
-    trash_pages(Enum.map(pages, &page_id/1), now(), "vanished")
+  @spec trash_absent_pages(Space.t()) :: non_neg_integer()
+  def trash_absent_pages(%Space{} = space) do
+    {:ok, trashed} =
+      Repo.transaction(fn ->
+        now = now()
+        absent = absent_page_ids(space)
+
+        # Everything that hangs off the pages goes first, while `absent_since` is
+        # still what selects them; the update below clears it.
+        from(r in PageRestriction, where: r.page_id in subquery(absent))
+        |> mirror_rows()
+        |> Repo.delete_all()
+
+        from(c in Comment, where: c.page_id in subquery(absent) and is_nil(c.deleted_at))
+        |> Repo.update_all(set: [deleted_at: now, updated_at: now])
+
+        {trashed, _} =
+          from(p in Page, where: p.id in subquery(absent))
+          |> Repo.update_all(
+            set: [deleted_at: now, deleted_reason: "vanished", absent_since: nil, updated_at: now]
+          )
+
+        trashed
+      end)
+
+    trashed
   end
 
-  defp page_id({%Page{id: id}, _space}), do: id
-  defp page_id(%Page{id: id}), do: id
-  defp page_id(id) when is_integer(id), do: id
+  defp absent_page_ids(space) do
+    from(p in Page,
+      where: p.space_id == ^space.id and is_nil(p.deleted_at) and not is_nil(p.absent_since),
+      select: p.id
+    )
+  end
 
   @doc """
   Marks one page deleted, keeping it for the audit trail and the trash.
@@ -1780,12 +1808,14 @@ defmodule ConfluencePhxMirror.Mirror do
   # a decision nobody re-made. The site's rows stay for the audit trail — a
   # revived page is re-read from the source anyway.
   defp discard_page_overlays(page_ids) do
-    from(r in PageRestriction,
-      where:
-        r.page_id in ^page_ids and
-          (not is_nil(r.granted_by_id) or not is_nil(r.revoked_by_id))
-    )
+    from(r in PageRestriction, where: r.page_id in ^page_ids)
+    |> mirror_rows()
     |> Repo.delete_all()
+  end
+
+  # The rows this mirror wrote rather than the site: a grant or a removal.
+  defp mirror_rows(queryable) do
+    from(r in queryable, where: not is_nil(r.granted_by_id) or not is_nil(r.revoked_by_id))
   end
 
   defp discard_space_overlay(space_id) do

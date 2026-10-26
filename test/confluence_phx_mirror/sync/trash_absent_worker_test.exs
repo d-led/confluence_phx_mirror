@@ -51,6 +51,24 @@ defmodule ConfluencePhxMirror.Sync.TrashAbsentWorkerTest do
     assert trashed.deleted_reason == "vanished"
   end
 
+  test "the comments of the pages it moves go with them", %{
+    space: space,
+    absent: absent,
+    published: published
+  } do
+    comment_fixture(absent)
+    comment_fixture(published)
+
+    perform_job(TrashAbsentWorker, %{"space_key" => "ENG", "asked_by" => "ops@x.test"})
+
+    assert Mirror.comments(absent) == []
+
+    assert [_kept] = Mirror.comments(published),
+           "a listed page keeps the discussion under it"
+
+    assert space.id
+  end
+
   test "records the decision once for the space, naming how many pages went", %{absent: absent} do
     perform_job(TrashAbsentWorker, %{"space_key" => "ENG", "asked_by" => "ops@x.test"})
 
