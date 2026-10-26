@@ -28,3 +28,10 @@ Ecto.Adapters.SQL.Sandbox.unboxed_run(ConfluencePhxMirror.Repo, fn ->
 
   :ok
 end)
+
+# The base's blob files, so `Fixtures.clean_blobs/0` can tell what a *test* wrote
+# from what the suite seeded before any test ran.
+:persistent_term.put(
+  {ConfluencePhxMirror.Fixtures, :base_blobs},
+  ConfluencePhxMirror.Fixtures.blob_files()
+)

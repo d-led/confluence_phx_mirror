@@ -76,9 +76,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
 
     {:ok, view, html} = live(conn, ~p"/admin/upstream")
 
-    # The numbers are the point; markup whitespace is not.
-    assert html =~ "1000 pages"
-    assert html =~ "all found"
+    # The numbers are the point, and a big one is written the way people read it.
+    assert html =~ "2 spaces and 1,000 pages, all found"
 
     assert view |> element("#upstream-no-counts") |> render() =~
              "so every space is compared page by page"

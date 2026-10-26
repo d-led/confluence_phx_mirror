@@ -184,9 +184,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
         <p>
           <span class="font-semibold">Nothing is missing.</span>
           Last checked
-          <.local_time at={@last_check.finished_at} />: {@last_check.spaces} spaces<%= if @summary.named > 0 do %>
-            and {@summary.named} pages
-          <% end %>, all found.
+          <.local_time at={@last_check.finished_at} />: {checked_sentence(@last_check, @summary)}
         </p>
         <p
           :if={@summary.counted == 0 and @summary.settled > 0}
@@ -347,6 +345,27 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   defp cancel_refresh(%{assigns: %{refresh_timer: timer}} = socket) do
     Process.cancel_timer(timer)
     assign(socket, :refresh_timer, nil)
+  end
+
+  # One sentence about what the last check compared, so the numbers cannot be read
+  # apart from what they are counting.
+  defp checked_sentence(last_check, summary) do
+    looked_at = "#{number(last_check.spaces)} spaces"
+
+    if summary.named > 0 do
+      "#{looked_at} and #{number(summary.named)} pages, all found."
+    else
+      "#{looked_at}, all found."
+    end
+  end
+
+  # 124149 is a number nobody reads; 124,149 is one they do.
+  defp number(count) do
+    count
+    |> Integer.to_string()
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+    |> String.reverse()
   end
 
   defp plural(1, word), do: "1 #{word}"

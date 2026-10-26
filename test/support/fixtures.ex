@@ -56,9 +56,33 @@ defmodule ConfluencePhxMirror.Fixtures do
     user
   end
 
-  @doc "Removes blobs written by a test."
+  @doc "Every blob file under the store root, relative to it."
+  def blob_files do
+    root = Store.root()
+
+    for path <- Path.wildcard(Path.join(root, "**/*"), match_dot: true),
+        File.regular?(path),
+        do: Path.relative_to(path, root)
+  end
+
+  @doc """
+  Removes the blobs a test wrote, and leaves the committed demo site's alone.
+
+  The demo base is written once, outside every test's transaction
+  (`test_helper.exs`), so wiping the whole store would delete files the suite did
+  not create and cannot roll back: a later test that exports the base then finds
+  empty attachments. What a test wrote is what was not there when the base was
+  written — `test_helper.exs` records that list.
+  """
   def clean_blobs do
-    File.rm_rf!(Store.root())
+    root = Store.root()
+    base = MapSet.new(:persistent_term.get({__MODULE__, :base_blobs}, []))
+
+    for file <- blob_files(), not MapSet.member?(base, file) do
+      File.rm(Path.join(root, file))
+    end
+
+    :ok
   end
 
   @doc "A mirrored space with a generated key unless one is given."
