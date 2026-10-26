@@ -171,7 +171,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
           never anything still published.
         </p>
 
-        <form id="retention-form" phx-change="retention_days" class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <form
+          id="retention-form"
+          phx-change="retention_days"
+          class="mt-3 flex flex-wrap items-center gap-2 text-sm"
+        >
           <label for="retention-days" class="text-xs text-base-content/70">
             Held for at least
           </label>
