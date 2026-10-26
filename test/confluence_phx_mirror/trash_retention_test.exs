@@ -81,6 +81,49 @@ defmodule ConfluencePhxMirror.TrashRetentionTest do
     assert Mirror.count_pages() == 0
   end
 
+  describe "everything the check found missing" do
+    test "leaves in one go, whatever space it is in, and only what was marked", %{
+      space: space,
+      page: page
+    } do
+      other = space_fixture(%{key: "OPS", name: "Operations"})
+      elsewhere = page_fixture(other, %{confluence_id: 2002, title: "Gone too"})
+      kept = page_fixture(other, %{confluence_id: 2003, title: "Still there"})
+
+      # What a check does: name the ids the site has, and mark the rest.
+      Mirror.mark_absent(space, [])
+      Mirror.mark_absent(other, [2003])
+
+      assert Trash.trash_all_absent(@actor) == 2
+
+      assert Mirror.find_page(1002) == {:error, :not_found}
+      assert Mirror.find_page(2002) == {:error, :not_found}
+      assert {:ok, _live} = Mirror.find_page(2003), "a page the site names stays"
+
+      assert Mirror.count_absent() == 0
+
+      assert Enum.sort(Enum.map(Trash.pages(), fn {p, _space} -> p.title end)) == [
+               "Gone",
+               "Gone too"
+             ]
+
+      assert page.id
+      assert kept.id
+    end
+
+    test "says once what it moved, and says nothing when there was nothing", %{space: space} do
+      Mirror.mark_absent(space, [])
+
+      assert Trash.trash_all_absent(@actor) == 1
+
+      assert [entry] = Repo.all(from(e in Event, where: e.action == "pages.deleted"))
+      assert entry.metadata["count"] == 1
+
+      assert Trash.trash_all_absent(@actor) == 0
+      assert [_only] = Repo.all(from(e in Event, where: e.action == "pages.deleted"))
+    end
+  end
+
   # Backdating is how a test says "this has been sitting there a while"; the
   # trash reads `deleted_at` and nothing else.
   defp age!(%_{} = row, days) do

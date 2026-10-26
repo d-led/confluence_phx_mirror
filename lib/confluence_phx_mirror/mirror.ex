@@ -1553,13 +1553,36 @@ defmodule ConfluencePhxMirror.Mirror do
   """
   @spec trash_absent_pages(Space.t()) :: non_neg_integer()
   def trash_absent_pages(%Space{} = space) do
+    trash_absent(
+      from(p in Page,
+        where: p.space_id == ^space.id and is_nil(p.deleted_at) and not is_nil(p.absent_since),
+        select: p.id
+      )
+    )
+  end
+
+  @doc """
+  Moves every absent page in the mirror to the trash, whatever space it is in.
+
+  The same work as `trash_absent_pages/1` without the space: a site with a
+  hundred spaces the site no longer lists would otherwise be a hundred clicks, and
+  a check over a hundred thousand pages finds its absentees in whatever order it
+  met them. One transaction, no ids in Elixir, one number back.
+  """
+  @spec trash_all_absent() :: non_neg_integer()
+  def trash_all_absent do
+    trash_absent(
+      from(p in Page, where: is_nil(p.deleted_at) and not is_nil(p.absent_since), select: p.id)
+    )
+  end
+
+  # Everything that hangs off the pages goes first, while `absent_since` is still
+  # what selects them; the update below clears it.
+  defp trash_absent(absent) do
     {:ok, trashed} =
       Repo.transaction(fn ->
         now = now()
-        absent = absent_page_ids(space)
 
-        # Everything that hangs off the pages goes first, while `absent_since` is
-        # still what selects them; the update below clears it.
         from(r in PageRestriction, where: r.page_id in subquery(absent))
         |> mirror_rows()
         |> Repo.delete_all()
@@ -1577,13 +1600,6 @@ defmodule ConfluencePhxMirror.Mirror do
       end)
 
     trashed
-  end
-
-  defp absent_page_ids(space) do
-    from(p in Page,
-      where: p.space_id == ^space.id and is_nil(p.deleted_at) and not is_nil(p.absent_since),
-      select: p.id
-    )
   end
 
   @doc """

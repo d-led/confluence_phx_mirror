@@ -148,6 +148,44 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     assert view |> element("#absent-total") |> render() =~ "1 page in 1 space"
   end
 
+  test "everything the check found can be moved at once, after asking", %{
+    conn: conn,
+    space: space,
+    absent: absent
+  } do
+    mark_absent(space, absent)
+    other = page_fixture(space, %{confluence_id: 1005, title: "Gone too"})
+    mark_absent(space, other)
+
+    {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+
+    # One click asks; the second moves. Tens of thousands of pages deserve a
+    # question, not an undo.
+    view |> element("#trash-all") |> render_click()
+    assert has_element?(view, "#confirm-trash-all")
+
+    html = view |> element("#confirm-trash-all button", "Yes, move them") |> render_click()
+
+    assert html =~ "Moving 2 pages to the trash"
+    assert_enqueued(worker: ConfluencePhxMirror.Trash.TrashAllAbsentWorker)
+  end
+
+  test "cancelling the move leaves the pages where they are", %{
+    conn: conn,
+    space: space,
+    absent: absent
+  } do
+    mark_absent(space, absent)
+
+    {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+
+    view |> element("#trash-all") |> render_click()
+    html = view |> element("#confirm-trash-all button", "Cancel") |> render_click()
+
+    refute html =~ "Moving 2 pages to the trash"
+    refute_enqueued(worker: ConfluencePhxMirror.Trash.TrashAllAbsentWorker)
+  end
+
   test "a whole space's absent pages are queued as a job, not done in the click", %{
     conn: conn,
     space: space,

@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirror.Trash do
   """
 
   alias ConfluencePhxMirror.{Audit, Blobs.Store, Mirror}
+  alias ConfluencePhxMirror.Audit.Entry
   alias ConfluencePhxMirror.Mirror.{Counters, Page, Space}
 
   @doc "Spaces in the trash, newest first, with how many pages go with each."
@@ -124,6 +125,34 @@ defmodule ConfluencePhxMirror.Trash do
       error ->
         error
     end
+  end
+
+  @doc """
+  Moves every page the check found missing to the trash, in one go.
+
+  The review screen's per-space button exists because a space is the unit an
+  operator reads. This is the same decision without the reading: a site with a
+  hundred spaces the site no longer lists, or a check over a hundred thousand
+  pages, would otherwise be a hundred clicks, and the pages are already marked —
+  the check is what marked them.
+
+  One audit entry for the whole move, because a hundred thousand lines would hide
+  the decision instead of recording it. Returns how many pages moved.
+  """
+  @spec trash_all_absent(Audit.actor()) :: non_neg_integer()
+  def trash_all_absent(actor) do
+    trashed = Mirror.trash_all_absent()
+
+    if trashed > 0 do
+      Counters.clear()
+
+      Audit.log(
+        actor,
+        Entry.new("pages.deleted", "mirror", nil, %{count: trashed})
+      )
+    end
+
+    trashed
   end
 
   defp delete_blobs(keys), do: Enum.each(keys, &Store.delete/1)

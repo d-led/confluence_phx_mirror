@@ -21,6 +21,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   alias ConfluencePhxMirror.{Jobs, Mirror}
   alias ConfluencePhxMirror.Sync.{ReconcileRun, ReconcileWorker, TrashAbsentWorker}
   alias ConfluencePhxMirror.Trash
+  alias ConfluencePhxMirror.Trash.TrashAllAbsentWorker
 
   # A mirror that lost a space can have thousands of absent pages; the page shows
   # the newest and each space's own button takes the rest.
@@ -106,6 +107,35 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
             {:noreply, put_flash(socket, :error, "Could not start it: #{inspect(reason)}")}
         end
     end
+  end
+
+  # Everything the check found, in one go. It asks first: one click can move tens
+  # of thousands of pages, and a confirmation is cheaper than an undo.
+  def handle_event("trash_all", _params, %{assigns: %{confirm_trash_all: nil}} = socket) do
+    {:noreply, assign(socket, :confirm_trash_all, socket.assigns.absent)}
+  end
+
+  def handle_event("trash_all", _params, socket) do
+    args = %{"asked_by" => who(socket)}
+
+    case args |> TrashAllAbsentWorker.new() |> Oban.insert() do
+      {:ok, _job} ->
+        {:noreply,
+         socket
+         |> assign(:confirm_trash_all, nil)
+         |> put_flash(
+           :info,
+           "Moving #{plural(socket.assigns.absent, "page")} to the trash. " <>
+             "This runs in the background."
+         )}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not start it: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("cancel_trash_all", _params, socket) do
+    {:noreply, assign(socket, :confirm_trash_all, nil)}
   end
 
   @impl true
@@ -216,6 +246,32 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
           page.
         </p>
 
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            :if={is_nil(@confirm_trash_all)}
+            type="button"
+            phx-click="trash_all"
+            id="trash-all"
+            class="btn btn-outline btn-sm"
+          >
+            Move all {plural(@absent, "page")} to the trash
+          </button>
+
+          <div
+            :if={@confirm_trash_all}
+            id="confirm-trash-all"
+            class="flex flex-wrap items-center gap-2"
+          >
+            <span class="text-sm">Move {plural(@confirm_trash_all, "page")} to the trash?</span>
+            <button type="button" phx-click="trash_all" class="btn btn-warning btn-sm">
+              Yes, move them
+            </button>
+            <button type="button" phx-click="cancel_trash_all" class="btn btn-ghost btn-sm">
+              Cancel
+            </button>
+          </div>
+        </div>
+
         <div class="mt-2 overflow-x-auto rounded-xl border border-base-300/70">
           <table class="table table-sm">
             <thead>
@@ -317,6 +373,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       # killed job leaves the second without the first, and the screen must say
       # that rather than call a dead pass "running".
       in_flight: Jobs.unfinished?(ReconcileWorker),
+      confirm_trash_all: nil,
       unfinished: unfinished,
       # How far the pass being watched has got, and how much there is to get
       # through — the two numbers the status sentence needs.

@@ -21,7 +21,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Resources
   alias ConfluencePhxMirror.Sync
-  alias ConfluencePhxMirror.Sync.{SnapshotWorker, SpaceWorker, SweepWorker}
+  alias ConfluencePhxMirror.Sync.{ReconcileRun, SnapshotWorker, SpaceWorker, SweepWorker}
   alias ConfluencePhxMirror.Sync.SyncRun
   alias ConfluencePhxMirrorWeb.Plugs
   alias ConfluencePhxMirrorWeb.Time
@@ -221,6 +221,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     "accounts" => "checking the site's accounts"
   }
 
+  # The site's number beside ours, in the few words that fit a strip.
+  defp pages_hint(held, %{named: named}) when held > named,
+    do: "#{grouped(held - named)} not in Confluence"
+
+  defp pages_hint(_held, %{named: named}), do: "Confluence has #{grouped(named)}"
+
+  defp grouped(count) do
+    count
+    |> Integer.to_string()
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+    |> String.reverse()
+  end
+
   defp phase_label(nil), do: "talking to the site"
   defp phase_label(phase), do: Map.get(@phases, phase, phase)
 
@@ -310,8 +324,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       rows: sync_rows(Sync.queued(), runs),
       audit: Audit.recent(18),
       recent_pages: Mirror.recent_pages(8),
-      last_sync: Mirror.last_successful_sync_run()
+      last_sync: Mirror.last_successful_sync_run(),
+      # What the site counts, from the last check that asked it. The number here
+      # is what the mirror holds; without this one, "are these the same?" is a
+      # question only a full re-read could answer.
+      upstream: upstream_pages()
     )
+  end
+
+  defp upstream_pages do
+    case ReconcileRun.last_finished() do
+      nil ->
+        nil
+
+      run ->
+        summary = ReconcileRun.summary(run)
+        %{named: summary.named, at: run.finished_at, at_odds: summary.at_odds}
+    end
   end
 
   # The one thing that moves by the second: the run in flight. Only ever zero or
@@ -470,7 +499,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
         id="overview-stats"
         class="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-base-300/70 bg-base-100 px-3 py-2 sm:mt-5 sm:flex sm:flex-wrap sm:items-center sm:gap-x-5 sm:px-4"
       >
-        <.stat label="Pages" value={@stats.pages} icon="hero-document-text" />
+        <.stat label="Pages" value={@stats.pages} icon="hero-document-text">
+          <:hint :if={@upstream && @upstream.named > 0}>
+            {pages_hint(@stats.pages, @upstream)}
+          </:hint>
+        </.stat>
         <.stat label="Attachments" value={@stats.attachments} icon="hero-paper-clip" />
         <.stat label="Labels" value={@stats.labels} icon="hero-tag" />
         <.stat
