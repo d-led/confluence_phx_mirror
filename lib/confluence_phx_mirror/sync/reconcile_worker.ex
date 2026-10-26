@@ -21,7 +21,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileWorker do
     Logger.info(
       "verify pass over #{report.spaces} spaces (#{report.agreed} already in step, " <>
         "#{length(report.listed)} listed, #{report.absent} pages absent) " <>
-        "for #{report.calls} requests"
+        "for #{report.asked} questions"
     )
 
     :ok

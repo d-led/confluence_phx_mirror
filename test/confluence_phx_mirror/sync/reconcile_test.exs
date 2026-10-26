@@ -31,7 +31,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
 
     assert report.agreed == 1
     assert report.listed == []
-    assert report.calls == 1
+    assert report.asked == 1
     assert UpstreamLedger.calls() == [{:counts, "ENG"}]
     assert Mirror.count_absent() == 0
     assert live_titles(space) == ["Gone", "Kept"]

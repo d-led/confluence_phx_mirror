@@ -12,7 +12,7 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
   ## What it costs
 
   Reading the site is the expensive part of a mirror, so the pass is built to ask
-  as little as possible, and to say how much it asked (`:calls` in the report):
+  as little as possible, and to say how much it asked (`:asked` in the report):
 
     1. **One request per space and content type** for a *count*. A space whose
        counts agree with the mirror's is done — no page is listed at all, which
@@ -46,14 +46,17 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
     * `:agreed` — spaces whose counts matched, so nothing was listed;
     * `:listed` — spaces whose pages were listed, and how many are now absent;
     * `:absent` — pages absent after the pass;
-    * `:calls` — requests made to the source.
+    * `:asked` — questions put to the source: one count or one listing per space.
+      A count is two HTTP requests on Confluence (one per content type), and a
+      listing is one per page of results, so this is the pass's own measure of
+      what it demanded, not a packet count.
   """
   @type report :: %{
           spaces: non_neg_integer(),
           agreed: non_neg_integer(),
           listed: [{Space.t(), non_neg_integer()}],
           absent: non_neg_integer(),
-          calls: non_neg_integer()
+          asked: non_neg_integer()
         }
 
   @doc """
@@ -73,7 +76,7 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
 
     case live_spaces(opts) do
       [] ->
-        %{spaces: 0, agreed: 0, listed: [], absent: 0, calls: 0, failed: [], empty: []}
+        %{spaces: 0, agreed: 0, listed: [], absent: 0, asked: 0, failed: [], empty: []}
 
       spaces ->
         # A `:counters` process keeps the request tally honest without threading
@@ -154,13 +157,13 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
     end
   end
 
-  defp report(spaces, results, calls) do
+  defp report(spaces, results, asked) do
     %{
       spaces: length(spaces),
       agreed: Enum.count(results, &match?({:agreed, _}, &1)),
       listed: for({:listed, space, marked, _cleared} <- results, do: {space, marked}),
       absent: Mirror.count_absent(),
-      calls: calls,
+      asked: asked,
       failed: for({:failed, space, reason} <- results, do: {space.key, reason}),
       empty: for({:empty, space} <- results, do: space.key)
     }
