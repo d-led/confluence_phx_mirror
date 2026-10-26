@@ -6,7 +6,7 @@ defmodule ConfluencePhxMirror.Mcp.MarkdownTest do
   own instead of reusing the demo pages.
   """
 
-  use ConfluencePhxMirror.DataCase, async: false
+  use ConfluencePhxMirror.DataCase, async: true
 
   import ConfluencePhxMirror.Fixtures
 

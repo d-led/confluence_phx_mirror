@@ -8,7 +8,7 @@ defmodule ConfluencePhxMirror.Mirror.BranchTest do
   a page the reader may not open never appears.
   """
 
-  use ConfluencePhxMirror.DataCase, async: false
+  use ConfluencePhxMirror.DataCase, async: true
 
   import ConfluencePhxMirror.Fixtures
 

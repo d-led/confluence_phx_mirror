@@ -3,7 +3,7 @@ defmodule ConfluencePhxMirror.Mirror.PeopleTest do
   The site's side of the story: which people the content names, and which
   groups the sync read for each of them.
   """
-  use ConfluencePhxMirror.DataCase, async: false
+  use ConfluencePhxMirror.DataCase, async: true
 
   import ConfluencePhxMirror.Fixtures
 

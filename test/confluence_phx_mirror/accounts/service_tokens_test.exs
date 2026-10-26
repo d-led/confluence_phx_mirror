@@ -1,5 +1,5 @@
 defmodule ConfluencePhxMirror.Accounts.ServiceTokensTest do
-  use ConfluencePhxMirror.DataCase, async: false
+  use ConfluencePhxMirror.DataCase, async: true
 
   import ConfluencePhxMirror.Fixtures
 
