@@ -175,14 +175,24 @@ defmodule ConfluencePhxMirror.Mirror do
     end)
   end
 
-  @doc "Subjects that may read a space; empty means the space is open."
+  @doc """
+  The rows that decide who may read a space, as the last sync read them plus
+  whatever an administrator decided here.
+
+  A row is one of three things, told apart by its overlay marker: the site's
+  (`granted_by_id` and `revoked_by_id` both null), a grant here
+  (`granted_by_id`), or a removal here (`revoked_by_id`). Empty means the space
+  is open — except that a removal row is what stops a reader, so a space whose
+  only rows are removals is closed rather than open.
+  """
   def space_permissions(space_id) do
     from(c in SpacePermission,
       where: c.space_id == ^space_id and c.operation == "read",
       select: %{
         subject_type: c.subject_type,
         subject_key: c.subject_key,
-        granted_by_id: c.granted_by_id
+        granted_by_id: c.granted_by_id,
+        revoked_by_id: c.revoked_by_id
       }
     )
     |> Repo.all()
@@ -213,7 +223,8 @@ defmodule ConfluencePhxMirror.Mirror do
       select: %{
         subject_type: r.subject_type,
         subject_key: r.subject_key,
-        granted_by_id: r.granted_by_id
+        granted_by_id: r.granted_by_id,
+        revoked_by_id: r.revoked_by_id
       }
     )
     |> Repo.all()
@@ -247,13 +258,18 @@ defmodule ConfluencePhxMirror.Mirror do
   #
   # The site's rows and the mirror's own are answered apart: an administrator
   # checking the mirror against Confluence has to be able to tell "the space says
-  # this" from "we added that".
+  # this" from "we added that" or "we took that away".
   #
   # `personal` is the narrowing that has no rows: a personal space belongs to one
   # account, and an empty permission table there means "one reader", not "open".
+  # `narrowed?` is the question a screen asks before it says "open": any row at
+  # all narrows, and so does a removal, because a space whose readers were all
+  # taken away is closed, not open to everybody.
   defp grants(subjects, space) do
-    synced = Enum.reject(subjects, &granted_row?/1)
+    synced = Enum.filter(subjects, &synced_row?/1)
     granted = Enum.filter(subjects, &granted_row?/1)
+    removed = Enum.filter(subjects, &removed_row?/1)
+    personal = personal_owner(space)
 
     %{
       groups:
@@ -264,16 +280,26 @@ defmodule ConfluencePhxMirror.Mirror do
         |> Enum.sort(),
       users: user_grants(synced),
       anonymous: Enum.any?(synced, &(&1.subject_type == "anonymous")),
-      personal: personal_owner(space),
-      synced?: subjects != [],
-      granted: with_accounts(granted)
+      personal: personal,
+      synced?: synced != [],
+      granted: with_accounts(granted),
+      removed: with_accounts(removed),
+      narrowed?: subjects != [] or personal != nil
     }
   end
+
+  defp synced_row?(%{granted_by_id: nil, revoked_by_id: nil}), do: true
+  defp synced_row?(_subject), do: false
 
   defp granted_row?(%{granted_by_id: id}), do: not is_nil(id)
   defp granted_row?(_subject), do: false
 
+  defp removed_row?(%{revoked_by_id: id}), do: not is_nil(id)
+  defp removed_row?(_subject), do: false
+
   # The overlay rows, with the name a screen wants to show for a person.
+  defp with_accounts([]), do: []
+
   defp with_accounts(rows) do
     accounts = user_grants(Enum.filter(rows, &(&1.subject_type == "user")))
 
@@ -297,12 +323,14 @@ defmodule ConfluencePhxMirror.Mirror do
   def personal_owner(_space), do: nil
 
   @doc """
-  Whether anything narrows this space at all — rows, or being somebody's own.
+  Whether anything narrows this space at all — rows of any kind, or being
+  somebody's own.
 
   The question a screen asks before it says "open", because an empty permission
-  table on a personal space means one reader, not everybody.
+  table on a personal space means one reader, not everybody, and a table whose
+  readers were all removed means nobody.
   """
-  def narrowed?(grants), do: grants.synced? or grants.personal != nil
+  def narrowed?(grants), do: grants.narrowed?
 
   @doc """
   How access is reported for a page of spaces: subject counts per space, in one
@@ -310,25 +338,46 @@ defmodule ConfluencePhxMirror.Mirror do
 
   A space the answer does not name has no mirrored permissions, which means
   nothing narrows it — the screen can say that in a word instead of drawing an
-  empty list next to "everybody can read this".
+  empty list next to "everybody can read this". A space named only by removals is
+  narrowed to nobody, so the summary carries those apart from the readers who
+  may still open it.
   """
   def space_access_by(space_ids) when is_list(space_ids) do
     from(p in SpacePermission,
       where: p.operation == "read" and p.space_id in ^space_ids,
-      select: {p.space_id, p.subject_type, p.subject_key}
+      select: {p.space_id, p.subject_type, p.subject_key, p.revoked_by_id}
     )
     |> Repo.all()
-    |> Enum.group_by(&elem(&1, 0), &{elem(&1, 1), elem(&1, 2)})
+    |> Enum.group_by(&elem(&1, 0), fn {_id, type, key, revoked} ->
+      %{subject_type: type, subject_key: key, removed?: not is_nil(revoked)}
+    end)
     |> Map.new(fn {space_id, subjects} -> {space_id, access_summary(subjects)} end)
   end
 
   defp access_summary(subjects) do
+    readers = Enum.reject(subjects, & &1.removed?)
+
     %{
-      groups: subjects |> Enum.filter(&(elem(&1, 0) == "group")) |> Enum.uniq() |> length(),
-      users: subjects |> Enum.filter(&(elem(&1, 0) == "user")) |> Enum.uniq() |> length(),
-      anonymous: Enum.any?(subjects, &(elem(&1, 0) == "anonymous"))
+      groups:
+        readers
+        |> Enum.filter(&(&1.subject_type == "group"))
+        |> Enum.map(& &1.subject_key)
+        |> Enum.uniq()
+        |> length(),
+      users:
+        readers
+        |> Enum.filter(&(&1.subject_type == "user"))
+        |> Enum.map(& &1.subject_key)
+        |> Enum.uniq()
+        |> length(),
+      anonymous: Enum.any?(readers, &(&1.subject_type == "anonymous")),
+      removed: length(subjects) - length(readers)
     }
   end
+
+  # No row names a person, so no account has to be looked up: the screen asks
+  # this once per level and the budget counts statements.
+  defp user_grants([]), do: []
 
   defp user_grants(subjects) do
     keys = for %{subject_type: "user", subject_key: key} <- subjects, do: key
@@ -398,6 +447,42 @@ defmodule ConfluencePhxMirror.Mirror do
     end
   end
 
+  @doc """
+  Stops an identity the site lists from reading this space — the mirror's own
+  decision, made the other way round from a grant.
+
+  The site's row is not deleted: it becomes a removal row, so the next run
+  neither loses the decision nor puts the reader back. Only an identity the site
+  actually lists can be removed — taking away a reader who was never named here
+  would be a decision about nothing. A removal is in the audit log.
+  """
+  def remove_space_reader(space, subject_type, subject_key, actor) do
+    with :ok <- authorize_grant(actor),
+         %SpacePermission{} = row <-
+           find_synced_row(SpacePermission, :space_id, space.id, subject_type, subject_key),
+         {:ok, removed} <- mark_removed(row, actor) do
+      Audit.log(actor, SpacePermission.audit_event_removed(removed, space.key))
+      {:ok, removed}
+    else
+      nil -> {:error, :not_listed}
+      error -> error
+    end
+  end
+
+  @doc "Lets a reader the site lists back in, undoing a removal made here."
+  def restore_space_reader(space, subject_type, subject_key, actor) do
+    with :ok <- authorize_grant(actor),
+         %SpacePermission{} = row <-
+           find_removal(SpacePermission, :space_id, space.id, subject_type, subject_key),
+         {:ok, restored} <- unmark_removed(row) do
+      Audit.log(actor, SpacePermission.audit_event_restored(restored, space.key))
+      {:ok, restored}
+    else
+      nil -> {:error, :not_removed}
+      error -> error
+    end
+  end
+
   defp find_grant(space, subject_type, subject_key) do
     Repo.one(
       from p in SpacePermission,
@@ -423,6 +508,59 @@ defmodule ConfluencePhxMirror.Mirror do
   defp granted_by_id({:user, %User{id: id}}), do: id
   defp granted_by_id(_actor), do: nil
 
+  # The site's own row, at either level: neither overlay marker is set.
+  defp find_synced_row(SpacePermission, :space_id, id, subject_type, subject_key) do
+    Repo.one(
+      from c in SpacePermission,
+        where:
+          c.space_id == ^id and c.operation == "read" and c.subject_type == ^subject_type and
+            c.subject_key == ^subject_key and is_nil(c.granted_by_id) and
+            is_nil(c.revoked_by_id)
+    )
+  end
+
+  defp find_synced_row(PageRestriction, :page_id, id, subject_type, subject_key) do
+    Repo.one(
+      from r in PageRestriction,
+        where:
+          r.page_id == ^id and r.operation == "read" and r.subject_type == ^subject_type and
+            r.subject_key == ^subject_key and is_nil(r.granted_by_id) and
+            is_nil(r.revoked_by_id)
+    )
+  end
+
+  defp find_removal(SpacePermission, :space_id, id, subject_type, subject_key) do
+    Repo.one(
+      from c in SpacePermission,
+        where:
+          c.space_id == ^id and c.operation == "read" and c.subject_type == ^subject_type and
+            c.subject_key == ^subject_key and not is_nil(c.revoked_by_id)
+    )
+  end
+
+  defp find_removal(PageRestriction, :page_id, id, subject_type, subject_key) do
+    Repo.one(
+      from r in PageRestriction,
+        where:
+          r.page_id == ^id and r.operation == "read" and r.subject_type == ^subject_type and
+            r.subject_key == ^subject_key and not is_nil(r.revoked_by_id)
+    )
+  end
+
+  # The row becomes the mirror's own: still the subject the site names, now with
+  # the mark that says we are the ones refusing them.
+  defp mark_removed(row, actor) do
+    row
+    |> Ecto.Changeset.change(granted_by_id: nil, revoked_by_id: granted_by_id(actor))
+    |> Repo.update()
+  end
+
+  # Back to the site's row: the next run replaces it with what the site says,
+  # which is exactly what a restored reader should get.
+  defp unmark_removed(row) do
+    row |> Ecto.Changeset.change(revoked_by_id: nil) |> Repo.update()
+  end
+
   # The same question administration asks, asked here so no surface can bypass it
   # by calling the context directly.
   defp authorize_grant({:user, %User{} = actor}) do
@@ -447,18 +585,7 @@ defmodule ConfluencePhxMirror.Mirror do
 
   @doc "Replaces what we know about who may read a space."
   def replace_space_permissions(%Space{} = space, permissions) do
-    Repo.transaction(fn ->
-      # Only the sync's own rows: a grant here outlives every run. A space that
-      # comes back open has nothing to widen, so its grants go with it.
-      wipe_grants? = permissions == []
-
-      Repo.delete_all(
-        from c in SpacePermission,
-          where: c.space_id == ^space.id and (is_nil(c.granted_by_id) or ^wipe_grants?)
-      )
-
-      insert_subjects(SpacePermission, :space_id, space.id, permissions)
-    end)
+    replace_subjects(SpacePermission, :space_id, space.id, permissions)
   end
 
   @doc "Subjects that may read a page; empty means it is unrestricted."
@@ -467,7 +594,12 @@ defmodule ConfluencePhxMirror.Mirror do
       join: p in Page,
       on: p.id == r.page_id,
       where: p.confluence_id == ^confluence_id and r.operation == "read",
-      select: %{subject_type: r.subject_type, subject_key: r.subject_key}
+      select: %{
+        subject_type: r.subject_type,
+        subject_key: r.subject_key,
+        granted_by_id: r.granted_by_id,
+        revoked_by_id: r.revoked_by_id
+      }
     )
     |> Repo.all()
   end
@@ -497,6 +629,38 @@ defmodule ConfluencePhxMirror.Mirror do
       {:ok, removed}
     else
       nil -> {:error, :not_granted}
+      error -> error
+    end
+  end
+
+  @doc """
+  Stops an identity the site lists on a page from reading it here, the way
+  `remove_space_reader/4` does for a space: the site's row stays, marked as the
+  mirror's refusal, and the next run leaves it alone.
+  """
+  def remove_page_reader(%Page{} = page, subject_type, subject_key, actor) do
+    with :ok <- authorize_grant(actor),
+         %PageRestriction{} = row <-
+           find_synced_row(PageRestriction, :page_id, page.id, subject_type, subject_key),
+         {:ok, removed} <- mark_removed(row, actor) do
+      Audit.log(actor, PageRestriction.audit_event_removed(removed, page.title))
+      {:ok, removed}
+    else
+      nil -> {:error, :not_listed}
+      error -> error
+    end
+  end
+
+  @doc "Lets a reader the site lists back onto the page, undoing a removal here."
+  def restore_page_reader(%Page{} = page, subject_type, subject_key, actor) do
+    with :ok <- authorize_grant(actor),
+         %PageRestriction{} = row <-
+           find_removal(PageRestriction, :page_id, page.id, subject_type, subject_key),
+         {:ok, restored} <- unmark_removed(row) do
+      Audit.log(actor, PageRestriction.audit_event_restored(restored, page.title))
+      {:ok, restored}
+    else
+      nil -> {:error, :not_removed}
       error -> error
     end
   end
@@ -536,19 +700,60 @@ defmodule ConfluencePhxMirror.Mirror do
 
   @doc "Replaces what we know about who may read a page."
   def replace_page_restrictions(%Page{} = page, restrictions) do
+    replace_subjects(PageRestriction, :page_id, page.id, restrictions)
+  end
+
+  # The sync replaces the rows it wrote and nothing else. A row an administrator
+  # granted or removed here outlives every run — that is the point of the
+  # overlay — and a target the site opens again has neither anything to widen nor
+  # anything to take away, so its overlay rows go: neither may be the reason a
+  # page or a space is narrowed.
+  #
+  # A subject the site still lists but an administrator removed here is not
+  # written back, or the two rows would fight over the same unique key. Anything
+  # else the site names is written even if a grant already holds that key
+  # (`on_conflict: :nothing`), because a grant and the site agreeing is not an
+  # error.
+  defp replace_subjects(schema, foreign_key, id, subjects) do
+    queryable = subject_scope(schema, foreign_key, id)
+
     Repo.transaction(fn ->
-      # The sync's own rows only — a grant here outlives every run. When the page
-      # comes back unrestricted there is nothing to widen, so the grants go too:
-      # a grant must never be the reason a page is narrowed.
-      wipe_grants? = restrictions == []
+      wipe_overlay? = subjects == []
 
       Repo.delete_all(
-        from r in PageRestriction,
-          where: r.page_id == ^page.id and (is_nil(r.granted_by_id) or ^wipe_grants?)
+        from c in queryable,
+          where: (is_nil(c.granted_by_id) and is_nil(c.revoked_by_id)) or ^wipe_overlay?
       )
 
-      insert_subjects(PageRestriction, :page_id, page.id, restrictions)
+      insert_subjects(schema, foreign_key, id, reject_removed(subjects, removed_keys(queryable)))
     end)
+  end
+
+  defp subject_scope(SpacePermission, :space_id, space_id) do
+    from(c in SpacePermission, where: c.space_id == ^space_id)
+  end
+
+  defp subject_scope(PageRestriction, :page_id, page_id) do
+    from(r in PageRestriction, where: r.page_id == ^page_id)
+  end
+
+  defp removed_keys(queryable) do
+    from(c in queryable,
+      where: not is_nil(c.revoked_by_id),
+      select: {c.subject_type, c.subject_key}
+    )
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  defp reject_removed(subjects, removed) do
+    if MapSet.size(removed) == 0 do
+      subjects
+    else
+      Enum.reject(subjects, fn subject ->
+        MapSet.member?(removed, {to_string(subject.subject_type), subject.subject_key || ""})
+      end)
+    end
   end
 
   defp insert_subjects(schema, foreign_key, id, subjects) do
@@ -568,7 +773,7 @@ defmodule ConfluencePhxMirror.Mirror do
       end)
       |> Enum.uniq_by(&{&1.operation, &1.subject_type, &1.subject_key})
 
-    if rows == [], do: 0, else: Repo.insert_all(schema, rows)
+    if rows == [], do: 0, else: Repo.insert_all(schema, rows, on_conflict: :nothing)
   end
 
   # ---------------------------------------------------------------------------
@@ -1368,6 +1573,7 @@ defmodule ConfluencePhxMirror.Mirror do
           |> Repo.update!()
 
         trash_comments([page.id], now)
+        discard_page_overlays([page.id])
         {:ok, page}
     end
   end
@@ -1400,6 +1606,7 @@ defmodule ConfluencePhxMirror.Mirror do
       |> Repo.all()
 
     trash_pages(ids, now, "vanished")
+    discard_space_overlay(space.id)
 
     from(s in Space, where: s.id == ^space.id and is_nil(s.deleted_at))
     |> Repo.update_all(set: [deleted_at: now, updated_at: now])
@@ -1563,7 +1770,31 @@ defmodule ConfluencePhxMirror.Mirror do
       )
 
     trash_comments(ids, now)
+    discard_page_overlays(ids)
     pages
+  end
+
+  # A page that leaves the mirror takes the mirror's own access decisions with
+  # it. A grant or a removal is about a page somebody could open, and a trashed
+  # page is not one; keeping them would also mean a page that comes back carried
+  # a decision nobody re-made. The site's rows stay for the audit trail — a
+  # revived page is re-read from the source anyway.
+  defp discard_page_overlays(page_ids) do
+    from(r in PageRestriction,
+      where:
+        r.page_id in ^page_ids and
+          (not is_nil(r.granted_by_id) or not is_nil(r.revoked_by_id))
+    )
+    |> Repo.delete_all()
+  end
+
+  defp discard_space_overlay(space_id) do
+    from(c in SpacePermission,
+      where:
+        c.space_id == ^space_id and
+          (not is_nil(c.granted_by_id) or not is_nil(c.revoked_by_id))
+    )
+    |> Repo.delete_all()
   end
 
   defp trash_comments(page_ids, now) do

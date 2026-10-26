@@ -26,6 +26,13 @@ defmodule ConfluencePhxMirror.Authorization do
   one account. Groups come from the membership the sync reads from Confluence,
   plus any group an administrator granted here.
 
+  Two decisions can be layered on top of the replay, both marked rows in the same
+  tables: a grant (`granted_by_id`) lets one more reader in, a removal
+  (`revoked_by_id`) keeps an identity the site names out. A removal is counted
+  when the question is "does anything narrow this" and never when a reader is
+  matched, so a space or page left with nothing but removals is closed — not
+  open, which is what "no rows" would otherwise mean.
+
 
   The decision is a pure function of the `Scope` and the mirror's tables, which
   is what makes it cheap to call from controllers, LiveViews and the API alike.
@@ -217,15 +224,22 @@ defmodule ConfluencePhxMirror.Authorization do
 
   # Everyone may match an anonymous permission; the rest depend on who is
   # asking. The first clause is unconditional, so the fold always has a seed.
+  #
+  # A removal row is a reader the site names and an administrator stopped here, so
+  # it narrows without ever matching: it is why the space is still "not open"
+  # below, and the first thing every match rules out.
   defp permitted_subjects(%Scope{} = scope) do
-    [
-      dynamic([sp], sp.subject_type == "anonymous"),
-      signed_in_subject(scope),
-      user_subject(scope),
-      group_subject(scope)
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.reduce(fn subject, acc -> dynamic(^acc or ^subject) end)
+    match =
+      [
+        dynamic([sp], sp.subject_type == "anonymous"),
+        signed_in_subject(scope),
+        user_subject(scope),
+        group_subject(scope)
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.reduce(fn subject, acc -> dynamic(^acc or ^subject) end)
+
+    dynamic([sp], is_nil(sp.revoked_by_id) and ^match)
   end
 
   defp signed_in_subject(%Scope{} = scope) do
@@ -392,7 +406,7 @@ defmodule ConfluencePhxMirror.Authorization do
 
     from(sp in SpacePermission,
       where: sp.operation == "read" and sp.space_id in ^ids,
-      select: {sp.space_id, sp.subject_type, sp.subject_key}
+      select: {sp.space_id, sp.subject_type, sp.subject_key, sp.revoked_by_id}
     )
     |> Repo.all()
     |> group_subjects()
@@ -403,7 +417,7 @@ defmodule ConfluencePhxMirror.Authorization do
 
     from(r in PageRestriction,
       where: r.operation == "read" and r.page_id in ^ids,
-      select: {r.page_id, r.subject_type, r.subject_key}
+      select: {r.page_id, r.subject_type, r.subject_key, r.revoked_by_id}
     )
     |> Repo.all()
     |> group_subjects()
@@ -415,7 +429,9 @@ defmodule ConfluencePhxMirror.Authorization do
     Enum.group_by(
       rows,
       &elem(&1, 0),
-      fn {_id, type, key} -> %{subject_type: type, subject_key: key} end
+      fn {_id, type, key, revoked_by_id} ->
+        %{subject_type: type, subject_key: key, revoked: not is_nil(revoked_by_id)}
+      end
     )
   end
 
@@ -475,6 +491,8 @@ defmodule ConfluencePhxMirror.Authorization do
     end
   end
 
+  defp subject_matches?(_scope, %{revoked_by_id: id}) when not is_nil(id), do: false
+  defp subject_matches?(_scope, %{revoked: true}), do: false
   defp subject_matches?(_scope, %{subject_type: "anonymous"}), do: true
   defp subject_matches?(scope, %{subject_type: "authenticated"}), do: Scope.signed_in?(scope)
 

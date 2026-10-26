@@ -9,9 +9,11 @@ defmodule ConfluencePhxMirror.Mirror.SpacePermission do
   it.
 
   A row with `granted_by_id` set is the mirror's own decision rather than the
-  site's: an administrator let one more reader in here. The sync replaces only
-  the rows it wrote, so a grant survives every run, and every access rule reads
-  the same table without learning a second concept.
+  site's: an administrator let one more reader in here. A row with
+  `revoked_by_id` set is the opposite — an identity the site lists that an
+  administrator took away here. The sync replaces only the rows it wrote, so
+  both decisions survive every run, and every access rule reads the same table
+  without learning a second concept.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -26,11 +28,12 @@ defmodule ConfluencePhxMirror.Mirror.SpacePermission do
 
     belongs_to :space, ConfluencePhxMirror.Mirror.Space
     belongs_to :granted_by, ConfluencePhxMirror.Accounts.User
+    belongs_to :revoked_by, ConfluencePhxMirror.Accounts.User
 
     timestamps(type: :utc_datetime)
   end
 
-  @fields [:space_id, :operation, :subject_type, :subject_key, :granted_by_id]
+  @fields [:space_id, :operation, :subject_type, :subject_key, :granted_by_id, :revoked_by_id]
 
   def changeset(permission, attrs) do
     permission
@@ -46,6 +49,12 @@ defmodule ConfluencePhxMirror.Mirror.SpacePermission do
   @doc "Whether the mirror, not the site, granted this row."
   def granted_here?(%__MODULE__{granted_by_id: id}), do: not is_nil(id)
 
+  @doc "Whether the mirror, not the site, took this identity away."
+  def removed_here?(%__MODULE__{revoked_by_id: id}), do: not is_nil(id)
+
+  @doc "Whether this row is the site's own, untouched by an administrator."
+  def synced?(%__MODULE__{} = row), do: not granted_here?(row) and not removed_here?(row)
+
   @doc "Audit entry for a reader this mirror let into a narrow space."
   def audit_event_granted(%__MODULE__{} = row, space_key) do
     ConfluencePhxMirror.Audit.Entry.new("space.access_granted", "space", space_key, %{
@@ -57,6 +66,22 @@ defmodule ConfluencePhxMirror.Mirror.SpacePermission do
   @doc "Audit entry for taking that reader away again."
   def audit_event_revoked(%__MODULE__{} = row, space_key) do
     ConfluencePhxMirror.Audit.Entry.new("space.access_revoked", "space", space_key, %{
+      subject_type: row.subject_type,
+      subject: row.subject_key
+    })
+  end
+
+  @doc "Audit entry for stopping an identity the site lists from reading here."
+  def audit_event_removed(%__MODULE__{} = row, space_key) do
+    ConfluencePhxMirror.Audit.Entry.new("space.access_removed", "space", space_key, %{
+      subject_type: row.subject_type,
+      subject: row.subject_key
+    })
+  end
+
+  @doc "Audit entry for letting a stopped identity read here again."
+  def audit_event_restored(%__MODULE__{} = row, space_key) do
+    ConfluencePhxMirror.Audit.Entry.new("space.access_restored", "space", space_key, %{
       subject_type: row.subject_type,
       subject: row.subject_key
     })

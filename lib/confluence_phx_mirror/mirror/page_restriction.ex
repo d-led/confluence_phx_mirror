@@ -5,8 +5,9 @@ defmodule ConfluencePhxMirror.Mirror.PageRestriction do
   common case — space permissions decide there.
 
   A row with `granted_by_id` set is the mirror's own: an administrator let one
-  more reader onto a page the site restricted. The sync replaces only the rows it
-  wrote, so a grant survives every run.
+  more reader onto a page the site restricted. A row with `revoked_by_id` set is
+  the opposite: an identity the site lists that an administrator stopped here.
+  The sync replaces only the rows it wrote, so both decisions survive every run.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -21,11 +22,12 @@ defmodule ConfluencePhxMirror.Mirror.PageRestriction do
 
     belongs_to :page, ConfluencePhxMirror.Mirror.Page
     belongs_to :granted_by, ConfluencePhxMirror.Accounts.User
+    belongs_to :revoked_by, ConfluencePhxMirror.Accounts.User
 
     timestamps(type: :utc_datetime)
   end
 
-  @fields [:page_id, :operation, :subject_type, :subject_key, :granted_by_id]
+  @fields [:page_id, :operation, :subject_type, :subject_key, :granted_by_id, :revoked_by_id]
 
   def changeset(restriction, attrs) do
     restriction
@@ -51,6 +53,22 @@ defmodule ConfluencePhxMirror.Mirror.PageRestriction do
   @doc "Audit entry for taking that reader away again."
   def audit_event_revoked(%__MODULE__{} = row, page_title) do
     ConfluencePhxMirror.Audit.Entry.new("page.access_revoked", "page", page_title, %{
+      subject_type: row.subject_type,
+      subject: row.subject_key
+    })
+  end
+
+  @doc "Audit entry for stopping an identity the site lists from reading this page."
+  def audit_event_removed(%__MODULE__{} = row, page_title) do
+    ConfluencePhxMirror.Audit.Entry.new("page.access_removed", "page", page_title, %{
+      subject_type: row.subject_type,
+      subject: row.subject_key
+    })
+  end
+
+  @doc "Audit entry for letting a stopped identity read this page again."
+  def audit_event_restored(%__MODULE__{} = row, page_title) do
+    ConfluencePhxMirror.Audit.Entry.new("page.access_restored", "page", page_title, %{
       subject_type: row.subject_type,
       subject: row.subject_key
     })

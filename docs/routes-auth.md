@@ -7,7 +7,7 @@ confused with each other:
 | --- | --- | --- |
 | who is this? | the proxy (or an API token, or a webhook credential) | `deploy/fly/proxy`, `Plugs.ApiAuth`, `Plugs.WebhookAuth` |
 | may they have an account here? | the deployment's *policy* | `Accounts.UserPolicy` |
-| what may they read? | the permissions the sync mirrored | `Authorization` |
+| what may they read? | the permissions the sync mirrored, plus the grants and removals made on `/admin/permissions` | `Authorization` |
 
 A policy that admits everybody admits them to *public* spaces only: the
 permissions replayed by `Authorization` still name who may read what.
@@ -142,6 +142,13 @@ Mirrored from Confluence by the sync, replayed per request:
 | personal space (`~accountid`) | belongs to the account the key names — owner only |
 | administrator | reads everything, including restricted and personal content |
 | no account at all | the public spaces |
+
+Two of those rows can be adjusted here, without changing Confluence: a *grant*
+lets one more reader in, a *removal* keeps an identity the site names out (see
+[Permissions: who may read what](site-admin-guide.md#permissions-who-may-read-what)).
+Both are marked rows in the same tables, and a resource left with nothing but
+removals is closed to everybody but an administrator — never open, because
+"no rows" already means open.
 
 A refusal is a **404, not a 403**: a restricted page and a page that was never
 mirrored answer identically, so the mirror does not confirm that content exists.

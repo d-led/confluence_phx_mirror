@@ -212,6 +212,12 @@ can move between them without going back to a hub:
   groups the sync read for each of them, and the account each identity is linked
   to (or that none is). Searching and linking live here; see
   [Linking a Confluence identity to an account](#linking-a-confluence-identity-to-an-account).
+* `/admin/permissions` (**live**) – who may read what: the spaces that are
+  narrowed, and one space's groups, people and page restrictions behind it. A
+  space is its own address (`/admin/permissions/LOAD101`) and so is a page of it
+  (`/admin/permissions/LOAD101/pages/42`), so the question can be sent to a
+  colleague. Grants and removals made here sit *on top of* what Confluence
+  says; see [Permissions: who may read what](#permissions-who-may-read-what).
 * `/admin/settings` (**live**) – the setup screen, in two halves. The top is
   what you can change while the mirror runs: the theme every reader wears, the
   per-reader request limits, and whether notification mail goes out (with the
@@ -242,7 +248,8 @@ missing.
 Two tables back the logs and are worth knowing when you query them directly:
 
 * `audit_events` – append-only: `sync.started/finished/failed`, `user.*`,
-  `api_token.*`, `subscription.*`, `webhook.*`, `pages.deleted`.
+  `api_token.*`, `subscription.*`, `webhook.*`, `pages.deleted`, and the access
+  decisions made on this mirror (`space.access_*`, `page.access_*`).
 * `sync_runs.stats` – pages seen and changed, attachments downloaded, comments,
   links, notifications, deletions and per-page errors.
 
@@ -436,6 +443,57 @@ address, the identity it signed in with, and any further Confluence identity an
 administrator linked to it (`users.identity_account_ids`, see
 [Accounts, tokens and identities](#accounts-tokens-and-identities)); group names
 are the mirrored groups, plus any group granted on this mirror.
+
+### Permissions: who may read what
+
+`/admin/permissions` is the administrative view of the two tables those rules
+read. It answers, per space, who narrows it — groups, people, anonymous readers
+— and, behind *Inspect*, which pages carry restrictions of their own and who
+each one names.
+
+Every question has an address, so a screen can be linked rather than described:
+`/admin/permissions` is the directory (`?q=` filters it),
+`/admin/permissions/LOAD101` is one space, and
+`/admin/permissions/LOAD101/pages/42` is one page of it. A key nobody has sends
+you back to the directory with a sentence; a page that is not in that space
+sends you to the space.
+
+Two decisions can be made here, and both are the mirror's own — nothing is
+written back to Confluence:
+
+* **Grant** (*Add people or groups*) — let one more reader in. Only a subject
+  the mirror knows can be named (a person the content or a permission names, a
+  group the sync has read), and only on a space or page that is already
+  narrowed: on an open one there is nothing to widen, and the row would read as
+  the restriction itself.
+* **Remove** — stop an identity the site lists. The site's row is kept and
+  marked, so the next sync neither brings the reader back nor loses the
+  decision; *Restore* undoes it immediately, without waiting for a run.
+
+Both are one row with a marker (`granted_by_id` / `revoked_by_id`) in
+`space_permissions` or `page_restrictions`, so every access rule keeps reading
+one table. A space or page whose readers were *all* removed reads **closed**,
+not open: "no rows" already means "everybody", and a removal must never turn
+into an opening.
+
+The boundaries, in one place:
+
+* a sync replaces only the rows it wrote; grants and removals survive it, even
+  when the site keeps naming the same identity;
+* when the site opens a space or page again, the overlay rows go with it —
+  there is nothing left to widen and nothing left to take away, and neither may
+  become the reason a resource is narrowed;
+* when a page is trashed — by a sync that no longer sees it, or by an
+  administrator — its grants and removals are deleted: they were decisions
+  about a page somebody could open. A trashed space loses its own overlay the
+  same way, and its pages' with it. The site's rows stay, because the trash
+  keeps them for the audit trail and a page that comes back is re-read from the
+  source;
+* every grant, revocation, removal and restoration is in the audit log as
+  `space.access_*` / `page.access_*`, with the identity named.
+
+A removal is a refusal by the mirror, not by Confluence, and the *Removed here*
+list says exactly that beside the readers the site still lists.
 
 The reader UI applies the policy to the space directory, the global space menu,
 page and blog views, label/recent listings, attachment downloads and exports; a

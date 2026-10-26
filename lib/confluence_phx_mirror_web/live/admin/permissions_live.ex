@@ -1,12 +1,24 @@
 defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
   @moduledoc """
-  Who may read what, as the last sync read it.
+  Who may read what, as the last sync read it — plus the two decisions an
+  administrator may take on top of it.
 
-  Confluence decides access and the mirror replays that decision, so this screen
-  shows it and does not change it. The two answers an administrator is most
-  likely to confuse are "nobody is listed" and "everybody can read it", so a
-  space with no mirrored permissions says *open* in a word rather than drawing an
-  empty list.
+  Confluence decides access and the mirror replays that decision. On top of the
+  replay sit the mirror's own rows: a *grant* lets one more reader in, a
+  *removal* keeps one of the site's readers out. Both are marked, both survive
+  every run, and both are in the audit log, so "the site says this" and "we
+  decided that" never read the same.
+
+  The two answers an administrator is most likely to confuse are "nobody is
+  listed" and "everybody can read it", so a space with no mirrored permissions
+  says *open* in a word rather than drawing an empty list — and a space whose
+  readers were all removed says *closed*, because a removal must never turn into
+  an opening.
+
+  Every question has an address: `/admin/permissions` is the directory,
+  `/admin/permissions/LOAD101` is one space, and
+  `/admin/permissions/LOAD101/pages/42` is one page of it — so a colleague can
+  be sent the question instead of the screen it was asked on.
 
   Only the access of the spaces on screen is counted, in one statement for the
   page (`Mirror.space_access_by/1`), so a site with hundreds of spaces costs the
@@ -33,34 +45,85 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
        restricted: [],
        page: nil,
        page_grants: nil,
-       granting?: false,
+       dialog_level: nil,
        grant_query: "",
        grant_people: [],
        grant_groups: [],
        page_title: "Permissions"
-     )
+     )}
+  end
+
+  # The screen is the URL: which space and which page are open come from the
+  # address, and every click below moves the address rather than a private
+  # assign. A reload, a back button and a shared link all land on the same
+  # question.
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(q: params["q"] || "")
+     |> clear_grant_dialog()
+     |> open_target(socket.assigns.live_action, params)
      |> load()}
+  end
+
+  defp open_target(socket, :index, _params) do
+    assign(socket, space: nil, grants: nil, restricted: [], page: nil, page_grants: nil)
+  end
+
+  defp open_target(socket, :space, %{"space_key" => key}), do: open_space(socket, key)
+
+  defp open_target(socket, :page, %{"space_key" => key, "page_id" => page_id}) do
+    case page_in_space(key, page_id) do
+      nil ->
+        socket
+        |> put_flash(:error, "No page with that id in #{key}.")
+        |> push_patch(to: ~p"/admin/permissions/#{key}")
+
+      {space, page} ->
+        socket
+        |> inspect_space(space)
+        |> assign(page: page, page_grants: Mirror.page_grants(page))
+    end
+  end
+
+  defp open_space(socket, key) do
+    case Mirror.get_space_by_key(key) do
+      nil ->
+        socket
+        |> put_flash(:error, "No space with the key #{key}.")
+        |> push_patch(to: ~p"/admin/permissions")
+
+      space ->
+        inspect_space(socket, space)
+    end
+  end
+
+  defp page_in_space(key, page_id) do
+    with %{} = space <- Mirror.get_space_by_key(key),
+         {id, ""} <- Integer.parse(page_id),
+         {:ok, %{deleted_at: nil} = page} <- Mirror.find_page_by_local_id(id),
+         true <- page.space_id == space.id do
+      {space, page}
+    else
+      _unknown -> nil
+    end
   end
 
   @impl true
   def handle_event("filter", %{"q" => q}, socket) do
-    {:noreply,
-     socket
-     |> assign(q: q, space: nil, grants: nil, restricted: [], page: nil, page_grants: nil)
-     |> load()}
+    {:noreply, push_patch(socket, to: list_path(q))}
   end
 
   def handle_event("inspect", %{"space_key" => key}, socket) do
-    {:noreply, inspect_space(socket, Mirror.get_space_by_key(key))}
+    {:noreply, push_patch(socket, to: ~p"/admin/permissions/#{key}")}
   end
 
   # A page's own restrictions are the half of the answer the space view cannot
   # give: the space decides, and then the page narrows it further.
   def handle_event("inspect_page", %{"page_id" => page_id}, socket) do
-    page = Mirror.get_page_by_id!(String.to_integer(page_id))
-
     {:noreply,
-     assign(socket, page: page, page_grants: Mirror.page_grants(page), dialog_level: nil)}
+     push_patch(socket, to: ~p"/admin/permissions/#{socket.assigns.space.key}/pages/#{page_id}")}
   end
 
   def handle_event("grant_open", %{"level" => level}, socket) do
@@ -85,7 +148,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
         {:noreply, socket |> put_flash(:info, message) |> clear_grant_dialog() |> refresh_panel()}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, grant_refusal(reason, key))}
+        {:noreply, put_flash(socket, :error, refusal(reason, subject_name(type, key)))}
     end
   end
 
@@ -97,18 +160,46 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
         {:noreply, socket |> put_flash(:info, message) |> refresh_panel()}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, grant_refusal(reason, key))}
+        {:noreply, put_flash(socket, :error, refusal(reason, subject_name(type, key)))}
+    end
+  end
+
+  # An identity the site lists is not ours to delete, so it is *removed*: the
+  # row stays, marked, and every run leaves it alone.
+  def handle_event("remove_subject", params, socket) do
+    %{"level" => level, "subject_type" => type, "subject_key" => key} = params
+
+    case remove_reader(socket, level, type, key) do
+      {:ok, message} ->
+        {:noreply, socket |> put_flash(:info, message) |> refresh_panel()}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, refusal(reason, subject_name(type, key)))}
+    end
+  end
+
+  def handle_event("restore_subject", params, socket) do
+    %{"level" => level, "subject_type" => type, "subject_key" => key} = params
+
+    case restore_reader(socket, level, type, key) do
+      {:ok, message} ->
+        {:noreply, socket |> put_flash(:info, message) |> refresh_panel()}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, refusal(reason, subject_name(type, key)))}
     end
   end
 
   def handle_event("close_page", _params, socket) do
-    {:noreply, assign(socket, page: nil, page_grants: nil)}
+    {:noreply, push_patch(socket, to: ~p"/admin/permissions/#{socket.assigns.space.key}")}
   end
 
   def handle_event("close", _params, socket) do
-    {:noreply,
-     assign(socket, space: nil, grants: nil, restricted: [], page: nil, page_grants: nil)}
+    {:noreply, push_patch(socket, to: list_path(socket.assigns.q))}
   end
+
+  defp list_path(blank) when blank in [nil, ""], do: ~p"/admin/permissions"
+  defp list_path(q), do: ~p"/admin/permissions?#{[q: q]}"
 
   defp inspect_space(socket, space) do
     assign(socket,
@@ -116,8 +207,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
       grants: Mirror.space_grants(space),
       restricted: Mirror.restricted_pages(space.id),
       page: nil,
-      page_grants: nil,
-      dialog_level: nil
+      page_grants: nil
     )
   end
 
@@ -194,27 +284,73 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
     end
   end
 
+  defp remove_reader(socket, "space", type, key) do
+    space = socket.assigns.space
+
+    case Mirror.remove_space_reader(space, type, key, actor(socket)) do
+      {:ok, _row} -> {:ok, "#{subject_name(type, key)} may no longer read #{space.key}."}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp remove_reader(socket, "page", type, key) do
+    page = socket.assigns.page
+
+    case Mirror.remove_page_reader(page, type, key, actor(socket)) do
+      {:ok, _row} -> {:ok, "#{subject_name(type, key)} may no longer read “#{page.title}”."}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp restore_reader(socket, "space", type, key) do
+    space = socket.assigns.space
+
+    case Mirror.restore_space_reader(space, type, key, actor(socket)) do
+      {:ok, _row} -> {:ok, "#{subject_name(type, key)} may read #{space.key} again."}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp restore_reader(socket, "page", type, key) do
+    page = socket.assigns.page
+
+    case Mirror.restore_page_reader(page, type, key, actor(socket)) do
+      {:ok, _row} -> {:ok, "#{subject_name(type, key)} may read “#{page.title}” again."}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # A row can name a person, a group or "anonymous readers", and a sentence about
+  # one should read like a sentence about it.
+  defp subject_name("anonymous", _key), do: "Anonymous readers"
+  defp subject_name("group", key), do: "The group #{key}"
+  defp subject_name(_type, key), do: key
+
   defp clear_grant_dialog(socket),
     do: assign(socket, dialog_level: nil, grant_query: "", grant_people: [], grant_groups: [])
 
   # Whichever panel is open, reload it: the counts and the lists answer the same
-  # question the dialog just changed.
-  defp refresh_panel(%{assigns: %{page: %{} = page}} = socket) do
+  # question the last click changed.
+  defp refresh_panel(socket) do
     socket
-    |> assign(page_grants: Mirror.page_grants(page))
+    |> load()
     |> refresh_space()
+    |> refresh_page()
   end
-
-  defp refresh_panel(socket), do: refresh_space(socket)
 
   defp refresh_space(%{assigns: %{space: nil}} = socket), do: socket
 
   defp refresh_space(%{assigns: %{space: space}} = socket) do
     assign(socket,
       grants: Mirror.space_grants(space),
-      restricted: Mirror.restricted_pages(space.id),
-      access: socket.assigns.access
+      restricted: Mirror.restricted_pages(space.id)
     )
+  end
+
+  defp refresh_page(%{assigns: %{page: nil}} = socket), do: socket
+
+  defp refresh_page(%{assigns: %{page: page}} = socket) do
+    assign(socket, page_grants: Mirror.page_grants(page))
   end
 
   # What the mirror refused, in the screen's own words. `%{key}` is the subject the
@@ -225,10 +361,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
     page_is_open: "This page is unrestricted — there is nothing to widen.",
     unknown_identity: "The mirror has not seen %{key} yet — run a sync.",
     unknown_group: "The sync has not read a group called %{key}.",
-    not_granted: "%{key} is not granted here."
+    not_granted: "%{key} is not granted here.",
+    not_listed: "Confluence does not list %{key} here, so there is nothing to remove.",
+    not_removed: "%{key} is not removed here."
   }
 
-  defp grant_refusal(reason, key) do
+  defp refusal(reason, key) do
     @refusals
     |> Map.get(reason, "Could not change access for %{key}.")
     |> String.replace("%{key}", key)
@@ -264,7 +402,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
       <.admin_header
         current={:permissions}
         title="Permissions"
-        subtitle="Mirrored from Confluence by the last sync. The mirror replays these decisions; it does not make them."
+        subtitle="Mirrored from Confluence by the last sync, plus what an administrator decided here. A grant or a removal is marked, survives every run, and is in the audit log."
       />
 
       <form
@@ -315,7 +453,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
         </p>
 
         <p
-          :if={not @grants.synced? and is_nil(@grants.personal)}
+          :if={not @grants.narrowed?}
           id="space-access-open"
           class="mt-2 text-[11px] text-base-content/70"
         >
@@ -323,45 +461,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
           mirror can open it.
         </p>
 
-        <div :if={@grants.synced?} class="mt-2 space-y-2 text-xs">
-          <div :if={@grants.anonymous} id="space-access-anonymous">
-            <span class="badge badge-warning badge-sm">anonymous readers</span>
-          </div>
-
-          <div :if={@grants.groups != []}>
-            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
-              Groups
-            </p>
-            <div class="mt-1 flex flex-wrap gap-1">
-              <span
-                :for={group <- @grants.groups}
-                id={"space-access-group-#{group}"}
-                class="badge badge-ghost badge-sm"
-              >
-                {group}
-              </span>
-            </div>
-          </div>
-
-          <div :if={@grants.users != []}>
-            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
-              People
-            </p>
-            <ul class="mt-1 space-y-1">
-              <li
-                :for={user <- @grants.users}
-                id={"space-access-user-#{user.key}"}
-                class="flex flex-wrap items-baseline gap-2"
-              >
-                <span class="font-medium">{user.label}</span>
-                <span class="font-mono text-[10px] text-base-content/50">{user.key}</span>
-                <span :if={not user.account?} class="text-[10px] text-base-content/50">
-                  no account here yet
-                </span>
-              </li>
-            </ul>
-          </div>
-        </div>
+        <.access_subjects level="space" grants={@grants} />
 
         <.access_grants
           level="space"
@@ -430,41 +530,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
         </div>
 
         <div class="mt-2 space-y-2 text-xs">
-          <div :if={@page_grants.anonymous} id="page-access-anonymous">
-            <span class="badge badge-warning badge-sm">anonymous readers</span>
-          </div>
-
-          <div :if={@page_grants.groups != []}>
-            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
-              Groups
-            </p>
-            <div class="mt-1 flex flex-wrap gap-1">
-              <span
-                :for={group <- @page_grants.groups}
-                id={"page-access-group-#{group}"}
-                class="badge badge-ghost badge-sm"
-              >
-                {group}
-              </span>
-            </div>
-          </div>
-
-          <div :if={@page_grants.users != []}>
-            <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
-              People
-            </p>
-            <ul class="mt-1 space-y-1">
-              <li
-                :for={user <- @page_grants.users}
-                id={"page-access-user-#{user.key}"}
-                class="flex flex-wrap items-baseline gap-2"
-              >
-                <span class="font-medium">{user.label}</span>
-                <span class="font-mono text-[10px] text-base-content/50">{user.key}</span>
-              </li>
-            </ul>
-          </div>
+          <p :if={not @page_grants.narrowed?} id="page-access-open" class="text-base-content/70">
+            No restrictions are mirrored for this page: it inherits the space's answer.
+          </p>
         </div>
+
+        <.access_subjects level="page" grants={@page_grants} />
 
         <.access_grants
           level="page"
@@ -520,6 +591,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
                 </span>
                 <span :if={access.users > 0} class="badge badge-ghost badge-sm">
                   {access.users} {if access.users == 1, do: "person", else: "people"}
+                </span>
+                <span
+                  :if={access.removed > 0}
+                  class="badge badge-outline badge-sm"
+                  id={"space-removed-#{space.id}"}
+                >
+                  {access.removed} removed
+                </span>
+                <span
+                  :if={access.groups + access.users == 0 and not access.anonymous}
+                  class="badge badge-ghost badge-sm"
+                  id={"space-closed-#{space.id}"}
+                >
+                  closed
                 </span>
             <% end %>
 

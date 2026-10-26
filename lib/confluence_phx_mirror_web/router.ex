@@ -181,6 +181,11 @@ defmodule ConfluencePhxMirrorWeb.Router do
       live "/users", UsersLive, :index
       live "/identities", IdentitiesLive, :index
       live "/permissions", PermissionsLive, :index
+      # Who may read one space, or one page of it, has its own address: an
+      # administrator sends a colleague the space with the question, not the
+      # directory it was found in.
+      live "/permissions/:space_key", PermissionsLive, :space
+      live "/permissions/:space_key/pages/:page_id", PermissionsLive, :page
       live "/audit", AuditLive, :index
       live "/trash", TrashLive, :index
       live "/upstream", UpstreamLive, :index

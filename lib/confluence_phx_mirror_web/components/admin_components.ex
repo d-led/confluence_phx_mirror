@@ -139,6 +139,42 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
         </li>
       </ul>
 
+      <div :if={@grants.removed != []} id={"#{@level}-removed-here"} class="mt-3">
+        <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
+          Removed here
+        </p>
+        <p class="mt-0.5 text-[11px] text-base-content/70">
+          Confluence still lists them; the mirror refuses them. Every sync leaves this in place.
+        </p>
+
+        <ul class="mt-1 space-y-1 text-xs">
+          <li
+            :for={row <- @grants.removed}
+            id={"#{@level}-removed-#{row.subject_type}-#{row.subject_key}"}
+            class="flex flex-wrap items-center justify-between gap-2"
+          >
+            <span class="flex min-w-0 flex-wrap items-baseline gap-2">
+              <span class="badge badge-outline badge-xs">{row.subject_type}</span>
+              <span class="truncate font-medium">{Map.get(row, :label) || row.subject_key}</span>
+              <span :if={Map.get(row, :label)} class="font-mono text-[10px] text-base-content/50">
+                {row.subject_key}
+              </span>
+            </span>
+            <button
+              type="button"
+              phx-click="restore_subject"
+              phx-value-level={@level}
+              phx-value-subject_type={row.subject_type}
+              phx-value-subject_key={row.subject_key}
+              id={"#{@level}-restore-#{row.subject_type}-#{row.subject_key}"}
+              class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
+            >
+              Restore
+            </button>
+          </li>
+        </ul>
+      </div>
+
       <div
         :if={@granting?}
         id={"#{@level}-grant-dialog"}
@@ -224,6 +260,96 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
         </p>
       </div>
     </div>
+    """
+  end
+
+  @doc """
+  Who the site says may read this, with the control that takes one of them away
+  here.
+
+  Every allowed identity is one row with a *Remove* beside it, because the
+  question an administrator arrives with is "why can this person read it" and the
+  next one is "stop that". Removing never edits Confluence: it marks the site's
+  row as the mirror's refusal (`Mirror.remove_space_reader/4`), which the next
+  sync leaves alone and the *Removed here* list can undo.
+  """
+  attr :level, :string, required: true, values: ~w(space page)
+  attr :grants, :map, required: true
+
+  def access_subjects(assigns) do
+    ~H"""
+    <div :if={@grants.synced? or @grants.removed != []} class="mt-2 space-y-2 text-xs">
+      <div
+        :if={@grants.anonymous}
+        id={"#{@level}-access-anonymous"}
+        class="flex items-center gap-2"
+      >
+        <span class="badge badge-warning badge-sm">anonymous readers</span>
+        <.remove_reader level={@level} type="anonymous" key="" label="anonymous readers" />
+      </div>
+
+      <div :if={@grants.groups != []}>
+        <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
+          Groups
+        </p>
+        <ul class="mt-1 flex flex-wrap items-center gap-1">
+          <li
+            :for={group <- @grants.groups}
+            id={"#{@level}-access-group-#{group}"}
+            class="inline-flex items-center gap-1"
+          >
+            <span class="badge badge-ghost badge-sm">{group}</span>
+            <.remove_reader level={@level} type="group" key={group} label={group} />
+          </li>
+        </ul>
+      </div>
+
+      <div :if={@grants.users != []}>
+        <p class="text-[11px] font-medium uppercase tracking-wider text-base-content/60">
+          People
+        </p>
+        <ul class="mt-1 space-y-1">
+          <li
+            :for={user <- @grants.users}
+            id={"#{@level}-access-user-#{user.key}"}
+            class="flex flex-wrap items-baseline gap-2"
+          >
+            <span class="font-medium">{user.label}</span>
+            <span class="font-mono text-[10px] text-base-content/50">{user.key}</span>
+            <span :if={not user.account?} class="text-[10px] text-base-content/50">
+              no account here yet
+            </span>
+            <.remove_reader level={@level} type="user" key={user.key} label={user.label} />
+          </li>
+        </ul>
+      </div>
+
+      <p
+        :if={not @grants.synced?}
+        id={"#{@level}-access-nobody"}
+        class="text-[11px] text-base-content/70"
+      >
+        Every identity the site lists here was removed on this mirror, so only an administrator can
+        read it. Restoring one brings the site's reader back.
+      </p>
+    </div>
+    """
+  end
+
+  defp remove_reader(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="remove_subject"
+      phx-value-level={@level}
+      phx-value-subject_type={@type}
+      phx-value-subject_key={@key}
+      id={"#{@level}-remove-#{@type}-#{@key}"}
+      aria-label={"Stop #{@label} reading this"}
+      class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
+    >
+      Remove
+    </button>
     """
   end
 

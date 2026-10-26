@@ -202,12 +202,22 @@
         </p>
 
         <p
-          :if={not @grants.synced? and is_nil(@grants.personal)}
+          :if={not @grants.narrowed?}
           id="space-access-unknown"
           class="mt-2 text-[11px] text-base-content/70"
         >
           No permissions have been mirrored for this space, so nothing narrows it: every reader of
           the mirror can open it. Run a sync to read them from Confluence.
+        </p>
+
+        <p
+          :if={@grants.removed != []}
+          id="space-access-removed"
+          class="mt-2 text-[11px] text-base-content/70"
+        >
+          Taken away on this mirror: {@grants.removed
+          |> Enum.map_join(", ", &(&1.subject_key || &1.subject_type))}. The site still lists
+          them; the mirror refuses them, and every sync leaves that in place.
         </p>
 
         <div :if={@grants.synced?} class="mt-2 space-y-2 text-xs">
@@ -248,7 +258,8 @@
             :if={not @grants.anonymous and @grants.groups == [] and @grants.users == []}
             class="text-[11px] text-base-content/70"
           >
-            The site grants this space to no one the mirror can name — only administrators can see it.
+            The site grants this space to no one the mirror can name — only administrators can see
+            it.
           </p>
         </div>
       </section>

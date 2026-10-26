@@ -5,6 +5,11 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
 
   "No rows" and "everybody" are the answers an administrator mixes up, so the
   empty case is a sentence (*open*), not a list with nothing in it.
+
+  Every question also has an address — `/admin/permissions/LOAD101` is one space,
+  `/admin/permissions/LOAD101/pages/42` one page of it — so the two halves of the
+  screen are asserted twice: once through a click, once through the URL a
+  colleague was sent.
   """
 
   use ConfluencePhxMirrorWeb.ConnCase, async: false
@@ -15,7 +20,145 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
   import Phoenix.LiveViewTest
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
+
+  describe "the screen is a URL" do
+    test "a space's address opens its panel, and a click moves the address there", %{conn: conn} do
+      space = a_space_read_by("linked@example.com")
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions/#{space.key}")
+
+      assert has_element?(view, "#space-access-panel")
+      assert has_element?(view, subject_row("linked@example.com"))
+
+      view |> element("#close-space-access") |> render_click()
+      assert_patch(view, ~p"/admin/permissions")
+
+      view |> element("#inspect-space-#{space.id}") |> render_click()
+      assert_patch(view, ~p"/admin/permissions/#{space.key}")
+    end
+
+    test "a restricted page's address opens both panels", %{conn: conn} do
+      space = a_space_read_by("linked@example.com")
+      page = page_fixture(space, %{title: "Salaries"})
+
+      {:ok, _} =
+        Mirror.replace_page_restrictions(page, [
+          %{operation: "read", subject_type: "group", subject_key: "leadership"}
+        ])
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions/#{space.key}/pages/#{page.id}")
+
+      assert has_element?(view, "#space-access-panel")
+      assert has_element?(view, "#page-access-panel")
+      assert has_element?(view, "#page-access-group-leadership")
+
+      view |> element("#close-page-access") |> render_click()
+      assert_patch(view, ~p"/admin/permissions/#{space.key}")
+    end
+
+    test "the filter is in the address too", %{conn: conn} do
+      space_fixture(%{key: "FINDME", name: "Findable handbook"})
+      space_fixture(%{key: "OTHER", name: "Other handbook"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+
+      view |> element("#space-filter") |> render_change(%{"q" => "FINDME"})
+
+      assert_patch(view, ~p"/admin/permissions?q=FINDME")
+      assert render(view) =~ "Findable handbook"
+      refute render(view) =~ "Other handbook"
+    end
+
+    test "a space key nobody has sends the admin back to the directory", %{conn: conn} do
+      assert {:error, {:live_redirect, %{to: "/admin/permissions"}}} =
+               live(conn, ~p"/admin/permissions/NOSUCHSPACE")
+    end
+
+    test "a page that is not in the space sends the admin to the space", %{conn: conn} do
+      space = a_space_read_by("linked@example.com")
+      elsewhere = space_fixture(%{key: "ELSEWHERE"})
+      page = page_fixture(elsewhere, %{title: "Not here"})
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, ~p"/admin/permissions/#{space.key}/pages/#{page.id}")
+
+      assert to == "/admin/permissions/#{space.key}"
+    end
+  end
+
+  describe "removing an identity the site lists" do
+    test "the reader loses access here, and the site's next answer does not bring it back", %{
+      conn: conn
+    } do
+      space = a_space_read_by("inside@example.com")
+      reader = user_fixture(%{email: "inside@example.com"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions/#{space.key}")
+
+      assert has_element?(view, subject_row("inside@example.com"))
+
+      view |> element(remove_button("user", "inside@example.com")) |> render_click()
+
+      refute has_element?(view, subject_row("inside@example.com"))
+      assert has_element?(view, removed_row("user", "inside@example.com"))
+      refute Authorization.can_read_space?(Scope.for_user(reader), space)
+
+      {:ok, _} =
+        Mirror.replace_space_permissions(space, [
+          %{operation: "read", subject_type: "group", subject_key: "confluence-users"},
+          %{operation: "read", subject_type: "user", subject_key: "inside@example.com"}
+        ])
+
+      refute Authorization.can_read_space?(Scope.for_user(reader), space)
+    end
+
+    test "restore puts the reader back, and the panel says so", %{conn: conn} do
+      space = a_space_read_by("inside@example.com")
+      reader = user_fixture(%{email: "inside@example.com"})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions/#{space.key}")
+      view |> element(remove_button("user", "inside@example.com")) |> render_click()
+
+      view |> element(restore_button("user", "inside@example.com")) |> render_click()
+
+      assert has_element?(view, subject_row("inside@example.com"))
+      refute has_element?(view, removed_row("user", "inside@example.com"))
+      assert Authorization.can_read_space?(Scope.for_user(reader), space)
+    end
+
+    test "a space left with no readers reads closed, never open", %{conn: conn} do
+      space = a_space_read_by("only@example.com")
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions/#{space.key}")
+
+      view |> element("#space-remove-group-confluence-users") |> render_click()
+      view |> element(remove_button("user", "only@example.com")) |> render_click()
+
+      assert has_element?(view, "#space-access-nobody")
+      assert has_element?(view, "#space-closed-#{space.id}")
+      refute has_element?(view, "#space-open-#{space.id}")
+    end
+
+    test "a page's identity can be removed from the page's own address", %{conn: conn} do
+      space = space_fixture(%{key: "PAGEROUTE"})
+      page = page_fixture(space, %{title: "Salaries"})
+
+      {:ok, _} =
+        Mirror.replace_page_restrictions(page, [
+          %{operation: "read", subject_type: "group", subject_key: "leadership"}
+        ])
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions/#{space.key}/pages/#{page.id}")
+
+      view |> element("#page-remove-group-leadership") |> render_click()
+
+      assert has_element?(view, "#page-removed-group-leadership")
+      assert Mirror.page_grants(page).synced? == false
+    end
+  end
 
   test "a space shows how many groups and people may read it", %{conn: conn} do
     space = a_space_read_by("readers@example.com")
@@ -108,6 +251,9 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
   defp granted_row(type, key), do: ~s{[id="space-granted-#{type}-#{key}"]}
   defp add_person(key), do: ~s{[id="space-grant-add-person-#{key}"]}
   defp revoke_row(type, key), do: ~s{[id="space-revoke-#{type}-#{key}"]}
+  defp remove_button(type, key), do: ~s{[id="space-remove-#{type}-#{key}"]}
+  defp restore_button(type, key), do: ~s{[id="space-restore-#{type}-#{key}"]}
+  defp removed_row(type, key), do: ~s{[id="space-removed-#{type}-#{key}"]}
 
   test "a restricted page is named under its space, and inspecting it says who may read it", %{
     conn: conn

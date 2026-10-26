@@ -62,9 +62,7 @@ defmodule ConfluencePhxMirror.AuthorizationTest do
   end
 
   test "the sync stores the permissions it read" do
-    assert Mirror.page_restrictions(1003) == [
-             %{subject_type: "group", subject_key: "confluence-users"}
-           ]
+    assert [{:synced, "group", "confluence-users"}] = Mirror.page_restrictions(1003) |> kinds()
 
     refute Mirror.space_permissions(Mirror.get_space_by_key("PROD").id) == []
     assert Mirror.space_permissions(Mirror.get_space_by_key("ENG").id) == []
@@ -141,6 +139,16 @@ defmodule ConfluencePhxMirror.AuthorizationTest do
   end
 
   defp anonymous, do: Scope.for_user(nil)
+
+  # What a screen reads a permission row as: the site's, or one the mirror
+  # decided here.
+  defp kinds(rows) do
+    Enum.map(rows, fn row ->
+      if is_nil(row.granted_by_id) and is_nil(row.revoked_by_id),
+        do: {:synced, row.subject_type, row.subject_key},
+        else: {:overlay, row.subject_type, row.subject_key}
+    end)
+  end
 
   # The account the personal key names, signed in. Confluence hands out account
   # ids in lower case and the space key keeps the case it was stored with.
