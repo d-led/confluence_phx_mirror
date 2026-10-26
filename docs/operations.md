@@ -360,6 +360,48 @@ The arithmetic behind the two settings in `fly.toml` (`CM_SYNC_CONCURRENCY`,
   ~161 MB of data and one shared core to serve it. If a sweep still ends short,
   the next step is the database machine's size, not more app concurrency.
 
+## Content the site no longer lists
+
+A sync reconciles the spaces it lists: what the site stops returning is trashed
+reversibly, mid-run. That leaves a question a sync cannot answer on its own —
+*what do we hold that the site never mentions at all?* A space nobody has listed
+since a deletion keeps its pages, and the mirror silently grows past the site.
+
+`/admin/upstream` answers it. A **verify pass** asks, for every live space:
+
+1. **a count per content type** — two requests, `limit=1`, reading the site's own
+   `totalSize`. A space whose counts agree with the mirror's is finished here and
+   no page is listed at all, which is every space on a healthy mirror;
+2. **an id-only listing** for a space whose counts disagree (or for a source that
+   cannot count): the same pagination as a sync, with no bodies, comments,
+   attachments or expansion;
+3. nothing else. No page is read, rendered or re-synced.
+
+The site's answer is **recorded, not acted on**: pages it did not name get
+`absent_since` and stay readable, because a listing that leaves a page out can
+also be a permission the token lost. An operator reviews the list and trashes
+what should go — one page or a whole space — which is the same reversible trash
+a sync uses.
+
+Two numbers to size it by: a 150-space site costs ~300 count requests when
+nothing is wrong (~1 minute at the polite 5/second pace), and only the spaces
+that disagree pay a listing.
+
+### Deleting the trash later
+
+The trash is a holding area, not a bin. `Trash.due/1` says what has been in it
+for at least N days and `Trash.purge_due/2` removes exactly that — rows,
+comments and attachment blobs, one audit entry per row. Nothing live is ever
+included, however old its absence.
+
+```elixir
+ConfluencePhxMirror.Trash.due(30)              # what a policy would remove
+ConfluencePhxMirror.Trash.purge_due(actor, 30) # remove it
+```
+
+`pages.deleted_reason` records why a row is there: `"vanished"` when the site
+stopped listing it, `"manual"` when somebody decided.
+
 ## Watching it
 
 * `/health` — database check, content counters, last sync. No auth, so it can

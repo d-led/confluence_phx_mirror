@@ -17,6 +17,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
     {:webhooks, "Webhooks", "hero-bolt"},
     {:audit, "Audit", "hero-clipboard-document-list"},
     {:trash, "Trash", "hero-trash"},
+    {:upstream, "Not upstream", "hero-arrow-path"},
     {:users, "Users", "hero-users"},
     {:identities, "Identities", "hero-identification"},
     {:permissions, "Permissions", "hero-lock-closed"},
@@ -232,6 +233,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
   defp tab_path(:webhooks), do: ~p"/admin/webhooks"
   defp tab_path(:audit), do: ~p"/admin/audit"
   defp tab_path(:trash), do: ~p"/admin/trash"
+  defp tab_path(:upstream), do: ~p"/admin/upstream"
   defp tab_path(:users), do: ~p"/admin/users"
   defp tab_path(:identities), do: ~p"/admin/identities"
   defp tab_path(:permissions), do: ~p"/admin/permissions"

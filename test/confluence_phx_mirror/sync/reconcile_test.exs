@@ -27,7 +27,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
   test "a space the site still agrees with is never listed", %{space: space} do
     ledger(counts: %{"ENG" => %{page: 2, blogpost: 0}})
 
-    assert {:ok, report} = reconcile()
+    report = reconcile()
 
     assert report.agreed == 1
     assert report.listed == []
@@ -46,7 +46,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
       page_ids: %{"ENG" => %{page: [1001], blogpost: []}}
     )
 
-    assert {:ok, report} = reconcile()
+    report = reconcile()
 
     assert report.listed == [{space, 1}]
     assert report.absent == 1
@@ -64,7 +64,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
       page_ids: %{"ENG" => %{page: [1002], blogpost: []}}
     )
 
-    assert {:ok, _report} = reconcile()
+    reconcile()
     assert {:ok, absent} = Mirror.find_page(1001)
     refute is_nil(absent.absent_since)
 
@@ -73,7 +73,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
       page_ids: %{"ENG" => %{page: [1001, 1002], blogpost: []}}
     )
 
-    assert {:ok, report} = reconcile()
+    report = reconcile()
     assert report.absent == 0
     assert {:ok, back} = Mirror.find_page(1001)
     assert back.absent_since == nil
@@ -85,7 +85,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
       page_ids: %{"ENG" => %{page: [], blogpost: []}}
     )
 
-    assert {:ok, report} = reconcile()
+    report = reconcile()
 
     assert report.empty == ["ENG"]
     assert report.absent == 0
@@ -95,7 +95,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
   test "a source that cannot count still gets the space checked", %{space: space} do
     ledger(page_ids: %{"ENG" => %{page: [1001], blogpost: []}})
 
-    assert {:ok, report} = reconcile(source: ConfluencePhxMirror.CountLessSource)
+    report = reconcile(source: ConfluencePhxMirror.CountLessSource)
 
     assert report.agreed == 0
     assert report.listed == [{space, 1}]
@@ -112,7 +112,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
       page_ids: %{"ENG" => %{page: [1001, 1002], blogpost: [2001]}}
     )
 
-    assert {:ok, report} = reconcile(spaces: [space])
+    report = reconcile(spaces: [space])
 
     assert report.listed == [{space, 0}], "the counts disagreed, so the space was listed"
     assert report.absent == 0
@@ -124,7 +124,7 @@ defmodule ConfluencePhxMirror.Sync.ReconcileTest do
       page_ids: %{"ENG" => {:error, :unreachable}}
     )
 
-    assert {:ok, report} = reconcile()
+    report = reconcile()
 
     assert report.failed == [{"ENG", :unreachable}]
     assert report.listed == []

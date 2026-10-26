@@ -1401,20 +1401,31 @@ defmodule ConfluencePhxMirror.Mirror do
 
   @doc """
   Spaces in the trash, newest first, with the number of pages that go with each.
+
+  Option `:older_than` keeps only what was trashed at or before that moment —
+  the question a retention policy asks (see `ConfluencePhxMirror.Trash`).
   """
-  def trashed_spaces do
-    from(s in Space,
-      where: not is_nil(s.deleted_at),
-      order_by: [desc: s.deleted_at],
-      select: {s, fragment("(SELECT count(*) FROM pages p WHERE p.space_id = ?)", s.id)}
-    )
+  def trashed_spaces(opts \\ []) do
+    query =
+      from(s in Space,
+        where: not is_nil(s.deleted_at),
+        order_by: [desc: s.deleted_at],
+        select: {s, fragment("(SELECT count(*) FROM pages p WHERE p.space_id = ?)", s.id)}
+      )
+
+    case Keyword.get(opts, :older_than) do
+      nil -> query
+      cutoff -> where(query, [s, _pages], s.deleted_at <= ^cutoff)
+    end
     |> Repo.all()
   end
 
   @doc """
   Trashed pages and blog posts that did not go with a trashed space.
 
-  Options: `:type` (`"page"` or `"blogpost"`) and `:limit`.
+  Options: `:type` (`"page"` or `"blogpost"`), `:limit`, and `:older_than` —
+  which keeps only what was trashed at or before that moment, the question a
+  retention policy asks.
   """
   def trashed_pages(opts \\ []) do
     query =
@@ -1426,9 +1437,15 @@ defmodule ConfluencePhxMirror.Mirror do
         select: {p, s}
       )
 
-    case Keyword.get(opts, :type) do
+    query =
+      case Keyword.get(opts, :type) do
+        nil -> query
+        type -> where(query, [p, _s], p.type == ^type)
+      end
+
+    case Keyword.get(opts, :older_than) do
       nil -> query
-      type -> where(query, [p, _s], p.type == ^type)
+      cutoff -> where(query, [p, _s], p.deleted_at <= ^cutoff)
     end
     |> Repo.all()
   end

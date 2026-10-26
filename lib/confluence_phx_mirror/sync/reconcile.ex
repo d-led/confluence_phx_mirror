@@ -62,34 +62,25 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
   Options: `:source` (defaults to the configured one) and `:spaces` (a list of
   live `%Space{}` to limit the pass to, which is what the admin screen uses when
   it re-checks one space).
+
+  A space whose source failed is named in the report's `:failed` rather than
+  ending the pass: a site with three hundred spaces should not lose the other
+  two hundred and ninety-nine to one unreadable space.
   """
-  @spec run(keyword()) :: {:ok, report()} | {:error, term()}
+  @spec run(keyword()) :: report()
   def run(opts \\ []) do
     source = Keyword.get(opts, :source, Source.source())
 
     case live_spaces(opts) do
       [] ->
-        {:ok, %{spaces: 0, agreed: 0, listed: [], absent: 0, calls: 0}}
+        %{spaces: 0, agreed: 0, listed: [], absent: 0, calls: 0, failed: [], empty: []}
 
       spaces ->
         # A `:counters` process keeps the request tally honest without threading
         # a number through every call site.
         tally = :counters.new(1, [])
 
-        results =
-          Enum.map(spaces, fn space ->
-            own = own_counts(space)
-
-            case count(source, space, tally) do
-              {:ok, upstream} ->
-                if in_step?(upstream, own, space),
-                  do: {:agreed, space},
-                  else: list(source, space, tally)
-
-              _cannot_count ->
-                list(source, space, tally)
-            end
-          end)
+        results = Enum.map(spaces, &check(source, &1, tally))
 
         report(spaces, results, :counters.get(tally, 1))
     end
@@ -99,6 +90,18 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
     case Keyword.get(opts, :spaces) do
       nil -> Mirror.list_spaces()
       spaces -> spaces
+    end
+  end
+
+  # One space, in the cheapest way that settles it: a count when the source can
+  # answer one, a listing when it cannot or when the count disagrees.
+  defp check(source, space, tally) do
+    case count(source, space, tally) do
+      {:ok, upstream} ->
+        if in_step?(upstream, space), do: {:agreed, space}, else: list(source, space, tally)
+
+      _cannot_count ->
+        list(source, space, tally)
     end
   end
 
@@ -112,7 +115,9 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
   # ids — a count cannot tell a page that came back from a different page that
   # left, and leaving a page marked absent after it returned is worse than one
   # listing.
-  defp in_step?(upstream, own, space) do
+  defp in_step?(upstream, space) do
+    own = own_counts(space)
+
     upstream.page == own.page and upstream.blogpost == own.blogpost and
       Mirror.count_absent(space.id) == 0
   end
@@ -150,15 +155,14 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
   end
 
   defp report(spaces, results, calls) do
-    {:ok,
-     %{
-       spaces: length(spaces),
-       agreed: Enum.count(results, &match?({:agreed, _}, &1)),
-       listed: for({:listed, space, marked, _cleared} <- results, do: {space, marked}),
-       absent: Mirror.count_absent(),
-       calls: calls,
-       failed: for({:failed, space, reason} <- results, do: {space.key, reason}),
-       empty: for({:empty, space} <- results, do: space.key)
-     }}
+    %{
+      spaces: length(spaces),
+      agreed: Enum.count(results, &match?({:agreed, _}, &1)),
+      listed: for({:listed, space, marked, _cleared} <- results, do: {space, marked}),
+      absent: Mirror.count_absent(),
+      calls: calls,
+      failed: for({:failed, space, reason} <- results, do: {space.key, reason}),
+      empty: for({:empty, space} <- results, do: space.key)
+    }
   end
 end

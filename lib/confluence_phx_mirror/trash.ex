@@ -30,6 +30,55 @@ defmodule ConfluencePhxMirror.Trash do
   end
 
   @doc """
+  What a retention policy would purge: everything trashed at least `days` ago.
+
+  This is the read half of "delete it later". The trash is a holding area, and a
+  mirror that keeps every page it ever saw is a mirror that grows without
+  bound — so an operator decides how long is long enough and this says what that
+  decision would remove, without removing it.
+
+      Trash.due(30)
+      #=> %{spaces: [{space, page_count}], pages: [{page, space}], days: 30}
+  """
+  @spec due(non_neg_integer()) :: %{
+          days: non_neg_integer(),
+          spaces: list(),
+          pages: list()
+        }
+  def due(days) when is_integer(days) and days >= 0 do
+    cutoff = cutoff(days)
+
+    %{
+      days: days,
+      spaces: Mirror.trashed_spaces(older_than: cutoff),
+      pages: Mirror.trashed_pages(older_than: cutoff)
+    }
+  end
+
+  @doc """
+  Purges everything trashed at least `days` ago, and says what it removed.
+
+  One audit entry per removed row, written by `purge_space/2` and `purge_page/2`,
+  so the trail keeps naming what a retention policy took. Blobs go after the rows
+  commit, as everywhere else here.
+  """
+  @spec purge_due(Audit.actor(), non_neg_integer()) :: %{
+          days: non_neg_integer(),
+          spaces: non_neg_integer(),
+          pages: non_neg_integer()
+        }
+  def purge_due(actor, days) do
+    due = due(days)
+
+    Enum.each(due.spaces, fn {space, _pages} -> purge_space(actor, space) end)
+    Enum.each(due.pages, fn {page, _space} -> purge_page(actor, page) end)
+
+    %{days: days, spaces: length(due.spaces), pages: length(due.pages)}
+  end
+
+  defp cutoff(days), do: DateTime.utc_now() |> DateTime.add(-days * 86_400, :second)
+
+  @doc """
   Purges one trashed space, its pages and everything that hangs off them.
 
   Blobs are deleted after the rows commit: a failed file delete then leaves a
@@ -52,6 +101,28 @@ defmodule ConfluencePhxMirror.Trash do
       Counters.clear()
       Audit.log(actor, Page.audit_event_purged(page))
       {:ok, :page}
+    end
+  end
+
+  @doc """
+  Moves a page the site no longer lists into the trash.
+
+  The review screen's one action: the page stops being served, its comments go
+  with it, and the rows stay for the audit trail until somebody purges them.
+  Trashing is reversible in the sense that matters — nothing is served that the
+  site does not have, and nothing is lost that a decision cannot restore from the
+  site itself.
+  """
+  @spec trash_page(Audit.actor(), Page.t(), Space.t()) :: {:ok, Page.t()} | {:error, term()}
+  def trash_page(actor, %Page{} = page, %Space{} = space) do
+    case Mirror.mark_deleted(page.confluence_id, "vanished") do
+      {:ok, trashed} ->
+        Counters.clear()
+        Audit.log(actor, Page.audit_event_trashed(trashed, space))
+        {:ok, trashed}
+
+      error ->
+        error
     end
   end
 
