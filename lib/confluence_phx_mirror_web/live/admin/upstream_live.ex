@@ -18,7 +18,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
 
   import ConfluencePhxMirrorWeb.AdminComponents
 
-  alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.{Jobs, Mirror}
   alias ConfluencePhxMirror.Sync.{ReconcileRun, ReconcileWorker, TrashAbsentWorker}
   alias ConfluencePhxMirror.Trash
 
@@ -104,18 +104,36 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       </.admin_header>
 
       <p
-        :if={@running}
-        id="upstream-running"
+        :if={@in_flight}
+        id="upstream-in-flight"
         class="mt-6 rounded-xl border border-info/40 bg-info/10 p-4 text-sm text-base-content/80"
       >
-        <span class="font-semibold">A check is running.</span>
-        It has settled {@running.observed} spaces so far, and each one is written down as it
-        goes — if the job is interrupted it continues from there rather than starting over. What
-        it finds lands here when it finishes.
+        <span class="font-semibold">A check is queued or running.</span>
+        <%= if @unfinished do %>
+          It has settled {@unfinished.observed} spaces so far, and each one is written down as it
+          goes — an interrupted job continues from there rather than starting over. What it finds
+          lands here when it finishes.
+        <% else %>
+          It counts and names ids for every space, reads no page, and records what it found here.
+        <% end %>
       </p>
 
       <p
-        :if={@absent == 0 and is_nil(@last_check) and is_nil(@running)}
+        :if={not @in_flight and not is_nil(@unfinished)}
+        id="upstream-interrupted"
+        class="mt-6 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm text-base-content/80"
+      >
+        <span class="font-semibold">The last check did not finish.</span>
+        <%= if @unfinished.observed == 0 do %>
+          It stopped before it settled any space, so the next check starts from the beginning.
+        <% else %>
+          It stopped with {@unfinished.observed} spaces settled. Those are written down, so the next
+          check continues from there instead of asking the site about them again.
+        <% end %>
+      </p>
+
+      <p
+        :if={@absent == 0 and is_nil(@last_check) and not @in_flight and is_nil(@unfinished)}
         id="upstream-unchecked"
         class="mt-6 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm text-base-content/80"
       >
@@ -248,9 +266,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       # the difference between "nothing is absent" and "we do not know".
       last_check: last_check,
       checked_at: last_check && last_check.finished_at,
-      # A pass in flight, so the screen can say that rather than "nobody has
-      # checked" while one is plainly running.
-      running: ReconcileRun.progress(),
+      # Two different questions, from two different places. `in_flight` asks Oban
+      # whether the job is still held; `unfinished` is the pass's own cursor. A
+      # killed job leaves the second without the first, and the screen must say
+      # that rather than call a dead pass "running".
+      in_flight: Jobs.unfinished?(ReconcileWorker),
+      unfinished: ReconcileRun.unfinished(),
       more_pages?: length(all_pages) > @page_window,
       page_window: @page_window
     )

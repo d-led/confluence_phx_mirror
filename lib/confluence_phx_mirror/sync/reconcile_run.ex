@@ -103,14 +103,16 @@ defmodule ConfluencePhxMirror.Sync.ReconcileRun do
   end
 
   @doc """
-  The pass in flight and how far it has got, or `nil`.
+  The pass whose spaces are still unsettled — how far it got — or `nil`.
 
-  A pass over a large site is minutes of work. The screen must not call that
-  "nobody has checked" while it runs, nor cite the last finished pass as if it
-  were what is happening now.
+  This is a *cursor*, not a claim that anything is running: the pass may have
+  been killed with no job left behind. Whether Oban still holds the job is
+  `ConfluencePhxMirror.Jobs.unfinished?/1`, and a page that needs to say "a check
+  is running" has to ask there. A pass older than the resume window is not
+  returned: the next check starts a new one rather than continuing it.
   """
-  @spec progress() :: %{run: t(), observed: non_neg_integer()} | nil
-  def progress do
+  @spec unfinished() :: %{run: t(), observed: non_neg_integer()} | nil
+  def unfinished do
     case open() do
       nil -> nil
       run -> %{run: run, observed: MapSet.size(observed_space_ids(run))}

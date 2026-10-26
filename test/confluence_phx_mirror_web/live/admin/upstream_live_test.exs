@@ -16,7 +16,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
 
-  alias ConfluencePhxMirror.{Mirror, Trash}
+  alias ConfluencePhxMirror.{Jobs, Mirror, Trash}
   alias ConfluencePhxMirror.Sync.{ReconcileRun, ReconcileWorker, TrashAbsentWorker}
 
   setup %{conn: conn} do
@@ -134,22 +134,33 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     assert length(all_enqueued(worker: ReconcileWorker)) == 1
   end
 
-  test "a pass in flight is an answer about now, not 'nobody has checked'", %{conn: conn} do
-    # An interrupted pass leaves its settled spaces recorded and its row open.
-    interrupted = ReconcileRun.start(%{trigger: "a test"})
-
-    ReconcileRun.observe(interrupted, Mirror.get_space_by_key("ENG"), %{
-      verdict: :agreed,
-      asked: 1,
-      marked: 0,
-      cleared: 0,
-      error: nil
-    })
+  test "a check Oban still holds is reported as queued or running", %{conn: conn} do
+    {:ok, _job} = ReconcileWorker.new(%{"trigger" => "a test"}) |> Oban.insert()
 
     {:ok, view, _html} = live(conn, ~p"/admin/upstream")
 
-    assert view |> element("#upstream-running") |> render() =~ "settled 1 spaces"
+    assert view |> element("#upstream-in-flight") |> render() =~ "queued or running"
     refute has_element?(view, "#upstream-unchecked")
+  end
+
+  test "a cancelled check is history, not work in flight", %{conn: conn} do
+    {:ok, job} = ReconcileWorker.new(%{"trigger" => "a test"}) |> Oban.insert()
+    {:ok, _cancelled} = Jobs.cancel(job.id, {:system, "a test"})
+
+    {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+
+    refute has_element?(view, "#upstream-in-flight")
+  end
+
+  test "a pass that stopped with no job left is not called a running check", %{conn: conn} do
+    # What a killed job leaves: a pass with no outcome that Oban no longer holds.
+    # Saying "a check is running" about it would describe a process that is gone.
+    ReconcileRun.start(%{trigger: "a pass that was killed"})
+
+    {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+
+    assert view |> element("#upstream-interrupted") |> render() =~ "did not finish"
+    refute has_element?(view, "#upstream-in-flight")
   end
 
   # The verify pass is what sets this, so the test sets it the same way rather

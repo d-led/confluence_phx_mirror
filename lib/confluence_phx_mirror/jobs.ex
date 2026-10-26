@@ -72,6 +72,23 @@ defmodule ConfluencePhxMirror.Jobs do
   defp by_state(query, _every_state), do: query
 
   @doc """
+  Whether Oban still holds a job for `worker` that has reached no outcome —
+  queued, scheduled, retrying, or `executing`.
+
+  This is a statement about Oban's rows, and it is the only one this system can
+  make about work in flight: a job whose node died stays `executing` until
+  `lifeline` rescues it, so "is it running right now" is not a question anything
+  here can answer truthfully — and a page that guessed from a record left behind
+  would say "a job is running" about a process that no longer exists.
+  """
+  @spec unfinished?(module()) :: boolean()
+  def unfinished?(worker) do
+    Job
+    |> where([j], j.worker == ^Oban.Worker.to_string(worker) and j.state in ^@unfinished)
+    |> Repo.exists?()
+  end
+
+  @doc """
   What each of `job_ids` is doing, keyed by job id — absent where it is doing
   nothing yet.
 
