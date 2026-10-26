@@ -9,7 +9,10 @@ defmodule ConfluencePhxMirror.Confluence.RateLimiterTest do
   alias ConfluencePhxMirror.Confluence.RateLimiter
 
   test "the limiter the application starts runs at the configured pace" do
-    configured = :confluence_phx_mirror |> Application.get_env(HttpSource, []) |> Keyword.fetch!(:requests_per_second)
+    configured =
+      :confluence_phx_mirror
+      |> Application.get_env(HttpSource, [])
+      |> Keyword.fetch!(:requests_per_second)
 
     assert %{bucket: %{rate: rate}} = RateLimiter.state()
     assert rate == configured * 1.0
