@@ -1,14 +1,29 @@
 # Site administration
 
-This guide is for the mirror's site administrator: you run the mirror as a
-product. You point it at a Confluence site (or use the demo snapshot), keep the
-content current, decide who may read what, manage accounts and access, choose
-the theme, and wire up webhooks.
+You run the mirror as a product: point it at a Confluence site, keep the content
+current, decide who may read what, manage accounts, choose the theme, wire up
+webhooks.
 
-Deploying, upgrading and scaling the app itself is a separate job — see
-[operations.md](operations.md). Every setting is listed in
-[configuration.md](configuration.md), and API consumers start at
-[api.md](api.md).
+| This guide does not cover | Read |
+| --- | --- |
+| deploying, upgrading, scaling the app | [operations.md](operations.md) |
+| every setting | [configuration.md](configuration.md) |
+| API consumers | [api.md](api.md) |
+
+## Quick answers
+
+| Question | Where |
+| --- | --- |
+| How do I point it at my site? | [Point the mirror at your site](#point-the-mirror-at-your-site) |
+| How do I refresh the content? | [Pulling content](#pulling-content) · [Keeping it current](#keeping-the-mirror-current) |
+| Why is a page missing or empty? | [Troubleshooting](#troubleshooting) |
+| How do I let somebody in? | [Who may read what](#who-may-read-what) · [Signing in](#signing-in) |
+| How do I keep somebody out? | [Switched-off accounts](#switched-off-accounts) · [Permissions](#permissions-who-may-read-what) |
+| Two Atlassian accounts are one person | [Linking an identity](#linking-a-confluence-identity-to-an-account) |
+| The site should call us immediately | [Webhooks](#webhooks) |
+| The colours are wrong | [Themes and variants](#themes-and-variants) |
+| How do I get a copy out? | [Exporting the mirror](#exporting-the-mirror) |
+| What does this admin page do? | [The admin area](#the-admin-area) |
 
 ## What you need
 
@@ -150,8 +165,14 @@ when a sync pulls a newer snapshot.
 
 ## Keeping the mirror current
 
-* `CM_SYNC_INTERVAL_SECONDS` (default `3600`) schedules snapshot pulls; `0`
-  disables them.
+* **How often it pulls** is a setting: *Sync → How often the mirror pulls*
+  (`sync.interval_seconds`, `CM_SYNC_INTERVAL_SECONDS` seeds it, default `3600`).
+  The clock re-reads it on every tick, so a new cadence needs no release — it
+  applies after the tick in flight, and `0` switches the schedule off.
+* The **missing-pages check** — the pass that asks every space what it holds,
+  which is the only way a page Confluence stopped listing is noticed — has its
+  own interval (`sync.reconcile_interval_seconds`), `0` by default, which leaves
+  it on the *Run* button at `/admin/upstream`.
 * Webhooks react to single changes within seconds — see [Webhooks](#webhooks).
 * **Pause Confluence calls** (`/admin/settings`, or `CM_SYNC_PAUSED`) stops the
   mirror reading from the site at all: a run is refused before it starts, queued
@@ -263,21 +284,35 @@ page:
   colleague. Grants and removals made here sit *on top of* what Confluence
   says; see [Permissions: who may read what](#permissions-who-may-read-what).
 * `/admin/settings` (**live**) – the setup screen, in two halves. The top is
-  what you can change while the mirror runs, grouped as it is declared in
-  `ConfluencePhxMirror.Settings.Catalogue`: theme, reading (per-reader request
-  limits, search page and result sizes), sync (pages written at once, the detail
-  backlog, the lookback window), notifications, and operations (sign-in link
+  what you can change while the mirror runs, one readable list in the order it is
+  declared in `ConfluencePhxMirror.Settings.Catalogue`: theme, reading (per-reader
+  request limits, search page and result sizes), sync (how often the mirror
+  pulls, how often it looks for missing pages, pause, spaces added at runtime,
+  pages written at once, the detail backlog, the lookback window, the page size a
+  Confluence call asks for), notifications, and operations (sign-in link
   lifetime, personal spaces in a whole-site export, the overview's refresh
-  cadence). A group saves as one transaction: either every field of it and its
-  audit entry were stored, or nothing was. A field you leave empty means "no
-  decision" — the value this deployment was configured with applies again, and
-  the placeholder shows it; *use the deployment's values* hands a whole group
-  back. The bottom half is what the mirror booted with — source and credentials,
+  cadence). Each row says what the setting does, what the deployment configured,
+  and the variable behind it. A group saves as one transaction: either every
+  field of it and its audit entry were stored, or nothing was. A field you leave
+  empty means "no decision" — the value this deployment was configured with
+  applies again, and the placeholder shows it; *use the deployment's values*
+  hands a whole group back.
+
+  The **filter** above the list answers "where do I change this?" — `?q=` in the
+  address, so the question can be sent to a colleague and the back button works.
+  Every word has to match (`sync pause` finds the switch, `sync theme` finds
+  nothing), and a word matches the group, the label, the help, the key and the
+  variable, so `CM_SYNC`, `paused` and `interval` all land somewhere. It narrows
+  the bottom half too, because half the answer is often "you cannot change this
+  here, and here is the variable that does". Rows the filter hides keep their
+  fields, so a filtered group still saves every value it is holding.
+
+  The bottom half is what the mirror booted with — source and credentials,
   identity and administrators, webhook and mail delivery, storage and the proxy
   — each row naming the environment variable that changes it, secrets shown as
   *configured* never printed. Those are read at boot: change the variable and
   restart ([themes and variants](#themes-and-variants)).
-  [configuration.md](configuration.md#editable-at-runtime) lists exactly which
+  [configuration.md](configuration.md#live-settings) lists exactly which
   variables are live and which need a restart. Webhook switches keep their own
   screen (`/admin/webhooks`), where the cost of each is spelled out.
 * `/health` – database check, content counters and last sync; no auth, so it
@@ -1044,7 +1079,7 @@ The page sync itself retries five times before the run reports the failure on
 | Webhook answers `503` | signatures are required but no `CM_WEBHOOK_SECRET` is configured; the delivery is recorded as rejected |
 | Webhook answers `401` | a signature was presented and did not verify, or a token is configured and the wrong one was sent |
 | Webhook answers `413` | the body is over 1 MiB — Confluence sends one page, not a bundle |
-| Webhook answers `429` | the intake cap was hit — 60 deliveries a minute from one address by default; see `/admin/settings` |
+| Webhook answers `429` | the intake cap was hit — 60 deliveries a minute from one address by default; raise it on `/admin/webhooks` |
 | A sync ends `partial` | at least one page failed — read the run's errors on `/admin`; nothing was silently dropped |
 | A reader gets `404` for a page that exists in Confluence | a page restriction hides it from that reader; hidden resources are never confirmed with a `403` |
 

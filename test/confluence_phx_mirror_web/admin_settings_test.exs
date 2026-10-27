@@ -230,6 +230,73 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     assert {:error, {:redirect, %{to: "/session"}}} = live(conn, ~p"/admin/settings")
   end
 
+  describe "the filter" do
+    test "keeps the rows that match and takes the others out of sight", %{conn: conn} do
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings?q=pause")
+
+      assert shown?(view, "setting-sync.paused")
+      refute shown?(view, "setting-sync.lookback_seconds")
+      assert has_element?(view, "#settings-shown", "1")
+    end
+
+    test "asks for every word at once", %{conn: conn} do
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings?q=sync%20theme")
+
+      # "sync" is one row's group and "theme" another's control — no single
+      # answer says both, so the page says so instead of showing either.
+      refute shown?(view, "setting-sync.paused")
+      assert has_element?(view, "#settings-no-match")
+    end
+
+    test "hides a row without taking its field out of the group's form", %{conn: conn} do
+      {:ok, _applied} =
+        Settings.update(%{"sync.concurrency" => "2"}, {:system, "an administrator"})
+
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings?q=pause")
+
+      refute shown?(view, "setting-sync.concurrency")
+      assert has_element?(view, ~s([id="setting-sync.concurrency-input"]))
+
+      view |> element("#settings-sync") |> render_submit(%{"values" => %{"sync.paused" => "on"}})
+
+      # The row out of sight kept its value: a group is one transaction, and a
+      # field the filter took away must not read as "cleared".
+      assert Settings.sync_paused?()
+      assert Settings.sync_concurrency() == 2
+    end
+
+    test "narrows the boot configuration with the same words", %{conn: conn} do
+      {:ok, _view, html} =
+        live(sign_in(conn, admin_user()), ~p"/admin/settings?q=CM_REQUESTS_PER_SECOND")
+
+      assert html =~ "Requests per second"
+      refute html =~ "Storage &amp; proxy"
+      refute html =~ "CM_ADMINS"
+    end
+
+    test "the filter lives in the address, so the question can be shared", %{conn: conn} do
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+      view
+      |> element("#settings-filter")
+      |> render_change(%{"q" => "digest"})
+
+      assert_patch(view, "/admin/settings?q=digest")
+      assert shown?(view, "setting-notifications.digest_hour_utc")
+    end
+  end
+
+  # A row the filter hides is rendered with `hidden` on it rather than left out:
+  # that is what keeps its field in the form (see the test above).
+  defp shown?(view, id) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(~s([id="#{id}"]))
+    |> LazyHTML.attribute("class")
+    |> Enum.any?(fn classes -> not (classes |> String.split() |> Enum.member?("hidden")) end)
+  end
+
   defp admin_user do
     previous = Application.get_env(:confluence_phx_mirror, :admins)
     Application.put_env(:confluence_phx_mirror, :admins, ["ops@example.com"])

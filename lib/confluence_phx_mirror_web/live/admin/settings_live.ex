@@ -4,9 +4,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   and what only the environment can.
 
   The editable half is `ConfluencePhxMirror.Settings`, declared once in
-  `ConfluencePhxMirror.Settings.Catalogue` and rendered from it group by group.
-  One form per group, one transaction per save: either every field of the group
-  was stored and audited or none was.
+  `ConfluencePhxMirror.Settings.Catalogue` and rendered from it group by group:
+  one readable list, in the order an operator usually needs things, one form per
+  group, one transaction per save — either every field of the group was stored
+  and audited or none was.
+
+  A filter over the whole page answers "where is this?" for a screen that has
+  grown past a glance: every word has to match, and it narrows the boot
+  configuration below as well, because half the answer to "can I change this?"
+  is "no, and here is the variable that does" (`...Admin.SettingsFilter`).
 
   A blank field means "no decision" — the deployment's own configuration applies
   again, which is what the placeholder shows. A checkbox cannot be blank, so a
@@ -25,9 +31,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Settings.Catalogue
   alias ConfluencePhxMirror.SpaceDirectory
-  alias ConfluencePhxMirrorWeb.Admin.Config
-  alias ConfluencePhxMirrorWeb.Admin.KeyField
-  alias ConfluencePhxMirrorWeb.Admin.SettingsRefusal
+  alias ConfluencePhxMirrorWeb.Admin.{Config, KeyField, Paging, SettingsFilter, SettingsRefusal}
   alias ConfluencePhxMirrorWeb.Skins
 
   @impl true
@@ -36,7 +40,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
      socket
      |> assign(page_title: "Settings")
      |> assign(space_draft: nil, space_suggestions: [])
-     |> assign_settings()}
+     |> assign(q: "", words: [])}
+  end
+
+  # The filter is the address, so "where do I change X?" is a question a
+  # colleague can be sent — and the back button returns to the question before.
+  @impl true
+  def handle_params(params, _uri, socket) do
+    q = Paging.query(params)
+
+    {:noreply, socket |> assign(q: q, words: SettingsFilter.words(q)) |> assign_settings()}
+  end
+
+  def handle_event("filter", %{"q" => q}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/admin/settings?#{[q: q]}")}
   end
 
   @impl true
@@ -137,11 +154,27 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
         subtitle="What you can change while the mirror runs, then what only the environment can."
       />
 
-      <div class="mt-5 grid gap-4 lg:grid-cols-2">
+      <div class="mt-4">
+        <.list_filter
+          id="settings-filter"
+          query={@q}
+          label="Filter the settings by name, key or variable"
+          placeholder="Name, key or CM_ variable"
+        />
+        <p :if={@q != ""} id="settings-filter-count" class="mt-1.5 text-xs text-base-content/70">
+          <span id="settings-shown">{@settings_shown}</span>
+          of {@settings_total} settings · every word has to match
+        </p>
+      </div>
+
+      <div class="mt-4 space-y-4">
         <form
           id="theme-form"
           phx-submit="save_theme"
-          class="rounded-xl border border-base-300/70 bg-base-100 p-4 lg:col-span-2"
+          class={[
+            "rounded-xl border border-base-300/70 bg-base-100 p-4",
+            @theme_hidden? && "hidden"
+          ]}
         >
           <fieldset>
             <legend class="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/70">
@@ -190,22 +223,27 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
           :for={group <- @groups}
           id={"settings-#{group.key}"}
           phx-submit="save_group"
-          class="rounded-xl border border-base-300/70 bg-base-100 p-4"
+          class={[
+            "rounded-xl border border-base-300/70 bg-base-100",
+            group.hidden? && "hidden"
+          ]}
         >
           <input type="hidden" name="group" value={group.key} />
 
-          <fieldset>
+          <fieldset class="p-4">
             <legend class="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/70">
               {group.title}
             </legend>
             <p class="mt-1 text-xs text-base-content/70">{group.help}</p>
 
-            <div class="mt-3 space-y-4">
+            <%!-- One setting per row, in the catalogue's order: a screen read
+            top to bottom, not a grid read in four directions. --%>
+            <div class="mt-2 divide-y divide-base-300/60 border-t border-base-300/60">
               <.setting_field :for={field <- group.fields} field={field} />
             </div>
           </fieldset>
 
-          <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-t border-base-300/60 bg-base-200/30 px-4 py-2.5">
             <button
               type="button"
               id={"settings-#{group.key}-defaults"}
@@ -222,14 +260,26 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
         </form>
       </div>
 
-      <h2 class="mt-8 text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/70">
+      <p
+        :if={@q != "" and @settings_shown == 0 and @sections == []}
+        id="settings-no-match"
+        class="mt-4 text-xs"
+      >
+        Nothing on this page matches “{@q}” — not a setting an administrator may
+        change, and not a variable the deployment fixes.
+      </p>
+
+      <h2
+        :if={@sections != []}
+        class="mt-8 text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/70"
+      >
         Fixed by the environment
       </h2>
-      <p class="mt-1 max-w-2xl text-xs text-base-content/70">
+      <p :if={@sections != []} class="mt-1 max-w-2xl text-xs text-base-content/70">
         Read at boot: change the variable and restart. Each row names the one that sets it.
       </p>
 
-      <div class="mt-3 grid gap-x-10 gap-y-6 lg:grid-cols-2">
+      <div :if={@sections != []} class="mt-3 grid gap-x-10 gap-y-6 lg:grid-cols-2">
         <section :for={section <- @sections}>
           <h3 class="text-xs font-semibold">{section.title}</h3>
           <dl class="mt-1 divide-y divide-base-300/60 border-t border-base-300/60">
@@ -264,18 +314,37 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   end
 
   defp assign_settings(socket) do
+    words = socket.assigns[:words] || []
+    groups = groups(socket.assigns[:space_draft], socket.assigns[:space_suggestions] || [], words)
+
     assign(socket,
       theme: Skins.theme(),
       themes: Skins.themes(),
-      groups: groups(socket.assigns[:space_draft], socket.assigns[:space_suggestions] || []),
-      sections: Config.sections(socket.assigns.current_user)
+      theme_hidden?: not theme_shown?(words),
+      groups: groups,
+      settings_shown: groups |> Enum.flat_map(& &1.fields) |> Enum.count(&visible?/1),
+      settings_total: Enum.sum(Enum.map(groups, &length(&1.fields))),
+      sections: Config.sections(socket.assigns.current_user) |> SettingsFilter.sections(words)
     )
   end
 
-  defp groups(draft, suggestions) do
-    Enum.map(Catalogue.groups(:settings), fn group ->
+  defp visible?(%{hidden?: hidden?}), do: not hidden?
+
+  defp groups(draft, suggestions, words) do
+    Catalogue.groups(:settings)
+    |> Enum.map(fn group ->
       Map.put(group, :fields, Enum.map(group.keys, &field(&1, draft, suggestions)))
     end)
+    |> SettingsFilter.groups(words)
+  end
+
+  # The theme is one setting with its own control (radio cards, because a palette
+  # is chosen by looking at it), so it answers the filter through its catalogue
+  # entry rather than through a row.
+  defp theme_shown?(words) do
+    spec = Catalogue.fetch!("theme")
+
+    SettingsFilter.visible?(Enum.join(["Theme", spec.label, spec.help, spec.env], "\n"), words)
   end
 
   defp field(key, draft, suggestions) do
@@ -336,14 +405,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
 
   defp setting_field(%{field: %{type: :boolean}} = assigns) do
     ~H"""
-    <div>
+    <div id={"setting-#{@field.key}"} class={["py-2.5", @field.hidden? && "hidden"]}>
       <%!-- The input sits inside the label, so the label must not also point at
       it with `for`: a click on the box would then be delivered twice — once to
       the box and once by the label — and land back where it started. --%>
-      <label
-        id={"setting-#{@field.key}"}
-        class="flex items-start justify-between gap-4"
-      >
+      <label class="flex items-start justify-between gap-4">
         <span class="min-w-0">
           <span class="block text-sm">
             {@field.label}
@@ -355,6 +421,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
             </span>
           </span>
           <span class="block text-xs text-base-content/70">{@field.help}</span>
+          <span class="mt-0.5 block text-[11px] text-base-content/70">
+            Deployment: {on_off(@field.default)} · <code class="font-mono">{@field.env}</code>
+          </span>
         </span>
         <input
           type="checkbox"
@@ -364,50 +433,67 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
           class="checkbox checkbox-sm mt-0.5"
         />
       </label>
-      <p class="mt-0.5 text-[11px] text-base-content/70">
-        Deployment: {on_off(@field.default)} · <code class="font-mono">{@field.env}</code>
-      </p>
     </div>
     """
   end
 
-  defp setting_field(%{field: %{type: type}} = assigns) when type in [:pos_integer, :hour] do
+  defp setting_field(%{field: %{type: type}} = assigns)
+       when type in [:pos_integer, :non_negative, :hour] do
     ~H"""
-    <div id={"setting-#{@field.key}"}>
-      <.input
-        type="number"
-        id={"setting-#{@field.key}-input"}
-        name={"values[#{@field.key}]"}
-        value={@field.value}
-        label={@field.label}
-        placeholder={to_string(@field.default)}
-        min={if(@field.type == :hour, do: 0, else: 1)}
-        max={if(@field.type == :hour, do: 23, else: nil)}
-        class="mt-1 w-full input input-sm"
-      />
-
-      <p class="text-xs text-base-content/70">
-        {@field.help}
-        <span :if={@field.value != nil} class="ml-1 text-[10px] uppercase tracking-wide text-primary">
-          changed
+    <div
+      id={"setting-#{@field.key}"}
+      class={[
+        "flex flex-col gap-1 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6",
+        @field.hidden? && "hidden"
+      ]}
+    >
+      <label class="min-w-0" for={"setting-#{@field.key}-input"}>
+        <span class="block text-sm">
+          {@field.label}
+          <span
+            :if={@field.value != nil}
+            class="ml-1 text-[10px] uppercase tracking-wide text-primary"
+          >
+            changed
+          </span>
         </span>
-      </p>
+        <span class="block text-xs text-base-content/70">{@field.help}</span>
+        <span class="mt-0.5 block text-[11px] text-base-content/70">
+          Empty means the deployment's {to_string(@field.default)} ·
+          <code class="font-mono">{@field.env}</code>
+        </span>
+      </label>
 
-      <p class="mt-0.5 text-[11px] text-base-content/70">
-        Empty means the deployment's {to_string(@field.default)} ·
-        <code class="font-mono">{@field.env}</code>
-      </p>
+      <div class="w-full sm:w-44 sm:shrink-0">
+        <.input
+          type="number"
+          id={"setting-#{@field.key}-input"}
+          name={"values[#{@field.key}]"}
+          value={@field.value}
+          placeholder={to_string(@field.default)}
+          min={minimum(@field.type)}
+          max={if(@field.type == :hour, do: 23, else: nil)}
+          class="w-full input input-sm"
+        />
+      </div>
     </div>
     """
   end
 
   defp setting_field(%{field: %{type: :csv}} = assigns) do
     ~H"""
-    <div id={"setting-#{@field.key}"}>
+    <div id={"setting-#{@field.key}"} class={["py-2.5", @field.hidden? && "hidden"]}>
       <%!-- A plain input rather than `<.input>`: that component's global
       attribute list does not carry `phx-change`, and this field is the one the
       site has suggestions for. --%>
-      <label class="block text-sm" for={"setting-#{@field.key}-input"}>{@field.label}</label>
+      <label class="block text-sm" for={"setting-#{@field.key}-input"}>
+        {@field.label}
+        <span :if={@field.value != nil} class="ml-1 text-[10px] uppercase tracking-wide text-primary">
+          changed
+        </span>
+      </label>
+      <p class="text-xs text-base-content/70">{@field.help}</p>
+
       <.space_key_input
         id={"setting-#{@field.key}-input"}
         name={"values[#{@field.key}]"}
@@ -422,13 +508,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
         label="Spaces Confluence lists"
       />
 
-      <p class="text-xs text-base-content/70">
-        {@field.help}
-        <span :if={@field.value != nil} class="ml-1 text-[10px] uppercase tracking-wide text-primary">
-          changed
-        </span>
-      </p>
-
       <p class="mt-0.5 text-[11px] text-base-content/70">
         Empty adds nothing · <code class="font-mono">{@field.env}</code> names the floor
       </p>
@@ -439,6 +518,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   defp on_off(true), do: "on"
   defp on_off(false), do: "off"
   defp on_off(nil), do: "the deployment's value"
+
+  # A count that may be zero says so in the field itself: an interval of 0 is how
+  # an administrator switches a schedule off.
+  defp minimum(:pos_integer), do: 1
+  defp minimum(_type), do: 0
 
   # A list setting is edited as the comma-separated text it is stored as.
   defp csv_value(nil), do: ""

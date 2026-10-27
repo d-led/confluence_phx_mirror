@@ -26,6 +26,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   @behaviour ConfluencePhxMirror.Confluence.Source
 
   alias ConfluencePhxMirror.Confluence.{RateLimiter, SafeURL, Traffic}
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync.Log
   alias ConfluencePhxMirror.Sync.SpaceScope
 
@@ -42,7 +43,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   @space_types ["global", "personal"]
 
   # Client sizing is deployment config (CM_HTTP_*), not a code constant.
-  defp page_limit, do: config()[:page_size] || 50
+  defp page_limit, do: Settings.confluence_page_size() || 50
   defp max_attempts, do: config()[:retries] || 3
   defp retry_backoff_ms, do: config()[:retry_backoff_ms] || 250
 

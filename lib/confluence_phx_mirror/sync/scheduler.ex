@@ -3,22 +3,32 @@ defmodule ConfluencePhxMirror.Sync.Scheduler do
   A clock: it enqueues one worker every so often.
 
   Two of them run in a release, because the mirror has two periodic questions
-  for Confluence. A snapshot pull follows `:sync_interval_seconds`
+  for Confluence. A snapshot pull follows the *sync interval*
   (`CM_SYNC_INTERVAL_SECONDS`, hourly by default). A verify pass — the one that
-  finds the pages Confluence stopped listing — follows
-  `:reconcile_interval_seconds` (`CM_RECONCILE_INTERVAL_SECONDS`) and is off
-  unless somebody sets it: it asks every space what it holds, which is a
-  schedule to choose rather than inherit.
+  finds the pages Confluence stopped listing — follows the *missing-pages
+  interval* (`CM_RECONCILE_INTERVAL_SECONDS`) and is off unless somebody sets
+  it: it asks every space what it holds, which is a schedule to choose rather
+  than inherit.
+
+  Both intervals are settings (`ConfluencePhxMirror.Settings`), read on every
+  tick rather than at boot: a mirror pulls more or less often because somebody
+  said so on the settings screen, not because a release was cut. A change
+  therefore applies from the tick after the one in flight.
 
   `0` disables a clock, which is what the demo and test environments use — they
-  sync on demand or through webhooks.
+  sync on demand or through webhooks. A disabled clock keeps a slow heartbeat,
+  so switching it back on is noticed within a minute.
   """
 
   use GenServer
 
   require Logger
 
-  alias ConfluencePhxMirror.Confluence.Source
+  alias ConfluencePhxMirror.Settings
+
+  # How often a switched-off schedule looks again, so switching it back on does
+  # not wait for a release.
+  @off_heartbeat 60_000
 
   @doc """
   Start a clock.
@@ -43,27 +53,36 @@ defmodule ConfluencePhxMirror.Sync.Scheduler do
 
   @impl true
   def init(clock) do
-    schedule(clock.interval)
+    schedule(interval(clock))
     {:ok, clock}
   end
 
+  # The cadence is read on every tick, not once at boot: an administrator changes
+  # it on the settings screen, and a mirror should not need a release to pull
+  # more or less often. A schedule that is switched off keeps a slow heartbeat,
+  # so switching it back on is noticed within a minute rather than at the next
+  # reboot.
   @impl true
-  def handle_info(:tick, %{interval: interval} = clock) when interval > 0 do
-    clock
-    |> job()
-    |> clock.worker.new()
-    |> Oban.insert()
-    |> log_enqueue(clock)
+  def handle_info(:tick, clock) do
+    case interval(clock) do
+      seconds when seconds > 0 ->
+        clock
+        |> job(seconds)
+        |> clock.worker.new()
+        |> Oban.insert()
+        |> log_enqueue(clock)
 
-    schedule(interval)
+        schedule(seconds)
+
+      _off ->
+        schedule(@off_heartbeat)
+    end
+
     {:noreply, clock}
   end
 
-  # No interval is no timetable: the tick arrived from a schedule this node used
-  # to have, so it says nothing and asks for nothing.
-  def handle_info(:tick, clock), do: {:noreply, clock}
-
-  defp job(clock), do: Map.put(clock.args, "trigger", "the #{humanise(clock.interval)} schedule")
+  defp job(clock, seconds),
+    do: Map.put(clock.args, "trigger", "the #{humanise(seconds)} schedule")
 
   defp log_enqueue({:ok, job}, clock),
     do: Logger.debug("scheduled #{name(clock.worker)}", job_id: job.id)
@@ -91,19 +110,22 @@ defmodule ConfluencePhxMirror.Sync.Scheduler do
       name: Keyword.get(opts, :name, __MODULE__),
       worker: Keyword.fetch!(opts, :worker),
       args: Keyword.get(opts, :args, %{}),
-      interval: interval(opts)
+      interval: Keyword.get(opts, :interval),
+      interval_key: Keyword.get(opts, :interval_key, :sync_interval_seconds)
     }
   end
 
-  # An interval handed in is the caller's; otherwise it is the source's own.
-  defp interval(opts) do
-    case Keyword.get(opts, :interval) do
-      nil -> configured_interval(Keyword.get(opts, :interval_key, :sync_interval_seconds))
-      seconds -> seconds
-    end
-  end
+  # A cadence the caller handed in is the caller's, forever (a test's, or a
+  # deployment's); otherwise it is read afresh, so an administrator's change
+  # takes effect at the next tick without a restart.
+  defp interval(%{interval: seconds}) when is_integer(seconds), do: seconds
+  defp interval(%{interval_key: key}), do: configured_interval(key)
 
-  defp configured_interval(key) do
-    Application.get_env(:confluence_phx_mirror, Source.source(), []) |> Keyword.get(key, 0)
-  end
+  # The two schedules this mirror has, by the key that configures them. Naming
+  # them here rather than reading the source's config keeps the clock's cadence
+  # in the same place as the rest of what an administrator decides.
+  defp configured_interval(:sync_interval_seconds), do: Settings.sync_interval_seconds()
+
+  defp configured_interval(:reconcile_interval_seconds),
+    do: Settings.reconcile_interval_seconds()
 end

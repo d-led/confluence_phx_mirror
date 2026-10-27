@@ -133,6 +133,18 @@ defmodule ConfluencePhxMirror.Settings do
   @spec sync_lookback_seconds() :: pos_integer()
   def sync_lookback_seconds, do: effective("sync.lookback_seconds")
 
+  @doc "The gap between scheduled runs, in seconds."
+  @spec sync_interval_seconds() :: pos_integer()
+  def sync_interval_seconds, do: effective("sync.interval_seconds")
+
+  @doc "The gap between missing-pages passes, in seconds; 0 means the button only."
+  @spec reconcile_interval_seconds() :: non_neg_integer()
+  def reconcile_interval_seconds, do: effective("sync.reconcile_interval_seconds")
+
+  @doc "Pages one Confluence listing call asks for."
+  @spec confluence_page_size() :: pos_integer()
+  def confluence_page_size, do: effective("confluence.page_size")
+
   @doc """
   Whether Confluence calls are paused.
 
@@ -343,6 +355,7 @@ defmodule ConfluencePhxMirror.Settings do
   defp coerce(:string, value), do: as_string(value)
   defp coerce(:boolean, value), do: as_boolean(value)
   defp coerce(:pos_integer, value), do: as_positive(value)
+  defp coerce(:non_negative, value), do: as_non_negative(value)
   defp coerce(:hour, value), do: as_hour(value)
   defp coerce(:csv, value), do: as_keys(value)
 
@@ -375,6 +388,17 @@ defmodule ConfluencePhxMirror.Settings do
   defp as_positive(value) do
     case to_integer(value) do
       number when is_integer(number) and number > 0 -> {:ok, number}
+      _other -> :error
+    end
+  end
+
+  # A count where zero is a decision of its own, not a missing value: an interval
+  # of 0 is how an administrator turns a schedule off.
+  defp as_non_negative(nil), do: {:ok, nil}
+
+  defp as_non_negative(value) do
+    case to_integer(value) do
+      number when is_integer(number) and number >= 0 -> {:ok, number}
       _other -> :error
     end
   end

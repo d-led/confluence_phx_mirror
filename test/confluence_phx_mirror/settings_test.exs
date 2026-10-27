@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirror.SettingsTest do
   @moduletag :empty_mirror
 
   alias ConfluencePhxMirror.{Accounts, Audit, Settings}
+  alias ConfluencePhxMirror.Confluence.Source
 
   @actor {:system, "test"}
 
@@ -86,6 +87,41 @@ defmodule ConfluencePhxMirror.SettingsTest do
                Settings.update(%{"accounts.login_token_minutes" => "45"}, @actor)
 
       assert Accounts.login_token_minutes() == 45
+    end
+  end
+
+  describe "the cadence and the calls a run makes" do
+    test "come from the deployment when nobody decided" do
+      merge_config(Source.source(), sync_interval_seconds: 900, page_size: 25)
+
+      assert Settings.sync_interval_seconds() == 900
+      assert Settings.confluence_page_size() == 25
+    end
+
+    test "are the administrator's once they decided" do
+      assert {:ok, _applied} =
+               Settings.update(
+                 %{"sync.interval_seconds" => "1800", "confluence.page_size" => "100"},
+                 @actor
+               )
+
+      assert Settings.sync_interval_seconds() == 1800
+      assert Settings.confluence_page_size() == 100
+    end
+
+    test "can switch the missing-pages pass off, which is what 0 means" do
+      merge_config(Source.source(), reconcile_interval_seconds: 86_400)
+      assert Settings.reconcile_interval_seconds() == 86_400
+
+      assert {:ok, %{"sync.reconcile_interval_seconds" => 0}} =
+               Settings.update(%{"sync.reconcile_interval_seconds" => "0"}, @actor)
+
+      assert Settings.reconcile_interval_seconds() == 0
+    end
+
+    test "refuse a cadence that is not a number" do
+      assert {:error, {:invalid_value, "sync.interval_seconds", "soon"}} =
+               Settings.update(%{"sync.interval_seconds" => "soon"}, @actor)
     end
   end
 
@@ -234,5 +270,11 @@ defmodule ConfluencePhxMirror.SettingsTest do
         :error -> Application.delete_env(:confluence_phx_mirror, key)
       end
     end)
+  end
+
+  # A source has options this test does not care about, so it widens the list
+  # instead of replacing it.
+  defp merge_config(key, value) do
+    put_config(key, Keyword.merge(Application.get_env(:confluence_phx_mirror, key, []), value))
   end
 end

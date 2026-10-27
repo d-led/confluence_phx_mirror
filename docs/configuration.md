@@ -116,11 +116,11 @@ together or not at all, so a save that reports an error changed nothing.
 | `CM_SPACES` | all | comma-separated space keys: naming any makes them the whitelist, and a snapshot then trashes every mirrored space the listing does not contain (see [pulling content](site-admin-guide.md#pulling-content)). `sync.spaces` adds to this list at runtime |
 | `CM_REQUESTS_PER_SECOND` / `CM_BURST` | `5` / `5` | client rate limit (token bucket) |
 | `CM_HTTP_RETRIES` | `3` | attempts per Confluence request |
-| `CM_HTTP_PAGE_SIZE` | `50` | content page size when paginating |
+| `CM_HTTP_PAGE_SIZE` | `50` | content page size when paginating; `confluence.page_size` changes it at runtime |
 | `CM_HTTP_RETRY_BACKOFF_MS` | `250` | first retry delay (doubles per attempt) |
 | `CM_SYNC_PAUSED` | `false` | stop reading from the site entirely: runs are refused, queued jobs wait, and every screen says the mirror is paused. `sync.paused` flips it at runtime |
-| `CM_SYNC_INTERVAL_SECONDS` | `3600` | gap between scheduled pulls; `0` switches the timer off (a deployment value — the screen takes a positive number) |
-| `CM_RECONCILE_INTERVAL_SECONDS` | `0` | scheduled missing-pages check — a verify pass over every space (`0` keeps it on demand, from `/admin/upstream`) |
+| `CM_SYNC_INTERVAL_SECONDS` | `3600` | gap between scheduled pulls; `0` switches the timer off. `sync.interval_seconds` changes it at runtime, and a new cadence applies from the tick after the one in flight |
+| `CM_RECONCILE_INTERVAL_SECONDS` | `0` | scheduled missing-pages check — a verify pass over every space (`0` keeps it on demand, from `/admin/upstream`). `sync.reconcile_interval_seconds` changes it at runtime, and `0` is a number the screen accepts: that is how the pass is switched off |
 | `CM_SYNC_LOOKBACK_SECONDS` | `3600` | minimum window for an incremental pull |
 | `CM_SYNC_CONCURRENCY` | `4` | changed pages detailed at once |
 | `CM_SYNC_PERSONAL_SPACES` | `false` | mirror personal (`~account`) spaces — every user has one, and it holds their drafts. A mirrored one is still readable only by its owner and by administrators |

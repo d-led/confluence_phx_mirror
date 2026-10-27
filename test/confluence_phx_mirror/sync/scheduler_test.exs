@@ -9,7 +9,10 @@ defmodule ConfluencePhxMirror.Sync.SchedulerTest do
 
   use ConfluencePhxMirror.DataCase, async: false
 
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync.{ReconcileWorker, Scheduler, SnapshotWorker}
+
+  @actor {:system, "scheduler test"}
 
   test "an hourly tick asks for an incremental pull, and says it was the schedule" do
     tick(start_scheduler(3600))
@@ -54,7 +57,7 @@ defmodule ConfluencePhxMirror.Sync.SchedulerTest do
     assert_enqueued(worker: ReconcileWorker, args: %{"trigger" => "the daily schedule"})
   end
 
-  test "a clock reads its interval from the source's configuration" do
+  test "a clock with nothing decided anywhere leaves the mirror alone" do
     # The suite's demo source sets `sync_interval_seconds: 0` and says nothing
     # about the check, so this clock reads 0 and its tick asks for nothing.
     name = :quiet_clock
@@ -67,6 +70,28 @@ defmodule ConfluencePhxMirror.Sync.SchedulerTest do
     tick(name)
 
     refute_enqueued(worker: ReconcileWorker)
+  end
+
+  test "a cadence an administrator stored is the one the next tick uses" do
+    {:ok, _applied} = Settings.update(%{"sync.interval_seconds" => "900"}, @actor)
+    on_exit(fn -> Settings.clear(["sync.interval_seconds"], @actor) end)
+
+    name = :stored_clock
+
+    start_supervised!(
+      {Scheduler,
+       worker: SnapshotWorker,
+       args: %{"mode" => "incremental", "scope" => "the whole site, what changed"},
+       name: name},
+      id: name
+    )
+
+    tick(name)
+
+    assert_enqueued(
+      worker: SnapshotWorker,
+      args: %{"trigger" => "the 15-minute schedule"}
+    )
   end
 
   defp start_scheduler(interval) do

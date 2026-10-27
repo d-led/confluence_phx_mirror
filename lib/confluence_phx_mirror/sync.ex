@@ -748,7 +748,7 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   defp do_run(:incremental, source, opts) do
-    since = Keyword.get(opts, :since, default_since(source))
+    since = Keyword.get(opts, :since, default_since())
 
     case source.changed_since(since, opts) do
       {:ok, dtos} ->
@@ -2236,11 +2236,10 @@ defmodule ConfluencePhxMirror.Sync do
   defp scope_of(:people, _opts), do: "people and groups"
   defp scope_of(_mode, _opts), do: "whole site"
 
-  defp default_since(source) do
-    interval =
-      Application.get_env(:confluence_phx_mirror, source, [])
-      |> Keyword.get(:sync_interval_seconds, 0)
-
+  defp default_since do
+    # The cadence, not a constant: a run at the schedule's own interval cannot
+    # leave a page between two of them.
+    interval = Settings.sync_interval_seconds()
     lookback = Settings.sync_lookback_seconds()
     DateTime.add(DateTime.utc_now(), -max(interval, lookback), :second)
   end

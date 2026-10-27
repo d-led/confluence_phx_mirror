@@ -37,20 +37,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
         row("Source", source_label(Source.source()), "CM_SOURCE"),
         row("Site", Sites.url() || "—", "CM_CONFLUENCE_SITE"),
         row("Spaces", spaces(http[:spaces]), "CM_SPACES"),
-        row("Sync interval", every(http[:sync_interval_seconds]), "CM_SYNC_INTERVAL_SECONDS"),
-        row(
-          "Missing-pages check",
-          every(http[:reconcile_interval_seconds]),
-          "CM_RECONCILE_INTERVAL_SECONDS"
-        ),
         row(
           "Personal spaces",
           if(config(:sync, [])[:personal_spaces], do: "mirrored", else: "skipped"),
           "CM_SYNC_PERSONAL_SPACES"
         ),
         row("Requests per second", count(http[:requests_per_second]), "CM_REQUESTS_PER_SECOND"),
-        row("Burst", count(http[:burst]), "CM_BURST"),
-        row("Page size", count(http[:page_size]), "CM_HTTP_PAGE_SIZE")
+        row("Burst", count(http[:burst]), "CM_BURST")
       ]
     }
   end
@@ -129,17 +122,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
   defp spaces(:all), do: "all spaces"
   defp spaces(keys) when is_list(keys), do: Enum.join(keys, ", ")
   defp spaces(_keys), do: "—"
-
-  defp every(nil), do: "—"
-  defp every(0), do: "off (on demand only)"
-
-  defp every(seconds) when seconds >= 3600 and rem(seconds, 3600) == 0,
-    do: "every #{div(seconds, 3600)} h"
-
-  defp every(seconds) when seconds >= 60 and rem(seconds, 60) == 0,
-    do: "every #{div(seconds, 60)} min"
-
-  defp every(seconds), do: "every #{seconds} s"
 
   defp count(nil), do: "—"
   defp count(value), do: to_string(value)

@@ -21,7 +21,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
   longer knows is ignored by `Settings.load/0`.
   """
 
-  @type type :: :string | :boolean | :pos_integer | :hour | :csv
+  @type type :: :string | :boolean | :pos_integer | :non_negative | :hour | :csv
 
   @type spec :: %{
           type: type(),
@@ -118,6 +118,36 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       help:
         "Keys to add to CM_SPACES. Named where CM_SPACES names none, they are the whole whitelist — and the next run trashes the rest.",
       env: "CM_SPACES",
+      ui: :settings
+    },
+    "sync.interval_seconds" => %{
+      type: :pos_integer,
+      default: {:source, :sync_interval_seconds, 3600},
+      group: :sync,
+      label: "How often the mirror pulls (seconds)",
+      help:
+        "The gap between runs, and never shorter than a run's lookback window — a page cannot slip between two of them. A new cadence applies after the tick in flight.",
+      env: "CM_SYNC_INTERVAL_SECONDS",
+      ui: :settings
+    },
+    "sync.reconcile_interval_seconds" => %{
+      type: :non_negative,
+      default: {:source, :reconcile_interval_seconds, 0},
+      group: :sync,
+      label: "How often to look for missing pages (seconds)",
+      help:
+        "The pass that asks every space what it holds, which is the only way a page Confluence stopped listing is noticed. 0 leaves it on the button alone.",
+      env: "CM_RECONCILE_INTERVAL_SECONDS",
+      ui: :settings
+    },
+    "confluence.page_size" => %{
+      type: :pos_integer,
+      default: {:source, :page_size, 50},
+      group: :sync,
+      label: "Pages per Confluence call",
+      help:
+        "A bigger page is fewer calls for the same listing, and a longer wait for the first of them.",
+      env: "CM_HTTP_PAGE_SIZE",
       ui: :settings
     },
     "sync.paused" => %{
@@ -245,7 +275,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     },
     sync: %{
       title: "Sync",
-      help: "How a run leans on Confluence and on the database."
+      help: "How often a run happens, and how hard it leans on Confluence and on the database."
     },
     notifications: %{
       title: "Notifications",
@@ -275,11 +305,14 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "search.page_size",
     "search.default_limit",
     "search.max_results",
-    "sync.spaces",
+    "sync.interval_seconds",
+    "sync.reconcile_interval_seconds",
     "sync.paused",
+    "sync.spaces",
     "sync.concurrency",
     "sync.detail_backlog",
     "sync.lookback_seconds",
+    "confluence.page_size",
     "notifications.enabled",
     "notifications.digest_hour_utc",
     "webhook.enabled",
