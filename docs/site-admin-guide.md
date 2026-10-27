@@ -347,7 +347,7 @@ unreachable or rejected the credentials.
 With no `CM_CONFLUENCE_SITE` (or `CM_SOURCE=demo`) a realistic snapshot is built
 in memory — nested trees, cross-space links, labels, comments, attachments,
 archived pages and the common macros — through the same pipeline as a real site.
-The [README](../README.md#demo-snapshot) has the commands.
+The [README](../README.md#1-see-it-working) has the commands.
 
 ## Browsing the mirror
 
