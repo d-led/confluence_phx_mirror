@@ -2,43 +2,73 @@
 
 Everything the mirror reads from the environment, plus the one compile-free
 customisation point (themes). The app is configured only through the environment
-(12-factor); this file is the exhaustive list, so keep it honest: if a variable
-is read in `config/` or `lib/`, it belongs here.
+(12-factor).
 
-Configuration is read at boot; a running development server does **not** reload
-`config/*.exs` changes. Booleans accept `1`, `true` or `yes`. A handful of values
-are read *while the mirror runs*, so `/admin/settings` can override them without
-a restart — see [Editable at runtime](#editable-at-runtime); for those the
-variable only seeds the default.
+This file is the exhaustive list, so keep it honest: if a variable is read in
+`config/` or `lib/`, it belongs here.
 
-## Editable at runtime
+## Two kinds of setting
 
-These are read while the mirror serves a request or runs a job, so an
-administrator can change them on `/admin/settings` and the change takes effect
-at once. The variable still decides the value a mirror that nobody has touched
-in the browser uses, and *use the deployment's values* hands a group back to it.
-The declared list is `ConfluencePhxMirror.Settings.Catalogue`; `POST
-/admin/settings` writes the `settings` table, audited as `settings.updated`.
+| Kind | Where you change it | Applies |
+| --- | --- | --- |
+| **Live** — read per request or per job | `/admin/settings`, or the variable | at once |
+| **Boot** — everything else | the variable, then restart | on the next boot |
 
-Adding a setting needs **no migration** — `settings` is a key/value table, so a
-key it has never seen is simply absent and one the code no longer knows is
-ignored when the table is loaded. Upgrading and rolling back therefore never
-touch stored decisions.
+Booleans accept `1`, `true` or `yes`. A running development server does **not**
+reload `config/*.exs` changes.
+
+Sections: [live settings](#live-settings) ·
+[platform](#platform) ·
+[source and sync](#source-and-sync) ·
+[accounts and sign-in](#accounts-and-sign-in) ·
+[webhooks](#webhooks) · [search](#search) ·
+[API description](#api-description) · [exports](#exports) ·
+[mail](#mail-and-notifications) · [storage](#storage) ·
+[reader rate limits](#reader-rate-limits) · [themes](#themes) ·
+[development defaults](#development-defaults)
+
+## Live settings
+
+These are read *while* the mirror serves a request or runs a job. An
+administrator changes them on `/admin/settings` and the change takes effect at
+once. The variable seeds the value a mirror nobody has touched uses, and *use
+the deployment's values* hands a group back to it.
+
+The declared list is `ConfluencePhxMirror.Settings.Catalogue`; a save writes the
+`settings` table, audited as `settings.updated`. Adding a setting needs **no
+migration** — `settings` is a key/value table, so a key it has never seen is
+simply absent, and one the code no longer knows is ignored on load. Upgrading
+and rolling back never touch stored decisions.
+
+**Reading and appearance**
 
 | Setting | Variable | Default |
 | --- | --- | --- |
-| `theme` | `CM_THEME` | built-in `default` |
+| `theme` | `CM_THEME` | `fresh-blue` |
 | `reader.html_limit` | `CM_READER_RATE_LIMIT_PER_MINUTE` / `CM_RATE_LIMIT_HTML_PER_MINUTE` | `240` |
 | `reader.api_limit` | `CM_RATE_LIMIT_API_PER_MINUTE` | `120` |
 | `reader.attachments_limit` | `CM_RATE_LIMIT_ATTACHMENTS_PER_MINUTE` | `300` |
 | `search.page_size` | `CM_SEARCH_PAGE_SIZE` | `30` |
 | `search.default_limit` | `CM_SEARCH_DEFAULT_LIMIT` | `25` |
 | `search.max_results` | `CM_SEARCH_MAX_RESULTS` | `100` |
+
+**Sync**
+
+| Setting | Variable | Default |
+| --- | --- | --- |
 | `sync.spaces` | `CM_SPACES` | none added |
+| `sync.interval_seconds` | `CM_SYNC_INTERVAL_SECONDS` | `3600` |
+| `sync.reconcile_interval_seconds` | `CM_RECONCILE_INTERVAL_SECONDS` | `0` |
 | `sync.paused` | `CM_SYNC_PAUSED` | `false` |
 | `sync.concurrency` | `CM_SYNC_CONCURRENCY` | `4` |
 | `sync.detail_backlog` | `CM_SYNC_DETAIL_BACKLOG` | `200` |
 | `sync.lookback_seconds` | `CM_SYNC_LOOKBACK_SECONDS` | `3600` |
+| `confluence.page_size` | `CM_HTTP_PAGE_SIZE` | `50` |
+
+**Notifications, webhooks, accounts**
+
+| Setting | Variable | Default |
+| --- | --- | --- |
 | `notifications.enabled` | `MIRROR_NOTIFICATIONS` | `true` |
 | `notifications.digest_hour_utc` | `MIRROR_DIGEST_HOUR_UTC` | `8` |
 | `webhook.enabled` | `CM_WEBHOOK_ENABLED` | `true` |
@@ -49,7 +79,15 @@ touch stored decisions.
 | `dashboard.refresh_seconds` | `CM_ADMIN_STATS_REFRESH_SECONDS` | `30` |
 
 The webhook switches are edited on `/admin/webhooks`, where the cost of each is
-spelled out; the rest are on `/admin/settings`.
+spelled out; everything else is on `/admin/settings`.
+
+**Not live, however it looks:** `CM_REQUESTS_PER_SECOND` and `CM_BURST` are
+options of the rate limiter's process, so they are read at boot. The source, the
+credentials, the database, the blob root, secrets and the sign-in switches are
+boot settings too; `/admin/settings` lists them with the variable that sets each.
+
+A save is one transaction: every field of the change and its audit entry commit
+together or not at all, so a save that reports an error changed nothing.
 
 ## Platform
 
@@ -76,11 +114,12 @@ spelled out; the rest are on `/admin/settings`.
 | `CM_SYNTHETIC_SPACES` / `CM_SYNTHETIC_PAGES` | `10` / `100` | generated spaces, and pages per space, when `CM_SOURCE=synthetic` |
 | `CM_SYNTHETIC_BRANCHING` | `10` | children per page in the generated tree |
 | `CM_SPACES` | all | comma-separated space keys: naming any makes them the whitelist, and a snapshot then trashes every mirrored space the listing does not contain (see [pulling content](site-admin-guide.md#pulling-content)). `sync.spaces` adds to this list at runtime |
-| `CM_REQUESTS_PER_SECOND` / `CM_BURST` | `5` / `5` | client rate limit (token bucket) || `CM_HTTP_RETRIES` | `3` | attempts per Confluence request |
+| `CM_REQUESTS_PER_SECOND` / `CM_BURST` | `5` / `5` | client rate limit (token bucket) |
+| `CM_HTTP_RETRIES` | `3` | attempts per Confluence request |
 | `CM_HTTP_PAGE_SIZE` | `50` | content page size when paginating |
 | `CM_HTTP_RETRY_BACKOFF_MS` | `250` | first retry delay (doubles per attempt) |
 | `CM_SYNC_PAUSED` | `false` | stop reading from the site entirely: runs are refused, queued jobs wait, and every screen says the mirror is paused. `sync.paused` flips it at runtime |
-| `CM_SYNC_INTERVAL_SECONDS` | `3600` | scheduled pull (`0` disables) |
+| `CM_SYNC_INTERVAL_SECONDS` | `3600` | gap between scheduled pulls; `0` switches the timer off (a deployment value — the screen takes a positive number) |
 | `CM_RECONCILE_INTERVAL_SECONDS` | `0` | scheduled missing-pages check — a verify pass over every space (`0` keeps it on demand, from `/admin/upstream`) |
 | `CM_SYNC_LOOKBACK_SECONDS` | `3600` | minimum window for an incremental pull |
 | `CM_SYNC_CONCURRENCY` | `4` | changed pages detailed at once |
@@ -242,33 +281,6 @@ readers are always limited by identity, proxy or not.
 
 A throttled browser request answers `429` with a page that names the retry
 window (and a `Retry-After` header); API clients get JSON.
-
-## Settings an administrator changes at runtime
-
-Some configuration does not need a restart, and an administrator owns it on
-**Admin → Settings**. Each of those settings has a **default taken from the
-configuration described in this file**, so a mirror nobody has touched behaves
-exactly as its environment says; what the administrator saves is an override,
-and clearing the field hands the decision back to the environment.
-
-| Setting | Default comes from | Decides |
-| --- | --- | --- |
-| Theme | `CM_THEME` | the palette pair every reader wears |
-| Reader limits (HTML, API, attachments) | `CM_READER_RATE_LIMIT_PER_MINUTE` and the per-scope variables | requests per reader per minute |
-| Notifications on/off | `MIRROR_NOTIFICATIONS` | whether the mirror mails watchers at all |
-| Digest hour (UTC) | `MIRROR_DIGEST_HOUR_UTC` | when the daily digest goes out |
-| Webhook intake open | `CM_WEBHOOK_ENABLED` | whether deliveries are accepted at all |
-| Webhook signatures required | `CM_WEBHOOK_REQUIRE_SIGNATURE` | whether deliveries must be signed |
-| Webhook intake limit | `CM_WEBHOOK_RATE_LIMIT_PER_MINUTE` | deliveries accepted per address per minute |
-
-The stored values live in the `settings` table and are read from memory, so a
-change applies to the next request without a restart. A save is one
-transaction: every field of the change and its audit entry (`settings.updated`)
-commit together or not at all, so a save that reports an error changed nothing.
-
-Anything not in that table — the source, the sync schedule, the database, the
-blob root, secrets, who may sign in — is read once at boot and still needs a
-restart; `/admin/settings` lists it with the variable that sets it.
 
 ## Themes
 
