@@ -1,13 +1,27 @@
 # Operating a mirror
 
-This is the deployment and operations guide: how the mirror is built, configured
-and run. It is for whoever owns the servers. Running the mirror *as a product* —
-syncs, accounts, permissions, webhooks — is
+How the mirror is built, configured and run — for whoever owns the servers.
+Running it *as a product* (syncs, accounts, permissions, webhooks) is
 [site-admin-guide.md](site-admin-guide.md).
 
 The mirror is a **12-factor** app: one OTP release, configuration only from the
-environment, Postgres and SMTP as attached resources, and no state on local disk
-except the blob root you give it.
+environment, Postgres and SMTP as attached resources, and no state on local
+disk except the blob root you give it.
+
+## I need to…
+
+| Task | Section |
+| --- | --- |
+| build a release without Docker | [One artifact, built once](#one-artifact-built-once) |
+| know which variable does what | [The environment is the contract](#the-environment-is-the-contract) · [configuration.md](configuration.md) |
+| ship a schema change | [Migrate as a deploy step](#migrate-as-a-deploy-step) |
+| size the database pool | [Sizing the connection pool](#sizing-the-connection-pool) |
+| back it up, or restore it | [State and backups](#state-and-backups) |
+| find pages the site stopped listing | [Content the site no longer lists](#content-the-site-no-longer-lists) |
+| watch a running mirror | [Watching it](#watching-it) |
+| understand a 429 | [Rate limiting](#rate-limiting) |
+| find a file on disk | [Attachments on disk](#attachments-on-disk) |
+| turn mail on or off | [Notifications](#notifications) |
 
 ## One artifact, built once
 
@@ -320,8 +334,8 @@ Two consequences worth knowing:
 
 * **A sweep never trashes.** A snapshot trashes the spaces its listing no longer
   names; a sweep cannot tell a space that disappeared upstream from one it has
-  not reached yet. Use `mix confluence.sync snapshot` (or the `:snapshot` mode)
-  when spaces are deleted at the source.
+  not reached yet. Use `mix confluence.sync --mode snapshot` when spaces are
+  deleted at the source.
 * **Spaces are listed from the source, not from the mirror**, so a space the
   mirror has never seen is included — that is how a mirror whose snapshots kept
   dying finds the fifty spaces it never had.
@@ -403,13 +417,6 @@ A pass runs when somebody presses **Check Confluence**, and — when
 leaves it on demand only). It asks nothing of a healthy site, so a daily pass is
 the cheap way to keep the missing-pages list honest: a page deleted upstream
 otherwise stays mirrored until somebody looks.
-
-A pass runs when somebody presses **Check Confluence**, and — if
-`CM_RECONCILE_INTERVAL_SECONDS` is set — on that schedule as well
-(`0`, the default, leaves it on demand only). Unlike the sync it asks nothing on
-a healthy site, so a daily pass is the cheap way to keep "missing pages"
-honest: a page deleted upstream would otherwise stay mirrored until someone
-looked.
 
 Those facts are readable **while the pass runs**: `/admin/upstream` subscribes to
 the pass and lists the newest fifty settled spaces with their verdicts, how many
