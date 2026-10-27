@@ -3,6 +3,19 @@
 Design decisions worth not re-litigating, and the edges the mirror deliberately
 does not cover.
 
+## In one minute
+
+| Decision | Instead of | Why |
+| --- | --- | --- |
+| store Confluence's `export_view` | re-implementing macros from `storage` | fidelity for free |
+| key pages by `confluence_id` + version | keying by path | slugs are cosmetic; mirrors move |
+| resolve live macros at sync time | resolving them in the browser | a read-only mirror has no client and no second writer |
+| a failing page marks the run `partial` | aborting the run | nothing is silently lost |
+| an empty listing keeps the pages | trusting it | a token that lost a permission is not a deletion |
+| truncate the sidebar trail per level | drawing the whole tree | the tree grows with the space, the trail does not |
+| cache totals per content version | counting per request | a scan per request is what a million pages cannot afford |
+| announce a changed page, never swap it | reloading the tab | the reader decides when to move |
+
 ## Rendering fidelity comes from `export_view`
 
 Confluence's `body.export_view` is the server-rendered HTML Confluence itself
@@ -111,26 +124,46 @@ expansion the two existing ones use and need no new plumbing.
 Confluence lets a site and a space look different; a mirror that ignores this
 looks like a different product:
 
-* **Space icon** — `space.icon` from the REST API, an attachment in the space's
-  own storage. The mirror already downloads attachments, so the icon can be
-  mirrored like any other file and shown in the space header and the space
-  picker. Not implemented yet.
-* **Space homepage and description** — already mirrored (`homepage_id`,
-  description in the space header).
-* **Page cover image** — a page property (`cover-picture`) pointing at an
-  attachment; rendered as a banner above the title. Not implemented yet.
-* **Announcement banner** — site-level, and not exposed by the public REST API
-  for a read-only integration; a mirror cannot show what it cannot fetch.
+| Piece | State |
+| --- | --- |
+| **Space icon** | mirrored: downloaded into the blob store and served at `/spaces/:key/icon`, in the directory and the space header |
+| **Space homepage and description** | mirrored (`homepage_id`, description in the space header) |
+| **Space categories** | mirrored, from `metadata.labels` with the `team:` prefix |
+| **Page cover image** | not implemented — a page property (`cover-picture`) pointing at an attachment |
+| **Announcement banner** | not reachable: site-level, and not exposed by the read-only REST API |
 
 Deliberately not mirrored: custom themes and layouts (they only make sense with
 the client-side editor), user-generated CSS.
 
-## Identity: one person, several sign-in addresses
+## Identity: one person, several Confluence accounts
 
 The mirror can pre-create accounts from what a sync sees (page bylines and
-group membership), but one person may arrive with several addresses — a Google
-account one day, a GitHub account the next. Confluence itself models this as an
-account id with one or more verified e-mail addresses.
+group membership), but one person often holds two Atlassian accounts — a
+personal one and a guest or contractor one — and the content and permissions may
+name either. What exists today:
+
+* `users.identity_account_ids` holds the *further* Confluence identities an
+  account stands for;
+* `User.identity_keys/1` answers with the union — e-mail, the sign-in identity
+  and every linked one — so what a reader may open is everything any of their
+  identities may open, on every door (session and API token alike);
+* `/admin/identities` and `POST /api/v1/identities/:account_id/link` are where an
+  administrator links or unlinks one, audited as `user.identity_linked` /
+  `user.identity_unlinked`.
+
+Still not built, and the reason: **several e-mail addresses per account**. Today
+`users.email` is unique, so one address means one account. The design when it is
+needed:
+
+* a `user_emails` table holding `email`, `user_id`, `source`, `verified_at`, with
+  the existing `users.email` as the primary address;
+* sign-in looks the address up across `user_emails`, so any verified address
+  signs into the same identity;
+* a signed-in reader may add another address, which receives a magic link;
+  confirming it attaches the address. An address another account holds is
+  refused, never merged silently;
+* pre-created accounts are placeholders with no confirmed address; the first
+  successful sign-in confirms the one that was used.
 
 ### Who a proxy identity is allowed to be
 
@@ -150,22 +183,6 @@ so "a user of the site" can only mean "somebody the mirror has evidence of".
 A legitimate reader who belongs to no mentioned group and is named in no
 permission is indistinguishable from a stranger; the remedy is a group on the
 Confluence side, which the next sync then knows.
-
-The plan, when it is built:
-
-* `users` keeps the identity (display name, role, groups, Confluence account
-  id); a new `user_emails` table holds `email`, `user_id`, `source`, `verified_at`.
-  The existing `users.email` becomes the primary address.
-* Sign-in looks the address up across `user_emails`, so any verified address
-  signs you into the same identity.
-* Linking: a signed-in reader may add another address, which receives a magic
-  link; confirming it attaches the address to their identity. An address that
-  already belongs to another account is refused, never merged silently.
-* Pre-created accounts (from bylines or group membership) are placeholders with
-  no address confirmed yet; the first successful sign-in confirms the address
-  that was used.
-
-Until then, one address per account, as `users.email` is unique today.
 
 ## What a page view costs
 
