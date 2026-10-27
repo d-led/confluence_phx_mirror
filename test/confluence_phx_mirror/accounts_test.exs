@@ -7,6 +7,7 @@ defmodule ConfluencePhxMirror.AccountsTest do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.{ApiToken, LoginToken, User}
   alias ConfluencePhxMirror.Audit.Event
+  alias ConfluencePhxMirror.TestConfig
 
   describe "auto admin" do
     test "creates the configured administrator once" do
@@ -155,9 +156,7 @@ defmodule ConfluencePhxMirror.AccountsTest do
     end
 
     test "a seeded administrator cannot be switched off, or nobody could get back in" do
-      previous = Application.get_env(:confluence_phx_mirror, :admins)
-      Application.put_env(:confluence_phx_mirror, :admins, ["keeper@example.com"])
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :admins, previous) end)
+      TestConfig.put(:admins, ["keeper@example.com"])
 
       keeper = user_fixture(%{email: "keeper@example.com", role: "admin"})
 

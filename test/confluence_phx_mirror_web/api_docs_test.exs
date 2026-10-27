@@ -66,9 +66,7 @@ defmodule ConfluencePhxMirrorWeb.ApiDocsTest do
   end
 
   test "a deployment can switch the surface off", %{conn: conn} do
-    previous = Application.get_env(:confluence_phx_mirror, :api_docs)
-    Application.put_env(:confluence_phx_mirror, :api_docs, false)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :api_docs, previous) end)
+    ConfluencePhxMirror.TestConfig.put(:api_docs, false)
 
     assert %{status: 404} = get(conn, "/api/openapi.json")
     assert %{status: 404} = get(conn, "/api/docs")

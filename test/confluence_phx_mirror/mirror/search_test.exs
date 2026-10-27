@@ -5,6 +5,7 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
 
   alias ConfluencePhxMirror.Mirror.Search
   alias ConfluencePhxMirror.Settings
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     demo_snapshot!()
@@ -107,9 +108,7 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
     end
 
     test "the result cap comes from configuration" do
-      previous = Application.get_env(:confluence_phx_mirror, :search)
-      Application.put_env(:confluence_phx_mirror, :search, max_limit: 1)
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :search, previous) end)
+      TestConfig.put(:search, max_limit: 1)
 
       {:ok, results} = Search.search("space = ENG", limit: 50)
 

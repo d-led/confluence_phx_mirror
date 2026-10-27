@@ -20,6 +20,7 @@ defmodule ConfluencePhxMirror.Accounts.UserPolicyTest do
   }
 
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     previous = Application.get_env(:confluence_phx_mirror, :user_policy)
@@ -81,9 +82,7 @@ defmodule ConfluencePhxMirror.Accounts.UserPolicyTest do
     end
 
     test "a seeded administrator is admitted before they have an account" do
-      previous = Application.get_env(:confluence_phx_mirror, :admins)
-      Application.put_env(:confluence_phx_mirror, :admins, ["seed@example.com"])
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :admins, previous) end)
+      TestConfig.put(:admins, ["seed@example.com"])
 
       assert UserPolicy.allows?(%{email: "seed@example.com"}, :proxy)
     end

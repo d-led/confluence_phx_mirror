@@ -20,6 +20,8 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
     ReadersMustExistInConfluence
   }
 
+  alias ConfluencePhxMirror.TestConfig
+
   setup do
     previous = Application.get_env(:confluence_phx_mirror, :proxy_auth)
     previous_members = Application.get_env(:confluence_phx_mirror, :proxy_auth_members_only)
@@ -85,9 +87,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
   end
 
   test "a seeded administrator signing in through the proxy reaches the admin area", %{conn: conn} do
-    previous = Application.get_env(:confluence_phx_mirror, :admins)
-    Application.put_env(:confluence_phx_mirror, :admins, ["ops@example.com"])
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :admins, previous) end)
+    TestConfig.put(:admins, ["ops@example.com"])
 
     conn = put_req_header(conn, "x-forwarded-email", "ops@example.com")
 

@@ -15,6 +15,7 @@ defmodule ConfluencePhxMirror.PauseTest do
   alias ConfluencePhxMirror.{Repo, Settings, SpaceDirectory}
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.{SnapshotWorker, SyncRun}
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     Settings.reload()
@@ -93,9 +94,7 @@ defmodule ConfluencePhxMirror.PauseTest do
   end
 
   defp admin_user do
-    previous = Application.get_env(:confluence_phx_mirror, :admins)
-    Application.put_env(:confluence_phx_mirror, :admins, ["ops-pause@example.com"])
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :admins, previous) end)
+    TestConfig.put(:admins, ["ops-pause@example.com"])
 
     user_fixture(%{email: "ops-pause@example.com", role: "member"})
   end
