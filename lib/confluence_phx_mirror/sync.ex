@@ -362,6 +362,13 @@ defmodule ConfluencePhxMirror.Sync do
   died — a deploy, an OOM kill, a Machine going away. Saying so beats leaving a
   run that looks busy forever, and beats a timeout that would have to guess.
 
+  The job of such a run is cancelled with it, and so is any sync job left
+  `executing` while the lock is free: Oban's own rescuer cannot help promptly —
+  it may not, since a long listing is not a dead node (see `config/config.exs`) —
+  and an `executing` job keeps its uniqueness, which turns the next scheduled
+  pull away for as long as it stays stuck. The advisory lock is the better
+  witness: free means nobody is running a sync, whatever the job rows say.
+
   Returns how many runs it closed.
   """
   @spec abandon_abandoned_runs() :: non_neg_integer()
@@ -369,11 +376,32 @@ defmodule ConfluencePhxMirror.Sync do
     if Gate.held?() do
       0
     else
-      from(r in SyncRun, where: r.status == "running")
-      |> Repo.all()
-      |> Enum.map(&abandon_run/1)
-      |> length()
+      runs = from(r in SyncRun, where: r.status == "running") |> Repo.all()
+      Enum.each(runs, &abandon_run/1)
+      release_orphaned_jobs()
+      length(runs)
     end
+  end
+
+  # A job that has only just started has not taken the lock yet, so give it a
+  # moment before reading silence as death.
+  @gate_grace_seconds 60
+
+  defp release_orphaned_jobs do
+    cutoff = DateTime.add(DateTime.utc_now(), -@gate_grace_seconds, :second)
+
+    from(j in Job,
+      where: j.queue == "sync" and j.state == "executing" and j.attempted_at < ^cutoff
+    )
+    |> Repo.all()
+    |> Enum.each(fn job ->
+      :ok = Oban.cancel_job(job)
+
+      Log.add(
+        :warn,
+        "sync job #{job.id} was left running by a process that is gone; cancelled it"
+      )
+    end)
   end
 
   defp abandon_run(run) do

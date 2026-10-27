@@ -5,9 +5,11 @@ defmodule ConfluencePhxMirror.SyncGateTest do
 
   import Ecto.Query
 
+  use Oban.Testing, repo: ConfluencePhxMirror.Repo
+
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
-  alias ConfluencePhxMirror.Sync.{Gate, SyncRun}
+  alias ConfluencePhxMirror.Sync.{Gate, SnapshotWorker, SyncRun}
 
   setup do
     owner = Ecto.Adapters.SQL.Sandbox.start_owner!(Repo, shared: true)
@@ -92,6 +94,30 @@ defmodule ConfluencePhxMirror.SyncGateTest do
       assert Sync.abandon_abandoned_runs() == 0
       assert Repo.get!(SyncRun, run.id).status == "succeeded"
     end
+
+    test "a job left executing by a process that is gone is cancelled" do
+      # This is the shape production got into: the run row was already closed
+      # (a deploy killed it), but the job stayed `executing` — and an executing
+      # job keeps its uniqueness, so the next scheduled pull was turned away.
+      job = insert_executing_job(minutes_ago: 10)
+
+      assert Sync.abandon_abandoned_runs() == 0
+
+      assert Repo.get!(Oban.Job, job.id).state == "cancelled"
+
+      # Which is the point: the queue takes the next pull again.
+      assert {:ok, _next} =
+               %{id: nil, mode: "incremental"} |> SnapshotWorker.new() |> Oban.insert()
+    end
+
+    test "a job that has only just started is left alone" do
+      # It has not taken the lock yet; silence is not death.
+      job = insert_executing_job(minutes_ago: 0)
+
+      Sync.abandon_abandoned_runs()
+
+      assert Repo.get!(Oban.Job, job.id).state == "executing"
+    end
   end
 
   describe "asking a run to stop" do
@@ -167,5 +193,15 @@ defmodule ConfluencePhxMirror.SyncGateTest do
       finished_at: if(status == "running", do: nil, else: DateTime.utc_now())
     })
     |> Repo.insert!()
+  end
+
+  defp insert_executing_job(minutes_ago: minutes) do
+    {:ok, job} = %{id: nil, mode: "incremental"} |> SnapshotWorker.new() |> Oban.insert()
+
+    attempted_at = DateTime.add(DateTime.utc_now(), -minutes * 60, :second)
+
+    job
+    |> Ecto.Changeset.change(state: "executing", attempted_at: attempted_at)
+    |> Repo.update!()
   end
 end

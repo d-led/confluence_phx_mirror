@@ -50,6 +50,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.RefreshCadenceTest do
         render(view)
       end)
 
-    assert queries <= 3, "a progress tick issued #{queries} queries"
+    # Three for the run and its counters, plus one for the sweep that spots a
+    # sync job left `executing` by a process that is gone — the tick is also
+    # where the dashboard notices a phantom run (`Sync.abandon_abandoned_runs/0`).
+    assert queries <= 4, "a progress tick issued #{queries} queries"
   end
 end

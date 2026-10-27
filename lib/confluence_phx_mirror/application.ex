@@ -73,6 +73,13 @@ defmodule ConfluencePhxMirror.Application do
         # Settings an administrator changed are read from the table once, so
         # the per-request theme lookup never queries the database.
         ConfluencePhxMirror.Settings.load()
+
+        # A restart is exactly what leaves a sync job `executing` with nobody
+        # behind it, and while it says that, its uniqueness turns the next
+        # scheduled pull away. Two queries, and it settles the queue before the
+        # first tick rather than leaving it to whoever opens `/admin` next.
+        ConfluencePhxMirror.Sync.abandon_abandoned_runs()
+
         {:ok, pid}
 
       error ->
