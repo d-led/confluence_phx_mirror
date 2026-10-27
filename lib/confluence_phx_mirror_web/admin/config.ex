@@ -38,6 +38,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
         row("Site", Sites.url() || "—", "CM_CONFLUENCE_SITE"),
         row("Spaces", spaces(http[:spaces]), "CM_SPACES"),
         row("Sync interval", every(http[:sync_interval_seconds]), "CM_SYNC_INTERVAL_SECONDS"),
+        row(
+          "Missing-pages check",
+          every(http[:reconcile_interval_seconds]),
+          "CM_RECONCILE_INTERVAL_SECONDS"
+        ),
         row("Sync concurrency", count(http[:sync_concurrency]), "CM_SYNC_CONCURRENCY"),
         row(
           "Personal spaces",
@@ -127,6 +132,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
   defp spaces(_keys), do: "—"
 
   defp every(nil), do: "—"
+  defp every(0), do: "off (on demand only)"
 
   defp every(seconds) when seconds >= 3600 and rem(seconds, 3600) == 0,
     do: "every #{div(seconds, 3600)} h"

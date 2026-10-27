@@ -398,6 +398,19 @@ day old, and a stale answer is worse than a new question. The screen shows a pas
 in flight, with how many spaces it has settled, rather than saying nobody has
 checked.
 
+A pass runs when somebody presses **Check Confluence**, and — when
+`CM_RECONCILE_INTERVAL_SECONDS` is set — on that schedule too (`0`, the default,
+leaves it on demand only). It asks nothing of a healthy site, so a daily pass is
+the cheap way to keep the missing-pages list honest: a page deleted upstream
+otherwise stays mirrored until somebody looks.
+
+A pass runs when somebody presses **Check Confluence**, and — if
+`CM_RECONCILE_INTERVAL_SECONDS` is set — on that schedule as well
+(`0`, the default, leaves it on demand only). Unlike the sync it asks nothing on
+a healthy site, so a daily pass is the cheap way to keep "missing pages"
+honest: a page deleted upstream would otherwise stay mirrored until someone
+looked.
+
 Those facts are readable **while the pass runs**: `/admin/upstream` subscribes to
 the pass and lists the newest fifty settled spaces with their verdicts, how many
 ids the site named and how many pages each marked absent, and the tables below it

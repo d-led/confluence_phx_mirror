@@ -38,6 +38,7 @@ Configuration is read at boot; a running development server does **not** reload
 | `CM_HTTP_PAGE_SIZE` | `50` | content page size when paginating |
 | `CM_HTTP_RETRY_BACKOFF_MS` | `250` | first retry delay (doubles per attempt) |
 | `CM_SYNC_INTERVAL_SECONDS` | `3600` | scheduled pull (`0` disables) |
+| `CM_RECONCILE_INTERVAL_SECONDS` | `0` | scheduled missing-pages check — a verify pass over every space (`0` keeps it on demand, from `/admin/upstream`) |
 | `CM_SYNC_LOOKBACK_SECONDS` | `3600` | minimum window for an incremental pull |
 | `CM_SYNC_CONCURRENCY` | `4` | changed pages detailed at once |
 | `CM_SYNC_PERSONAL_SPACES` | `false` | mirror personal (`~account`) spaces — every user has one, and it holds their drafts. A mirrored one is still readable only by its owner and by administrators |

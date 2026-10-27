@@ -39,7 +39,19 @@ defmodule ConfluencePhxMirror.Application do
       {Oban, Application.fetch_env!(:confluence_phx_mirror, Oban)},
       ConfluencePhxMirror.Sync.Log,
       ConfluencePhxMirror.Sync.Runs,
-      ConfluencePhxMirror.Sync.Scheduler,
+      # The two clocks. A snapshot pull follows `CM_SYNC_INTERVAL_SECONDS`
+      # (hourly by default); a verify pass — what Confluence no longer lists —
+      # follows `CM_RECONCILE_INTERVAL_SECONDS` and is off unless somebody sets
+      # it. Both are one pass at a time whatever the schedule says, and their
+      # workers are unique on the job, so a tick during a run is dropped.
+      {ConfluencePhxMirror.Sync.Scheduler,
+       worker: ConfluencePhxMirror.Sync.SnapshotWorker,
+       interval_key: :sync_interval_seconds,
+       args: %{"mode" => "incremental", "scope" => "the whole site, what changed"}},
+      {ConfluencePhxMirror.Sync.Scheduler,
+       name: :reconcile_scheduler,
+       worker: ConfluencePhxMirror.Sync.ReconcileWorker,
+       interval_key: :reconcile_interval_seconds},
       ConfluencePhxMirrorWeb.Endpoint
     ]
 

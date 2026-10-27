@@ -9,7 +9,7 @@ defmodule ConfluencePhxMirror.Sync.SchedulerTest do
 
   use ConfluencePhxMirror.DataCase, async: false
 
-  alias ConfluencePhxMirror.Sync.{Scheduler, SnapshotWorker}
+  alias ConfluencePhxMirror.Sync.{ReconcileWorker, Scheduler, SnapshotWorker}
 
   test "an hourly tick asks for an incremental pull, and says it was the schedule" do
     tick(start_scheduler(3600))
@@ -37,15 +37,56 @@ defmodule ConfluencePhxMirror.Sync.SchedulerTest do
     refute_enqueued(worker: SnapshotWorker)
   end
 
+  test "the same clock runs the missing-pages check when it is told to" do
+    name = :reconcile_clock
+
+    start_supervised!(
+      {Scheduler,
+       interval: 86_400,
+       interval_key: :reconcile_interval_seconds,
+       worker: ReconcileWorker,
+       name: name},
+      id: name
+    )
+
+    tick(name)
+
+    assert_enqueued(worker: ReconcileWorker, args: %{"trigger" => "the daily schedule"})
+  end
+
+  test "a clock reads its interval from the source's configuration" do
+    # The suite's demo source sets `sync_interval_seconds: 0` and says nothing
+    # about the check, so this clock reads 0 and its tick asks for nothing.
+    name = :quiet_clock
+
+    start_supervised!(
+      {Scheduler, interval_key: :reconcile_interval_seconds, worker: ReconcileWorker, name: name},
+      id: name
+    )
+
+    tick(name)
+
+    refute_enqueued(worker: ReconcileWorker)
+  end
+
   defp start_scheduler(interval) do
     name = :"scheduler_for_#{interval}_seconds"
-    start_supervised!({Scheduler, [interval: interval, name: name]}, id: name)
+
+    start_supervised!(
+      {Scheduler,
+       interval: interval,
+       interval_key: :sync_interval_seconds,
+       worker: SnapshotWorker,
+       args: %{"mode" => "incremental", "scope" => "the whole site, what changed"},
+       name: name},
+      id: name
+    )
   end
 
   # The GenServer handles its own messages one at a time; asking for its state
   # waits for the tick to be done.
   defp tick(scheduler) do
-    send(scheduler, :snapshot)
+    send(scheduler, :tick)
     :sys.get_state(scheduler)
   end
 end

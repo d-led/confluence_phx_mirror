@@ -169,6 +169,10 @@ config :confluence_phx_mirror,
            end,
          sync_interval_seconds:
            configured_int.(:sync_interval_seconds, "CM_SYNC_INTERVAL_SECONDS", 3600),
+         # A verify pass asks every space what it holds, so it is not on by
+         # default: `0` keeps it on the admin screen's button.
+         reconcile_interval_seconds:
+           configured_int.(:reconcile_interval_seconds, "CM_RECONCILE_INTERVAL_SECONDS", 0),
          # Pages that changed are detailed (attachments, comments) this many at a
          # time; the request rate limit still paces the actual calls.
          sync_concurrency: String.to_integer(System.get_env("CM_SYNC_CONCURRENCY", "4"))

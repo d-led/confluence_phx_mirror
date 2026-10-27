@@ -127,8 +127,9 @@ everything. Accounts, permissions and webhooks:
 [site-admin-guide.md](docs/site-admin-guide.md#point-the-mirror-at-your-site).
 
 Other knobs worth knowing: `CM_REQUESTS_PER_SECOND=5` and `CM_BURST=5` (the
-client's token bucket), `CM_SYNC_CONCURRENCY=4` (changed pages detailed at
-once), `PORT=4000`. The exhaustive list is in
+client's token bucket), `CM_RECONCILE_INTERVAL_SECONDS` (a scheduled check for
+pages Confluence no longer lists; off unless set), `CM_SYNC_CONCURRENCY=4`
+(changed pages detailed at once), `PORT=4000`. The exhaustive list is in
 [configuration.md](docs/configuration.md).
 
 ### Demo snapshot

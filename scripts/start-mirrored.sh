@@ -2,4 +2,4 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-CM_SOURCE=http CM_CONFLUENCE_SITE="$CM_CONFLUENCE_SITE" CM_ATL_EMAIL="$CM_ATL_EMAIL" CM_ATL_TOKEN="$CM_ATL_TOKEN" mix phx.server > /tmp/mirror_server.log 2>&1
+CM_SOURCE=http CM_CONFLUENCE_SITE="$CM_CONFLUENCE_SITE" CM_ATL_EMAIL="$CM_ATL_EMAIL" CM_ATL_TOKEN="$CM_ATL_TOKEN" mix phx.server

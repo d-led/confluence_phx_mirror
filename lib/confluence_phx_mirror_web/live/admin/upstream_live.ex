@@ -2,6 +2,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   @moduledoc """
   Pages the mirror holds that Confluence did not name — the review before the trash.
 
+  The direction matters and the screen says it at the top: these are pages that
+  are *here* and gone *there*, the opposite of a page the mirror is missing.
+
   A sync that lists a whole space already trashes what the site no longer returns.
   This screen answers the other question, which a sync cannot: *what do we hold
   that the site never mentions at all?* A verify pass answers it by counting and
@@ -151,13 +154,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       mirror_url={@mirror_url}
       mirror_host={@mirror_host}
       mirror_source={@mirror_source}
-      page_title="Pages Confluence doesn't have"
+      page_title="Missing pages"
       sidebar?={false}
     >
       <.admin_header
         current={:upstream}
-        title="Pages Confluence doesn't have"
-        subtitle="We still show them. Confluence doesn't."
+        title="Missing pages"
+        subtitle="Gone from Confluence, still in this mirror."
       >
         <:actions>
           <button type="button" phx-click="check" id="check-upstream" class="btn btn-outline btn-sm">
@@ -212,7 +215,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
         class="mt-6 rounded-xl border border-base-300/70 bg-base-100 p-4 text-sm text-base-content/70"
       >
         <p>
-          <span class="font-semibold">Nothing is missing.</span>
+          <span class="font-semibold">Every page we hold is still on Confluence.</span>
           Last checked
           <.local_time at={@last_check.finished_at} />: {checked_sentence(@last_check, @summary)}
         </p>
@@ -410,9 +413,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
     looked_at = "#{number(last_check.spaces)} spaces"
 
     if summary.named > 0 do
-      "#{looked_at} and #{number(summary.named)} pages, all found."
+      "#{looked_at} and #{number(summary.named)} pages, all still listed."
     else
-      "#{looked_at}, all found."
+      "#{looked_at}, all still listed."
     end
   end
 

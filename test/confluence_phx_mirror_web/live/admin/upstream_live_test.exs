@@ -32,6 +32,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
      }}
   end
 
+  test "the screen says which way it looks: what we hold, not what we lack", %{conn: conn} do
+    {:ok, _view, html} = live(conn, ~p"/admin/upstream")
+
+    assert html =~ "Missing pages"
+    assert html =~ "Gone from Confluence, still in this mirror."
+  end
+
   test "an unchecked mirror says so instead of claiming there is nothing to review", %{
     conn: conn
   } do
@@ -46,7 +53,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
 
     {:ok, _view, html} = live(conn, ~p"/admin/upstream")
 
-    assert html =~ "Nothing is missing"
+    assert html =~ "Every page we hold is still on Confluence"
     assert html =~ "12 spaces"
     assert html =~ "True as of that date, not for ever"
   end
@@ -77,7 +84,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     {:ok, view, html} = live(conn, ~p"/admin/upstream")
 
     # The numbers are the point, and a big one is written the way people read it.
-    assert html =~ "2 spaces and 1,000 pages, all found"
+    assert html =~ "2 spaces and 1,000 pages, all still listed"
 
     assert view |> element("#upstream-no-counts") |> render() =~
              "so every space is compared page by page"

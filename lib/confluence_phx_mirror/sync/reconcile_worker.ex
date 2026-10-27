@@ -3,9 +3,10 @@ defmodule ConfluencePhxMirror.Sync.ReconcileWorker do
   Runs a verify pass off the request, so the admin screen can ask for one.
 
   A site with hundreds of spaces pays two requests for each, which is minutes at
-  a polite pace and far too long to hold a LiveView for. The job is what
-  `/admin/upstream` enqueues; the pass itself is `ConfluencePhxMirror.Sync.Reconcile`
-  and it never reads a page, only names and counts.
+  a polite pace and far too long to hold a LiveView for. `/admin/upstream`
+  enqueues it on a button, and `CM_RECONCILE_INTERVAL_SECONDS` on a clock; the
+  pass itself is `ConfluencePhxMirror.Sync.Reconcile` and it never reads a page,
+  only names and counts.
   """
 
   # One pass at a time, whatever it was asked for. Uniqueness on the default
