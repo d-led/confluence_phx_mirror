@@ -133,6 +133,20 @@ defmodule ConfluencePhxMirror.Settings do
   @spec sync_lookback_seconds() :: pos_integer()
   def sync_lookback_seconds, do: effective("sync.lookback_seconds")
 
+  @doc """
+  Space keys an administrator added on top of the deployment's own list.
+
+  Empty means "none added", never "no spaces": the deployment's `CM_SPACES` is
+  the floor and `ConfluencePhxMirror.Sync.SpaceScope` merges the two.
+  """
+  @spec wanted_spaces() :: [String.t()]
+  def wanted_spaces do
+    case effective("sync.spaces") do
+      nil -> []
+      keys -> keys
+    end
+  end
+
   @doc "Whether a whole-site export includes personal spaces."
   @spec export_personal_spaces?() :: boolean()
   def export_personal_spaces?, do: effective("export.personal_spaces") == true
@@ -310,18 +324,32 @@ defmodule ConfluencePhxMirror.Settings do
 
   defp blank_to_nil(value), do: value
 
-  defp coerce(:string, value) when is_binary(value) do
+  # One clause per type over one function per type: the dispatch reads as a
+  # table, and the score is taken of small pieces instead of their union. Every
+  # type the catalogue declares is here, so there is no catch-all to hide a
+  # sixth one: a setting whose type nobody implemented raises on its first
+  # write instead of being stored as something it is not.
+  defp coerce(:string, value), do: as_string(value)
+  defp coerce(:boolean, value), do: as_boolean(value)
+  defp coerce(:pos_integer, value), do: as_positive(value)
+  defp coerce(:hour, value), do: as_hour(value)
+  defp coerce(:csv, value), do: as_keys(value)
+
+  defp as_string(nil), do: {:ok, nil}
+
+  defp as_string(value) when is_binary(value) do
     case String.trim(value) do
       "" -> {:ok, nil}
       trimmed -> {:ok, trimmed}
     end
   end
 
-  defp coerce(:string, nil), do: {:ok, nil}
-  defp coerce(:boolean, value) when is_boolean(value), do: {:ok, value}
-  defp coerce(:boolean, nil), do: {:ok, nil}
+  defp as_string(_value), do: :error
 
-  defp coerce(:boolean, value) when is_binary(value) do
+  defp as_boolean(value) when is_boolean(value), do: {:ok, value}
+  defp as_boolean(nil), do: {:ok, nil}
+
+  defp as_boolean(value) when is_binary(value) do
     case value |> String.trim() |> String.downcase() do
       truthy when truthy in ~w(true 1 yes on) -> {:ok, true}
       falsy when falsy in ~w(false 0 no off) -> {:ok, false}
@@ -329,25 +357,50 @@ defmodule ConfluencePhxMirror.Settings do
     end
   end
 
-  defp coerce(:pos_integer, nil), do: {:ok, nil}
+  defp as_boolean(_value), do: :error
 
-  defp coerce(:pos_integer, value) do
+  defp as_positive(nil), do: {:ok, nil}
+
+  defp as_positive(value) do
     case to_integer(value) do
       number when is_integer(number) and number > 0 -> {:ok, number}
       _other -> :error
     end
   end
 
-  defp coerce(:hour, nil), do: {:ok, nil}
+  defp as_hour(nil), do: {:ok, nil}
 
-  defp coerce(:hour, value) do
+  defp as_hour(value) do
     case to_integer(value) do
       hour when is_integer(hour) and hour in 0..23 -> {:ok, hour}
       _other -> :error
     end
   end
 
-  defp coerce(_type, _value), do: :error
+  # A comma-separated list of space keys. Empty means no additions at all, so a
+  # cleared field is a delete and the deployment's list applies alone.
+  defp as_keys(nil), do: {:ok, nil}
+
+  defp as_keys(value) when is_binary(value) do
+    case split_keys(value) do
+      [] -> {:ok, nil}
+      keys -> {:ok, keys}
+    end
+  end
+
+  defp as_keys(value) when is_list(value) do
+    value |> Enum.map_join(",", &to_string/1) |> as_keys()
+  end
+
+  defp as_keys(_value), do: :error
+
+  defp split_keys(value) do
+    value
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
 
   defp to_integer(value) when is_integer(value), do: value
 
@@ -383,6 +436,7 @@ defmodule ConfluencePhxMirror.Settings do
   defp encode(value) when is_binary(value), do: value
   defp encode(value) when is_integer(value), do: Integer.to_string(value)
   defp encode(value) when is_boolean(value), do: to_string(value)
+  defp encode(keys) when is_list(keys), do: Enum.join(keys, ",")
 
   defp fetch!(key), do: Catalogue.fetch!(key)
 
@@ -437,6 +491,10 @@ defmodule ConfluencePhxMirror.Settings do
   defp resolve({:admin_stats_refresh_seconds, floor}) do
     Application.get_env(:confluence_phx_mirror, :admin_stats_refresh_seconds, floor)
   end
+
+  # The runtime list adds to the deployment's, so its own default is "nothing
+  # added" — `Sync.SpaceScope` is what merges the two.
+  defp resolve(:no_additions), do: []
 
   defp resolve(:export_personal_spaces) do
     Application.get_env(:confluence_phx_mirror, :export_personal_spaces, false)

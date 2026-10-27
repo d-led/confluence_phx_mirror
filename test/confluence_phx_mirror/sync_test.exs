@@ -12,6 +12,7 @@ defmodule ConfluencePhxMirror.SyncTest do
   alias ConfluencePhxMirror.Confluence.{
     EditedSource,
     EmptyListingSource,
+    HttpSource,
     SpaceIconSource,
     TrafficSource
   }
@@ -21,8 +22,10 @@ defmodule ConfluencePhxMirror.SyncTest do
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Link, Page, Space}
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Notifications.{EmailWorker, Notification}
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.Log
+  alias ConfluencePhxMirror.Sync.SpaceScope
   alias ConfluencePhxMirror.Trash
 
   setup do
@@ -31,7 +34,52 @@ defmodule ConfluencePhxMirror.SyncTest do
     :ok
   end
 
+  defp configured_spaces(spaces) do
+    previous = Application.get_env(:confluence_phx_mirror, HttpSource)
+    Application.put_env(:confluence_phx_mirror, HttpSource, spaces: spaces)
+    on_exit(fn -> Application.put_env(:confluence_phx_mirror, HttpSource, previous) end)
+  end
+
+  defp live_space_keys do
+    import Ecto.Query, only: [from: 2]
+
+    Repo.all(from(s in Space, where: is_nil(s.deleted_at), order_by: s.key, select: s.key))
+  end
+
   describe "snapshot" do
+    test "a whitelist narrows the mirror, trashing the rest rather than purging it" do
+      assert {:ok, first} = Sync.run(:snapshot)
+      assert first.stats["spaces"] == 2
+
+      configured_spaces(["ENG"])
+
+      assert {:ok, run} = Sync.run(:snapshot)
+
+      assert run.stats["spaces"] == 1
+      assert run.stats["skipped_spaces"] == 1
+      assert live_space_keys() == ["ENG"]
+
+      # The space that left the whitelist is trashed, not purged: its row stays
+      # for a later listing to bring back.
+      assert Repo.aggregate(Space, :count) == 2
+    end
+
+    test "a space added at runtime is mirrored on the next run, the others untouched" do
+      configured_spaces(["ENG"])
+      assert {:ok, first} = Sync.run(:snapshot)
+      assert first.stats["spaces"] == 1
+
+      assert {:ok, _applied} = Settings.update(%{"sync.spaces" => "PROD"}, {:system, "test"})
+      on_exit(fn -> Settings.forget() end)
+
+      assert SpaceScope.wanted() == ["ENG", "PROD"]
+
+      assert {:ok, run} = Sync.run(:snapshot)
+
+      assert run.stats["spaces"] == 2
+      assert live_space_keys() == ["ENG", "PROD"]
+    end
+
     test "mirrors spaces, pages, labels, comments and attachments" do
       assert {:ok, run} = Sync.run(:snapshot)
       assert run.status == "succeeded"

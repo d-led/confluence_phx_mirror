@@ -42,6 +42,7 @@ defmodule ConfluencePhxMirror.Sync do
     PageProperties,
     Renderer,
     Runs,
+    SpaceScope,
     SyncRun
   }
 
@@ -598,6 +599,8 @@ defmodule ConfluencePhxMirror.Sync do
         record_phase(opts, "spaces")
 
         {space_dtos, skipped} = importable_spaces(space_dtos)
+        {space_dtos, outside} = whitelisted_spaces(space_dtos)
+        skipped = skipped + outside
         {spaces, icon_errors} = upsert_spaces(source, space_dtos)
         {spaces_trashed, pages_trashed} = trash_missing_spaces(space_dtos)
         {spaces, permission_errors} = sync_space_permissions(source, spaces)
@@ -938,6 +941,20 @@ defmodule ConfluencePhxMirror.Sync do
     else
       personal = Enum.filter(space_dtos, &(&1[:type] == "personal"))
       {space_dtos -- personal, length(personal)}
+    end
+  end
+
+  # A space nobody asked for is not imported. Because the trash compares against
+  # this same list, a space that leaves the whitelist is trashed — softly: its
+  # rows stay, and naming it again brings it back on the next run.
+  defp whitelisted_spaces(space_dtos) do
+    case SpaceScope.wanted() do
+      :all ->
+        {space_dtos, 0}
+
+      keys ->
+        {kept, outside} = Enum.split_with(space_dtos, &SpaceScope.import?(keys, &1.key))
+        {kept, length(outside)}
     end
   end
 

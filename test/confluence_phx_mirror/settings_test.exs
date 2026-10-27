@@ -164,6 +164,24 @@ defmodule ConfluencePhxMirror.SettingsTest do
     end
   end
 
+  describe "a list setting" do
+    test "keeps the keys it names, without the repetition or the spaces around them" do
+      assert {:ok, %{"sync.spaces" => ["ENG", "PROD"]}} =
+               Settings.update(%{"sync.spaces" => "ENG, PROD ,ENG"}, @actor)
+
+      assert Settings.wanted_spaces() == ["ENG", "PROD"]
+    end
+
+    test "cleared, it adds nothing at all" do
+      Settings.update(%{"sync.spaces" => "ENG"}, @actor)
+
+      assert {:ok, _cleared} = Settings.update(%{"sync.spaces" => "  "}, @actor)
+
+      assert Settings.wanted_spaces() == []
+      assert Settings.stored("sync.spaces") == nil
+    end
+  end
+
   describe "the theme" do
     test "is one of the settings, stored the same way" do
       assert {:ok, _applied} = Settings.put_theme("default", @actor)

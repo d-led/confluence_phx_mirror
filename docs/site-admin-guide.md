@@ -85,11 +85,21 @@ comment does not abort the run. Pages and blog posts missing from a snapshot are
 **trashed** (marked deleted, rows kept); attachments removed in Confluence are
 deleted from Postgres and the blob store. A space missing from a whole-site
 snapshot is trashed the same way, with its pages and their comments — and
-anything that reappears upstream is live again on the next sync. That makes
-`CM_SPACES` a delete as much as a filter: narrowing it trashes every space the
-new listing does not name, so purge the trash only once you are sure. A source
-that suddenly lists no spaces, or no pages for a space, never trashes anything:
-the run is flagged `partial` instead.
+anything that reappears upstream is live again on the next sync.
+
+**Which spaces are imported** is decided by two lists that add up. `CM_SPACES`
+is the floor, fixed at boot; the *spaces added at runtime* setting widens it
+from `/admin/settings` without a restart. Either naming nothing means every
+space, which is how a mirror that was never narrowed behaves. The runtime list
+cannot take a key away — a key the environment still names would return at the
+next boot, so the screen would be lying about what is in force.
+
+A space that leaves the whitelist is **trashed**, not purged, with its pages and
+their comments: rows stay, and naming it again brings it back on the next sync.
+So the first key entered on a mirror that was holding everything narrows it to
+that key, and the next run trashes the rest — recoverable, but not free. A
+source that suddenly lists no spaces, or no pages for a space, never trashes
+anything: the run is flagged `partial` instead.
 
 **Personal spaces are skipped** unless `CM_SYNC_PERSONAL_SPACES=true`. Everyone
 on a Confluence site has one (`~accountid`), it holds their drafts, and it is

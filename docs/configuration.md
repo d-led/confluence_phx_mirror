@@ -34,6 +34,7 @@ touch stored decisions.
 | `search.page_size` | `CM_SEARCH_PAGE_SIZE` | `30` |
 | `search.default_limit` | `CM_SEARCH_DEFAULT_LIMIT` | `25` |
 | `search.max_results` | `CM_SEARCH_MAX_RESULTS` | `100` |
+| `sync.spaces` | `CM_SPACES` | none added |
 | `sync.concurrency` | `CM_SYNC_CONCURRENCY` | `4` |
 | `sync.detail_backlog` | `CM_SYNC_DETAIL_BACKLOG` | `200` |
 | `sync.lookback_seconds` | `CM_SYNC_LOOKBACK_SECONDS` | `3600` |
@@ -73,7 +74,7 @@ spelled out; the rest are on `/admin/settings`.
 | `CM_ATL_EMAIL` / `CM_ATL_TOKEN` | – | API credentials |
 | `CM_SYNTHETIC_SPACES` / `CM_SYNTHETIC_PAGES` | `10` / `100` | generated spaces, and pages per space, when `CM_SOURCE=synthetic` |
 | `CM_SYNTHETIC_BRANCHING` | `10` | children per page in the generated tree |
-| `CM_SPACES` | all | comma-separated space keys. Narrowing it is not a filter over the same mirror: a snapshot trashes every mirrored space the listing does not contain (see [pulling content](site-admin-guide.md#pulling-content)) |
+| `CM_SPACES` | all | comma-separated space keys: naming any makes them the whitelist, and a snapshot then trashes every mirrored space the listing does not contain (see [pulling content](site-admin-guide.md#pulling-content)). `sync.spaces` adds to this list at runtime |
 | `CM_REQUESTS_PER_SECOND` / `CM_BURST` | `5` / `5` | client rate limit (token bucket) |
 | `CM_HTTP_RETRIES` | `3` | attempts per Confluence request |
 | `CM_HTTP_PAGE_SIZE` | `50` | content page size when paginating |

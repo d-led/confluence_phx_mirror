@@ -27,6 +27,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   alias ConfluencePhxMirror.Confluence.{RateLimiter, SafeURL, Traffic}
   alias ConfluencePhxMirror.Sync.Log
+  alias ConfluencePhxMirror.Sync.SpaceScope
 
   @page_expand "body.storage,body.export_view,version,ancestors,metadata.labels,space,history"
 
@@ -394,12 +395,12 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     params = %{"cql" => cql, "limit" => page_limit(), "expand" => @page_expand}
 
     with {:ok, results} <- paginate_json("/content/search", params) do
-      allowed = config()[:spaces]
+      allowed = SpaceScope.wanted()
 
       pages =
         results
         |> Enum.map(&parse_page(&1, space_key_of(&1)))
-        |> Enum.filter(fn page -> allowed == :all or page.space_key in List.wrap(allowed) end)
+        |> Enum.filter(&SpaceScope.import?(allowed, &1.space_key))
 
       {:ok, pages}
     end

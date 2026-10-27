@@ -328,9 +328,40 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
     """
   end
 
+  defp setting_field(%{field: %{type: :csv}} = assigns) do
+    ~H"""
+    <div id={"setting-#{@field.key}"}>
+      <.input
+        type="text"
+        id={"setting-#{@field.key}-input"}
+        name={"values[#{@field.key}]"}
+        value={csv_value(@field.value)}
+        label={@field.label}
+        placeholder="ENG, PROD"
+        class="mt-1 w-full input input-sm"
+      />
+
+      <p class="text-xs text-base-content/70">
+        {@field.help}
+        <span :if={@field.value != nil} class="ml-1 text-[10px] uppercase tracking-wide text-primary">
+          changed
+        </span>
+      </p>
+
+      <p class="mt-0.5 text-[11px] text-base-content/70">
+        Empty adds nothing · <code class="font-mono">{@field.env}</code> names the floor
+      </p>
+    </div>
+    """
+  end
+
   defp on_off(true), do: "on"
   defp on_off(false), do: "off"
   defp on_off(nil), do: "the deployment's value"
+
+  # A list setting is edited as the comma-separated text it is stored as.
+  defp csv_value(nil), do: ""
+  defp csv_value(keys) when is_list(keys), do: Enum.join(keys, ", ")
 
   defp actor(socket), do: {:user, socket.assigns.current_user}
 

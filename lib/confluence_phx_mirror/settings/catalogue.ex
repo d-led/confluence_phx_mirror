@@ -21,7 +21,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
   longer knows is ignored by `Settings.load/0`.
   """
 
-  @type type :: :string | :boolean | :pos_integer | :hour
+  @type type :: :string | :boolean | :pos_integer | :hour | :csv
 
   @type spec :: %{
           type: type(),
@@ -108,6 +108,16 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       label: "Most results one search may return",
       help: "A ceiling, whatever a caller asks for.",
       env: "CM_SEARCH_MAX_RESULTS",
+      ui: :settings
+    },
+    "sync.spaces" => %{
+      type: :csv,
+      default: :no_additions,
+      group: :sync,
+      label: "Spaces added at runtime",
+      help:
+        "Keys to add to CM_SPACES. Named where CM_SPACES names none, they are the whole whitelist — and the next run trashes the rest.",
+      env: "CM_SPACES",
       ui: :settings
     },
     "sync.concurrency" => %{
@@ -255,6 +265,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "search.page_size",
     "search.default_limit",
     "search.max_results",
+    "sync.spaces",
     "sync.concurrency",
     "sync.detail_backlog",
     "sync.lookback_seconds",
