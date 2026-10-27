@@ -30,7 +30,10 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
           label: String.t(),
           help: String.t(),
           env: String.t() | nil,
-          ui: :settings | :webhooks | :theme
+          # Which screen presents it: the settings list, the webhook screen, the
+          # theme cards — or the overview, for the one switch that is an action
+          # rather than a preference.
+          ui: :settings | :webhooks | :theme | :dashboard
         }
 
   # `:default` names *where* the deployment's value comes from, in the same
@@ -158,7 +161,9 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       help:
         "Nothing is read from the site while this is on: runs are refused, queued jobs wait, and the screens say the mirror is paused. Reader pages keep serving what is already mirrored.",
       env: "CM_SYNC_PAUSED",
-      ui: :settings
+      # The overview's button beside "Sync now": stopping the site calls is the
+      # first half of working on the mirror, not a preference to go and find.
+      ui: :dashboard
     },
     "sync.concurrency" => %{
       type: :pos_integer,
@@ -275,7 +280,8 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     },
     sync: %{
       title: "Sync",
-      help: "How often a run happens, and how hard it leans on Confluence and on the database."
+      help:
+        "How often a run happens, and how hard it leans on Confluence and on the database. Pausing the calls themselves is the button beside Sync now on the overview."
     },
     notifications: %{
       title: "Notifications",

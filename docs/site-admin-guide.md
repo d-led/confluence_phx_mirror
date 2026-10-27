@@ -174,15 +174,16 @@ when a sync pulls a newer snapshot.
   own interval (`sync.reconcile_interval_seconds`), `0` by default, which leaves
   it on the *Run* button at `/admin/upstream`.
 * Webhooks react to single changes within seconds — see [Webhooks](#webhooks).
-* **Pause Confluence calls** (`/admin/settings`, or `CM_SYNC_PAUSED`) stops the
-  mirror reading from the site at all: a run is refused before it starts, queued
-  jobs wait (they snooze rather than fail, so a long pause costs no attempts),
-  and the space listing is not fetched either. Reader pages keep serving what is
-  already mirrored and say so — the footer next to *Last sync* reads
-  `· updates paused`, the overview carries the banner and the way back, and the
-  screens that would otherwise offer a sync are disabled with the reason. This is
-  how one instance can stand down so another (say a production mirror) has the
-  API budget.
+* **Pause Confluence calls** is the button beside *Sync now* on
+  `/admin` (or `CM_SYNC_PAUSED` for a deployment that starts paused). It stops
+  the mirror reading from the site at all: a run is refused before it starts,
+  queued jobs wait (they snooze rather than fail, so a long pause costs no
+  attempts), and the space listing is not fetched either. Reader pages keep
+  serving what is already mirrored and say so — the footer next to *Last sync*
+  reads `· updates paused`, the overview carries the banner with the button that
+  resumes, and the screens that would otherwise offer a sync are disabled with
+  the reason. This is how one instance can stand down so another (say a
+  production mirror) has the API budget.
 
 ## The admin area
 

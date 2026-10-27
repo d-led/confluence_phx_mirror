@@ -15,7 +15,7 @@ defmodule ConfluencePhxMirror.Settings.CatalogueTest do
 
   test "every declared setting is presented by exactly one interface" do
     presented =
-      [:settings, :webhooks, :theme]
+      [:settings, :webhooks, :theme, :dashboard]
       |> Enum.flat_map(&Catalogue.groups/1)
       |> Enum.flat_map(& &1.keys)
 

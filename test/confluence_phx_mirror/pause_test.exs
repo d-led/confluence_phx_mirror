@@ -54,7 +54,21 @@ defmodule ConfluencePhxMirror.PauseTest do
       {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin")
 
       assert has_element?(view, "#sync-paused")
-      assert view |> element("#sync-paused") |> render() =~ "Resume in Settings"
+      assert view |> element("#sync-paused") |> render() =~ "Resume Confluence calls"
+    end
+
+    test "the overview's button resumes, and pauses again", %{conn: conn} do
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin")
+
+      view |> element("#sync-pause-toggle") |> render_click()
+
+      refute Settings.sync_paused?()
+      refute has_element?(view, "#sync-paused")
+
+      view |> element("#sync-pause-toggle") |> render_click()
+
+      assert Settings.sync_paused?()
+      assert has_element?(view, "#sync-paused")
     end
 
     test "says so on the identities screen, and offers no sync", %{conn: conn} do

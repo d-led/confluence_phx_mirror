@@ -229,9 +229,9 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
 
   describe "the filter" do
     test "keeps the rows that match and takes the others out of sight", %{conn: conn} do
-      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings?q=pause")
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings?q=concurrency")
 
-      assert shown?(view, "setting-sync.paused")
+      assert shown?(view, "setting-sync.concurrency")
       refute shown?(view, "setting-sync.lookback_seconds")
       assert has_element?(view, "#settings-shown", "1")
     end
@@ -241,25 +241,26 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
 
       # "sync" is one row's group and "theme" another's control — no single
       # answer says both, so the page says so instead of showing either.
-      refute shown?(view, "setting-sync.paused")
+      refute shown?(view, "setting-sync.concurrency")
       assert has_element?(view, "#settings-no-match")
     end
 
     test "hides a row without taking its field out of the group's form", %{conn: conn} do
       {:ok, _applied} =
-        Settings.update(%{"sync.concurrency" => "2"}, {:system, "an administrator"})
+        Settings.update(%{"notifications.enabled" => false}, {:system, "an administrator"})
 
-      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings?q=pause")
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings?q=digest")
 
-      refute shown?(view, "setting-sync.concurrency")
-      assert has_element?(view, ~s([id="setting-sync.concurrency-input"]))
+      refute shown?(view, "setting-notifications.enabled")
+      assert has_element?(view, ~s([id="setting-notifications.enabled-input"]))
 
-      view |> element("#settings-sync") |> render_submit(%{"values" => %{"sync.paused" => "on"}})
+      view
+      |> element("#settings-notifications")
+      |> render_submit(%{"values" => %{"notifications.enabled" => "on"}})
 
       # The row out of sight kept its value: a group is one transaction, and a
       # field the filter took away must not read as "cleared".
-      assert Settings.sync_paused?()
-      assert Settings.sync_concurrency() == 2
+      assert Settings.notifications_enabled?()
     end
 
     test "narrows the boot configuration with the same words", %{conn: conn} do

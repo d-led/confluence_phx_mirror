@@ -88,6 +88,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   def handle_event("close_menu", params, socket), do: close_menu(params, socket)
   def handle_event("space_query", params, socket), do: space_query(params, socket)
   def handle_event("snapshot", params, socket), do: snapshot(params, socket)
+  def handle_event("toggle_pause", params, socket), do: toggle_pause(params, socket)
   def handle_event("full_sync", params, socket), do: full_sync(params, socket)
   def handle_event("sync_space", params, socket), do: sync_space(params, socket)
   def handle_event("cancel_sync", params, socket), do: cancel_sync(params, socket)
@@ -116,6 +117,26 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
     {:noreply, notice(socket, queued, "A sync of what changed")}
   end
+
+  # Pause and resume are the same switch read both ways: what it stops is the
+  # site calls, so it is written as the setting it is and audited like any other
+  # change to the deployment.
+  defp toggle_pause(_params, socket) do
+    paused? = not Settings.sync_paused?()
+
+    {:ok, _applied} =
+      Settings.update(%{"sync.paused" => paused?}, {:user, socket.assigns.current_user})
+
+    {:noreply,
+     socket
+     |> assign(paused?: paused?)
+     |> put_flash(:info, paused_message(paused?))}
+  end
+
+  defp paused_message(true),
+    do: "Confluence calls are paused. Nothing is read from the site until you resume."
+
+  defp paused_message(false), do: "Confluence calls resume at the next run."
 
   defp full_sync(_params, socket) do
     queued =
@@ -324,7 +345,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       )
 
     assign(socket,
-      paused?: ConfluencePhxMirror.Settings.sync_paused?(),
+      paused?: Settings.sync_paused?(),
       stats: Mirror.stats(),
       # What this node occupies and the room beside it: the mount is the last
       # measurement (a walk of every attachment file, once a minute), the
@@ -412,6 +433,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           >
             <.icon name="hero-arrow-path" class="size-4" /> Sync now
           </button>
+          <%!-- Stopping the site calls is the other half of "Sync now", and the
+          one an operator reaches for first when something upstream is wrong:
+          it belongs beside it, not on a preferences screen. --%>
+          <button
+            type="button"
+            id="sync-pause-toggle"
+            phx-click="toggle_pause"
+            class={["btn btn-sm gap-1.5", if(@paused?, do: "btn-warning", else: "btn-outline")]}
+          >
+            <.icon name={if(@paused?, do: "hero-play", else: "hero-pause")} class="size-4" />
+            {if @paused?, do: "Resume Confluence calls", else: "Pause Confluence calls"}
+          </button>
           <%!-- The same shape as the search screen's filter menus: the button
           opens a panel whose find box takes the keyboard, and the list is
           narrowed in the database, not in the browser. --%>
@@ -498,7 +531,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           Runs are refused, queued jobs wait, and reader pages keep serving what was mirrored
           before the pause — so the numbers here are as old as the last run.
         </span>
-        <a href={~p"/admin/settings"} class="link shrink-0">Resume in Settings</a>
+        <button
+          type="button"
+          id="sync-resume"
+          phx-click="toggle_pause"
+          class="btn btn-warning btn-xs shrink-0 gap-1.5"
+        >
+          <.icon name="hero-play" class="size-3.5" /> Resume Confluence calls
+        </button>
       </div>
 
       <p

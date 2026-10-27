@@ -254,7 +254,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
               Use the deployment's values
             </button>
             <button type="submit" id={"settings-#{group.key}-save"} class="btn btn-primary btn-sm">
-              Save {String.downcase(group.title)}
+              Save {String.downcase(group.title)} settings
             </button>
           </div>
         </form>
