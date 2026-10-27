@@ -20,6 +20,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
      ]},
     {"Content",
      [
+       {:spaces, "Spaces", "hero-rectangle-stack"},
        {:upstream, "Missing pages", "hero-arrow-path"},
        {:trash, "Trash", "hero-trash"},
        {:audit, "Audit log", "hero-clipboard-document-list"}
@@ -423,6 +424,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
   defp page_path(:webhooks), do: ~p"/admin/webhooks"
   defp page_path(:audit), do: ~p"/admin/audit"
   defp page_path(:trash), do: ~p"/admin/trash"
+  defp page_path(:spaces), do: ~p"/admin/spaces"
   defp page_path(:upstream), do: ~p"/admin/upstream"
   defp page_path(:users), do: ~p"/admin/users"
   defp page_path(:identities), do: ~p"/admin/identities"

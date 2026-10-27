@@ -188,6 +188,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
       live "/permissions/:space_key/pages/:page_id", PermissionsLive, :page
       live "/audit", AuditLive, :index
       live "/trash", TrashLive, :index
+      live "/spaces", SpacesLive, :index
       live "/upstream", UpstreamLive, :index
       live "/sync-log", SyncLogLive, :index
       live "/settings", SettingsLive, :index

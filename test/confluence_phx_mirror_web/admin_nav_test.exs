@@ -10,7 +10,7 @@ defmodule ConfluencePhxMirrorWeb.AdminNavTest do
   import Phoenix.LiveViewTest
 
   @paths ~w(/admin /admin/jobs /admin/sync-log /admin/webhooks /admin/audit
-            /admin/trash /admin/upstream /admin/users /admin/identities
+            /admin/trash /admin/spaces /admin/upstream /admin/users /admin/identities
             /admin/permissions /admin/settings)
 
   setup do

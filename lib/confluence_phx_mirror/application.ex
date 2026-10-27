@@ -32,6 +32,9 @@ defmodule ConfluencePhxMirror.Application do
        query: Application.get_env(:confluence_phx_mirror, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: ConfluencePhxMirror.PubSub},
       ConfluencePhxMirror.Mcp.Markdown,
+      # The spaces a site offers, as it last listed them, for the screen that
+      # adds one to the whitelist.
+      ConfluencePhxMirror.SpaceDirectory,
       ConfluencePhxMirrorWeb.Presence,
       ConfluencePhxMirror.RateLimit,
       rate_limiter_spec(),

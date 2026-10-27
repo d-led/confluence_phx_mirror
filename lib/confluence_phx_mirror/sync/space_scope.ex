@@ -21,6 +21,7 @@ defmodule ConfluencePhxMirror.Sync.SpaceScope do
   again brings them back). The settings screen says so where the field is.
   """
 
+  alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Confluence.HttpSource
   alias ConfluencePhxMirror.Mirror.Space
   alias ConfluencePhxMirror.Settings
@@ -45,7 +46,48 @@ defmodule ConfluencePhxMirror.Sync.SpaceScope do
   @spec import?(String.t()) :: boolean()
   def import?(key), do: import?(wanted(), key)
 
-  defp added, do: Enum.map(Settings.wanted_spaces(), &Space.normalise_key/1)
+  @doc "The keys the deployment fixes at boot, normalised."
+  @spec fixed() :: [String.t()]
+  def fixed do
+    case configured() do
+      :all -> []
+      keys -> keys
+    end
+  end
+
+  @doc "The keys an administrator added at runtime."
+  @spec added() :: [String.t()]
+  def added, do: Enum.map(Settings.wanted_spaces(), &Space.normalise_key/1)
+
+  @doc """
+  Adds `key` to the runtime list.
+
+  Idempotent, and never duplicates what the deployment already names: a key the
+  environment fixes is in force whether or not it is written down here.
+  """
+  @spec add(String.t(), Audit.actor()) :: {:ok, map()} | {:error, term()}
+  def add(key, actor) do
+    key = Space.normalise_key(key)
+    keys = added()
+
+    if key in keys or key in fixed() do
+      {:ok, %{"sync.spaces" => keys}}
+    else
+      Settings.update(%{"sync.spaces" => keys ++ [key]}, actor)
+    end
+  end
+
+  @doc """
+  Takes `key` back out of the runtime list.
+
+  A key the environment names stays in force: the variable would restore it at
+  the next boot, so removing it here would only make the screen disagree with
+  the run.
+  """
+  @spec remove(String.t(), Audit.actor()) :: {:ok, map()} | {:error, term()}
+  def remove(key, actor) do
+    Settings.update(%{"sync.spaces" => added() -- [Space.normalise_key(key)]}, actor)
+  end
 
   # `CM_SPACES` lives in the HTTP source's own configuration, where the
   # environment writes it and where `/admin/settings` reports it. The demo and

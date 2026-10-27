@@ -67,6 +67,37 @@ defmodule ConfluencePhxMirror.Sync.SpaceScopeTest do
     refute SpaceScope.import?("OPS")
   end
 
+  test "adding a key widens the list, and removing it takes it back" do
+    configured_spaces(["ENG"])
+
+    assert {:ok, _applied} = SpaceScope.add("prod", @actor)
+
+    assert SpaceScope.added() == ["PROD"]
+    assert SpaceScope.wanted() == ["ENG", "PROD"]
+
+    assert {:ok, _applied} = SpaceScope.remove("PROD", @actor)
+
+    assert SpaceScope.added() == []
+    assert SpaceScope.wanted() == ["ENG"]
+  end
+
+  test "a key the deployment already fixes is not written down again" do
+    configured_spaces(["ENG"])
+
+    assert {:ok, _applied} = SpaceScope.add("eng", @actor)
+
+    assert SpaceScope.added() == []
+    assert SpaceScope.wanted() == ["ENG"]
+  end
+
+  test "removing a key the deployment fixes changes nothing" do
+    configured_spaces(["ENG"])
+
+    assert {:ok, _applied} = SpaceScope.remove("ENG", @actor)
+
+    assert SpaceScope.wanted() == ["ENG"]
+  end
+
   defp configured_spaces(spaces) do
     Application.put_env(:confluence_phx_mirror, HttpSource, spaces: spaces)
   end

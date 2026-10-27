@@ -1,0 +1,259 @@
+defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
+  @moduledoc """
+  Which spaces this mirror imports, and which ones it could.
+
+  Two lists decide it, and they add up: the keys the deployment fixes
+  (`CM_SPACES`) and the ones added here. What is on offer comes from
+  Confluence's own listing, held in memory for a few minutes (`SpaceDirectory`),
+  so the screen is not one request per render.
+
+  A mirror that imports *every* space has nothing to add — everything is
+  already in — so the page says that instead of offering a list. Narrowing such
+  a mirror is a decision about what to stop importing, and it starts with
+  `CM_SPACES`, not with a button here.
+  """
+
+  use ConfluencePhxMirrorWeb, :live_view
+
+  import ConfluencePhxMirrorWeb.AdminComponents
+
+  alias ConfluencePhxMirror.{Mirror, SpaceDirectory}
+  alias ConfluencePhxMirror.Sync.SpaceScope
+  alias ConfluencePhxMirrorWeb.Admin.SettingsRefusal
+  alias ConfluencePhxMirrorWeb.Time
+
+  @mirrored_window 50
+
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok, socket |> assign(page_title: "Spaces") |> load()}
+  end
+
+  @impl true
+  def handle_event("add", params, socket) do
+    key = params["key"] || ""
+
+    if SpaceScope.wanted() == :all do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "This mirror imports every space, so naming one would narrow it to the keys you name. Set CM_SPACES first."
+       )}
+    else
+      change(socket, SpaceScope.add(key, actor(socket)), added_message(key))
+    end
+  end
+
+  def handle_event("remove", %{"key" => key}, socket) do
+    change(
+      socket,
+      SpaceScope.remove(key, actor(socket)),
+      "#{key} removed — the next run stops importing it."
+    )
+  end
+
+  def handle_event("refresh", _params, socket) do
+    case SpaceDirectory.refresh() do
+      {:ok, _spaces} ->
+        {:noreply, socket |> load() |> put_flash(:info, "Confluence was asked again.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Confluence did not answer: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      live={@socket}
+      spaces={@spaces}
+      last_sync_run={@last_sync_run}
+      mirror_name={@mirror_name}
+      mirror_url={@mirror_url}
+      mirror_host={@mirror_host}
+      mirror_source={@mirror_source}
+      page_title="Spaces"
+      sidebar?={false}
+    >
+      <:subnav>
+        <.admin_nav current={:spaces} />
+      </:subnav>
+
+      <.admin_header
+        title="Spaces"
+        subtitle="What this mirror imports, and what it could import next."
+      >
+        <:actions>
+          <button type="button" phx-click="refresh" id="refresh-spaces" class="btn btn-outline btn-sm">
+            Check Confluence
+          </button>
+        </:actions>
+      </.admin_header>
+
+      <section class="mt-5 rounded-xl border border-base-300/70 bg-base-100 p-4">
+        <h2 class="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/70">
+          Imported
+        </h2>
+
+        <p :if={@wanted == :all} id="every-space" class="mt-2 max-w-2xl text-xs text-base-content/70">
+          Every space the site lists. Nothing has narrowed this mirror, so there is nothing to add
+          here — narrowing starts with <code class="font-mono">CM_SPACES</code>, and the keys named
+          there can be widened on this page or at <code class="font-mono">/admin/settings</code>.
+        </p>
+
+        <div :if={@wanted != :all} class="mt-2 space-y-2">
+          <ul id="space-whitelist" class="flex flex-wrap gap-1.5">
+            <li :for={key <- @fixed} class="badge badge-ghost gap-1.5 font-mono text-xs">
+              {key}
+              <span class="text-[10px] font-sans uppercase tracking-wide text-base-content/70">
+                CM_SPACES
+              </span>
+            </li>
+            <li
+              :for={key <- @added}
+              id={"whitelist-#{key}"}
+              class="badge badge-primary gap-1.5 font-mono text-xs"
+            >
+              {key}
+              <button
+                type="button"
+                phx-click="remove"
+                phx-value-key={key}
+                aria-label={"Stop importing #{key}"}
+                class="text-[10px] font-sans uppercase tracking-wide hover:underline"
+              >
+                Remove
+              </button>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="mt-4 rounded-xl border border-base-300/70 bg-base-100 p-4">
+        <h2 class="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/70">
+          Mirrored
+        </h2>
+
+        <p :if={@mirrored == []} class="mt-2 text-xs text-base-content/70">
+          Nothing is mirrored yet — the first sync decides what arrives.
+        </p>
+
+        <table :if={@mirrored != []} class="mt-2 w-full text-xs">
+          <thead class="text-left text-base-content/70">
+            <tr>
+              <th class="py-1 pr-3 font-medium">Space</th>
+              <th class="py-1 pr-3 font-medium">Key</th>
+              <th class="py-1 pr-3 text-right font-medium">Pages</th>
+              <th class="py-1 text-right font-medium">Last read</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={{key, name, synced_at, pages} <- @mirrored} class="border-t border-base-300/50">
+              <td class="py-1.5 pr-3">{name}</td>
+              <td class="py-1.5 pr-3 font-mono text-[11px]">{key}</td>
+              <td class="py-1.5 pr-3 text-right tabular-nums">{pages}</td>
+              <td class="py-1.5 text-right text-base-content/70">{Time.ago(synced_at)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p :if={length(@mirrored) >= @window} class="mt-2 text-[11px] text-base-content/70">
+          The {@window} most recently read. <a href={~p"/spaces"}>The space directory</a> lists them
+          all.
+        </p>
+      </section>
+
+      <section :if={@wanted != :all} class="mt-4 rounded-xl border border-base-300/70 bg-base-100 p-4">
+        <h2 class="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/70">
+          Add a space
+        </h2>
+
+        <p :if={@offers == {:error, :unreachable}} class="mt-2 text-xs text-base-content/70">
+          Confluence did not answer, so there is no list to choose from. <em>Check Confluence</em>
+          tries again.
+        </p>
+
+        <p :if={@offers == {:ok, []}} id="nothing-to-add" class="mt-2 text-xs text-base-content/70">
+          Every space the site lists is already imported. Personal spaces are never offered.
+        </p>
+
+        <form
+          :if={match?({:ok, [_ | _]}, @offers)}
+          id="add-space"
+          phx-submit="add"
+          class="mt-3 flex flex-wrap items-end gap-2"
+        >
+          <label class="block text-xs" for="add-space-key">Space</label>
+          <select id="add-space-key" name="key" class="select select-sm">
+            <option :for={space <- elem(@offers, 1)} value={space.key}>
+              {space[:name] || space.key} ({space.key})
+            </option>
+          </select>
+          <button type="submit" id="add-space-submit" class="btn btn-primary btn-sm">
+            Add
+          </button>
+        </form>
+
+        <p :if={match?({:ok, [_ | _]}, @offers)} class="mt-2 max-w-2xl text-xs text-base-content/70">
+          Adding a key widens the list; the next run imports it. Nothing is removed that way.
+        </p>
+      </section>
+    </Layouts.app>
+    """
+  end
+
+  defp change(socket, result, message) do
+    case result do
+      {:ok, _applied} ->
+        {:noreply, socket |> load() |> put_flash(:info, message)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, SettingsRefusal.message(reason))}
+    end
+  end
+
+  defp load(socket) do
+    assign(socket,
+      wanted: SpaceScope.wanted(),
+      fixed: SpaceScope.fixed(),
+      added: SpaceScope.added(),
+      window: @mirrored_window,
+      mirrored: Mirror.spaces_by_last_sync(@mirrored_window),
+      offers: offers()
+    )
+  end
+
+  # Only what is not already imported is worth offering: a mirror that takes
+  # everything has nothing left, and a personal space is never what an operator
+  # means to publish.
+  defp offers do
+    case SpaceDirectory.available() do
+      {:ok, spaces} ->
+        offered =
+          spaces
+          |> Enum.reject(&(&1[:type] == "personal" or SpaceScope.import?(&1.key)))
+          |> Enum.sort_by(&{&1[:name], &1.key})
+
+        {:ok, offered}
+
+      {:error, _reason} ->
+        {:error, :unreachable}
+    end
+  end
+
+  defp added_message(key) do
+    case SpaceScope.wanted() do
+      :all ->
+        "#{key} added."
+
+      keys ->
+        "#{key} added. The next run imports #{Enum.join(keys, ", ")}; anything else is trashed."
+    end
+  end
+
+  defp actor(socket), do: {:user, socket.assigns.current_user}
+end

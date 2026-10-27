@@ -215,6 +215,16 @@ page:
   with a purge button. "Empty the trash" asks for a second click. Purging is the
   only thing that deletes content, and it takes the comments and attachment
   files with it.
+* `/admin/spaces` (**live**) – which spaces this mirror imports, and which ones
+  it could. The keys the environment fixes (`CM_SPACES`) are shown as such; the
+  ones added here are removable, and a key the environment names cannot be
+  removed — the variable would restore it at the next boot. What is on offer is
+  Confluence's own listing, held for ten minutes so the page is not a request
+  per render; *Check Confluence* asks again, which is what a space created a
+  minute ago needs before it can be picked. A mirror that imports every space
+  has nothing to add and says so: narrowing one is a decision about what to stop
+  importing, and it starts with `CM_SPACES`. Adding a key widens the next run;
+  nothing is removed that way.
 * `/admin/users` (**live**) – accounts, roles, mirrored groups and the tokens an
   account has. Tokens are *not* minted here: they belong to their owner and are
   created on [the reader's own account page](#accounts-tokens-and-identities).
