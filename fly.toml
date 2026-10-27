@@ -20,10 +20,11 @@
 #   scripts/fly-provision.sh live   create the apps, database, volume, secrets
 #   scripts/fly-deploy.sh live      build this image and release it
 #
-# The second is what a release runs, and it does the whole deployment: this app
-# and then its front door, in that order. `fly deploy` on its own still works,
-# and deploys this app only — from the repository root, because the build
-# context has to be the whole project:
+# The second is what a release runs, and it deploys this app and nothing else:
+# the front door in deploy/fly/proxy has an image of its own and joins with
+# `--proxy` (or ships alone, with `--proxy-only`). A bare `fly deploy` does the
+# same thing — from the repository root, because the build context has to be
+# the whole project:
 #
 #   fly deploy --ha=false --flycast --no-public-ips \
 #     --build-arg VERSION=… \

@@ -18,7 +18,7 @@ have reached any other way.
 | | Fly.io | Kubernetes |
 | --- | --- | --- |
 | **1. create** everything that exists once | `./scripts/fly-provision.sh live` | `kubectl apply -f deploy/k8s/secret.yaml` (from `secret.example.yaml`) |
-| **2. deploy** every version | `./scripts/fly-deploy.sh live` | `kubectl apply -f deploy/k8s/confluence-mirror.yaml` then `-f deploy/k8s/oauth2-proxy.yaml` |
+| **2. deploy** every version | `./scripts/fly-deploy.sh live --proxy` (the first time; after that `live` alone ships the mirror) | `kubectl apply -f deploy/k8s/confluence-mirror.yaml` then `-f deploy/k8s/oauth2-proxy.yaml` |
 | **done when** | the proxy's URL answers and `/admin` shows your build | the Ingress answers and `/admin` shows your build |
 
 Neither deploy script creates anything, and neither needs credentials:
@@ -212,15 +212,20 @@ deploy.
 Deploying is everything that happens per version, and needs no credentials:
 
 ```bash
-./scripts/fly-deploy.sh live            # mirror, then its front door
-./scripts/fly-deploy.sh live --check    # verify only: would this deploy?
-./scripts/fly-deploy.sh live --sync     # …and enqueue a full snapshot
+./scripts/fly-deploy.sh live              # the mirror, and only the mirror
+./scripts/fly-deploy.sh live --proxy      # the mirror, then its front door
+./scripts/fly-deploy.sh live --proxy-only # just the front door
+./scripts/fly-deploy.sh live --check      # verify only: would this deploy?
+./scripts/fly-deploy.sh live --sync       # …and enqueue a full snapshot
 ```
 
 It refuses before building anything if an app or a secret is missing, and
-names the provisioning command that puts it there. It deploys the mirror
-first: the proxy's upstream is the mirror's Flycast address, so a proxy
-released first answers 502.
+names the provisioning command that puts it there. A release ships the mirror
+and stops there, because the mirror is what a version changes: the proxy's
+image is its own and changes rarely. `--proxy` adds it to the same release,
+`--proxy-only` releases it alone. When one run ships both, it still ships them
+in the only order that works — the proxy's upstream is the mirror's Flycast
+address, so a proxy released first answers 502.
 
 The demo pair is the same two commands with `demo`, and its `DATABASE_URL` is
 one you bring (`./scripts/fly-provision.sh demo` reads it from the

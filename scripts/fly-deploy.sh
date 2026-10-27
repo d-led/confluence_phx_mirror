@@ -2,10 +2,18 @@
 #
 # Ship a version to a Fly deployment that already exists.
 #
-#   scripts/fly-deploy.sh live            the mirror of a real Confluence site
-#   scripts/fly-deploy.sh live --sync     …and enqueue a full snapshot afterwards
-#   scripts/fly-deploy.sh demo            the demo pair
-#   scripts/fly-deploy.sh live --check    verify only: would this deploy?
+#   scripts/fly-deploy.sh live                the mirror of a real Confluence site
+#   scripts/fly-deploy.sh live --proxy        …and its front door, after it
+#   scripts/fly-deploy.sh live --proxy-only   only its front door
+#   scripts/fly-deploy.sh live --check        verify only: would this deploy?
+#   scripts/fly-deploy.sh live --sync         …and enqueue a full snapshot afterwards
+#   scripts/fly-deploy.sh demo                the demo mirror
+#   scripts/fly-deploy.sh demo --proxy        …and the demo's front door
+#
+# A release ships the mirror and stops there, because the mirror is what a
+# version changes. The oauth2-proxy in front of it has an image of its own and
+# changes rarely: --proxy adds the front door to the same release, --proxy-only
+# releases the front door alone, for when nothing else moved.
 #
 # No credentials and no DATABASE_URL: everything a release needs is already on
 # the app, put there once by scripts/fly-provision.sh. This script creates
@@ -33,40 +41,81 @@ usage() {
 # --- live --------------------------------------------------------------------
 
 deploy_live() {
-  require_secrets confluence-mirror-app "scripts/fly-provision.sh live" \
-    DATABASE_URL SECRET_KEY_BASE RELEASE_COOKIE \
-    CM_CONFLUENCE_SITE CM_ATL_EMAIL CM_ATL_TOKEN
-  require_secrets confluence-mirror "scripts/fly-provision.sh live" \
-    OAUTH2_PROXY_CLIENT_ID OAUTH2_PROXY_CLIENT_SECRET OAUTH2_PROXY_COOKIE_SECRET
+  local provision="scripts/fly-provision.sh live"
 
-  report_ready confluence-mirror-app confluence-mirror
+  if deploys_backend; then
+    require_secrets confluence-mirror-app "$provision" \
+      DATABASE_URL SECRET_KEY_BASE RELEASE_COOKIE \
+      CM_CONFLUENCE_SITE CM_ATL_EMAIL CM_ATL_TOKEN
+    report_ready confluence-mirror-app
+  else
+    # Nothing of the mirror is built, but the proxy's upstream is this app.
+    require_app confluence-mirror-app "$provision"
+  fi
+
+  if deploys_proxy; then
+    require_secrets confluence-mirror "$provision" \
+      OAUTH2_PROXY_CLIENT_ID OAUTH2_PROXY_CLIENT_SECRET OAUTH2_PROXY_COOKIE_SECRET
+    report_ready confluence-mirror
+  fi
+
   [ "$check" -eq 0 ] || return 0
 
-  release_backend confluence-mirror-app --flycast --no-public-ips
-  release_proxy confluence-mirror deploy/fly/proxy
+  if deploys_backend; then
+    release_backend confluence-mirror-app --flycast --no-public-ips
+  fi
+
+  if deploys_proxy; then
+    release_proxy confluence-mirror deploy/fly/proxy
+  fi
 }
 
 # --- demo --------------------------------------------------------------------
 
 deploy_demo() {
-  require_secrets confluence-mirror-demo-app "scripts/fly-provision.sh demo" \
-    DATABASE_URL SECRET_KEY_BASE RELEASE_COOKIE
-  require_secrets confluence-mirror-demo "scripts/fly-provision.sh demo" \
-    OAUTH2_PROXY_CLIENT_ID OAUTH2_PROXY_CLIENT_SECRET OAUTH2_PROXY_COOKIE_SECRET
+  local provision="scripts/fly-provision.sh demo"
 
-  report_ready confluence-mirror-demo-app confluence-mirror-demo
+  if deploys_backend; then
+    require_secrets confluence-mirror-demo-app "$provision" \
+      DATABASE_URL SECRET_KEY_BASE RELEASE_COOKIE
+    report_ready confluence-mirror-demo-app
+  else
+    # Nothing of the demo mirror is built, but the proxy's upstream is this app.
+    require_app confluence-mirror-demo-app "$provision"
+  fi
+
+  if deploys_proxy; then
+    require_secrets confluence-mirror-demo "$provision" \
+      OAUTH2_PROXY_CLIENT_ID OAUTH2_PROXY_CLIENT_SECRET OAUTH2_PROXY_COOKIE_SECRET
+    report_ready confluence-mirror-demo
+  fi
+
   [ "$check" -eq 0 ] || return 0
 
-  release_backend confluence-mirror-demo-app . \
-    --config deploy/fly/demo/fly.toml --flycast --no-public-ips
-  release_proxy confluence-mirror-demo deploy/fly/proxy \
-    --config deploy/fly/proxy/fly.demo.toml
+  if deploys_backend; then
+    release_backend confluence-mirror-demo-app . \
+      --config deploy/fly/demo/fly.toml --flycast --no-public-ips
+  fi
+
+  if deploys_proxy; then
+    release_proxy confluence-mirror-demo deploy/fly/proxy \
+      --config deploy/fly/proxy/fly.demo.toml
+  fi
 }
 
 # --- shared ------------------------------------------------------------------
 
+# What this run ships. The mirror is the default because the mirror is what a
+# version changes; the front door joins in only when asked.
+deploys_backend() { [ "$proxy_only" -eq 0 ]; }
+
+deploys_proxy() { [ "$with_proxy" -eq 1 ] || [ "$proxy_only" -eq 1 ]; }
+
 report_ready() {
-  echo "deployable: $1 and $2 are provisioned"
+  local app
+  for app in "$@"; do
+    echo "deployable: $app is provisioned"
+  done
 }
 
 # The mirror. `--flycast --no-public-ips` is the topology the proxy depends on:
@@ -113,12 +162,16 @@ seed_snapshot() {
 target=""
 check=0
 seed=0
+with_proxy=0
+proxy_only=0
 
 for arg in "$@"; do
   case "$arg" in
     live | demo) target=$arg ;;
     --check) check=1 ;;
     --sync) seed=1 ;;
+    --proxy) with_proxy=1 ;;
+    --proxy-only) proxy_only=1 ;;
     -h | --help)
       usage
       exit 0
@@ -132,6 +185,10 @@ done
 if [ -z "$target" ]; then
   usage >&2
   exit 64
+fi
+
+if [ "$with_proxy" -eq 1 ] && [ "$proxy_only" -eq 1 ]; then
+  die "--proxy and --proxy-only ask for different releases; give one"
 fi
 
 if [ "$seed" -eq 1 ] && [ "$target" != live ]; then

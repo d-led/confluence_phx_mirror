@@ -9,8 +9,9 @@
 #
 # (from the repository root: `fly deploy deploy/fly/proxy`).
 #
-# `scripts/fly-deploy.sh live` does it in the only order that works — the mirror
-# first, then this — because the upstream below is the mirror's Flycast address.
+# `scripts/fly-deploy.sh live --proxy` releases it after the mirror, in the only
+# order that works — the upstream below is the mirror's Flycast address, so a
+# proxy released first answers 502. `--proxy-only` releases just this app.
 #
 # Secrets it needs (none live in this file):
 #

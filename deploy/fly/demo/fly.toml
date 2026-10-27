@@ -20,8 +20,8 @@
 # the app still refuses the header unless CM_PROXY_AUTH says otherwise.
 #
 # `scripts/fly-provision.sh demo` creates the app, the volume and the secrets;
-# `scripts/fly-deploy.sh demo` deploys both apps, in order. Read
-# docs/deployment.md for the whole picture.
+# `scripts/fly-deploy.sh demo` deploys this app, and `--proxy` adds the demo's
+# front door after it. Read docs/deployment.md for the whole picture.
 
 app = "confluence-mirror-demo-app"
 primary_region = "ams"

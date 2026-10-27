@@ -123,12 +123,15 @@ Accounts, permissions, webhooks, themes:
 Two commands, one per question:
 
 ```bash
-./scripts/fly-provision.sh live   # once: apps, database, volume, secrets
-./scripts/fly-deploy.sh live      # every version: the mirror, then its proxy
+./scripts/fly-provision.sh live       # once: apps, database, volume, secrets
+./scripts/fly-deploy.sh live          # every version: the mirror
+./scripts/fly-deploy.sh live --proxy  # …and its front door, when that changed
 ```
 
 `--check` verifies that a deploy would work without deploying anything;
-`--sync` also queues a full snapshot afterwards.
+`--sync` also queues a full snapshot afterwards. A release ships the mirror and
+stops there — the oauth2-proxy has an image of its own and changes rarely, so it
+joins only with `--proxy`, or on its own with `--proxy-only`.
 
 **Done when** the proxy's URL answers and `/admin` shows the build you deployed.
 
