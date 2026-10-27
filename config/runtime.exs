@@ -449,7 +449,8 @@ config :confluence_phx_mirror,
            env_integer.(
              "CM_SYNC_DETAIL_BACKLOG",
              Keyword.get(sync_defaults, :detail_backlog, 200)
-           )
+           ),
+         paused: System.get_env("CM_SYNC_PAUSED", "false") in ["true", "1", "yes"]
        )
 
 if smtp_relay = System.get_env("SMTP_RELAY") do

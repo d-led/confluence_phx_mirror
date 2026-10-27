@@ -17,16 +17,32 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
 
   import ConfluencePhxMirrorWeb.AdminComponents
 
-  alias ConfluencePhxMirror.{Mirror, SpaceDirectory}
+  alias ConfluencePhxMirror.{Mirror, Settings, SpaceDirectory}
   alias ConfluencePhxMirror.Sync.SpaceScope
-  alias ConfluencePhxMirrorWeb.Admin.SettingsRefusal
+  alias ConfluencePhxMirrorWeb.Admin.{Paging, SettingsRefusal}
   alias ConfluencePhxMirrorWeb.Time
 
-  @mirrored_window 50
+  # A mirror can hold hundreds of spaces, so the list is a page of them with a
+  # filter over all of them — never the newest handful and a note.
+  @per_page 25
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, socket |> assign(page_title: "Spaces") |> load()}
+    {:ok, socket |> assign(page_title: "Spaces", q: "", page: 1) |> load()}
+  end
+
+  # Which page and which filter are the address, so a colleague can be sent the
+  # question instead of the screen it was asked on.
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(q: Paging.query(params), page: Paging.page_number(params["page"]))
+     |> load()}
+  end
+
+  def handle_event("filter", %{"q" => q}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/admin/spaces?#{[q: q, page: 1]}")}
   end
 
   @impl true
@@ -66,12 +82,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
   end
 
   def handle_event("refresh", _params, socket) do
-    case SpaceDirectory.refresh() do
-      {:ok, _spaces} ->
-        {:noreply, socket |> load() |> put_flash(:info, "Confluence was asked again.")}
+    if socket.assigns.paused? do
+      {:noreply, put_flash(socket, :error, suspended_message())}
+    else
+      case SpaceDirectory.refresh() do
+        {:ok, _spaces} ->
+          {:noreply, socket |> load() |> put_flash(:info, "Confluence was asked again.")}
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Confluence did not answer: #{inspect(reason)}")}
+        {:error, :paused} ->
+          {:noreply, put_flash(socket, :error, suspended_message())}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Confluence did not answer: #{inspect(reason)}")}
+      end
     end
   end
 
@@ -100,7 +123,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
         subtitle="What this mirror imports, and what it could import next."
       >
         <:actions>
-          <button type="button" phx-click="refresh" id="refresh-spaces" class="btn btn-outline btn-sm">
+          <button
+            type="button"
+            phx-click="refresh"
+            id="refresh-spaces"
+            class="btn btn-outline btn-sm"
+            disabled={@paused?}
+            title={if @paused?, do: "Confluence calls are paused — resume in Settings"}
+          >
             Check Confluence
           </button>
         </:actions>
@@ -150,7 +180,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
           Mirrored
         </h2>
 
-        <p :if={@mirrored == []} class="mt-2 text-xs text-base-content/70">
+        <.list_filter
+          id="mirrored-filter"
+          query={@q}
+          label="Filter the mirrored spaces by name or key"
+          placeholder="Name or key"
+        />
+
+        <p :if={@mirrored == [] and @q != ""} id="no-mirrored-match" class="mt-2 text-xs">
+          No space here matches “{@q}”. The filter covers every mirrored space, not this page.
+        </p>
+
+        <p :if={@mirrored == [] and @q == ""} class="mt-2 text-xs text-base-content/70">
           Nothing is mirrored yet — the first sync decides what arrives.
         </p>
 
@@ -173,16 +214,25 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
           </tbody>
         </table>
 
-        <p :if={length(@mirrored) >= @window} class="mt-2 text-[11px] text-base-content/70">
-          The {@window} most recently read. <a href={~p"/spaces"}>The space directory</a> lists them
-          all.
-        </p>
+        <.list_pager
+          id="mirrored-pager"
+          path="/admin/spaces"
+          page={@page}
+          total={@mirrored_total}
+          per_page={@per_page}
+          params={%{"q" => @q}}
+        />
       </section>
 
       <section :if={@wanted != :all} class="mt-4 rounded-xl border border-base-300/70 bg-base-100 p-4">
         <h2 class="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/70">
           Add a space
         </h2>
+
+        <p :if={@offers == {:error, :paused}} class="mt-2 text-xs">
+          Confluence calls are paused, so there is no list to choose from — the keys below are what
+          was added before the pause. <a href={~p"/admin/settings"} class="link">Resume in Settings</a>.
+        </p>
 
         <p :if={@offers == {:error, :unreachable}} class="mt-2 text-xs text-base-content/70">
           Confluence did not answer, so there is no list to choose from. <em>Check Confluence</em>
@@ -241,12 +291,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
   end
 
   defp load(socket) do
+    %{q: q, page: page} = socket.assigns
+
     assign(socket,
+      paused?: Settings.sync_paused?(),
       wanted: SpaceScope.wanted(),
       fixed: SpaceScope.fixed(),
       added: SpaceScope.added(),
-      window: @mirrored_window,
-      mirrored: Mirror.spaces_by_last_sync(@mirrored_window),
+      per_page: @per_page,
+      mirrored:
+        Mirror.spaces_by_last_sync(@per_page,
+          query: q,
+          offset: Paging.offset(page, @per_page)
+        ),
+      mirrored_total: Mirror.count_mirrored_spaces(query: q),
       offers: offers(),
       add_key: socket.assigns[:add_key] || "",
       space_suggestions: socket.assigns[:space_suggestions] || []
@@ -267,6 +325,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
     "This mirror imports every space, so naming one would narrow it to the keys you name. Set CM_SPACES first."
   end
 
+  defp suspended_message do
+    "Confluence calls are paused, so nothing was asked. Resume the sync in Settings."
+  end
+
   # Only what is not already imported is worth offering: a mirror that takes
   # everything has nothing left, and a personal space is never what an operator
   # means to publish.
@@ -279,6 +341,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
           |> Enum.sort_by(&{&1[:name], &1.key})
 
         {:ok, offered}
+
+      {:error, :paused} ->
+        {:error, :paused}
 
       {:error, _reason} ->
         {:error, :unreachable}

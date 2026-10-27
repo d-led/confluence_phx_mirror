@@ -333,10 +333,24 @@ defmodule ConfluencePhxMirror.Webhooks do
     )
   end
 
-  @doc "Recent deliveries for the admin view."
-  def recent(limit \\ 50) do
-    Repo.all(from d in Delivery, order_by: [desc: d.received_at], limit: ^limit)
+  @doc """
+  Recent deliveries for the admin view, newest first.
+
+  Options: `:limit` — what one page of them shows — and `:offset`.
+  """
+  def recent(opts \\ []) do
+    opts = if is_integer(opts), do: [limit: opts], else: opts
+
+    Repo.all(
+      from d in Delivery,
+        order_by: [desc: d.received_at, desc: d.id],
+        limit: ^Keyword.get(opts, :limit, 50),
+        offset: ^Keyword.get(opts, :offset, 0)
+    )
   end
+
+  @doc "How many deliveries the intake has recorded — what the list pages through."
+  def count_deliveries, do: Repo.aggregate(from(d in Delivery), :count)
 
   @doc "Pages touched by webhooks that are not in the mirror yet (diagnostics)."
   def unknown_pages do

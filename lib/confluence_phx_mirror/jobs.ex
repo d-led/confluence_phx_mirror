@@ -58,14 +58,25 @@ defmodule ConfluencePhxMirror.Jobs do
   An unknown state reads as "all": the filter is a parameter a reader can edit,
   and a page that refuses to show the table because of a typo is worse than a
   page that shows everything.
+
+  Options: `:limit` (what one page shows) and `:offset` (where it starts).
   """
-  @spec list(String.t(), pos_integer()) :: [Job.t()]
-  def list(state \\ "all", limit \\ @limit) do
+  @spec list(String.t(), keyword()) :: [Job.t()]
+  def list(state \\ "all", opts \\ []) do
     Job
     |> by_state(state)
     |> order_by([j], desc: j.id)
-    |> limit(^limit)
+    |> limit(^Keyword.get(opts, :limit, @limit))
+    |> offset(^Keyword.get(opts, :offset, 0))
     |> Repo.all()
+  end
+
+  @doc "How many jobs are in `state` — what the list is paging through."
+  @spec count(String.t()) :: non_neg_integer()
+  def count(state \\ "all") do
+    Job
+    |> by_state(state)
+    |> Repo.aggregate(:count)
   end
 
   defp by_state(query, state) when state in @states, do: where(query, [j], j.state == ^state)

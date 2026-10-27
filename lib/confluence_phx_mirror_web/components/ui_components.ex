@@ -279,8 +279,10 @@ defmodule ConfluencePhxMirrorWeb.UIComponents do
   end
 
   # A row may name itself (`:dom_id`), which is what lets a test or a hook
-  # address one line of the table.
-  defp row_id(row) when is_map(row), do: row[:dom_id]
+  # address one line of the table. A struct is not a map with Access, so the key
+  # is matched rather than indexed: a delivery names no line, and a row map
+  # that does still gets its id.
+  defp row_id(%{dom_id: id}), do: id
   defp row_id(_row), do: nil
 
   @typedoc """

@@ -11,6 +11,8 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
 
   use ConfluencePhxMirrorWeb, :html
 
+  alias ConfluencePhxMirrorWeb.Admin.Paging
+
   @sections [
     {"Monitoring",
      [
@@ -131,6 +133,78 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
   defp page!(key) do
     {^key, label, icon} = Enum.find(@pages, fn {candidate, _label, _icon} -> candidate == key end)
     %{label: label, icon: icon}
+  end
+
+  @doc """
+  A list's filter: one field, and the answer travels in the URL.
+
+  A filter that lives in the address is a filter a colleague can be sent, and
+  the back button returns to the question before it. `:event` is the LiveView's
+  own event name, so a screen whose filter already has one keeps it.
+  """
+  attr :id, :string, required: true
+  attr :query, :string, default: ""
+  attr :label, :string, required: true, doc: "what the field filters, for a screen reader"
+  attr :event, :string, default: "filter"
+  attr :placeholder, :string, default: "Filter"
+
+  def list_filter(assigns) do
+    ~H"""
+    <form id={@id} phx-change={@event} phx-submit={@event} class="mt-2">
+      <label class="sr-only" for={"#{@id}-input"}>{@label}</label>
+      <input
+        type="search"
+        id={"#{@id}-input"}
+        name="q"
+        value={@query}
+        phx-debounce="200"
+        placeholder={@placeholder}
+        class="input input-sm w-full max-w-xs"
+      />
+    </form>
+    """
+  end
+
+  @doc """
+  "page 2 of 40 · 987 in total" with Previous and Next, in the URL.
+
+  A list is never cut off: whatever a screen holds, the pager reaches the end of
+  it, and the filter being typed travels with the page number — otherwise the
+  second page would answer a different question than the first.
+  """
+  attr :id, :string, required: true
+  attr :path, :string, required: true, doc: "the list's own address, without a query"
+  attr :page, :integer, required: true
+  attr :total, :integer, required: true
+  attr :per_page, :integer, required: true
+  attr :params, :map, default: %{}, doc: "the list's other query parameters, kept across pages"
+
+  def list_pager(assigns) do
+    assigns = assign(assigns, :pages, Paging.page_count(assigns.total, assigns.per_page))
+
+    ~H"""
+    <div :if={@pages > 1} id={@id} class="mt-3 flex flex-wrap items-center justify-between gap-2">
+      <span class="text-[11px] text-base-content/70">
+        page {@page} of {@pages} · {@total} in total
+      </span>
+      <div class="flex gap-1.5">
+        <.link
+          :if={@page > 1}
+          patch={Paging.href(@path, Map.put(@params, "page", @page - 1))}
+          class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
+        >
+          Previous
+        </.link>
+        <.link
+          :if={@page < @pages}
+          patch={Paging.href(@path, Map.put(@params, "page", @page + 1))}
+          class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
+        >
+          Next
+        </.link>
+      </div>
+    </div>
+    """
   end
 
   @doc """

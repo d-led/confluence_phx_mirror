@@ -12,6 +12,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.BuildInfo
   alias ConfluencePhxMirror.Confluence.Source
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirrorWeb.Skins
   alias ConfluencePhxMirrorWeb.Time
 
@@ -359,6 +360,11 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
               Last sync {Time.ago(@last_sync_run.finished_at || @last_sync_run.started_at)}
             </span>
             <span :if={is_nil(@last_sync_run)} class="text-warning">Never synced</span>
+            <%!-- A reader who notices that a page is old deserves the reason in the
+            same line as the age: the mirror is not broken, it is paused. --%>
+            <span :if={paused?()} id="mirror-paused" class="text-warning">
+              · updates paused
+            </span>
           </div>
           <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
             <a
@@ -484,6 +490,10 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
       :live -> "Confluence REST API"
     end
   end
+
+  # The footer says the mirror is paused next to how old it is, because those
+  # two facts are one question to a reader: "is this page current?".
+  defp paused?, do: Settings.sync_paused?()
 
   # Where this software lives, for the footer's source link. A fork that does
   # not want the upstream link drops the config key.

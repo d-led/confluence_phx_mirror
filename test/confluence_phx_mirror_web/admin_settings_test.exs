@@ -44,6 +44,15 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     assert Settings.stored("sync.spaces") == ["PROD", "ENG"]
   end
 
+  test "a boolean is one click, not two", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    # The box sits inside its label, so the label must not also point at it:
+    # a `for` there delivers the click twice and lands back where it started.
+    assert has_element?(view, ~s([id="setting-notifications.enabled-input"]))
+    refute has_element?(view, ~s(label[for="setting-notifications.enabled-input"]))
+  end
+
   test "an administrator sets the theme every reader wears", %{conn: conn} do
     conn = sign_in(conn, admin_user())
     {:ok, view, html} = live(conn, ~p"/admin/settings")

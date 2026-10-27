@@ -15,17 +15,28 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
 
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Webhooks
+  alias ConfluencePhxMirrorWeb.Admin.Paging
   alias ConfluencePhxMirrorWeb.Plugs.WebhookRateLimit
   alias ConfluencePhxMirrorWeb.Time
 
   @refresh_ms 5_000
-  @deliveries 50
+  # An intake that has been on for a week has more deliveries than a screen, so
+  # the list is a page of them and pages through the rest.
+  @per_page 25
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: :timer.send_interval(@refresh_ms, self(), :refresh)
 
-    {:ok, assign(socket, page_title: "Webhooks") |> load()}
+    {:ok, assign(socket, page_title: "Webhooks", page: 1) |> load()}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(page: Paging.page_number(params["page"]))
+     |> load()}
   end
 
   @impl true
@@ -115,9 +126,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
     config = Application.get_env(:confluence_phx_mirror, :webhooks, [])
     tokens = Application.get_env(:confluence_phx_mirror, :webhook_tokens, %{})
     {intake_limit, _period_ms} = WebhookRateLimit.config()
+    page = socket.assigns[:page] || 1
 
     assign(socket,
-      deliveries: Webhooks.recent(@deliveries),
+      paused?: Settings.sync_paused?(),
+      deliveries: Webhooks.recent(limit: @per_page, offset: Paging.offset(page, @per_page)),
+      deliveries_total: Webhooks.count_deliveries(),
+      per_page: @per_page,
       secret?: is_binary(config[:secret]),
       receivers: map_size(tokens),
       intake_enabled?: Webhooks.enabled?(),
@@ -172,6 +187,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
         The intake is off. Every delivery is answered like a path that does not exist — nothing
         tells an anonymous caller that a webhook lives here — and nothing is stored, so the site
         cannot trigger a sync. Changes still arrive with the scheduled pull.
+      </div>
+
+      <div
+        :if={@paused?}
+        id="webhook-paused"
+        class="mt-4 rounded-xl bg-warning/15 p-3 text-xs"
+      >
+        Confluence calls are paused. Deliveries that arrive are still recorded and still shown
+        below, but the sync they ask for waits: nothing is read from the site until the pause is
+        lifted in <a href={~p"/admin/settings"} class="link">Settings</a>.
       </div>
 
       <div
@@ -395,6 +420,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
           </:row>
           <:empty>No deliveries yet.</:empty>
         </.data_table>
+
+        <.list_pager
+          id="deliveries-pager"
+          path="/admin/webhooks"
+          page={@page}
+          total={@deliveries_total}
+          per_page={@per_page}
+        />
       </section>
     </Layouts.app>
     """

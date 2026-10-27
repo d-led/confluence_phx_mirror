@@ -30,10 +30,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
   import ConfluencePhxMirrorWeb.AdminComponents
 
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirrorWeb.Admin.Paging
 
-  # The directory is searched, not browsed: a page of forty is enough to work
-  # through, and the filter runs in the database.
-  @page_window 40
+  # The directory is searched and paged: a site with hundreds of spaces costs the
+  # same as a site with a dozen, and every space is still reachable.
+  @per_page 25
 
   @impl true
   def mount(_params, _session, socket) do
@@ -61,7 +62,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
   def handle_params(params, _uri, socket) do
     {:noreply,
      socket
-     |> assign(q: params["q"] || "")
+     |> assign(q: params["q"] || "", list_page: Paging.page_number(params["page"]))
      |> clear_grant_dialog()
      |> open_target(socket.assigns.live_action, params)
      |> load()}
@@ -112,7 +113,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
 
   @impl true
   def handle_event("filter", %{"q" => q}, socket) do
-    {:noreply, push_patch(socket, to: list_path(q))}
+    {:noreply, push_patch(socket, to: list_path(q, 1))}
   end
 
   def handle_event("inspect", %{"space_key" => key}, socket) do
@@ -195,11 +196,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
   end
 
   def handle_event("close", _params, socket) do
-    {:noreply, push_patch(socket, to: list_path(socket.assigns.q))}
+    {:noreply, push_patch(socket, to: list_path(socket.assigns.q, socket.assigns.list_page || 1))}
   end
-
-  defp list_path(blank) when blank in [nil, ""], do: ~p"/admin/permissions"
-  defp list_path(q), do: ~p"/admin/permissions?#{[q: q]}"
 
   defp inspect_space(socket, space) do
     assign(socket,
@@ -375,13 +373,32 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
   defp actor(%{assigns: %{current_user: user}}), do: {:user, user}
 
   defp load(socket) do
-    spaces = Mirror.list_spaces(limit: @page_window, query: socket.assigns.q)
+    %{q: q} = socket.assigns
+    page = socket.assigns[:list_page] || 1
+
+    spaces =
+      Mirror.list_spaces(
+        limit: @per_page,
+        offset: Paging.offset(page, @per_page),
+        query: q
+      )
 
     assign(socket,
       spaces: spaces,
+      per_page: @per_page,
+      spaces_total: Mirror.count_listed_spaces(query: q),
       access: Mirror.space_access_by(Enum.map(spaces, & &1.id))
     )
   end
+
+  defp list_path(blank, page) when blank in [nil, ""] and page == 1, do: ~p"/admin/permissions"
+
+  defp list_path(q, page),
+    do: ~p"/admin/permissions?#{Enum.reject([q: q, page: page], &blank_param?/1)}"
+
+  defp blank_param?({:q, q}), do: q in [nil, ""]
+  defp blank_param?({:page, page}), do: page in [nil, 1]
+  defp blank_param?(_pair), do: false
 
   @impl true
   def render(assigns) do
@@ -623,6 +640,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
           </div>
         </li>
       </ul>
+
+      <.list_pager
+        id="spaces-pager"
+        path="/admin/permissions"
+        page={@list_page || 1}
+        total={@spaces_total}
+        per_page={@per_page}
+        params={%{"q" => @q}}
+      />
     </Layouts.app>
     """
   end

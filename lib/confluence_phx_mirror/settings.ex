@@ -134,6 +134,17 @@ defmodule ConfluencePhxMirror.Settings do
   def sync_lookback_seconds, do: effective("sync.lookback_seconds")
 
   @doc """
+  Whether Confluence calls are paused.
+
+  A paused mirror reads nothing from the site: runs are refused before they
+  start, queued jobs wait for the resume, and the screens that would otherwise
+  say "sync now" say why they cannot. Reader pages keep serving what is already
+  mirrored, and say that it is what was there when the pause began.
+  """
+  @spec sync_paused?() :: boolean()
+  def sync_paused?, do: effective("sync.paused") == true
+
+  @doc """
   Space keys an administrator added on top of the deployment's own list.
 
   Empty means "none added", never "no spaces": the deployment's `CM_SPACES` is

@@ -39,6 +39,11 @@ defmodule ConfluencePhxMirror.Sync.SnapshotWorker do
       {:ok, _run} ->
         :ok
 
+      {:error, :paused} ->
+        # Nothing is read from the site while the pause is on; the job keeps its
+        # place in the queue and comes back after the operator resumes.
+        Sync.paused_wait()
+
       {:error, :already_running} ->
         Logger.info("a sync is already running; this scheduled pull waits for the next tick")
         :ok

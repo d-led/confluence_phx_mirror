@@ -33,6 +33,9 @@ defmodule ConfluencePhxMirror.Sync.PageWorker do
       {:ok, _run} ->
         :ok
 
+      {:error, :paused} ->
+        Sync.paused_wait()
+
       {:error, :already_running} ->
         Sync.wait_or_stand_down()
     end

@@ -292,6 +292,40 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     refute has_element?(view, "#upstream-in-flight")
   end
 
+  describe "a list that outgrew a screen" do
+    test "pages through every missing page instead of the newest handful", %{
+      conn: conn,
+      space: space,
+      absent: absent
+    } do
+      for index <- 1..30, do: page_fixture(space, %{title: "Missing #{index}"})
+      mark_absent(space, absent)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+
+      assert view |> element("#absent-pager") |> render() =~ "page 1 of 2"
+      assert has_element?(view, ~s(#absent-pager a[href="/admin/upstream?page=2"]))
+
+      {:ok, second, _html} = live(conn, ~p"/admin/upstream?page=2")
+
+      assert second |> element("#absent-pager") |> render() =~ "page 2 of 2"
+    end
+
+    test "the filter runs over every missing page, not the page on screen", %{
+      conn: conn,
+      space: space,
+      absent: absent
+    } do
+      page_fixture(space, %{confluence_id: 1003, title: "Still wanted"})
+      mark_absent(space, absent)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/upstream?q=vanished")
+
+      assert render(view) =~ "Vanished Page"
+      refute render(view) =~ "Still wanted"
+    end
+  end
+
   # The verify pass is what sets this, so the test sets it the same way rather
   # than reaching into the page row.
   defp mark_absent(space, page) do

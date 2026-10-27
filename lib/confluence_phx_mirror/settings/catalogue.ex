@@ -120,6 +120,16 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       env: "CM_SPACES",
       ui: :settings
     },
+    "sync.paused" => %{
+      type: :boolean,
+      default: {:sync, :paused, false},
+      group: :sync,
+      label: "Pause Confluence calls",
+      help:
+        "Nothing is read from the site while this is on: runs are refused, queued jobs wait, and the screens say the mirror is paused. Reader pages keep serving what is already mirrored.",
+      env: "CM_SYNC_PAUSED",
+      ui: :settings
+    },
     "sync.concurrency" => %{
       type: :pos_integer,
       default: {:source, :sync_concurrency, 4},
@@ -266,6 +276,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "search.default_limit",
     "search.max_results",
     "sync.spaces",
+    "sync.paused",
     "sync.concurrency",
     "sync.detail_backlog",
     "sync.lookback_seconds",

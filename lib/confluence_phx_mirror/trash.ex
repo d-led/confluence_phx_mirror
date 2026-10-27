@@ -25,6 +25,9 @@ defmodule ConfluencePhxMirror.Trash do
   @doc "Trashed pages and blog posts that did not go with a trashed space."
   def pages(opts \\ []), do: Mirror.trashed_pages(opts)
 
+  @doc "How many pages are in the trash, under the filter the screen shows."
+  def count_pages(opts \\ []), do: Mirror.count_trashed_pages(opts)
+
   @doc "Whether there is anything at all to purge."
   def empty? do
     spaces() == [] and pages(limit: 1) == []

@@ -46,7 +46,7 @@ defmodule ConfluencePhxMirror.Sync do
     SyncRun
   }
 
-  @type mode :: :snapshot | :incremental | :space | :page
+  @type mode :: :snapshot | :incremental | :space | :page | :people
   @type report :: {:ok, SyncRun.t()}
 
   # ---------------------------------------------------------------------------
@@ -70,29 +70,46 @@ defmodule ConfluencePhxMirror.Sync do
     * `:gate` – what keeps two runs apart, defaults to `Sync.Gate`; a caller that
       owns the mirror outright (a test with its own database) may pass its own
   """
-  @spec run(mode(), keyword()) :: report()
+  @spec run(mode(), keyword()) :: report() | {:error, :already_running} | {:error, :paused}
   def run(mode, opts \\ []) do
     gate = Keyword.get(opts, :gate, Gate)
 
-    # A `running` row whose owner is gone is not a run in flight. Clear those
-    # before taking the lock, because while we hold it we cannot tell ours from
-    # anyone else's.
-    abandon_abandoned_runs()
+    if Settings.sync_paused?() do
+      # Refused before a row is written and before the source is asked: a paused
+      # mirror makes no calls, and a run that did not happen is not a failure to
+      # report. The workers turn this into a wait (see `paused_wait/0`).
+      {:error, :paused}
+    else
+      # A `running` row whose owner is gone is not a run in flight. Clear those
+      # before taking the lock, because while we hold it we cannot tell ours from
+      # anyone else's.
+      abandon_abandoned_runs()
 
-    case gate.exclusive(fn gate_owner ->
-           run_locked(mode, Keyword.put(opts, :gate_owner, gate_owner))
-         end) do
-      {:ok, result} ->
-        # The run just moved the mirror: publish the totals now, rather than
-        # leaving it to the poller's next tick. A run that changed nothing
-        # publishes the same numbers, which costs one point on a chart.
-        Metrics.publish()
-        result
+      case gate.exclusive(fn gate_owner ->
+             run_locked(mode, Keyword.put(opts, :gate_owner, gate_owner))
+           end) do
+        {:ok, result} ->
+          # The run just moved the mirror: publish the totals now, rather than
+          # leaving it to the poller's next tick. A run that changed nothing
+          # publishes the same numbers, which costs one point on a chart.
+          Metrics.publish()
+          result
 
-      {:error, :already_running} = busy ->
-        busy
+        {:error, :already_running} = busy ->
+          busy
+      end
     end
   end
+
+  @doc """
+  What a job should do when the mirror is paused: come back later.
+
+  A snooze keeps the job (and its place in the queue) instead of failing it, and
+  does not spend an attempt — a pause of an hour must not turn into a `discarded`
+  job that a resume then never repairs.
+  """
+  @spec paused_wait() :: {:snooze, pos_integer()}
+  def paused_wait, do: {:snooze, 300}
 
   defp run_locked(mode, opts) do
     source = Keyword.get(opts, :source, Source.source())
@@ -535,18 +552,23 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp sync_account_statuses(source, opts) do
     if function_exported?(source, :user_status, 2) do
-      account_ids()
+      account_ids(opts)
       |> Enum.reduce({0, []}, fn id, acc -> check_account(source, id, acc, opts) end)
     else
       {0, []}
     end
   end
 
-  defp account_ids do
-    (Accounts.account_ids() ++ Mirror.member_account_ids() ++ Mirror.account_ids())
-    |> Enum.reject(&(&1 in [nil, ""]))
-    |> Enum.uniq()
-    |> Enum.take(@max_account_checks)
+  defp account_ids(opts) do
+    ids =
+      (Accounts.account_ids() ++ Mirror.member_account_ids() ++ Mirror.account_ids())
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.uniq()
+
+    case Keyword.get(opts, :people_limit, @max_account_checks) do
+      :all -> ids
+      limit -> Enum.take(ids, limit)
+    end
   end
 
   defp check_account(source, account_id, {checked, errors}, opts) do
@@ -671,6 +693,29 @@ defmodule ConfluencePhxMirror.Sync do
          permission_errors ++
          people_errors ++ newcomer_errors ++ detail_errors ++ group_errors}
     end
+  end
+
+  # The people half of a run, on request: every identity the mirror knows is
+  # asked which groups it is in, and every group the content names is read for
+  # its members. No page is listed and no page body is read, so it is cheap
+  # enough for "somebody was added to a group, say so now".
+  defp do_run(:people, source, opts) do
+    # The operator asked exactly this question, so the per-run cap that keeps a
+    # snapshot bounded does not apply.
+    opts = Keyword.put(opts, :people_limit, :all)
+
+    record_phase(opts, "people")
+    {members, people_errors, _refreshed} = sync_groups(source, opts)
+
+    record_phase(opts, "groups")
+    {group_rows, group_errors} = refresh_groups(source, opts)
+
+    stats =
+      %{changed: 0, unchanged: 0}
+      |> page_counts()
+      |> Map.put("group_members", members + group_rows)
+
+    {stats, people_errors ++ group_errors}
   end
 
   defp do_run(:page, source, opts) do
@@ -1157,12 +1202,15 @@ defmodule ConfluencePhxMirror.Sync do
 
   # A snapshot meets a lot of people, and every one of them is a request, so the
   # sweep is capped; the order is stable, so the same people are refreshed.
+  # `:people_limit` lifts the cap for a run that was asked about everyone.
   @max_membership_checks 200
 
   defp refresh_memberships(source, opts, only) do
+    limit = Keyword.get(opts, :people_limit, @max_membership_checks)
+
     if function_exported?(source, :groups_of_account, 2) do
       only
-      |> identities_to_refresh()
+      |> identities_to_refresh(limit)
       |> Enum.reduce({[], 0, []}, fn identity, {refreshed, stored, errors} ->
         {saved, new_errors} = refresh_membership(source, identity, opts)
         {[identity.account_id | refreshed], stored + saved, errors ++ new_errors}
@@ -1174,15 +1222,16 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
-  defp identities_to_refresh(:everyone) do
-    Mirror.known_identities() |> Enum.take(@max_membership_checks)
-  end
+  defp identities_to_refresh(:everyone, limit), do: capped(Mirror.known_identities(), limit)
 
-  defp identities_to_refresh(%MapSet{} = only) do
+  defp identities_to_refresh(%MapSet{} = only, limit) do
     Mirror.known_identities()
     |> Enum.filter(&MapSet.member?(only, &1.account_id))
-    |> Enum.take(@max_membership_checks)
+    |> capped(limit)
   end
+
+  defp capped(identities, :all), do: identities
+  defp capped(identities, limit), do: Enum.take(identities, limit)
 
   defp refresh_membership(source, identity, opts) do
     case source.groups_of_account(identity.account_id, opts) do
@@ -2102,6 +2151,7 @@ defmodule ConfluencePhxMirror.Sync do
   defp mode_to_string(:snapshot), do: "snapshot"
   defp mode_to_string(:incremental), do: "incremental"
   defp mode_to_string(:space), do: "incremental"
+  defp mode_to_string(:people), do: "people"
   defp mode_to_string(:page), do: "webhook"
 
   # What a run covers. `mode` is how it was asked for, and it cannot tell a space
@@ -2109,6 +2159,7 @@ defmodule ConfluencePhxMirror.Sync do
   # say which space a run touched.
   defp scope_of(:space, opts), do: "space #{Keyword.fetch!(opts, :space_key)}"
   defp scope_of(:page, opts), do: "page #{Keyword.fetch!(opts, :confluence_id)}"
+  defp scope_of(:people, _opts), do: "people and groups"
   defp scope_of(_mode, _opts), do: "whole site"
 
   defp default_since(source) do

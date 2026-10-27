@@ -307,6 +307,25 @@ defmodule ConfluencePhxMirror.SyncTest do
     end
   end
 
+  describe "people and groups" do
+    test "a people run reads memberships and statuses, and lists no page" do
+      assert {:ok, _snapshot} = Sync.run(:snapshot)
+      pages = Repo.aggregate(Page, :count)
+
+      assert {:ok, run} = Sync.run(:people)
+
+      assert run.mode == "people"
+      assert run.scope == "people and groups"
+      # Nothing was listed or re-read: the mirror holds the same pages, and the
+      # run says it did no page work at all.
+      assert Repo.aggregate(Page, :count) == pages
+      assert run.stats["pages"] == 0
+      assert run.stats["changed"] == 0
+      assert run.stats["group_members"] > 0
+      assert run.stats["accounts"] > 0
+    end
+  end
+
   describe "page sync" do
     test "picks up a page that changed upstream, bumps the version and reindexes it" do
       demo_snapshot!()

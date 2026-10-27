@@ -337,9 +337,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   defp setting_field(%{field: %{type: :boolean}} = assigns) do
     ~H"""
     <div>
+      <%!-- The input sits inside the label, so the label must not also point at
+      it with `for`: a click on the box would then be delivered twice — once to
+      the box and once by the label — and land back where it started. --%>
       <label
         id={"setting-#{@field.key}"}
-        for={"setting-#{@field.key}-input"}
         class="flex items-start justify-between gap-4"
       >
         <span class="min-w-0">

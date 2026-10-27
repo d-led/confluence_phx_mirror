@@ -21,6 +21,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Settings
+  alias ConfluencePhxMirror.Sync.PeopleWorker
   alias ConfluencePhxMirrorWeb.Admin.Paging
 
   @page_size 25
@@ -32,6 +34,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
      assign(socket,
        people_query: "",
        people_page: 1,
+       paused?: Settings.sync_paused?(),
        account_pick: nil,
        account_query: "",
        account_results: nil,
@@ -68,6 +71,26 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
 
   def handle_event("pick_identity", params, socket), do: pick_identity(params, socket)
   def handle_event("search_identity", params, socket), do: search_identity(params, socket)
+
+  # Asking Confluence again is a run of its own: it reads who is in which group,
+  # and no page at all. It is queued rather than awaited, because the answer is
+  # seconds to minutes away and the screen has nothing to show until then.
+  def handle_event("sync_people", _params, socket) do
+    args = %{"trigger" => "the identities screen, by #{socket.assigns.current_user.email}"}
+
+    case args |> PeopleWorker.new() |> Oban.insert() do
+      {:ok, _job} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           "Reading the site's groups and memberships — this runs in the background. Its progress is in Jobs."
+         )}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not queue it: #{inspect(reason)}")}
+    end
+  end
 
   # The search lives in the URL: a site can name a hundred thousand identities,
   # and a colleague should be able to send a link to the one they mean.
@@ -333,7 +356,25 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
       <.admin_header
         title="Confluence identities"
         subtitle="The Atlassian accounts the content names, and the account each one stands for here."
-      />
+      >
+        <:actions>
+          <button
+            type="button"
+            id="sync-identities"
+            phx-click="sync_people"
+            class="btn btn-outline btn-sm"
+            disabled={@paused?}
+            title={if @paused?, do: "Confluence calls are paused — resume in Settings"}
+          >
+            Sync with Confluence
+          </button>
+        </:actions>
+      </.admin_header>
+
+      <p :if={@paused?} id="identities-paused" class="mt-3 max-w-3xl text-xs">
+        Confluence calls are paused, so memberships cannot be re-read now — these are the groups the
+        last run stored. <a href={~p"/admin/settings"} class="link">Resume in Settings</a>.
+      </p>
 
       <p class="mt-4 max-w-3xl text-xs text-base-content/70">
         Confluence Cloud lists no site users, so these are the identities the mirror has evidence

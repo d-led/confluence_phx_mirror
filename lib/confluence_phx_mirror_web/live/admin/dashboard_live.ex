@@ -49,12 +49,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     end
 
     {:ok,
-     assign(socket,
-       page_title: "Overview",
-       open_menu: nil,
-       space_query: "",
-       sync_spaces: spaces_like("")
-     )
+     socket
+     |> assign(page_title: "Overview", open_menu: nil, space_query: "")
+     |> assign(spaces_like(""))
      |> load()}
   end
 
@@ -104,11 +101,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   end
 
   defp close_menu(_params, socket) do
-    {:noreply, assign(socket, open_menu: nil, space_query: "", sync_spaces: spaces_like(""))}
+    {:noreply, socket |> assign(open_menu: nil, space_query: "") |> assign(spaces_like(""))}
   end
 
   defp space_query(%{"space" => query}, socket) do
-    {:noreply, assign(socket, space_query: query, sync_spaces: spaces_like(query))}
+    {:noreply, socket |> assign(:space_query, query) |> assign(spaces_like(query))}
   end
 
   defp snapshot(_params, socket) do
@@ -140,7 +137,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     {:noreply,
      socket
      |> put_flash(:info, "Space #{key} queued for refresh.")
-     |> assign(open_menu: nil, space_query: "", sync_spaces: spaces_like(""))}
+     |> assign(open_menu: nil, space_query: "")
+     |> assign(spaces_like(""))}
   end
 
   # A cancel either exits the process doing the work (this node) or records the
@@ -178,8 +176,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   end
 
   # The menu's list is a database answer: name or key contains the words typed,
-  # a window of twenty, alphabetical. Nothing is filtered in the browser.
-  defp spaces_like(query), do: Mirror.list_spaces(query: query, limit: @space_window)
+  # a window of twenty, alphabetical. Nothing is filtered in the browser. When
+  # the window is not the whole answer the panel says so, and points at the
+  # screen that pages through all of them.
+  defp spaces_like(query) do
+    [
+      sync_spaces: Mirror.list_spaces(query: query, limit: @space_window),
+      sync_spaces_more?: Mirror.count_listed_spaces(query: query) > @space_window
+    ]
+  end
 
   # What the find box in "sync one space" offers: the name a reader looks for
   # and the key they recognise, nothing else.
@@ -309,6 +314,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       )
 
     assign(socket,
+      paused?: ConfluencePhxMirror.Settings.sync_paused?(),
       stats: Mirror.stats(),
       # What this node occupies and the room beside it: the mount is the last
       # measurement (a walk of every attachment file, once a minute), the
@@ -438,6 +444,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
                 value_param="key"
                 pending="Queueing…"
               />
+              <p :if={@sync_spaces_more?} class="mt-1 px-1 text-[11px] text-base-content/70">
+                More spaces match — type more of the name, or <a
+                  href={~p"/admin/spaces?q=#{@space_query}"}
+                  class="link"
+                >see them all</a>.
+              </p>
             </div>
           </div>
           <a :if={admin_dashboard?()} href="/admin/runtime" class="link text-xs">LiveDashboard</a>
@@ -455,6 +467,22 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           </a>
         </:actions>
       </.admin_header>
+
+      <%!-- Paused is not an error, and it is not invisible either: nothing is
+      being read from the site, so every number below is as old as the last
+      run. The way out is one click. --%>
+      <div
+        :if={@paused?}
+        id="sync-paused"
+        class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-warning/15 px-3 py-2 text-xs"
+      >
+        <span class="max-w-3xl">
+          <span class="font-medium">Confluence calls are paused.</span>
+          Runs are refused, queued jobs wait, and reader pages keep serving what was mirrored
+          before the pause — so the numbers here are as old as the last run.
+        </span>
+        <a href={~p"/admin/settings"} class="link shrink-0">Resume in Settings</a>
+      </div>
 
       <p
         :if={Source.demo?(@mirror_source)}

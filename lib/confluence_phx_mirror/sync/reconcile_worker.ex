@@ -30,12 +30,23 @@ defmodule ConfluencePhxMirror.Sync.ReconcileWorker do
 
   require Logger
 
+  alias ConfluencePhxMirror.Settings
+  alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.Reconcile
 
   @impl true
   def perform(%Oban.Job{args: args}) do
-    report = Reconcile.run(source: source(args), trigger: trigger(args))
+    if Settings.sync_paused?() do
+      # A verify pass is a run of requests against the site, so a paused mirror
+      # does not make it: the job waits for the resume instead of failing.
+      Logger.info("verify pass waiting: Confluence calls are paused")
+      Sync.paused_wait()
+    else
+      count(Reconcile.run(source: source(args), trigger: trigger(args)))
+    end
+  end
 
+  defp count(report) do
     Logger.info(
       "verify pass over #{report.spaces} spaces (#{report.agreed} already in step, " <>
         "#{length(report.listed)} listed, #{report.absent} pages absent) " <>

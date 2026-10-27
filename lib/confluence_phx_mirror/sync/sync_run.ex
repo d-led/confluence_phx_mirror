@@ -10,7 +10,7 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
 
   @type t :: %__MODULE__{}
 
-  @modes ~w(snapshot incremental webhook)
+  @modes ~w(snapshot incremental webhook people)
   @statuses ~w(running succeeded partial failed cancelled)
 
   schema "sync_runs" do

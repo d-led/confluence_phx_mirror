@@ -21,14 +21,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
 
   import ConfluencePhxMirrorWeb.AdminComponents
 
-  alias ConfluencePhxMirror.{Jobs, Mirror}
+  alias ConfluencePhxMirror.{Jobs, Mirror, Settings}
   alias ConfluencePhxMirror.Sync.{ReconcileRun, ReconcileWorker, TrashAbsentWorker}
   alias ConfluencePhxMirror.Trash
   alias ConfluencePhxMirror.Trash.TrashAllAbsentWorker
+  alias ConfluencePhxMirrorWeb.Admin.Paging
 
-  # A mirror that lost a space can have thousands of absent pages; the page shows
-  # the newest and each space's own button takes the rest.
-  @page_window 200
+  # A mirror that lost a space can have thousands of absent pages, so the list is
+  # a page of them with a filter over all of them; each space's own button takes
+  # the rest.
+  @per_page 25
 
   # A pass settles a space every few seconds and a site can have a thousand of
   # them. Showing the first fact at once and folding the rest into one redraw a
@@ -42,7 +44,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
     end
 
     {:ok,
-     assign(socket, page_title: "Missing pages", refresh_timer: nil, refresh_pending?: false)
+     assign(socket,
+       page_title: "Missing pages",
+       refresh_timer: nil,
+       refresh_pending?: false,
+       q: "",
+       page: 1
+     )
+     |> load()}
+  end
+
+  # Which page and which filter are the address, so the screen can be sent to a
+  # colleague — and a check finishing does not send the reader back to page one.
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(q: Paging.query(params), page: Paging.page_number(params["page"]))
      |> load()}
   end
 
@@ -69,47 +87,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   end
 
   @impl true
+  def handle_event("filter", %{"q" => q}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/admin/upstream?#{[q: q, page: 1]}")}
+  end
+
   def handle_event("check", _params, socket) do
     {:noreply, queue_check(socket)}
   end
 
   def handle_event("trash_page", %{"id" => id}, socket) do
-    with {page, space} <-
-           Enum.find(socket.assigns.pages, fn {page, _} -> to_string(page.id) == id end),
-         {:ok, _trashed} <- Trash.trash_page(actor(socket), page, space) do
-      {:noreply, socket |> put_flash(:info, "“#{page.title}” moved to the trash.") |> load()}
-    else
-      nil ->
-        {:noreply, put_flash(socket, :error, "That page is no longer absent.")}
-
-      {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "That page is no longer here.")}
-    end
+    {:noreply, move_page(socket, id)}
   end
 
   def handle_event("trash_space", %{"key" => key}, socket) do
-    case Enum.find(socket.assigns.spaces, fn %{space: space} -> space.key == key end) do
-      nil ->
-        {:noreply, put_flash(socket, :error, "#{key} has nothing to move.")}
-
-      %{space: space, pages: absent} ->
-        # A space can hold thousands of absent pages; the job takes them so the
-        # click does not have to. `TrashAbsentWorker` is what moves them.
-        args = %{"space_key" => space.key, "asked_by" => who(socket)}
-
-        case args |> TrashAbsentWorker.new() |> Oban.insert() do
-          {:ok, _job} ->
-            {:noreply,
-             put_flash(
-               socket,
-               :info,
-               "Moving #{plural(absent, "page")} of #{space.key} to the trash. This runs in the background."
-             )}
-
-          {:error, reason} ->
-            {:noreply, put_flash(socket, :error, "Could not start it: #{inspect(reason)}")}
-        end
-    end
+    {:noreply, move_space(socket, key)}
   end
 
   # Everything the check found, in one go. It asks first: one click can move tens
@@ -119,27 +110,59 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   end
 
   def handle_event("trash_all", _params, socket) do
-    args = %{"asked_by" => who(socket)}
-
-    case args |> TrashAllAbsentWorker.new() |> Oban.insert() do
-      {:ok, _job} ->
-        {:noreply,
-         socket
-         |> assign(:confirm_trash_all, nil)
-         |> put_flash(
-           :info,
-           "Moving #{plural(socket.assigns.absent, "page")} to the trash. " <>
-             "This runs in the background."
-         )}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Could not start it: #{inspect(reason)}")}
-    end
+    {:noreply, move_all(socket)}
   end
 
   def handle_event("cancel_trash_all", _params, socket) do
     {:noreply, assign(socket, :confirm_trash_all, nil)}
   end
+
+  defp move_page(socket, id) do
+    with {page, space} <-
+           Enum.find(socket.assigns.pages, fn {page, _} -> to_string(page.id) == id end),
+         {:ok, _trashed} <- Trash.trash_page(actor(socket), page, space) do
+      socket |> put_flash(:info, "“#{page.title}” moved to the trash.") |> load()
+    else
+      nil -> put_flash(socket, :error, "That page is no longer absent.")
+      {:error, :not_found} -> put_flash(socket, :error, "That page is no longer here.")
+    end
+  end
+
+  defp move_space(socket, key) do
+    case Enum.find(socket.assigns.spaces, fn %{space: space} -> space.key == key end) do
+      nil ->
+        put_flash(socket, :error, "#{key} has nothing to move.")
+
+      %{space: space, pages: absent} ->
+        # A space can hold thousands of absent pages; the job takes them so the
+        # click does not have to. `TrashAbsentWorker` is what moves them.
+        %{"space_key" => space.key, "asked_by" => who(socket)}
+        |> TrashAbsentWorker.new()
+        |> Oban.insert()
+        |> queued(
+          socket,
+          "Moving #{plural(absent, "page")} of #{space.key} to the trash. This runs in the background."
+        )
+    end
+  end
+
+  defp move_all(socket) do
+    %{"asked_by" => who(socket)}
+    |> TrashAllAbsentWorker.new()
+    |> Oban.insert()
+    |> queued(
+      assign(socket, :confirm_trash_all, nil),
+      "Moving #{plural(socket.assigns.absent, "page")} to the trash. " <>
+        "This runs in the background."
+    )
+  end
+
+  # A job that could not be queued says why, rather than leaving the click
+  # looking like it worked.
+  defp queued({:ok, _job}, socket, message), do: put_flash(socket, :info, message)
+
+  defp queued({:error, reason}, socket, _message),
+    do: put_flash(socket, :error, "Could not start it: #{inspect(reason)}")
 
   @impl true
   def render(assigns) do
@@ -166,11 +189,30 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
         subtitle="Gone from Confluence, still in this mirror."
       >
         <:actions>
-          <button type="button" phx-click="check" id="check-upstream" class="btn btn-outline btn-sm">
+          <button
+            type="button"
+            phx-click="check"
+            id="check-upstream"
+            class="btn btn-outline btn-sm"
+            disabled={@paused?}
+            title={if @paused?, do: "Confluence calls are paused — resume in Settings"}
+          >
             Check Confluence
           </button>
         </:actions>
       </.admin_header>
+
+      <p
+        :if={@paused?}
+        id="upstream-paused"
+        class="mt-4 max-w-3xl rounded-lg bg-warning/15 px-3 py-2 text-[11px]"
+      >
+        Confluence calls are paused, so this screen cannot ask the site whether a page is still
+        there. What the last check found is below, as old as it is. <a
+          href={~p"/admin/settings"}
+          class="link"
+        >Resume in Settings</a>.
+      </p>
 
       <p
         :if={@in_flight}
@@ -314,10 +356,21 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
         </div>
       </section>
 
-      <section :if={@pages != []} class="mt-8">
+      <section :if={@pages_total > 0 or @q != ""} class="mt-8">
         <h2 class="text-sm font-semibold">The same pages, one by one</h2>
 
-        <div class="mt-2 overflow-x-auto rounded-xl border border-base-300/70">
+        <.list_filter
+          id="absent-filter"
+          query={@q}
+          label="Filter the missing pages by title or space key"
+          placeholder="Title or space key"
+        />
+
+        <p :if={@pages == []} id="no-absent-match" class="mt-2 text-xs">
+          No missing page matches “{@q}”. The filter covers every one of them, not this page.
+        </p>
+
+        <div :if={@pages != []} class="mt-2 overflow-x-auto rounded-xl border border-base-300/70">
           <table class="table table-sm">
             <thead>
               <tr>
@@ -350,22 +403,35 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
           </table>
         </div>
 
-        <p :if={@more_pages?} class="mt-2 text-xs text-base-content/70">
-          The newest {@page_window} are listed. The button by each space clears all of them.
-        </p>
+        <.list_pager
+          id="absent-pager"
+          path="/admin/upstream"
+          page={@page}
+          total={@pages_total}
+          per_page={@per_page}
+          params={%{"q" => @q}}
+        />
       </section>
     </Layouts.app>
     """
   end
 
   defp load(socket) do
+    %{q: q, page: page} = socket.assigns
     spaces = Mirror.absent_spaces()
-    all_pages = Mirror.absent_pages(limit: @page_window + 1)
-    pages = Enum.take(all_pages, @page_window)
+
+    pages =
+      Mirror.absent_pages(
+        limit: @per_page,
+        offset: Paging.offset(page, @per_page),
+        query: q
+      )
+
     last_check = ReconcileRun.last_finished()
     unfinished = ReconcileRun.unfinished()
 
     assign(socket,
+      paused?: Settings.sync_paused?(),
       spaces: spaces,
       pages: pages,
       spaces_list: Enum.map(spaces, & &1.space),
@@ -388,8 +454,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       # What the last finished pass compared, so "nothing is missing" comes with
       # the numbers behind it.
       summary: last_check && ReconcileRun.summary(last_check),
-      more_pages?: length(all_pages) > @page_window,
-      page_window: @page_window
+      pages_total: Mirror.count_absent_pages(query: q),
+      per_page: @per_page
     )
   end
 

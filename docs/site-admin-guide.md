@@ -141,6 +141,15 @@ when a sync pulls a newer snapshot.
 * `CM_SYNC_INTERVAL_SECONDS` (default `3600`) schedules snapshot pulls; `0`
   disables them.
 * Webhooks react to single changes within seconds — see [Webhooks](#webhooks).
+* **Pause Confluence calls** (`/admin/settings`, or `CM_SYNC_PAUSED`) stops the
+  mirror reading from the site at all: a run is refused before it starts, queued
+  jobs wait (they snooze rather than fail, so a long pause costs no attempts),
+  and the space listing is not fetched either. Reader pages keep serving what is
+  already mirrored and say so — the footer next to *Last sync* reads
+  `· updates paused`, the overview carries the banner and the way back, and the
+  screens that would otherwise offer a sync are disabled with the reason. This is
+  how one instance can stand down so another (say a production mirror) has the
+  API budget.
 
 ## The admin area
 
@@ -809,6 +818,14 @@ A site can name a hundred thousand people, so neither side of the screen lists
 them: both are searched, and a link is a click. The filter is a URL parameter
 (`/admin/identities?q=…`), so a colleague can send a link to the identity they
 mean.
+
+**Sync with Confluence** on that screen queues a *people* run: it asks the site
+which groups each identity the mirror knows is in, and who the members of every
+group the content names are — and it lists no page at all, so it costs a
+fraction of a sync. That is the button for "somebody joined a group an hour ago";
+the hourly sync answers the same question but also walks every space. The run
+appears in *Jobs* and in the sync history like any other, with `people` as its
+mode.
 
 * From an identity: filter by the name Confluence shows or by the account id,
   then **Link to an account…** opens a picker that searches the mirror's

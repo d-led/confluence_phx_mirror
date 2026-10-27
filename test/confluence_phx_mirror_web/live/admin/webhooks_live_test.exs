@@ -9,8 +9,10 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminWebhooksLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Webhooks
+  alias ConfluencePhxMirror.Webhooks.Delivery
 
   setup do
     previous = Application.get_env(:confluence_phx_mirror, :webhooks)
@@ -29,6 +31,28 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminWebhooksLiveTest do
 
     assert has_element?(view, "#webhook-unsigned-warning")
     assert has_element?(view, "#webhook-require-signatures")
+  end
+
+  test "deliveries page through instead of stopping at the newest handful", %{conn: conn} do
+    for index <- 1..26 do
+      %Delivery{}
+      |> Delivery.changeset(%{
+        event_type: "page_updated",
+        payload: %{"page" => index},
+        received_at:
+          DateTime.utc_now() |> DateTime.add(-index, :second) |> DateTime.truncate(:second)
+      })
+      |> Repo.insert!()
+    end
+
+    {:ok, view, _html} = live(conn, ~p"/admin/webhooks")
+
+    assert view |> element("#deliveries-pager") |> render() =~ "page 1 of 2 · 26 in total"
+    assert has_element?(view, ~s(#deliveries-pager a[href="/admin/webhooks?page=2"]))
+
+    {:ok, second, _html} = live(conn, ~p"/admin/webhooks?page=2")
+
+    assert second |> element("#deliveries-pager") |> render() =~ "page 2 of 2"
   end
 
   test "the administrator closes it without a restart, and can hand it back", %{conn: conn} do

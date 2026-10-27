@@ -245,6 +245,19 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
     refute html =~ "Beta handbook"
   end
 
+  test "the directory pages through every space instead of stopping at a window", %{conn: conn} do
+    for index <- 1..26, do: space_fixture(%{key: "DIR#{index}", name: "Directory #{index}"})
+
+    {:ok, view, _html} = live(conn, ~p"/admin/permissions")
+
+    assert view |> element("#spaces-pager") |> render() =~ "page 1 of 2 · 26 in total"
+    assert has_element?(view, ~s(#spaces-pager a[href="/admin/permissions?page=2"]))
+
+    {:ok, second, _html} = live(conn, ~p"/admin/permissions?page=2")
+
+    assert second |> element("#spaces-pager") |> render() =~ "page 2 of 2"
+  end
+
   # A subject key can be an e-mail or "557058:…", neither of which a CSS
   # selector takes raw, so the row is found by its attribute.
   defp subject_row(key), do: ~s{[id="space-access-user-#{key}"]}

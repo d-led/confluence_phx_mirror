@@ -19,7 +19,7 @@ defmodule ConfluencePhxMirror.SpaceDirectory do
 
   alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirror.Mirror.Space
-  alias ConfluencePhxMirror.Sites
+  alias ConfluencePhxMirror.{Settings, Sites}
 
   @cache __MODULE__
   @ttl :timer.minutes(10)
@@ -85,14 +85,21 @@ defmodule ConfluencePhxMirror.SpaceDirectory do
     source = Keyword.get(opts, :source) || Source.source()
     key = {source, Sites.url()}
 
-    if fresh?, do: Cachex.del(@cache, key)
+    if Settings.sync_paused?() do
+      # A paused mirror makes no calls at all, and this listing is a call like
+      # any other. The screens have a sentence for it; the cache keeps what it
+      # already held, for the resume.
+      {:error, :paused}
+    else
+      if fresh?, do: Cachex.del(@cache, key)
 
-    case Cachex.fetch(@cache, key, fn -> read(source, opts) end) do
-      {:ok, answer} -> answer
-      {:commit, answer} -> answer
-      {:ignore, answer} -> answer
-      # A cache that is down costs a request, not an answer.
-      {:error, _reason} -> ask(source, opts)
+      case Cachex.fetch(@cache, key, fn -> read(source, opts) end) do
+        {:ok, answer} -> answer
+        {:commit, answer} -> answer
+        {:ignore, answer} -> answer
+        # A cache that is down costs a request, not an answer.
+        {:error, _reason} -> ask(source, opts)
+      end
     end
   end
 

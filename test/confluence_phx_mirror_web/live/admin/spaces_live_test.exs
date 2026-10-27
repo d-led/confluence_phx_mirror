@@ -90,6 +90,47 @@ defmodule ConfluencePhxMirrorWeb.AdminSpacesLiveTest do
     assert SpaceScope.wanted() == :all
   end
 
+  test "the mirrored list pages through every space instead of cutting off", %{conn: conn} do
+    for index <- 1..26 do
+      space = space_fixture(%{key: "PAGED#{index}"})
+      page_fixture(space, %{title: "Paged #{index}"})
+    end
+
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces")
+
+    assert view |> element("#mirrored-pager") |> render() =~ "page 1 of"
+    assert has_element?(view, ~s(#mirrored-pager a[href="/admin/spaces?page=2"]))
+
+    {:ok, second, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces?page=2")
+
+    assert second |> element("#mirrored-pager") |> render() =~ "page 2 of 2"
+  end
+
+  test "the filter runs over every mirrored space, not the page on screen", %{conn: conn} do
+    for key <- ~w(FILTERONE FILTERTWO OTHERSPACE) do
+      page_fixture(space_fixture(%{key: key}), %{title: "A page of #{key}"})
+    end
+
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces")
+
+    view |> render_change("filter", %{"q" => "filtert"})
+
+    assert_patch(view, ~p"/admin/spaces?page=1&q=filtert")
+
+    html = view |> element("#mirrored-filter") |> render()
+    assert html =~ "filtert"
+    refute render(view) =~ "OTHERSPACE"
+  end
+
+  test "a filter that matches nothing says so, and names the filter", %{conn: conn} do
+    page_fixture(space_fixture(%{key: "SOLO"}), %{title: "Only page"})
+
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces?q=nothing-matches")
+
+    assert has_element?(view, "#no-mirrored-match")
+    assert view |> element("#no-mirrored-match") |> render() =~ "nothing-matches"
+  end
+
   defp configured_spaces(spaces) do
     previous = Application.get_env(:confluence_phx_mirror, HttpSource)
     Application.put_env(:confluence_phx_mirror, HttpSource, spaces: spaces)

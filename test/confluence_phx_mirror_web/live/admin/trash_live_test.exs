@@ -141,6 +141,58 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLiveTest do
     end
   end
 
+  describe "a trash that outgrew a screen" do
+    test "pages through every trashed page instead of the newest handful", %{conn: conn} do
+      space = space_fixture(%{key: "MANY"})
+      trash_pages(space, 30)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/trash")
+
+      assert view |> element("#trash-pager") |> render() =~ "page 1 of 2 · 30 in total"
+      assert has_element?(view, ~s(#trash-pager a[href="/admin/trash?page=2"]))
+
+      {:ok, second, _html} = live(conn, ~p"/admin/trash?page=2")
+
+      assert second |> element("#trash-pager") |> render() =~ "page 2 of 2"
+    end
+
+    test "the filter runs over the whole trash, not the page on screen", %{conn: conn} do
+      space = space_fixture(%{key: "FILTERED"})
+      runbook = page_fixture(space, %{title: "Retired runbook"})
+      other = page_fixture(space, %{title: "Still wanted"})
+      {:ok, _} = Trash.trash_page({:system, "test"}, runbook, space)
+      {:ok, _} = Trash.trash_page({:system, "test"}, other, space)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/trash")
+
+      view |> render_change("filter", %{"q" => "runbook"})
+
+      assert_patch(view, ~p"/admin/trash?page=1&q=runbook")
+      assert render(view) =~ "Retired runbook"
+      refute render(view) =~ "Still wanted"
+    end
+
+    test "emptying the trash empties all of it, not the page on screen", %{conn: conn} do
+      space = space_fixture(%{key: "BULKALL"})
+      trash_pages(space, 30)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/trash")
+
+      view |> element("#empty-trash") |> render_click()
+      html = view |> element("#confirm-empty") |> render_click()
+
+      assert html =~ "Purged 0 spaces and 30 pages for good."
+      assert Trash.pages() == []
+    end
+  end
+
+  defp trash_pages(space, count) do
+    for index <- 1..count do
+      page = page_fixture(space, %{title: "Trashed #{index}"})
+      {:ok, _trashed} = Trash.trash_page({:system, "test"}, page, space)
+    end
+  end
+
   defp age!(%_{} = row, days) do
     at = DateTime.utc_now() |> DateTime.add(-days * 86_400, :second) |> DateTime.truncate(:second)
 

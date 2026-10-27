@@ -37,9 +37,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
 
   alias ConfluencePhxMirror.Jobs
   alias ConfluencePhxMirror.Jobs.Progress
+  alias ConfluencePhxMirrorWeb.Admin.Paging
   alias ConfluencePhxMirrorWeb.Time
 
   @refresh_ms 5_000
+
+  # Oban's table grows with every deploy and every schedule, so the page shows a
+  # window of it and pages through the rest rather than the newest two hundred.
+  @per_page 25
 
   # Whole-site runs are measured at 1 h 37 to 1 h 50. A job still executing far
   # beyond that is a leftover from a restart rather than work in progress — but
@@ -55,15 +60,26 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
      |> assign(
        page_title: "Jobs",
        state: "all",
+       page: 1,
        state_options: state_options(),
        now: DateTime.utc_now()
      )
      |> load()}
   end
 
+  # Which state and which page are the address, so a colleague can be sent the
+  # question — and the page keeps the state it was filtered on.
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(state: params["state"] || "all", page: Paging.page_number(params["page"]))
+     |> load()}
+  end
+
   @impl true
   def handle_event("filter", %{"state" => state}, socket) do
-    {:noreply, socket |> assign(:state, state) |> load()}
+    {:noreply, push_patch(socket, to: ~p"/admin/jobs?#{[state: state, page: 1]}")}
   end
 
   def handle_event("cancel", %{"id" => id}, socket) do
@@ -90,12 +106,21 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
   end
 
   defp load(socket) do
-    jobs = Jobs.list(socket.assigns.state)
+    %{state: state, page: page} = socket.assigns
+
+    jobs =
+      Jobs.list(state,
+        limit: @per_page,
+        offset: Paging.offset(page, @per_page)
+      )
+
     work = Jobs.work_of(Enum.map(jobs, & &1.id))
 
     assign(socket,
       rows: rows(jobs, work),
-      unfinished: Enum.count(jobs, &(&1.state in Jobs.unfinished_states()))
+      unfinished: Enum.count(jobs, &(&1.state in Jobs.unfinished_states())),
+      jobs_total: Jobs.count(state),
+      per_page: @per_page
     )
   end
 
@@ -337,6 +362,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
           </:row>
           <:empty>No jobs in this state.</:empty>
         </.data_table>
+
+        <.list_pager
+          id="jobs-pager"
+          path="/admin/jobs"
+          page={@page}
+          total={@jobs_total}
+          per_page={@per_page}
+          params={%{"state" => @state}}
+        />
       </.section>
     </Layouts.app>
     """

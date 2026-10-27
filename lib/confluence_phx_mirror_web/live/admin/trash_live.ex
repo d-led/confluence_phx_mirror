@@ -15,10 +15,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
 
   alias ConfluencePhxMirror.Trash
   alias ConfluencePhxMirror.Trash.PurgeWorker
+  alias ConfluencePhxMirrorWeb.Admin.Paging
 
-  # A site that lost a space can have thousands of pages in the trash; the page
-  # shows the newest and "Empty the trash" takes them all.
-  @page_window 200
+  # A site that lost a space can have thousands of pages in the trash, so the
+  # list is a page of them with a filter over all of them.
+  @per_page 25
 
   # The holding period the screen starts with. "Delete it later" needs a later,
   # and thirty days is long enough to notice a mistake and say so.
@@ -26,7 +27,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "Trash") |> load()}
+    {:ok, socket |> assign(page_title: "Trash", q: "", page: 1) |> load()}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(q: Paging.query(params), page: Paging.page_number(params["page"]))
+     |> load()}
+  end
+
+  def handle_event("filter", %{"q" => q}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/admin/trash?#{[q: q, page: 1]}")}
   end
 
   @impl true
@@ -220,13 +233,24 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
         </div>
       </section>
 
-      <section :if={@pages != []} class="mt-8">
+      <section :if={@pages_total > 0 or @q != ""} class="mt-8">
         <h2 class="text-sm font-semibold">Pages and blog posts</h2>
         <p class="mt-0.5 text-xs text-base-content/70">
           Deleted in Confluence outside a trashed space. Purging takes their comments and attachments with them.
         </p>
 
-        <div class="mt-2 overflow-x-auto rounded-xl border border-base-300/70">
+        <.list_filter
+          id="trash-filter"
+          query={@q}
+          label="Filter the trashed pages by title or space key"
+          placeholder="Title or space key"
+        />
+
+        <p :if={@pages == []} id="no-trashed-match" class="mt-2 text-xs">
+          No trashed page matches “{@q}”. The filter covers the whole trash, not this page.
+        </p>
+
+        <div :if={@pages != []} class="mt-2 overflow-x-auto rounded-xl border border-base-300/70">
           <table class="table table-sm">
             <thead>
               <tr>
@@ -260,18 +284,31 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
           </table>
         </div>
 
-        <p :if={@more_pages?} class="mt-2 text-xs text-base-content/70">
-          Showing the newest {@page_window}; “Empty the trash” takes the rest.
-        </p>
+        <.list_pager
+          id="trash-pager"
+          path="/admin/trash"
+          page={@page}
+          total={@pages_total}
+          per_page={@per_page}
+          params={%{"q" => @q}}
+        />
       </section>
     </Layouts.app>
     """
   end
 
   defp load(socket) do
+    %{q: q, page: page} = socket.assigns
     spaces = Trash.spaces()
-    all_pages = Trash.pages(limit: @page_window + 1)
-    pages = Enum.take(all_pages, @page_window)
+
+    pages =
+      Trash.pages(
+        limit: @per_page,
+        offset: Paging.offset(page, @per_page),
+        query: q
+      )
+
+    pages_total = Trash.count_pages(query: q)
     # Whatever holding period the operator typed survives a reload of the lists.
     days = Map.get(socket.assigns, :days, @retention_days)
 
@@ -280,14 +317,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
       pages: pages,
       spaces_list: Enum.map(spaces, &elem(&1, 0)),
       space_count: length(spaces),
-      page_count: length(pages),
-      more_pages?: length(all_pages) > @page_window,
-      page_window: @page_window,
+      page_count: pages_total,
+      pages_total: pages_total,
+      per_page: @per_page,
       confirming: false,
       retention_confirming: false,
       days: days,
       due: Trash.due(days),
-      empty?: spaces == [] and pages == []
+      empty?: spaces == [] and pages_total == 0
     )
   end
 
@@ -320,17 +357,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
     end
   end
 
+  # "Empty the trash" means all of it. The list on screen is a page of it, and
+  # a purge that took only what the operator happened to be looking at would be
+  # a purge that quietly left the rest behind.
   defp purge_everything(socket) do
-    spaces = length(socket.assigns.spaces)
-    pages = length(socket.assigns.pages)
-
-    Enum.each(socket.assigns.spaces, fn {space, _pages} ->
-      Trash.purge_space(actor(socket), space)
-    end)
-
-    Enum.each(socket.assigns.pages, fn {page, _space} ->
-      Trash.purge_page(actor(socket), page)
-    end)
+    %{spaces: spaces, pages: pages} = Trash.purge_due(actor(socket), 0)
 
     socket
     |> put_flash(:info, "Purged #{spaces} spaces and #{pages} pages for good.")

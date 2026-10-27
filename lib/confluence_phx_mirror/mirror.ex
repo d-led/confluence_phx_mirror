@@ -40,18 +40,27 @@ defmodule ConfluencePhxMirror.Mirror do
   Mirrored spaces by name.
 
   Options: `:limit` — the search screen's space menus take a window and leave
-  the directory to `/spaces`; `:query` — a case-insensitive match on the name or
-  the key, run here rather than in a browser, so a site with hundreds of spaces
-  sends forty rows and not the whole directory.
+  the directory to `/spaces`; `:offset` — which page of them to start at;
+  `:query` — a case-insensitive match on the name or the key, run here rather
+  than in a browser, so a site with hundreds of spaces sends forty rows and not
+  the whole directory.
   """
   def list_spaces(opts \\ []) do
     from(s in Space,
       where: is_nil(s.deleted_at),
       order_by: [asc: s.name],
-      limit: ^Keyword.get(opts, :limit)
+      limit: ^Keyword.get(opts, :limit),
+      offset: ^Keyword.get(opts, :offset, 0)
     )
     |> named_like(Keyword.get(opts, :query, ""))
     |> Repo.all()
+  end
+
+  @doc "How many live spaces the directory holds, under the filter it is showing."
+  def count_listed_spaces(opts \\ []) do
+    from(s in Space, where: is_nil(s.deleted_at), select: count(s.id))
+    |> named_like(Keyword.get(opts, :query, ""))
+    |> Repo.one()
   end
 
   @doc """
@@ -64,9 +73,25 @@ defmodule ConfluencePhxMirror.Mirror do
   def named_like(queryable, blank) when blank in [nil, ""], do: queryable
 
   def named_like(queryable, term) do
-    pattern = "%" <> String.replace(term, ["\\", "%", "_"], &("\\" <> &1)) <> "%"
+    pattern = like_pattern(term)
 
     where(queryable, [s], ilike(s.name, ^pattern) or ilike(s.key, ^pattern))
+  end
+
+  # The same narrowing for a list of pages: the title is what an operator reads,
+  # and the space key is what they remember.
+  defp titled_like(queryable, blank) when blank in [nil, ""], do: queryable
+
+  defp titled_like(queryable, term) do
+    pattern = like_pattern(term)
+
+    where(queryable, [p, s], ilike(p.title, ^pattern) or ilike(s.key, ^pattern))
+  end
+
+  # What a reader types is text, not a pattern: `%` and `_` in it mean the
+  # characters they typed.
+  defp like_pattern(term) do
+    "%" <> String.replace(term, ["\\", "%", "_"], &("\\" <> &1)) <> "%"
   end
 
   def get_space_by_key(key) when is_binary(key) do
@@ -1479,7 +1504,8 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc """
   Live pages the site did not list, newest absence first.
 
-  Options: `:space_id`, `:limit`.
+  Options: `:space_id`, `:limit`, `:offset`, `:query` — which matches the page's
+  title or the key of the space it belongs to.
   """
   def absent_pages(opts \\ []) do
     query =
@@ -1488,6 +1514,7 @@ defmodule ConfluencePhxMirror.Mirror do
         where: is_nil(p.deleted_at) and not is_nil(p.absent_since),
         order_by: [desc: p.absent_since, asc: p.title],
         limit: ^Keyword.get(opts, :limit),
+        offset: ^Keyword.get(opts, :offset, 0),
         select: {p, s}
       )
 
@@ -1495,7 +1522,28 @@ defmodule ConfluencePhxMirror.Mirror do
       nil -> query
       space_id -> where(query, [p, _s], p.space_id == ^space_id)
     end
+    |> titled_like(Keyword.get(opts, :query, ""))
     |> Repo.all()
+  end
+
+  @doc "How many live pages the site did not list, under the same filter the list shows."
+  def count_absent_pages(opts \\ []) do
+    query =
+      from(p in Page,
+        join: s in assoc(p, :space),
+        where: is_nil(p.deleted_at) and not is_nil(p.absent_since),
+        select: count(p.id)
+      )
+
+    query =
+      case Keyword.get(opts, :space_id) do
+        nil -> query
+        space_id -> where(query, [p, _s], p.space_id == ^space_id)
+      end
+
+    query
+    |> titled_like(Keyword.get(opts, :query, ""))
+    |> Repo.one()
   end
 
   @doc "How many live spaces the mirror holds — what a check has to get through."
@@ -1687,9 +1735,10 @@ defmodule ConfluencePhxMirror.Mirror do
   @doc """
   Trashed pages and blog posts that did not go with a trashed space.
 
-  Options: `:type` (`"page"` or `"blogpost"`), `:limit`, and `:older_than` —
-  which keeps only what was trashed at or before that moment, the question a
-  retention policy asks.
+  Options: `:type` (`"page"` or `"blogpost"`), `:limit`, `:offset`, `:query` —
+  which matches the page's title or the key of the space it belongs to — and
+  `:older_than`, which keeps only what was trashed at or before that moment, the
+  question a retention policy asks.
   """
   def trashed_pages(opts \\ []) do
     query =
@@ -1698,6 +1747,7 @@ defmodule ConfluencePhxMirror.Mirror do
         where: not is_nil(p.deleted_at) and is_nil(s.deleted_at),
         order_by: [desc: p.deleted_at, asc: p.title],
         limit: ^Keyword.get(opts, :limit),
+        offset: ^Keyword.get(opts, :offset, 0),
         select: {p, s}
       )
 
@@ -1707,11 +1757,26 @@ defmodule ConfluencePhxMirror.Mirror do
         type -> where(query, [p, _s], p.type == ^type)
       end
 
-    case Keyword.get(opts, :older_than) do
-      nil -> query
-      cutoff -> where(query, [p, _s], p.deleted_at <= ^cutoff)
-    end
+    query =
+      case Keyword.get(opts, :older_than) do
+        nil -> query
+        cutoff -> where(query, [p, _s], p.deleted_at <= ^cutoff)
+      end
+
+    query
+    |> titled_like(Keyword.get(opts, :query, ""))
     |> Repo.all()
+  end
+
+  @doc "How many trashed pages the list is paging through, under the same filter."
+  def count_trashed_pages(opts \\ []) do
+    from(p in Page,
+      join: s in assoc(p, :space),
+      where: not is_nil(p.deleted_at) and is_nil(s.deleted_at),
+      select: count(p.id)
+    )
+    |> titled_like(Keyword.get(opts, :query, ""))
+    |> Repo.one()
   end
 
   @doc """
@@ -2243,7 +2308,8 @@ defmodule ConfluencePhxMirror.Mirror do
 
   `spaces_with_counts/0` is a directory page and is cached; this answers "what
   was indexed last", so the ordering and the window belong to the database.
-  `:key` narrows it to one space, for "when was this one last read?".
+  `:key` narrows it to one space, for "when was this one last read?"; `:query`
+  filters on the name or the key, `:offset` is the page to start at.
   """
   def spaces_by_last_sync(limit, opts \\ []) do
     from(s in Space,
@@ -2253,9 +2319,25 @@ defmodule ConfluencePhxMirror.Mirror do
       group_by: s.id,
       order_by: [desc_nulls_last: s.synced_at, asc: s.name],
       limit: ^limit,
+      offset: ^Keyword.get(opts, :offset, 0),
       select: {s.key, s.name, s.synced_at, count(p.id)}
     )
+    |> named_like(Keyword.get(opts, :query, ""))
     |> Repo.all()
+  end
+
+  @doc """
+  How many spaces hold at least one live page — what the mirrored list pages
+  through, under the same filter it shows.
+  """
+  def count_mirrored_spaces(opts \\ []) do
+    from(s in Space,
+      join: p in assoc(s, :pages),
+      where: is_nil(s.deleted_at) and is_nil(p.deleted_at),
+      select: count(s.id, :distinct)
+    )
+    |> named_like(Keyword.get(opts, :query, ""))
+    |> Repo.one()
   end
 
   defp last_sync_key(nil), do: dynamic(true)
