@@ -1,20 +1,11 @@
 defmodule ConfluencePhxMirrorWeb.Plugs.ReaderRateLimitTest do
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
-  setup do
-    previous_limit = Application.get_env(:confluence_phx_mirror, :reader_rate_limit)
-    previous_trust = Application.get_env(:confluence_phx_mirror, :trust_proxy_headers)
-
-    on_exit(fn ->
-      Application.put_env(:confluence_phx_mirror, :reader_rate_limit, previous_limit)
-      Application.put_env(:confluence_phx_mirror, :trust_proxy_headers, previous_trust)
-    end)
-
-    :ok
-  end
+  alias ConfluencePhxMirror.TestConfig
 
   defp allow_one_request_per_minute do
-    Application.put_env(:confluence_phx_mirror, :reader_rate_limit,
+    TestConfig.put(
+      :reader_rate_limit,
       enabled: true,
       html: [limit: 1, period_ms: 60_000],
       api: [limit: 1, period_ms: 60_000],
@@ -46,7 +37,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ReaderRateLimitTest do
 
   test "trusted proxy headers give each reader their own bucket" do
     allow_one_request_per_minute()
-    Application.put_env(:confluence_phx_mirror, :trust_proxy_headers, true)
+    TestConfig.put(:trust_proxy_headers, true)
     peer = {198, 51, 100, 2}
 
     assert get(reader(peer, "203.0.113.10"), "/").status == 200
@@ -56,7 +47,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ReaderRateLimitTest do
 
   test "a forged entry ahead of the proxy's own record buys no fresh bucket" do
     allow_one_request_per_minute()
-    Application.put_env(:confluence_phx_mirror, :trust_proxy_headers, true)
+    TestConfig.put(:trust_proxy_headers, true)
     peer = {198, 51, 100, 4}
 
     assert get(reader(peer, "203.0.113.30"), "/").status == 200

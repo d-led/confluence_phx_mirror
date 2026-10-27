@@ -22,22 +22,8 @@ defmodule ConfluencePhxMirror.Accounts.UserPolicyTest do
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.TestConfig
 
-  setup do
-    previous = Application.get_env(:confluence_phx_mirror, :user_policy)
-    previous_signup = Application.get_env(:confluence_phx_mirror, :self_signup)
-    previous_members = Application.get_env(:confluence_phx_mirror, :proxy_auth_members_only)
-
-    on_exit(fn ->
-      Application.put_env(:confluence_phx_mirror, :user_policy, previous)
-      Application.put_env(:confluence_phx_mirror, :self_signup, previous_signup)
-      Application.put_env(:confluence_phx_mirror, :proxy_auth_members_only, previous_members)
-    end)
-
-    :ok
-  end
-
   defp use_policy(policy) do
-    Application.put_env(:confluence_phx_mirror, :user_policy, policy)
+    TestConfig.put(:user_policy, policy)
   end
 
   defp in_group(email, group) do
@@ -204,29 +190,29 @@ defmodule ConfluencePhxMirror.Accounts.UserPolicyTest do
 
   describe "what a deployment that names no policy keeps" do
     setup do
-      Application.put_env(:confluence_phx_mirror, :user_policy, nil)
+      TestConfig.put(:user_policy, nil)
       :ok
     end
 
     test "a members-only proxy and no self sign-up mean: readers must exist" do
-      Application.put_env(:confluence_phx_mirror, :proxy_auth_members_only, true)
-      Application.put_env(:confluence_phx_mirror, :self_signup, false)
+      TestConfig.put(:proxy_auth_members_only, true)
+      TestConfig.put(:self_signup, false)
 
       assert UserPolicy.policy(:proxy) == ReadersMustExistInConfluence
       assert UserPolicy.policy(:sign_in) == ReadersMustExistInConfluence
     end
 
     test "self sign-up opens the sign-in door only" do
-      Application.put_env(:confluence_phx_mirror, :proxy_auth_members_only, true)
-      Application.put_env(:confluence_phx_mirror, :self_signup, true)
+      TestConfig.put(:proxy_auth_members_only, true)
+      TestConfig.put(:self_signup, true)
 
       assert UserPolicy.policy(:sign_in) == NewUsersCanReadPublicSpaces
       assert UserPolicy.policy(:proxy) == ReadersMustExistInConfluence
     end
 
     test "a proxy that is not members-only opens the proxy door" do
-      Application.put_env(:confluence_phx_mirror, :proxy_auth_members_only, false)
-      Application.put_env(:confluence_phx_mirror, :self_signup, false)
+      TestConfig.put(:proxy_auth_members_only, false)
+      TestConfig.put(:self_signup, false)
 
       assert UserPolicy.policy(:proxy) == NewUsersCanReadPublicSpaces
       assert UserPolicy.policy(:sign_in) == ReadersMustExistInConfluence
@@ -255,7 +241,7 @@ defmodule ConfluencePhxMirror.Accounts.UserPolicyTest do
 
   describe "the sign-in path" do
     test "an unknown address is admitted when the policy admits it" do
-      Application.put_env(:confluence_phx_mirror, :self_signup, false)
+      TestConfig.put(:self_signup, false)
       use_policy(NewUsersCanReadPublicSpaces)
 
       assert {:ok, :sent} = Accounts.request_login("newcomer@example.com")
@@ -263,7 +249,7 @@ defmodule ConfluencePhxMirror.Accounts.UserPolicyTest do
     end
 
     test "an unknown address is not admitted when the policy refuses it" do
-      Application.put_env(:confluence_phx_mirror, :self_signup, false)
+      TestConfig.put(:self_signup, false)
       use_policy(ReadersMustExistInConfluence)
 
       assert {:error, :unknown_email} = Accounts.request_login("stranger@example.com")
