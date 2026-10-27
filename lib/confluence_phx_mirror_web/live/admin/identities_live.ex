@@ -21,6 +21,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirrorWeb.Admin.Paging
 
   @page_size 25
   @candidate_window 8
@@ -48,7 +49,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
   def handle_params(params, _uri, socket) do
     {:noreply,
      socket
-     |> assign(people_page: page_number(params["page"]), people_query: params["q"] || "")
+     |> assign(people_page: Paging.page_number(params["page"]), people_query: params["q"] || "")
      |> load()}
   end
 
@@ -265,19 +266,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
     |> Enum.map(fn {person, index} -> Map.put(person, :index, index) end)
   end
 
-  defp page_number(nil), do: 1
-
-  defp page_number(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {number, ""} when number > 0 -> number
-      _not_a_page -> 1
-    end
-  end
-
-  defp page_number(value) when is_integer(value) and value > 0, do: value
-
-  defp page_count(total), do: max(ceil(total / @page_size), 1)
-
   attr :page, :integer, required: true
   attr :total, :integer, required: true
   attr :query, :string, default: nil, doc: "the filter the page belongs to, kept across pages"
@@ -286,7 +274,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
   # page numbers, or the second page would answer a different question than the
   # first.
   def pager(assigns) do
-    assigns = assign(assigns, :pages, page_count(assigns.total))
+    assigns = assign(assigns, :pages, Paging.page_count(assigns.total, @page_size))
 
     ~H"""
     <div

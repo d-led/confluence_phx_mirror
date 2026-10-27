@@ -15,6 +15,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.{Admins, User}
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirrorWeb.Admin.Paging
   alias ConfluencePhxMirrorWeb.Time
 
   @impl true
@@ -61,20 +62,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   def handle_params(params, _uri, socket) do
     {:noreply,
      socket
-     |> assign(users_page: page_number(params["u_page"]))
+     |> assign(users_page: Paging.page_number(params["u_page"]))
      |> load()}
   end
-
-  defp page_number(nil), do: 1
-
-  defp page_number(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {number, ""} when number > 0 -> number
-      _not_a_page -> 1
-    end
-  end
-
-  defp page_number(value) when is_integer(value) and value > 0, do: value
 
   # Disabling here is the mirror's own decision and stays independent of what
   # Confluence says; access is refused while either flag is set.
@@ -295,8 +285,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
 
   defp page(number), do: [limit: @page_size, offset: (number - 1) * @page_size]
 
-  defp page_count(total), do: max(ceil(total / @page_size), 1)
-
   attr :id, :string, required: true
   attr :page, :integer, required: true
   attr :total, :integer, required: true
@@ -310,7 +298,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   the paging in the database.
   """
   def pager(assigns) do
-    assigns = assign(assigns, :pages, page_count(assigns.total))
+    assigns = assign(assigns, :pages, Paging.page_count(assigns.total, @page_size))
 
     ~H"""
     <div :if={@pages > 1} id={@id} class="mt-3 flex flex-wrap items-center justify-between gap-2">
