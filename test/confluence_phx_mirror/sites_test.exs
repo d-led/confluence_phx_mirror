@@ -7,6 +7,7 @@ defmodule ConfluencePhxMirror.SitesTest do
 
   alias ConfluencePhxMirror.Confluence.HttpSource
   alias ConfluencePhxMirror.Sites
+  alias ConfluencePhxMirror.TestConfig
 
   describe "site keys" do
     test "the demo snapshot is its own site" do
@@ -52,15 +53,7 @@ defmodule ConfluencePhxMirror.SitesTest do
 
   # Pretends the deployment is configured for a real Confluence site.
   defp with_site(url) do
-    previous_source = Application.get_env(:confluence_phx_mirror, :source)
-    previous_http = Application.get_env(:confluence_phx_mirror, HttpSource)
-
-    Application.put_env(:confluence_phx_mirror, :source, HttpSource)
-    Application.put_env(:confluence_phx_mirror, HttpSource, base_url: url)
-
-    on_exit(fn ->
-      Application.put_env(:confluence_phx_mirror, :source, previous_source)
-      Application.put_env(:confluence_phx_mirror, HttpSource, previous_http)
-    end)
+    TestConfig.put(:source, HttpSource)
+    TestConfig.put(HttpSource, base_url: url)
   end
 end

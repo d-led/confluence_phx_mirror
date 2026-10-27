@@ -8,6 +8,7 @@ defmodule ConfluencePhxMirror.Sync.SweepWorkerTest do
 
   alias ConfluencePhxMirror.Confluence.{FailingSource, Source}
   alias ConfluencePhxMirror.Sync.{SpaceWorker, SweepWorker}
+  alias ConfluencePhxMirror.TestConfig
 
   test "queues one space job per space the site lists" do
     assert :ok = perform_job(SweepWorker, %{"trigger" => "an administrator"})
@@ -51,10 +52,5 @@ defmodule ConfluencePhxMirror.Sync.SweepWorkerTest do
     assert all_enqueued(worker: SpaceWorker) == []
   end
 
-  defp configure_source(source) do
-    previous = Application.get_env(:confluence_phx_mirror, :source)
-    Application.put_env(:confluence_phx_mirror, :source, source)
-
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :source, previous) end)
-  end
+  defp configure_source(source), do: TestConfig.put(:source, source)
 end

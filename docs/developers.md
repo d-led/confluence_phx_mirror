@@ -156,6 +156,31 @@ mix test --failed
 Tests start processes with `start_supervised!/1`; wait for a process with
 `Process.monitor/1` / `_ = :sys.get_state/1` rather than `Process.sleep/1`.
 
+### Who is reading, and which deployment
+
+Two pieces of global state decide what a test sees, and the suite keeps both
+out of the way:
+
+* **The reader.** `config/test.exs` sets `auto_admin: false`, so no test inherits
+  an administrator from the deployment. A test that needs an identity says which
+  one — `log_in(conn, user)` or `log_in_admin(conn)` from `ConnCase` — and one
+  file, `test/…_web/auto_admin_test.exs`, turns the development convenience on
+  to test it. That file is `async: false`, because it changes the whole node.
+* **The deployment.** A handful of tests are *about* configuration: a mirror
+  pointed at a real site, a seeded administrator, a source that fails on
+  purpose. They write it through `ConfluencePhxMirror.TestConfig`, the only
+  place in the suite that touches the application environment: the first write
+  of a key remembers what was there and puts it back when the test ends, so no
+  test can forget (a leaked `:admins` once made four unrelated last-admin tests
+  see a second administrator). `TestConfig.with/2` is the same for one
+  expression. Everything else is passed in — `Sync.run(mode, source: Module)`,
+  a `%Scope{}`, a `%User{}` — which is what keeps the suite concurrent.
+
+`async: true` is the default where nothing global is touched. What still forces
+`async: false` is the shared blob root (`demo_snapshot!` writes real files) and
+`empty_mirror!`, whose deletes cascade into the same committed rows from both
+sides and deadlock beside another such test.
+
 ### Reading at scale
 
 The demo snapshot is a dozen pages, and a page view that quietly loads a whole

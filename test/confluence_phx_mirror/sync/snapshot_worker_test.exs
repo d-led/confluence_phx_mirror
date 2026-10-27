@@ -14,6 +14,7 @@ defmodule ConfluencePhxMirror.Sync.SnapshotWorkerTest do
   alias ConfluencePhxMirror.Confluence.{EmptyListingSource, FailingSource}
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.{SnapshotWorker, SyncRun}
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     configure_source(EmptyListingSource)
@@ -61,12 +62,7 @@ defmodule ConfluencePhxMirror.Sync.SnapshotWorkerTest do
     assert last_run().error =~ "unreachable"
   end
 
-  defp configure_source(source) do
-    previous = Application.get_env(:confluence_phx_mirror, :source)
-    Application.put_env(:confluence_phx_mirror, :source, source)
-
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :source, previous) end)
-  end
+  defp configure_source(source), do: TestConfig.put(:source, source)
 
   defp last_run do
     Repo.one(from run in SyncRun, order_by: [desc: run.id], limit: 1)

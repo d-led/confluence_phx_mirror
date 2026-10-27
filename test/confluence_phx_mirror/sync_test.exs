@@ -27,6 +27,7 @@ defmodule ConfluencePhxMirror.SyncTest do
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.Log
   alias ConfluencePhxMirror.Sync.SpaceScope
+  alias ConfluencePhxMirror.TestConfig
   alias ConfluencePhxMirror.Trash
 
   setup do
@@ -319,8 +320,7 @@ defmodule ConfluencePhxMirror.SyncTest do
   describe "spaces the mirror has not read" do
     test "a space that appears on the site is mirrored by the next incremental run" do
       # The mirror is built from a site that does not have PROD yet.
-      Application.put_env(:confluence_phx_mirror, SpaceDroppingSource, drop: ["PROD"])
-      on_exit(fn -> Application.delete_env(:confluence_phx_mirror, SpaceDroppingSource) end)
+      TestConfig.put(SpaceDroppingSource, drop: ["PROD"])
 
       assert {:ok, _first} = Sync.run(:snapshot, source: SpaceDroppingSource)
       assert live_space_keys() == ["ENG"]

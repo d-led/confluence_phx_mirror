@@ -18,6 +18,7 @@ defmodule ConfluencePhxMirror.TrashTest do
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
+  alias ConfluencePhxMirror.TestConfig
   alias ConfluencePhxMirror.Trash
 
   describe "a page that disappears upstream" do
@@ -67,8 +68,7 @@ defmodule ConfluencePhxMirror.TrashTest do
       {:ok, _run} = Sync.run(:snapshot, source: SpaceDroppingSource)
       assert Mirror.get_space_by_key("PROD")
 
-      Application.put_env(:confluence_phx_mirror, SpaceDroppingSource, drop: ["PROD"])
-      on_exit(fn -> Application.delete_env(:confluence_phx_mirror, SpaceDroppingSource) end)
+      TestConfig.put(SpaceDroppingSource, drop: ["PROD"])
 
       {:ok, run} = Sync.run(:snapshot, source: SpaceDroppingSource)
 

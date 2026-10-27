@@ -12,6 +12,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorIdentityTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Confluence.HttpSource
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     demo_snapshot!()
@@ -36,18 +37,9 @@ defmodule ConfluencePhxMirrorWeb.MirrorIdentityTest do
   # A configured site and a database full of demo rows: identity comes from
   # configuration, content from the mirror.
   defp mirror_a_site(url) do
-    source = Application.get_env(:confluence_phx_mirror, :source)
     http = Application.get_env(:confluence_phx_mirror, HttpSource)
 
-    Application.put_env(:confluence_phx_mirror, :source, HttpSource)
-    Application.put_env(:confluence_phx_mirror, HttpSource, Keyword.put(http, :base_url, url))
-
-    on_exit(fn ->
-      restore(:source, source)
-      restore(HttpSource, http)
-    end)
+    TestConfig.put(:source, HttpSource)
+    TestConfig.put(HttpSource, Keyword.put(http, :base_url, url))
   end
-
-  defp restore(key, nil), do: Application.delete_env(:confluence_phx_mirror, key)
-  defp restore(key, value), do: Application.put_env(:confluence_phx_mirror, key, value)
 end
