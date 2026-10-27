@@ -15,157 +15,110 @@ another hides.
 ## Fast path
 
 ```bash
-export TOKEN=…                                     # /profile → API tokens
+export TOKEN=…                       # /profile → API tokens
 curl -H "Authorization: Bearer $TOKEN" https://mirror.example.com/api/v1/spaces
-curl -u "you@acme.com:$TOKEN" https://mirror.example.com/api/v1/search?q=rate+limit
 ```
 
-* A browser that is already signed in needs **no token** — the API accepts the
-  same session and proxy identity every page does.
-* The description is at `/api/openapi.json` (OpenAPI 3.1) and `/api/docs`
-  (a page). `/api/docs/swagger` is the same document with *Try it out*.
-* In a release all three need `CM_API_DOCS=1`; development and test serve them
-  by default.
+The next two sections say who may call, and where the full description lives.
 
-## The description
+## The document is the spec
 
-`/api/openapi.json` is an OpenAPI 3.1 document covering both API surfaces and
-`/health`; `/api/docs` renders the same document as a page, so the two cannot
-disagree. Neither needs a token and neither touches the database.
+Every route, parameter, response shape and status code of both API surfaces is
+served by the mirror itself:
 
-`/api/docs/swagger` is the same document in Swagger UI, for clicking through it
-and trying requests. It is a page of its own and the only screen that loads
-vendor JavaScript (`assets/js/swagger.js`, built by its own esbuild profile, so
-the reader pages never download it). The bundle is served by the mirror, which
-is what the `script-src 'self'` policy requires.
+| Where | What it is for |
+| --- | --- |
+| `/api/openapi.json` | OpenAPI 3.1 — Postman, Insomnia, codegen, `npx @redocly/cli lint` |
+| `/api/docs` | the same document as a page, server-rendered |
+| `/api/docs/swagger` | the same document with *Try it out* |
 
-The paths come from the router — a new endpoint appears in the document without
-anyone remembering to add it — and each one is described in
-`ConfluencePhxMirrorWeb.Api.OpenApi`. A test fails when a route has no
-description, so the document cannot fall behind the code. Hand the JSON to
-Postman, Insomnia or `npx @redocly/cli lint` and it is a complete client.
+This page does not copy it, because a copy drifts. The paths come from
+`Router.__routes__()`, the descriptions from
+`ConfluencePhxMirrorWeb.Api.OpenApi`, and a test fails when a route has no
+description — so the served document is the one place that cannot fall behind
+the code. None of the three needs a token. A release serves them only with
+`CM_API_DOCS=1`; `/api/docs/swagger` is the only screen that loads vendor
+JavaScript (its own bundle, so reader pages never download it).
+
+Read it there for what a response contains. What is left on this page is what a
+spec cannot say: which credential opens the door, what the two writes refuse,
+and how the query language works.
 
 ## Authentication
 
-API tokens are created at **`/profile`** (*API tokens*), shown once and
-stored as an **Argon2id** digest in PHC string form (`$argon2id$v=19$m=…,t=…,p=…$…`).
-The string carries its own algorithm and parameters, so the policy can be raised
-without invalidating issued tokens: a digest written under an older policy is
-rewritten the next time the token is used. Only a twelve-character prefix is
-kept in clear, as the indexed lookup key — a salted digest cannot be searched by
-equality. A token presented from that prefix is then verified against the
-digest, which costs about 16 MiB and a few tens of milliseconds per request
-(see `ConfluencePhxMirror.Accounts.TokenHash`).
-
-Send either:
+An API token is created by its owner at **`/profile`** (*API tokens*), shown
+once, and stored as an Argon2id digest whose prefix is the lookup key — so
+raising the hashing policy does not invalidate issued tokens
+(`ConfluencePhxMirror.Accounts.TokenHash`).
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" https://mirror.example.com/api/v1/spaces
-curl -u "you@acme.com:$TOKEN" https://mirror.example.com/api/v1/spaces
+curl -u "you@acme.com:$TOKEN" https://mirror.example.com/api/v1/spaces   # Basic
 ```
 
 `-u` is the Confluence-style Basic form (`base64(email:token)`).
 
-A browser that is already signed in needs no token: the API accepts the same
-identity every page does — the mirror's session cookie, and the identity
-oauth2-proxy establishes with `CM_PROXY_AUTH` (it forwards the reader in
-`X-Forwarded-Email`). That is why `/api/docs/swagger` can call the endpoints
-with *Try it out* as whoever opened it; the *Authorize* dialog stays for
-scripts, which carry a token instead. In development and test an administrator
-is assumed when neither is present, so the demo works with no credentials at
-all.
+A browser that is already signed in needs **no token**: the API accepts the same
+session cookie and proxy identity every page does, which is why *Try it out*
+works on `/api/docs/swagger`. In development and test an administrator is
+assumed when neither is present, so the demo needs no credentials at all.
 
 ## JSON API
 
-```
-GET    /api/v1/spaces
-POST   /api/v1/spaces
-DELETE /api/v1/spaces/:key
-GET    /api/v1/spaces/:key
-GET    /api/v1/spaces/:key/pages
-GET    /api/v1/pages/:id
-GET    /api/v1/pages/:id/{children,ancestors,descendants,labels,attachments,comments,backlinks}
-GET    /api/v1/page-by-path
-GET    /api/v1/labels
-GET    /api/v1/search?cql=...
-GET    /api/v1/stats
-GET    /api/v1/sync-runs
-GET    /api/v1/sync-runs/export?format=jsonl
-GET    /api/v1/identities
-POST   /api/v1/identities/:account_id/link
-DELETE /api/v1/identities/:account_id/link
-GET    /health
+The exhaustive list is in [the served document](#the-document-is-the-spec);
+four routes, quoted as examples:
+
+```bash
+# a page's branch, windowed with start/limit, `_links.next` while there is more
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://mirror.example.com/api/v1/pages/1002/descendants?limit=100"
+
+# structured search: one space, one phrase
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://mirror.example.com/api/v1/search?q=rate+limit&space=ENG"
+
+# the same index as Confluence's own query language
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://mirror.example.com/api/v1/search?cql=space%20%3D%20ENG%20AND%20label%20%3D%20architecture"
+
+# a page addressed the way a link addresses it: space key plus content id
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://mirror.example.com/api/v1/page-by-path?space=ENG&id=1002"
 ```
 
-`/health` needs no token: it reports the database check, content counters and the
+`/health` needs no token: it checks the database and reports the counters and the
 last sync, so it can back a liveness/readiness probe.
 
-`GET /api/v1/pages/:id/descendants` is the pendant to `ancestors`: the whole
-branch below a page, transitively, in level order (a page before the pages below
-it, siblings by title). A branch can be hundreds of pages, so it is windowed
-with `start`/`limit` (default 25, at most 100) and `_links.next` continues; each
-result carries `depth` (1 for a direct child) and `parent`, so a window can still
-be drawn as a tree. `pages.ancestors` — the trail the sync denormalises onto each
-page, GIN-indexed — answers it in one statement, without walking the tree.
+`GET /api/v1/pages/:id/descendants` is the pendant of `ancestors`: the whole
+branch below a page, level order, windowed. Why it is cheap: `pages.ancestors` —
+the trail the sync denormalises onto each page, GIN-indexed — answers it in one
+statement, without walking the tree.
 
-`GET /api/v1/search` accepts `q` plus structured filters (`space`, `label`,
-`type`, `creator`, `ancestor`, `updated`) for the reader UI, and `cql` for raw
-Confluence query language. Default and maximum result counts are
-`CM_SEARCH_DEFAULT_LIMIT` (25) and `CM_SEARCH_MAX_RESULTS` (100).
+### Search hits can come from a comment
 
-Text search reads pages **and their comments**. A hit that matched in a comment
-would otherwise be a page whose snippet has none of the words, so each hit
-carries a `comment` — `id`, `author`, `created` — when that is where the words
-were, and `null` when the page itself matched. The snippet is the comment's own
-text in that case.
+Search reads pages **and their comments**. A hit that matched in a comment would
+otherwise be a page whose snippet has none of the words, so each hit carries a
+`comment` — `id`, `author`, `created` — when that is where the words were, and
+`null` when the page itself matched. The snippet is the comment's own text in
+that case.
 
 ### The sync history
 
-A mirror keeps a row per sync run — every schedule tick, every one-page sync an
-administrator asked for, every webhook delivery — so the table grows for as long
-as the mirror exists. `GET /api/v1/sync-runs?start=&limit=` is one window of it,
-newest first, with `total` beside `results` and `_links.next` while there is
-more; `limit` defaults to 50 and is capped at 500.
+Every run — a schedule tick, a one-page sync an administrator asked for, a webhook
+delivery — is a row, so the history grows for as long as the mirror exists:
+`start`/`limit` window it, and the export streams all of it as JSON lines or CSV.
+Administrator-only, because a run's `error` is what the node said when the sync
+broke.
 
-Each run names its `mode` (`snapshot`, `incremental`, `webhook`, `people`), its
-`scope`, its `status` (`running`, `succeeded`, `partial`, `failed`,
-`cancelled`), the times it `startedAt`/`finishedAt`, `durationMs` (`null` while
-it has not finished), `cancelRequestedAt`, the counters it wrote in `stats`, and
-the `error` the node reported when it broke. A one-page or one-space run is
-recorded as `webhook` with its `scope`, and its `trigger` says what asked for it.
+### The two writes, and what they refuse
 
-`GET /api/v1/sync-runs/export?format=jsonl` (or `csv`) is the whole history as a
-file, oldest first: **JSON lines** keeps each run's `stats` an object, **CSV**
-puts it in one cell as JSON. Both are streamed — read in batches as the download
-is written — so a hundred thousand runs cost one batch of memory, and a client
-that closes the connection stops the work at the next chunk.
+Everything in the v1 API is a read except two decisions an administrator makes:
+linking a Confluence identity to an account, and adding or removing a space key
+from the whitelist a run imports. Both are administrator-only; another token gets
+`403 not_authorized`.
 
-Both calls are an **administrator's**: a run's error is what the node said when
-the sync broke, which is an operator's reading rather than a reader's. Another
-token gets `403 not_authorized`.
-
-### Identities
-
-`GET /api/v1/identities?q=&limit=&offset=` lists the Confluence accounts the
-mirror knows — the authors of pages and comments, and the account ids the
-permissions carry — each with the groups the last sync read and the account it
-already stands for (`linkedTo`, or `null`). A site names more people than a page
-can draw, so it is searched and windowed like everything else.
-
-`POST /api/v1/identities/:account_id/link` links one to an account:
-
-```json
-{"user_id": 4}
-```
-
-`email` is accepted instead of `user_id` when the id is not at hand. The answer
-is the identity as it now stands beside the account. `DELETE` on the same path
-takes it away again.
-
-What the identity carries — its group memberships, the pages and spaces it is
-named in — becomes the account's, because every permission rule asks the union
-of an account's identities. All three calls are an **administrator's**: another
-token gets `403 not_authorized`. The refusals are named rather than swallowed:
+A refusal names its reason instead of swallowing it. These codes are the part a
+generated document cannot enumerate:
 
 | status | `error` | meaning |
 | --- | --- | --- |
@@ -173,42 +126,19 @@ token gets `403 not_authorized`. The refusals are named rather than swallowed:
 | 404 | `not_linked` | nothing stands on it, so there is nothing to take away |
 | 409 | `linked_elsewhere` | another account already holds it |
 | 409 | `not_a_link` | that is the identity the account signs in with, not a link |
+| 409 | `imports_every_space` | this mirror imports every space; narrowing one starts with `CM_SPACES` |
 | 422 | `missing_account` | neither `user_id` nor `email` was given |
+| 422 | `not_saved` | a space key was missing |
 
-These are the only writes the v1 API accepts about an identity, and the only
-ones beside [the space whitelist](#spaces-the-whitelist-a-run-imports): the rest
-of the mirror stays read-only.
+Two consequences of the design, both worth knowing before scripting it:
 
-### Spaces: the whitelist a run imports
-
-Which spaces a run imports is two lists that add up — the keys the deployment
-names (`CM_SPACES`) and the ones added here. `POST /api/v1/spaces` adds one:
-
-```json
-{"key": "ENG"}
-```
-
-The answer is the whitelist as it now stands: `{"key": "ENG", "every_space":
-false, "keys": ["ENG", "PROD"]}`. It only ever widens; nothing stops being
-imported by adding. A mirror that imports **every** space answers `409
-imports_every_space`, because naming one key there would narrow it to that key
-and the next run would trash the rest — narrowing a mirror starts with
-`CM_SPACES`.
-
-`DELETE /api/v1/spaces/:key` takes a key back out:
-
-```json
-{"key": "PROD", "removed": true, "pages_awaiting_trash": 3,
- "every_space": false, "keys": ["ENG"]}
-```
-
-The next run stops importing it and trashes what it holds — softly: rows stay,
-and naming the key again brings them back. `pages_awaiting_trash` is what the
-next run will move, not what it has moved. A key `CM_SPACES` names cannot be
-removed this way, and the answer says so with `"removed": false`.
-
-Both calls are an **administrator's**; another token gets `403 not_authorized`.
-A missing `key` is `422 not_saved`.
+* **A link carries what the identity carries** — its group memberships, the
+  spaces and pages it is named in, the content it authored — because every
+  permission rule asks the union of an account's identities
+  (`User.identity_keys/1`).
+* **Adding a space key only widens.** Removing one trashes what the space holds,
+  softly: rows stay, and naming the key again brings them back. A key `CM_SPACES`
+  names cannot be removed this way, and the answer says `"removed": false`.
 
 ## Confluence-compatible subset
 
