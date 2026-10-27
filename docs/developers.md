@@ -6,10 +6,16 @@ Deployment lives in [operations.md](operations.md), settings in
 
 ## Local setup
 
-`docker compose up -d && mix setup && mix phx.server` — the
-[README](../README.md#quick-start) lists the prerequisites and what each setup
-command does. Development and test assume an administrator (`MIRROR_AUTO_ADMIN`),
-so no sign-in is in the way.
+```bash
+docker compose up -d && mix setup && mix phx.server
+```
+
+The [README](../README.md#1-see-it-working) lists the prerequisites and what
+each setup command does. Development and test assume an administrator
+(`MIRROR_AUTO_ADMIN`), so no sign-in is in the way.
+
+**Done when** `mix lint` is green and `mix test` passes — that is the loop you
+will run all day.
 
 `AGENTS.md` carries the Phoenix/Elixir conventions; the invariants below are the
 ones specific to the mirror.
@@ -80,6 +86,19 @@ ones specific to the mirror.
   `config/*.exs`.
 
 ## Architecture
+
+```mermaid
+flowchart TD
+  SRC[Confluence.Source<br/>HttpSource · DemoSource · SyntheticSource] --> SY[Sync<br/>snapshot · incremental · space · page]
+  SY --> REN[Sync.Renderer<br/>export_view · links · emoticons]
+  REN --> MIR[(Mirror<br/>Ecto queries)]
+  MIR --> SRCH[Mirror.Search<br/>CQL → SQL]
+  MIR --> EXP[Export<br/>Markdown · ZIP · static site]
+  MIR --> WEB[controllers + LiveView]
+  MIR --> API[REST API · MCP]
+  SY --> BL[Blobs.Store<br/>LocalStore]
+  SY --> JOB[Oban<br/>sync · notifications]
+```
 
 | Layer | Module | Notes |
 |---|---|---|
