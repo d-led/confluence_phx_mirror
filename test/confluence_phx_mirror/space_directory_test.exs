@@ -5,7 +5,7 @@ defmodule ConfluencePhxMirror.SpaceDirectoryTest do
   answer.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias ConfluencePhxMirror.SpaceDirectory
 

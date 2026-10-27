@@ -3,7 +3,7 @@ defmodule ConfluencePhxMirrorWeb.SessionControllerTest do
   What a reader gets when they open a sign-in link: a session, or the one
   sentence that says why not.
   """
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import ConfluencePhxMirror.Fixtures
   import Swoosh.TestAssertions

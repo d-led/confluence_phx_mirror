@@ -7,7 +7,7 @@ defmodule ConfluencePhxMirrorWeb.Live.ProfileLiveTest do
   administrator included — can create one for somebody, which is why the admin
   screen has no such form and this page has no user field.
   """
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
   import ConfluencePhxMirror.Fixtures
