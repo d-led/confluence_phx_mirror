@@ -45,6 +45,11 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   defp max_attempts, do: config()[:retries] || 3
   defp retry_backoff_ms, do: config()[:retry_backoff_ms] || 250
 
+  # How long one request may sit waiting for a throttle to lift. A minute is a
+  # normal Confluence Cloud window and worth sitting through; longer than that is
+  # the run's business (see `retry_plan/2`).
+  @max_retry_after_ms 60_000
+
   # ---------------------------------------------------------------------------
   # Source behaviour
   # ---------------------------------------------------------------------------
@@ -953,17 +958,36 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   defp retry(method, url, options, attempt, facts, retry_after) do
-    Traffic.retry()
-    wait_ms = retry_wait_ms(attempt, retry_after)
+    case retry_plan(attempt, retry_after) do
+      {:wait, wait_ms} ->
+        Traffic.retry()
 
-    note =
-      "retrying in #{wait_ms} ms (attempt #{attempt + 1} of #{max_attempts()})" <>
-        retry_after_note(retry_after)
+        note =
+          "retrying in #{wait_ms} ms (attempt #{attempt + 1} of #{max_attempts()})" <>
+            retry_after_note(retry_after)
 
-    log_call(:warn, method, url, facts, note)
+        log_call(:warn, method, url, facts, note)
 
-    Process.sleep(wait_ms)
-    request(method, url, options, attempt + 1)
+        Process.sleep(wait_ms)
+        request(method, url, options, attempt + 1)
+
+      {:throttled, seconds} ->
+        # The site asked to be left alone for longer than a request may sit
+        # still. Sleeping through it is what turned a throttle into a sync that
+        # ran for an hour with nothing to show — so the number goes to the
+        # caller, and the run decides to come back rather than to wait.
+        Traffic.failed(:throttled)
+
+        log_call(
+          :error,
+          method,
+          url,
+          facts,
+          "throttled for #{seconds}s; not waiting that long inside a request"
+        )
+
+        {:error, {:throttled, seconds}}
+    end
   end
 
   defp transport_failed(reason, method, url, options, attempt, waited_ms) do
@@ -1094,20 +1118,32 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   # be obeyed. Our own backoff (250 ms, 500 ms, 1 s) falls inside the same
   # throttle window, so ignoring the header spends the retry budget and fails a
   # page that a pause would have saved.
-  defp retry_wait_ms(attempt, retry_after) do
-    max(retry_wait_ms(attempt), retry_after_ms(retry_after))
+  #
+  # A wait longer than `@max_retry_after_ms` is a different animal: it is the
+  # token's whole budget, hours sometimes, and obeying it inside a request holds
+  # the sync still for that long — no page progress, no error, nothing for an
+  # operator to see. That wait belongs to the run, which reschedules itself,
+  # not to a call that has nowhere to put the time.
+  defp retry_plan(attempt, retry_after) do
+    seconds = retry_after_seconds(retry_after)
+
+    if seconds * 1000 > @max_retry_after_ms do
+      {:throttled, seconds}
+    else
+      {:wait, max(retry_wait_ms(attempt), seconds * 1000)}
+    end
   end
 
-  defp retry_after_ms([value | _rest]), do: retry_after_ms(value)
+  defp retry_after_seconds([value | _rest]), do: retry_after_seconds(value)
 
-  defp retry_after_ms(value) when is_binary(value) do
+  defp retry_after_seconds(value) when is_binary(value) do
     case Integer.parse(value) do
-      {seconds, _rest} when seconds > 0 -> seconds * 1000
+      {seconds, _rest} when seconds > 0 -> seconds
       _not_a_number -> 0
     end
   end
 
-  defp retry_after_ms(_absent), do: 0
+  defp retry_after_seconds(_absent), do: 0
 
   defp retry_after_note([]), do: ""
   defp retry_after_note([value | _rest]), do: ", the server asked for #{value}s"

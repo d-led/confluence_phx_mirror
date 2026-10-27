@@ -469,6 +469,19 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
       assert elapsed_us >= 900_000
     end
 
+    test "a 429 asking for an hour is not slept through inside the request" do
+      stub(fn conn ->
+        conn |> Plug.Conn.put_resp_header("retry-after", "3600") |> Plug.Conn.resp(429, "")
+      end)
+
+      {elapsed_us, result} = :timer.tc(fn -> HttpSource.pages("ENG", []) end)
+
+      # The number goes to the caller, and the call returns at once: a run that
+      # waits is a run nobody can see, and this one ran for an hour like that.
+      assert {:error, {:throttled, 3600}} = result
+      assert elapsed_us < 1_000_000
+    end
+
     test "reports an error when every attempt fails" do
       stub(fn conn -> Plug.Conn.resp(conn, 503, "maintenance") end)
 
