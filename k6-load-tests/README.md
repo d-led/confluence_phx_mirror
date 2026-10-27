@@ -3,6 +3,9 @@
 Read-only load against a mirror of real content. Anonymous readers: no sign-in,
 no session, no cookies.
 
+**Needs:** `k6` (`brew install k6`) and a healthy mirror at `BASE_URL/health`.
+The script refuses to start without either.
+
 ```bash
 scripts/load-test.sh            # smoke, 200, 2000
 scripts/load-test.sh smoke 200  # pick profiles
@@ -12,6 +15,10 @@ BASE_URL=http://mirror:4000 scripts/load-test.sh 200
 Profiles: `smoke` (2 VUs, 10 s), `200` (ramp to 200 VUs, 3 min), `2000` (ramp to
 2000 VUs, 5 min). Each run writes `var/k6/<profile>-<stamp>.json` and `.txt`,
 and the script prints one table across the runs (needs `jq`).
+
+**Done when** the table shows `http_req_failed` under 1% and p95 under 800 ms. A
+higher p95 with tiny latencies is almost always the reader rate limiter — see
+below.
 
 The journey per iteration is what a reader does: home, a space, a page, or a
 search — weighted 15/25/45/15. Targets are discovered in `setup()` from
