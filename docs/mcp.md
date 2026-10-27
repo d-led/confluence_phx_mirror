@@ -75,17 +75,17 @@ replica can verify it. It names the **reader who approved it**, so the assistant
 exactly what that person may see; revoking is about the account: disabling a reader
 stops their next call, and rotating `SECRET_KEY_BASE` invalidates every issued token.
 
+Two cases the flow does not cover:
+
 | Caller | Credential |
 | --- | --- |
-| demo mirror (development, test: `MIRROR_AUTO_ADMIN=true`) | none — answered as an administrator |
-| MCP client that speaks OAuth | the flow above, no manual step |
-| scripts and other clients | `Authorization: Bearer <API token>` (*Users & tokens* in `/admin`) |
-| Confluence-style clients | `Authorization: Basic base64(email:token)` |
-| nothing | `401` with the challenge above |
+| a client that cannot do OAuth discovery | `Authorization: Bearer <API token>` — the same token as `/api/v1` |
+| the demo mirror in development or test | none: `MIRROR_AUTO_ADMIN` answers as an administrator |
 
 Both credentials are parsed in `Plugs.ApiAuth.identity/1`, the same code `/api/v1`
-uses, so a token is worth the same on every surface. The API token stays available for
-a client that cannot do OAuth discovery; it is a fallback, not the recommended path.
+uses, so a token is worth the same on every surface. The API token is a fallback,
+not the recommended path. What a token is, and how to create one:
+[api.md](api.md#authentication).
 
 ### What oauth2-proxy still has to do (Fly, Kubernetes)
 
@@ -119,24 +119,28 @@ configured for that server keeps its prompts) or this mirror's own. Every tool a
 carries it in `_meta` as `confluence-mirror/origin`, and the mirror's own say
 "Mirror-only" at the start of their description.
 
-| Tool | Origin | Answers | Arguments |
-| --- | --- | --- | --- |
-| `confluence_search` | atlassian | text or CQL search, ranked, with snippets | `query`, `limit`, `spaces_filter` |
-| `confluence_get_page` | atlassian | one page: Markdown (default) or storage format | `page_id` or `title`+`space_key`, `include_metadata`, `convert_to_markdown` |
-| `confluence_get_page_children` | atlassian | direct children, optionally with bodies | `parent_id`, `start`, `limit`, `include_content`, `convert_to_markdown` |
-| `confluence_get_space_page_tree` | atlassian | an indented hierarchy of a space | `space_key`, `limit` |
-| `confluence_get_comments` | atlassian | comments and replies, oldest first | `page_id`, `convert_to_markdown` |
-| `confluence_get_labels` | atlassian | a page's labels | `page_id` |
-| `confluence_get_attachments` | atlassian | files: name, type, size, download URL | `page_id` |
-| `confluence_advanced_search` | mirror | the reader UI's advanced form | `q`, `phrase`, `any`, `none`, `space(s)`, `label`, `type`, `creator`, `ancestor`, `updated`, `from`, `to`, `sort`, `limit`, `start` |
-| `confluence_get_page_ancestors` | mirror | the trail down to a page, root first | `page_id` |
-| `confluence_get_page_descendants` | mirror | every page below a page, level by level, a window at a time | `page_id`, `start`, `limit` |
-| `confluence_get_backlinks` | mirror | pages linking to a page | `page_id`, `limit` |
-| `confluence_list_spaces` | mirror | the spaces the reader may read | `query`, `limit` |
-| `confluence_get_space` | mirror | one space: description, home page, readable count | `space_key` |
-| `confluence_list_blog_posts` | mirror | a space's news, newest first | `space_key`, `limit` |
-| `confluence_get_recent_changes` | mirror | content whose Confluence timestamp is newest — **not** the ingestion order | `space_key` (optional), `limit` |
-| `confluence_index_status` | mirror | **administrators only**: the last spaces indexed, when each was read, recent sync runs | `space_key` (optional), `limit`, `runs` |
+**The argument schemas are the server's.** `tools/list` answers them with their JSON
+Schema, and a generated client builds its form from that — so they are not copied
+here. What follows is what each tool answers.
+
+| Tool | Origin | Answers |
+| --- | --- | --- |
+| `confluence_search` | atlassian | text or CQL search, ranked, with snippets |
+| `confluence_get_page` | atlassian | one page: Markdown (default) or storage format |
+| `confluence_get_page_children` | atlassian | direct children, optionally with bodies |
+| `confluence_get_space_page_tree` | atlassian | an indented hierarchy of a space |
+| `confluence_get_comments` | atlassian | comments and replies, oldest first |
+| `confluence_get_labels` | atlassian | a page's labels |
+| `confluence_get_attachments` | atlassian | files: name, type, size, download URL |
+| `confluence_advanced_search` | mirror | the reader UI's advanced form |
+| `confluence_get_page_ancestors` | mirror | the trail down to a page, root first |
+| `confluence_get_page_descendants` | mirror | every page below a page, level by level, a window at a time |
+| `confluence_get_backlinks` | mirror | pages linking to a page |
+| `confluence_list_spaces` | mirror | the spaces the reader may read |
+| `confluence_get_space` | mirror | one space: description, home page, readable count |
+| `confluence_list_blog_posts` | mirror | a space's news, newest first |
+| `confluence_get_recent_changes` | mirror | content whose Confluence timestamp is newest — **not** the ingestion order |
+| `confluence_index_status` | mirror | **administrators only**: the last spaces indexed, when each was read, recent sync runs |
 
 Two tools sound alike and are not. `confluence_get_recent_changes` answers "what
 changed upstream lately" from Confluence's own timestamps; `confluence_index_status`
