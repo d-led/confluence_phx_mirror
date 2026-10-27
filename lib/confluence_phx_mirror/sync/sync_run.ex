@@ -83,8 +83,13 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
   What the run did, in the numbers the dashboard's sync table prints.
 
   One function for the table and the audit entry, so the two cannot drift: a
-  run's numbers are its own window (what the site listed and what of it needed
-  fetching), with the mirror's size beside them for scale.
+  run's numbers are its own window (what the site listed, what of it needed
+  fetching, whose details it read), with the mirror's size beside them for
+  scale.
+
+  `details` stands on its own because a run can work the backlog and list
+  nothing: counting only listed pages would report such a run as having read
+  no page details while it was doing exactly that.
   """
   def summary(%__MODULE__{} = run) do
     stats = run.stats || %{}
@@ -93,10 +98,18 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
       listed: stats["pages"] || 0,
       changed: stats["changed"] || 0,
       unchanged: stats["unchanged"] || 0,
+      details: details_read(stats),
       in_mirror: stats["total"] || 0,
       attachments: stats["attachments"] || 0,
       errors: length(stats["errors"] || [])
     }
+  end
+
+  # The pages whose comments, files and restrictions the run read: re-read
+  # because a comment or a file changed, and caught up because they had never
+  # been read at all.
+  defp details_read(stats) do
+    (stats["details_relisted"] || 0) + (stats["details_caught_up"] || 0)
   end
 
   @doc "Audit entry for a run that finished, successfully or partially."

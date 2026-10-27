@@ -1700,7 +1700,10 @@ defmodule ConfluencePhxMirror.Sync do
 
     with {:ok, read} <-
            read_page_details(source, page, rendered, attachments, restrictions),
-         {:ok, {page, comments, pruned}} <-
+         # The page comes back from the write as a page; saying so here is what
+         # keeps it one for the mailer below instead of a map that happens to
+         # have the same keys.
+         {:ok, {%Page{} = page, comments, pruned}} <-
            store_details(page, space, read, context, source, opts) do
       # Blobs go after the commit: a crash between the two leaves an
       # unreferenced file, which is harmless, never a row pointing at nothing.
@@ -1710,7 +1713,11 @@ defmodule ConfluencePhxMirror.Sync do
       # told — offered a reload, never given one.
       PageUpdates.page_synced(page)
 
-      page = Map.put(page, :space, space)
+      # The mailer reads `page.space.key`, and the page was read without its
+      # space loaded, so it is attached here. Spelled as a struct update, so the
+      # page stays a `%Page{}` — for the mailer's own head and for both type
+      # checkers, which otherwise see a plain map from here on.
+      page = %Page{page | space: space}
       {notifications, notification_errors} = notify(change, page, space)
       audit_change(change, page, space, dto)
 
@@ -1749,6 +1756,8 @@ defmodule ConfluencePhxMirror.Sync do
   # that says its details were read move together. The stop is checked here,
   # inside the transaction: what was written before the request is rolled back
   # with it, and the page waits in the backlog for the next run.
+  @spec store_details(Page.t(), Space.t(), map(), map(), module(), keyword()) ::
+          {:ok, {Page.t(), [Comment.t()], [Attachment.t()]}} | {:error, term()}
   defp store_details(page, space, read, context, source, opts) do
     Repo.transaction(fn ->
       check_cancelled!(opts)
@@ -2200,15 +2209,28 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   # "1 pages" beside "1 skipped" reads like a lie, because it is one item counted
-  # twice under two names. A run says what it listed, how that split, what it
-  # re-checked for children, and how big the mirror it compared against is.
+  # twice under two names. A run says what it listed, how that split, whose
+  # details it read, and how big the mirror it compared against is.
   defp listing_sentence(%{"pages" => listed} = stats) when is_integer(listed) do
     "#{listed} listed (#{stats["changed"] || 0} changed, " <>
-      "#{stats["unchanged"] || 0} unchanged), " <>
-      "#{stats["details_relisted"] || 0} re-read for comments and files, "
+      "#{stats["unchanged"] || 0} unchanged), " <> details_sentence(stats) <> ", "
   end
 
   defp listing_sentence(_stats), do: ""
+
+  # The details a run read get their own clause, because a run can spend itself
+  # on the backlogs and list nothing: "0 re-read for comments and files" is the
+  # account of a run that read exactly those for two hundred pages.
+  defp details_sentence(stats) do
+    ["#{stats["details_relisted"] || 0} re-read for comments and files" | caught_up_clause(stats)]
+    |> Enum.join(", ")
+  end
+
+  defp caught_up_clause(%{"details_caught_up" => caught})
+       when is_integer(caught) and caught > 0,
+       do: ["#{caught} caught up from the backlog"]
+
+  defp caught_up_clause(_stats), do: []
 
   defp fail_run(run, message, trigger) do
     {:ok, run} =

@@ -112,6 +112,11 @@ defmodule ConfluencePhxMirror.Sync.ChildChangesTest do
 
       assert run.stats["details_caught_up"] == 1
       assert page!(1002).details_synced_at != nil
+
+      # One page, one clause: the run lists nothing and still read a page's
+      # details, so its account must say so rather than report zero.
+      messages = Log.entries() |> Enum.map(& &1.message)
+      assert Enum.any?(messages, &(&1 =~ "1 caught up from the backlog"))
     end
   end
 

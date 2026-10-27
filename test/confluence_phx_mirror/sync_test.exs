@@ -183,6 +183,9 @@ defmodule ConfluencePhxMirror.SyncTest do
                "listed" => run.stats["pages"],
                "changed" => run.stats["changed"],
                "unchanged" => run.stats["unchanged"],
+               "details" =>
+                 (run.stats["details_relisted"] || 0) +
+                   (run.stats["details_caught_up"] || 0),
                "in_mirror" => run.stats["total"],
                "attachments" => run.stats["attachments"],
                "errors" => 0

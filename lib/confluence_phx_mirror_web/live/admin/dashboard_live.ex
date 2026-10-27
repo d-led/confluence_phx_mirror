@@ -675,7 +675,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             </th>
             <th title="Of those, the ones that had to be fetched and rendered">Changed</th>
             <th title="Of those, the ones already up to date and not fetched again">Unchanged</th>
-            <th title="How many pages the mirror held when the run finished — the size the three numbers to its left are a slice of">
+            <th title="Pages whose comments, files and restrictions this run read — re-read because one of them changed, or caught up from the never-read backlog">
+              Details
+            </th>
+            <th title="How many pages the mirror held when the run finished — the size the numbers to its left are a slice of">
               In mirror
             </th>
             <th>Attachments</th>
@@ -702,6 +705,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
             <td class="text-xs tabular-nums">{row.listed}</td>
             <td class="text-xs tabular-nums">{row.changed}</td>
             <td class="text-xs tabular-nums">{row.unchanged}</td>
+            <td class="text-xs tabular-nums">{row.details}</td>
             <td class="text-xs tabular-nums">{row.total}</td>
             <td class="text-xs tabular-nums">{row.attachments}</td>
             <td class="max-w-[18rem] truncate text-xs text-error" title={row.error}>
@@ -875,6 +879,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       listed: "—",
       changed: "—",
       unchanged: "—",
+      details: "—",
       total: "—",
       attachments: "—",
       error: nil,
@@ -906,6 +911,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       listed: numbers.listed,
       changed: numbers.changed,
       unchanged: numbers.unchanged,
+      details: numbers.details,
       total: numbers.in_mirror,
       attachments: numbers.attachments,
       error: run.error,

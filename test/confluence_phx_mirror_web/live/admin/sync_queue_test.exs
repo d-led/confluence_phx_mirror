@@ -64,6 +64,27 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncQueueTest do
     assert row =~ ">7<"
   end
 
+  test "a run that only caught up on page details does not read as a row of zeros", %{conn: conn} do
+    {:ok, run} =
+      %ConfluencePhxMirror.Sync.SyncRun{}
+      |> ConfluencePhxMirror.Sync.SyncRun.changeset(%{
+        source: "confluence-demo",
+        mode: "incremental",
+        status: "succeeded",
+        started_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        finished_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        stats: %{"pages" => 0, "changed" => 0, "unchanged" => 0, "details_caught_up" => 150}
+      })
+      |> Repo.insert()
+
+    {:ok, view, _html} = live(conn, ~p"/admin")
+
+    # Listing nothing is true of such a run; the details column is what it did.
+    row = view |> element("#sync-run-#{run.id}") |> render()
+    assert row =~ ">0<"
+    assert row =~ ">150<"
+  end
+
   test "a finished run still says who asked for it", %{conn: conn} do
     {:ok, run} = Sync.run(:snapshot, trigger: "the admin dashboard, by ops@example.com")
 
