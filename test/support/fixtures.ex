@@ -29,6 +29,29 @@ defmodule ConfluencePhxMirror.Fixtures do
   """
   @spec empty_mirror!() :: :ok
   def empty_mirror! do
+    delete_everything(3)
+  end
+
+  # A deadlock is Postgres killing one of two transactions that reached the same
+  # rows from opposite sides, so the answer is to try again — and the retry needs
+  # a boundary of its own: a failed statement leaves the transaction unusable
+  # until something rolls back to a savepoint. `Repo.transaction/1` is that
+  # savepoint inside the sandbox's transaction, so a deadlocked attempt costs one
+  # attempt and leaves the test's own transaction intact.
+  defp delete_everything(attempts_left) do
+    case Repo.transaction(fn -> delete_from_every_table() end) do
+      {:ok, :ok} ->
+        :ok
+
+      {:error, error} when attempts_left > 1 ->
+        if deadlock?(error), do: delete_everything(attempts_left - 1), else: raise(error)
+
+      {:error, error} ->
+        raise error
+    end
+  end
+
+  defp delete_from_every_table do
     # Children first: the foreign keys point up at pages and spaces.
     for table <- ~w(
           page_properties page_labels page_restrictions links labels group_members
@@ -41,6 +64,9 @@ defmodule ConfluencePhxMirror.Fixtures do
     ConfluencePhxMirror.Mirror.Counters.clear()
     :ok
   end
+
+  defp deadlock?(%Postgrex.Error{postgres: %{code: :deadlock_detected}}), do: true
+  defp deadlock?(_other), do: false
 
   @doc "Mirrors the bundled demo snapshot and returns the finished sync run."
   def demo_snapshot! do
