@@ -1,11 +1,31 @@
 # API and CQL
 
-The mirror exposes three surfaces over the same content: the reader UI, a
-first-party JSON API under `/api/v1`, and a Confluence-compatible subset under
-`/wiki/rest/api` for tools that already speak Confluence.
+One content store, four surfaces:
 
-A fourth, `/api/mcp`, speaks the Model Context Protocol to AI assistants and
-answers with the same authorization as the two APIs — see [mcp.md](mcp.md).
+| Surface | Path | For |
+| --- | --- | --- |
+| reader UI | `/`, `/spaces/…`, `/search` | people |
+| JSON API | `/api/v1/…` | your own tools |
+| Confluence-compatible REST | `/wiki/rest/api/…` | tools that already speak Confluence |
+| MCP | `/api/mcp` | AI assistants — see [mcp.md](mcp.md) |
+
+All four answer with the same authorization: a reader never finds in one what
+another hides.
+
+## Fast path
+
+```bash
+export TOKEN=…                                     # /profile → API tokens
+curl -H "Authorization: Bearer $TOKEN" https://mirror.example.com/api/v1/spaces
+curl -u "you@acme.com:$TOKEN" https://mirror.example.com/api/v1/search?q=rate+limit
+```
+
+* A browser that is already signed in needs **no token** — the API accepts the
+  same session and proxy identity every page does.
+* The description is at `/api/openapi.json` (OpenAPI 3.1) and `/api/docs`
+  (a page). `/api/docs/swagger` is the same document with *Try it out*.
+* In a release all three need `CM_API_DOCS=1`; development and test serve them
+  by default.
 
 ## The description
 
@@ -24,9 +44,6 @@ anyone remembering to add it — and each one is described in
 `ConfluencePhxMirrorWeb.Api.OpenApi`. A test fails when a route has no
 description, so the document cannot fall behind the code. Hand the JSON to
 Postman, Insomnia or `npx @redocly/cli lint` and it is a complete client.
-
-A release serves all three only with `CM_API_DOCS=1`; development and test serve
-them by default. See [configuration.md](configuration.md#api-description).
 
 ## Authentication
 
@@ -61,21 +78,23 @@ all.
 ## JSON API
 
 ```
-GET /api/v1/spaces
-POST /api/v1/spaces
+GET    /api/v1/spaces
+POST   /api/v1/spaces
 DELETE /api/v1/spaces/:key
-GET /api/v1/spaces/:key/pages
-GET /api/v1/pages/:id
-GET /api/v1/pages/:id/{children,ancestors,descendants,labels,attachments,comments,backlinks}
-GET /api/v1/labels
-GET /api/v1/search?cql=...
-GET /api/v1/stats
-GET /api/v1/sync-runs
-GET /api/v1/sync-runs/export?format=jsonl
-GET /api/v1/identities
-POST /api/v1/identities/:account_id/link
+GET    /api/v1/spaces/:key
+GET    /api/v1/spaces/:key/pages
+GET    /api/v1/pages/:id
+GET    /api/v1/pages/:id/{children,ancestors,descendants,labels,attachments,comments,backlinks}
+GET    /api/v1/page-by-path
+GET    /api/v1/labels
+GET    /api/v1/search?cql=...
+GET    /api/v1/stats
+GET    /api/v1/sync-runs
+GET    /api/v1/sync-runs/export?format=jsonl
+GET    /api/v1/identities
+POST   /api/v1/identities/:account_id/link
 DELETE /api/v1/identities/:account_id/link
-GET /health
+GET    /health
 ```
 
 `/health` needs no token: it reports the database check, content counters and the
@@ -108,11 +127,12 @@ as the mirror exists. `GET /api/v1/sync-runs?start=&limit=` is one window of it,
 newest first, with `total` beside `results` and `_links.next` while there is
 more; `limit` defaults to 50 and is capped at 500.
 
-Each run names its `mode` (`snapshot`, `incremental`, `webhook`), its `scope`,
-its `status` (`running`, `succeeded`, `partial`, `failed`, `cancelled`), the
-times it `startedAt`/`finishedAt`, `durationMs` (`null` while it has not
-finished), `cancelRequestedAt`, the counters it wrote in `stats`, and the
-`error` the node reported when it broke.
+Each run names its `mode` (`snapshot`, `incremental`, `webhook`, `people`), its
+`scope`, its `status` (`running`, `succeeded`, `partial`, `failed`,
+`cancelled`), the times it `startedAt`/`finishedAt`, `durationMs` (`null` while
+it has not finished), `cancelRequestedAt`, the counters it wrote in `stats`, and
+the `error` the node reported when it broke. A one-page or one-space run is
+recorded as `webhook` with its `scope`, and its `trigger` says what asked for it.
 
 `GET /api/v1/sync-runs/export?format=jsonl` (or `csv`) is the whole history as a
 file, oldest first: **JSON lines** keeps each run's `stats` an object, **CSV**
@@ -226,8 +246,18 @@ prefixes are.
 The reader UI's LiveView at `/search` compiles the same structured filters to
 internal CQL; raw CQL is public only on this Confluence-compatible surface.
 
-## What the API does not enforce yet
+## Permissions on every surface
 
-The v1 API and `/search` still answer from the unfiltered index; the reader UI
-routes do apply the permission policy. See
-[Known limitations](design-notes.md#known-limitations).
+Both APIs apply the same checks as the reader UI — `Authorization.can_read_page?/2`
+for one page, `restrict_pages/2` inside a listing query, `readable_results/2`
+for a search answer. So:
+
+* a restricted page answers **`404`**, exactly like a page that was never
+  mirrored, so an API cannot confirm that content exists;
+* a listing (space pages, children, descendants, backlinks, labels, search) is
+  narrowed inside its query, so restricted titles never reach the caller;
+* `/api/v1/labels` counts pages over what the caller may read, not over the
+  whole mirror.
+
+Who may have an account at all is a different question, answered in
+[routes-auth.md](routes-auth.md).
