@@ -169,12 +169,13 @@ One script runs everything and prints one summary; the `mix` aliases below are
 what it calls, and are worth running on their own while working:
 
 ```bash
-scripts/quality.sh              # lint, suite with coverage, CRAP report (what CI runs on a push)
-scripts/quality.sh --fast       # static analysis only: no database, no tests
+scripts/quality.sh              # lint, types, suite with coverage, CRAP report (what CI runs on a push)
+scripts/quality.sh --fast       # static analysis only — lint and types: no database, no tests
 scripts/quality.sh --image      # …and build the image, checking it runs as uid 10001
 scripts/quality.sh --top 20     # rank more CRAP entries (default 8)
 
 mix lint                        # compile --warnings-as-errors, unused deps, format, credo --strict, sobelow
+mix types                       # dialyzer: every spec against the code that has to keep it
 mix cover                       # the suite with the coverage export the complexity gate needs
 mix complexity                  # CRAP over the application code (verbose table)
 mix precommit                   # the script, so CI and a laptop agree
@@ -186,16 +187,17 @@ The script is read-only: it runs `format --check-formatted` and
 
 ### What CI runs
 
-`.github/workflows/ci.yml` runs three jobs. The first two gate every push and
-pull request; the third gates every push, and publishes only when asked.
+`.github/workflows/ci.yml` runs four jobs. The first three gate every push and
+pull request; the fourth gates every push, and publishes only when asked.
 
 | Job | What it is | Cost |
 | --- | --- | --- |
 | **Static analysis** | `mix lint` — compile with warnings as errors, unused deps, format, `credo --strict`, sobelow | ~30 s |
+| **Types** | `mix types` — dialyzer over the app and its specs, against a PLT of OTP, Elixir and the deps | seconds warm; the PLT is minutes when the cache misses |
 | **Suite and complexity** | Postgres service, `mix cover`, then `mix complexity` (CRAP, threshold 30). This is the gate that matters | ~7.5 min |
 | **Image, scan, non-root** | `docker build` (amd64), Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), `id -u` must be `10001`, then publish | ~2 min, plus ~15 min for the arm64 half under QEMU |
 
-The image job `needs` the other two, so nothing is published from a commit that
+The image job `needs` the other three, so nothing is published from a commit that
 failed them. A push publishes the amd64 image the checks had to build anyway; a
 release tag or `gh workflow run ci --field image=true` adds the arm64 half. What
 that image ends up tagged as: [deployment.md](deployment.md#releases-and-images).
@@ -241,6 +243,41 @@ runs go through `cmd`.
 The report ranks three ways because they answer different questions: the
 per-function list says what to fix, the per-file list says where a file's worst
 spot is, and the per-tree line says whether a whole layer needs attention.
+
+### Types: dialyzer
+
+`mix types` asks a different question from the rest of the gate: not whether a
+line is exercised, but whether the specs are true. It finds the shapes no test
+does — a spec that promises a plain map and gets a struct, a call site passing
+the wrong term, a clause that can never match.
+
+It is its own gate because of the PLT, the pre-analysed image of OTP, Elixir and
+the deps that it checks the app against. Building one takes minutes on a machine
+that has never run it; after that it is reused until a version in `mix.lock`
+moves, which is why CI caches `_build` for this job and why it is not part of
+`mix lint`.
+
+```bash
+mix types                                        # seconds, once the PLT exists
+rm -rf _build/dev/dialyxir_*.plt && mix types    # after an OTP or Elixir upgrade
+```
+
+There is no ignore file, on purpose. Every finding so far was true, and each was
+fixed where it was told. `unused_fun` is the one to read as a symptom rather than
+noise: here it meant "the call above this block cannot succeed, so the rest of it
+is dead", which is how a spec promising a plain map for a `%Page{}` argument
+surfaced as three unreachable functions two hundred lines away. Fix the contract
+and the three disappear.
+
+`plt_add_apps` in `mix.exs` is not decoration. `:mix` is what makes `mix.exs`
+itself typed instead of opaque — the version string comes from `Mix.Project` —
+and `:ex_unit` is what the case templates in `test/support` need. The rest of the
+list is the deps this app marks `runtime: false`: `esbuild` and `tailwind`, which
+`mix assets.install` calls, and `phoenix_test`, which the feature cases call.
+Compiled, but not among the app's applications, they are invisible to dialyzer
+until they are named there — and then a `mix lint`-clean tree reports six calls
+to functions that "do not exist". `:phoenix_test` is added only for `:test`,
+where the dep exists.
 
 ## License
 

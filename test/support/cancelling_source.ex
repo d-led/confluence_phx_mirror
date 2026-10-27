@@ -9,6 +9,7 @@ defmodule ConfluencePhxMirror.Confluence.CancellingSource do
 
   import Ecto.Query
 
+  alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Confluence.DemoSource
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
@@ -30,7 +31,14 @@ defmodule ConfluencePhxMirror.Confluence.CancellingSource do
           limit: 1
       )
 
-    if run, do: Sync.cancel(run.id, {:user, %{email: "admin@example.com"}})
+    # The administrator who asks: an audit actor is a real user, and the audit
+    # row reads `id`, `email` and `display_name` off it.
+    if run,
+      do:
+        Sync.cancel(
+          run.id,
+          {:user, %User{id: 1, email: "admin@example.com", display_name: "Test Admin"}}
+        )
   end
 
   defdelegate name(), to: DemoSource

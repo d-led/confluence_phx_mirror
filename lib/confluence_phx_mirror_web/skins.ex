@@ -49,6 +49,21 @@ defmodule ConfluencePhxMirrorWeb.Skins do
 
   @type variant :: %{name: String.t(), label: String.t(), icon: String.t()}
 
+  # What a pack (or a `:skins` entry in config) declares: a palette pair and the
+  # name to choose it by, plus the shape overrides daisyUI reads. It becomes a
+  # `theme()` once the registry is built.
+  @type declaration :: %{
+          required(:name) => String.t(),
+          required(:label) => String.t(),
+          optional(:note) => String.t(),
+          optional(:colors) => %{optional(atom()) => String.t()},
+          optional(:dark_colors) => %{optional(atom()) => String.t()},
+          optional(:radius) => %{optional(atom()) => String.t()},
+          optional(:border) => String.t() | number(),
+          optional(:depth) => String.t() | number(),
+          optional(:noise) => String.t() | number()
+        }
+
   @type theme :: %{
           name: String.t(),
           label: String.t(),

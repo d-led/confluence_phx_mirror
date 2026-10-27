@@ -338,4 +338,47 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
   defp row_text(document, page) do
     document |> row(page) |> LazyHTML.text()
   end
+
+  # The watch panel asks after the page and after its space, and the two answers
+  # decide different halves of it: a reader watching one is not watching the
+  # other.
+  describe "the watch panel" do
+    setup %{conn: conn} do
+      {:ok, page} = ConfluencePhxMirror.Mirror.find_page(1002)
+      reader = user_fixture()
+      path = "/spaces/ENG/pages/1002/Architecture+Overview"
+
+      %{conn: conn, page: page, reader: reader, path: path}
+    end
+
+    test "a reader watching the page is offered to stop, and the space on its own", ctx do
+      {:ok, _} = ConfluencePhxMirror.Notifications.subscribe(ctx.reader, "page", ctx.page.id)
+
+      html =
+        ctx.conn
+        |> init_test_session(%{user_id: ctx.reader.id})
+        |> get(ctx.path)
+        |> html_response(200)
+
+      assert html =~ "Stop watching"
+      refute html =~ "Watch this page"
+      assert html =~ "Watch all of ENG"
+      refute html =~ "Watching the whole space."
+    end
+
+    test "a reader watching the space is offered the page on its own", ctx do
+      {:ok, _} =
+        ConfluencePhxMirror.Notifications.subscribe(ctx.reader, "space", ctx.page.space_id)
+
+      html =
+        ctx.conn
+        |> init_test_session(%{user_id: ctx.reader.id})
+        |> get(ctx.path)
+        |> html_response(200)
+
+      assert html =~ "Watch this page"
+      refute html =~ "Stop watching"
+      assert html =~ "Watching the whole space."
+    end
+  end
 end

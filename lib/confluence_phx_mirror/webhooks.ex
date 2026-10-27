@@ -72,12 +72,7 @@ defmodule ConfluencePhxMirror.Webhooks do
   may.
   """
   @spec enabled?() :: boolean()
-  def enabled? do
-    case Settings.webhook_enabled?() do
-      nil -> Keyword.get(config(), :enabled, true)
-      value -> value
-    end
-  end
+  def enabled?, do: Settings.webhook_enabled?()
 
   defp accept(payload, raw_body, headers, opts) do
     secret = config()[:secret]

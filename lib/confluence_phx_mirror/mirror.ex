@@ -1334,6 +1334,7 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc "Stores the rendered HTML and the derived search text."
+  @spec update_rendered(Page.t(), map()) :: {:ok, Page.t()} | {:error, Ecto.Changeset.t()}
   def update_rendered(page, attrs) do
     page
     |> Ecto.Changeset.change(attrs)

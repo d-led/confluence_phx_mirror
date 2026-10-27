@@ -66,6 +66,8 @@ defmodule ConfluencePhxMirror.Sync.Reconcile do
           agreed: non_neg_integer(),
           listed: [{Space.t(), non_neg_integer()}],
           absent: non_neg_integer(),
+          empty: [Space.t()],
+          failed: [{Space.t(), term()}],
           asked: non_neg_integer()
         }
 

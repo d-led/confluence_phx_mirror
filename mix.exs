@@ -12,9 +12,25 @@ defmodule ConfluencePhxMirror.MixProject do
       deps: deps(),
       package: package(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      dialyzer: dialyzer()
     ]
   end
+
+  # The type check runs in whatever environment calls it — CI runs the whole
+  # workflow with `MIX_ENV=test` — and in `:test` the app compiles `test/support`
+  # as well. `:mix` is what makes `mix.exs` itself typed (the version string comes
+  # from `Mix.Project`), and `:ex_unit` is what the case templates in
+  # `test/support` need. The asset CLIs and `phoenix_test` are `runtime: false` in
+  # this environment — compiled, but absent from the app's applications — so
+  # dialyzer has to be told to load them, or `mix assets.install` and the
+  # feature cases show up as calls to functions that do not exist.
+  defp dialyzer do
+    [plt_add_apps: [:mix, :ex_unit, :esbuild, :tailwind] ++ test_plt_apps(Mix.env())]
+  end
+
+  defp test_plt_apps(:test), do: [:phoenix_test]
+  defp test_plt_apps(_env), do: []
 
   defp package do
     [
@@ -102,6 +118,7 @@ defmodule ConfluencePhxMirror.MixProject do
       {:dns_cluster, "~> 0.3.1"},
       {:bandit, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:ex_crap, "~> 0.1.1", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false}
@@ -148,6 +165,12 @@ defmodule ConfluencePhxMirror.MixProject do
         "credo --strict",
         "lint.sobelow --config"
       ],
+      # The type check: dialyzer against a PLT of OTP, Elixir and the deps. Its
+      # own alias rather than part of `lint`, because the PLT costs two minutes
+      # on a cold machine and `lint` promises seconds. `:mix` and `:ex_unit` are
+      # in the PLT (see `dialyzer:` above) so the version and the app's own
+      # `Mix.Project` are typed too, not just the app.
+      types: ["dialyzer"],
       # Tests with the coverage data the complexity gate needs.
       cover: ["test --cover --export-coverage default"],
       # CRAP scores every function by complexity and coverage; it reads the

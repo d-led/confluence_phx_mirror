@@ -43,7 +43,8 @@ defmodule ConfluencePhxMirror.Settings do
   alias ConfluencePhxMirror.Settings.Catalogue
   alias ConfluencePhxMirror.Settings.Setting
 
-  @type value :: String.t() | boolean() | integer() | nil
+  # A list is a stored value too: a csv setting (`sync.spaces`) is a list of keys.
+  @type value :: String.t() | boolean() | integer() | [String.t()] | nil
   @type changes :: %{optional(String.t()) => value()}
 
   @doc "Every key an administrator can own, in a stable order."

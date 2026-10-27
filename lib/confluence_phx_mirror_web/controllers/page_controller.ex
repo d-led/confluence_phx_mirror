@@ -241,6 +241,10 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     page = with_emoticons(page)
     space = page.space
     user = conn.assigns[:current_user]
+
+    # The reader's watch list for this page and its space, both asked in one
+    # query. A list rather than a set: two targets, and the template only asks
+    # whether one of them is on it.
     watching = watched(user, [{"page", page.id}, {"space", space.id}])
     filter = readable_pages(conn)
 
@@ -265,8 +269,8 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       comments: page |> Mirror.comments() |> Enum.map(&with_emoticons/1),
       backlinks: Mirror.backlinks(page, filter: filter),
       outgoing_links: Mirror.outgoing_links(page, filter: filter),
-      subscribed?: MapSet.member?(watching, {"page", page.id}),
-      space_subscribed?: MapSet.member?(watching, {"space", space.id}),
+      subscribed?: {"page", page.id} in watching,
+      space_subscribed?: {"space", space.id} in watching,
       admin?: Scope.admin?(scope(conn)),
       resync_path: URLs.page_resync_path(space.key, page.confluence_id)
     )
@@ -322,8 +326,13 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     }
   end
 
-  defp watched(%User{} = user, targets), do: Notifications.watching(user, targets)
-  defp watched(_user, _targets), do: MapSet.new()
+  @spec watched(User.t() | nil, [{String.t(), integer()}]) :: [{String.t(), integer()}]
+  defp watched(%User{} = user, targets),
+    do: Notifications.watching(user, targets) |> MapSet.to_list()
+
+  # A reader who is not signed in watches nothing, and asking the database on
+  # their behalf is a wasted round trip.
+  defp watched(_user, _targets), do: []
 
   defp scope(conn), do: Scope.from_assigns(conn.assigns)
 

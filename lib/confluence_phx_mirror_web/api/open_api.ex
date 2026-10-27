@@ -25,6 +25,7 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
   want to advertise it; `enabled?/0` is the single place that answers.
   """
 
+  alias ConfluencePhxMirror.BuildInfo
   alias ConfluencePhxMirror.Sites
   alias ConfluencePhxMirrorWeb.Router
 
@@ -84,13 +85,16 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
   @doc "The document as a plain map, ready to be encoded as JSON."
   @spec document() :: map()
   def document do
+    # `Sites.name/0` already answers a neutral name for a mirror with no site.
+    site = Sites.name()
+
     %{
       "openapi" => "3.1.0",
       "info" => %{
         "title" => "Confluence Mirror API",
-        "version" => to_string(Application.spec(:confluence_phx_mirror, :vsn)),
+        "version" => BuildInfo.info().version,
         "description" =>
-          "Read-only access to a mirror of #{Sites.name() || "a Confluence site"}. " <>
+          "Read-only access to a mirror of #{site}. " <>
             "Two surfaces over the same content: `/api/v1` for first-party clients and " <>
             "`/wiki/rest/api` for tools that already speak Confluence. Nothing here writes.",
         "license" => %{"name" => "MPL-2.0", "identifier" => "MPL-2.0"}

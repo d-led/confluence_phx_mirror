@@ -5,6 +5,10 @@
 #   lint    a few seconds, no database: compile --warnings-as-errors, unused
 #           deps, formatting, credo --strict, sobelow. Fails fastest. Every push
 #           and every pull request.
+#   types   dialyzer against a PLT of OTP, Elixir and the deps: every spec
+#           against the code that has to keep it. Its own job because the PLT is
+#           two minutes cold and ten seconds warm, which would spoil the lint
+#           gate's promise; the `_build` cache carries the PLT between runs.
 #   test    Postgres service, `mix cover` (test --cover), then `mix complexity`,
 #           which reads the coverage the suite exported and scores every
 #           function by complexity and coverage. Every push and every pull
@@ -87,6 +91,33 @@ jobs:
       # than printed as ours)
       - run: mix lint
 
+  types:
+    name: Types (dialyzer)
+    runs-on: ubuntu-24.04
+    # Two minutes of PLT on a miss, ten seconds on a hit, plus the compile.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        id: beam
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+      # Keyed on mix.lock as well as the toolchain: a new dep belongs in the PLT,
+      # and a restore from an older key is then rebuilt rather than trusted.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: types-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            types-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+      - run: mix deps.get
+      # mix types = dialyzer. Nothing to read by hand: a finding is a lib/ path,
+      # a line and what does not add up, and the job fails on the first one.
+      - run: mix types
+
   test:
     name: Suite and complexity
     runs-on: ubuntu-24.04
@@ -144,7 +175,7 @@ jobs:
 
   image:
     name: Image, scan, non-root, publish
-    needs: [lint, test]
+    needs: [lint, types, test]
     runs-on: ubuntu-24.04
     # The arm64 half is built under QEMU, which is the slow part.
     timeout-minutes: 45

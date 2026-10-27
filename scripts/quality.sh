@@ -6,9 +6,12 @@
 #
 #   scripts/quality.sh              everything CI runs on a push
 #   scripts/quality.sh --fast       static analysis only: no database, no tests
+#                                   (the type check is the slow half of it: a
+#                                   cold PLT is two minutes, a warm one ten
+#                                   seconds)
 #   scripts/quality.sh --no-tests   reuse the coverage already exported, re-rank
-#   scripts/quality.sh --image      additionally build the image and check the user
-#                                   it runs as (slow; CI does it for a release)
+#   scripts/quality.sh --image      additionally build the image and check the
+#                                   user it runs as (slow; CI does it for a release)
 #   scripts/quality.sh --top 20     how many CRAP entries to rank (default 8)
 #
 # Exit status is non-zero if any gate fails, so it can sit in a pipeline.
@@ -23,7 +26,7 @@ image=0
 top=8
 
 usage() {
-  sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//; s/^#$//'
+  sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//; s/^#$//'
 }
 
 while [[ $# -gt 0 ]]; do
@@ -88,6 +91,21 @@ else
   record lint 1 "see above"
   # Nothing below is worth running on a tree that does not compile or lint.
   finish
+fi
+
+# ---------------------------------------------------------------------------
+# Types: dialyzer reads every spec and asks whether the code keeps them. Slower
+# than the rest of the static half — the PLT it runs against is minutes on a
+# cold machine — and worth it: a spec that lies about its own argument turns
+# every finding downstream of the call into a false one.
+# ---------------------------------------------------------------------------
+
+banner "types"
+if mix types >"$report" 2>&1; then
+  record types 0 "$(grep -E '^Total errors' "$report" | tail -1)"
+else
+  grep -E '^lib/' "$report" | first_lines 20 || true
+  record types 1 "see above"
 fi
 
 if [[ $fast -eq 1 ]]; then

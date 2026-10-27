@@ -11,6 +11,8 @@ defmodule ConfluencePhxMirror.Accounts.User do
 
   @roles ~w(admin member)
 
+  @type t :: %__MODULE__{}
+
   schema "users" do
     field :email, :string
     field :display_name, :string

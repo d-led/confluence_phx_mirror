@@ -14,6 +14,8 @@ defmodule ConfluencePhxMirror.PageUpdates do
   sides are fixed-width UTC strings, so they compare as strings.
   """
 
+  alias ConfluencePhxMirror.Mirror.Page
+
   @prefix "page-updates:"
 
   @doc "The topic the readers of one page watch."
@@ -29,8 +31,8 @@ defmodule ConfluencePhxMirror.PageUpdates do
   Called once per page a sync finishes, after its transaction has committed:
   what a reader would reload is on disk by then.
   """
-  @spec page_synced(%{id: integer(), synced_at: DateTime.t() | nil}) :: :ok
-  def page_synced(%{id: id, synced_at: synced_at}) do
+  @spec page_synced(Page.t()) :: :ok
+  def page_synced(%Page{id: id, synced_at: synced_at}) do
     Phoenix.PubSub.broadcast(
       ConfluencePhxMirror.PubSub,
       topic(id),

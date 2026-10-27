@@ -206,7 +206,12 @@ defmodule ConfluencePhxMirror.Confluence.Traffic do
     end
   end
 
-  defp add(key, amount), do: :ets.update_counter(table(), key, amount, {key, 0})
+  # `:ets.update_counter/4` answers the new count, which no caller wants: these
+  # counters are for a screen to read, not for control flow.
+  defp add(key, amount) do
+    _count = :ets.update_counter(table(), key, amount, {key, 0})
+    :ok
+  end
 
   # Created at boot by `init/1`; the fallback keeps the module usable where the
   # application is not running (a plain `elixir -e`, a test of this module).

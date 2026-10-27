@@ -10,6 +10,8 @@ defmodule ConfluencePhxMirror.Sites.Site do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{}
+
   @primary_key {:id, :integer, autogenerate: false}
   schema "mirror_sites" do
     field :key, :string

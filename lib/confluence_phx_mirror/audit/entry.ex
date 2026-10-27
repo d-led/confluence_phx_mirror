@@ -16,12 +16,14 @@ defmodule ConfluencePhxMirror.Audit.Entry do
   @type t :: %__MODULE__{
           action: String.t(),
           entity_type: String.t(),
-          entity_id: String.t() | integer(),
+          # `nil` names nothing: an entry about a whole table, or an error that
+          # has no subject it could point at.
+          entity_id: String.t() | integer() | nil,
           metadata: map()
         }
 
   @doc false
-  @spec new(String.t(), String.t(), String.t() | integer(), map()) :: t()
+  @spec new(String.t(), String.t(), String.t() | integer() | nil, map()) :: t()
   def new(action, entity_type, entity_id, metadata \\ %{}) do
     %__MODULE__{
       action: action,
