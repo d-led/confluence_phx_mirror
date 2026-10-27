@@ -167,6 +167,22 @@ The script is read-only: it runs `format --check-formatted` and
 `deps.unlock --check-unused`, so a report never rewrites a file. Run
 `mix format` yourself when it complains.
 
+### What CI runs
+
+`.github/workflows/ci.yml` runs three jobs. The first two gate every push and
+pull request; the third gates every push, and publishes only when asked.
+
+| Job | What it is | Cost |
+| --- | --- | --- |
+| **Static analysis** | `mix lint` — compile with warnings as errors, unused deps, format, `credo --strict`, sobelow | ~30 s |
+| **Suite and complexity** | Postgres service, `mix cover`, then `mix complexity` (CRAP, threshold 30). This is the gate that matters | ~7.5 min |
+| **Image, scan, non-root** | `docker build` (amd64), Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), `id -u` must be `10001`, then publish | ~2 min, plus ~15 min for the arm64 half under QEMU |
+
+The image job `needs` the other two, so nothing is published from a commit that
+failed them. A push publishes the amd64 image the checks had to build anyway; a
+release tag or `gh workflow run ci --field image=true` adds the arm64 half. What
+that image ends up tagged as: [deployment.md](deployment.md#releases-and-images).
+
 `mix lint` needs no database and no test run (about two seconds), so it is the
 one to keep in a file-watcher or a pre-commit hook. `mix format
 --check-formatted`, `mix credo --strict` and `mix lint.sobelow --config` can of

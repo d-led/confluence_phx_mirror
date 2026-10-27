@@ -1,12 +1,30 @@
 # Deploying the mirror
 
-Two deployment configurations ship with the repository, both of the same shape:
+One shape, two platforms:
 
+```mermaid
+flowchart LR
+  R[reader] -->|TLS| P[oauth2-proxy<br/>the only public address]
+  P -->|X-Forwarded-Email<br/>X-Forwarded-Proto| M[the mirror<br/>no public address]
+  M --> DB[(Postgres)]
+  M --> V[blob volume]
 ```
-                 public                       private
-  reader ──▶ oauth2-proxy ──X-Forwarded-Email──▶ mirror ──▶ Postgres
-             (only public IP)                  (no public IP)   └─▶ blob volume
-```
+
+The proxy answers "who is this?". The mirror never trusts a caller it could not
+have reached any other way.
+
+## Do this now
+
+| | Fly.io | Kubernetes |
+| --- | --- | --- |
+| **1. create** everything that exists once | `./scripts/fly-provision.sh live` | `kubectl apply -f deploy/k8s/secret.yaml` (from `secret.example.yaml`) |
+| **2. deploy** every version | `./scripts/fly-deploy.sh live` | `kubectl apply -f deploy/k8s/confluence-mirror.yaml` then `-f deploy/k8s/oauth2-proxy.yaml` |
+| **done when** | the proxy's URL answers and `/admin` shows your build | the Ingress answers and `/admin` shows your build |
+
+Neither deploy script creates anything, and neither needs credentials:
+`fly-provision.sh` is the one that reads them, once.
+
+## What each platform provides
 
 | | Fly.io | Kubernetes |
 | --- | --- | --- |
@@ -15,16 +33,14 @@ Two deployment configurations ship with the repository, both of the same shape:
 | the mirror | app `confluence-mirror-app`, Flycast only | `confluence-mirror` Deployment + ClusterIP Service |
 | database | app `confluence-mirror-db` (Postgres 18, attached) | managed Postgres |
 | migrations | `[deploy] release_command = "/app/bin/migrate"` | the `confluence-mirror-migrate` Job |
-| attachments | Fly volume `mirror_blobs` | PVC `mirror-blobs` |
+| attachments | Fly volume `mirror_blobs` | PVC `mirror-blobs` (`ReadWriteMany`) |
 | clustering | `FLY_APP_NAME.internal` | headless Service via `DNS_CLUSTER_QUERY` |
-| deploy it | `./scripts/fly-deploy.sh live` | `kubectl apply -f …` |
 
-### Which Fly file is which
+## Which Fly file is which
 
 One rule: **a directory you would deploy from holds one `fly.toml`, and that
-file is the app that directory is about.** `fly deploy` reads `fly.toml` from
-the directory it is given, so the default is always the right app and nothing
-has to be remembered.
+file is the app that directory is about.** `fly deploy` reads the `fly.toml` of
+the directory it is given, so the default is always the right app.
 
 | file | app | what it is |
 | --- | --- | --- |
@@ -33,16 +49,17 @@ has to be remembered.
 | `deploy/fly/demo/fly.toml` | `confluence-mirror-demo-app` | the self-contained demo (`CM_SOURCE=demo`, no credentials) |
 | `deploy/fly/proxy/fly.demo.toml` | `confluence-mirror-demo` | the demo's proxy |
 
-The demo pair is the only thing that is not a default, and its files say
-`demo` in their names: `fly deploy --config deploy/fly/demo/fly.toml`, and
-`fly deploy deploy/fly/proxy --config deploy/fly/proxy/fly.demo.toml`. The two
-backends are deployed from the repository root, because the Dockerfile that
-builds the release needs the whole project as its build context; the two
-proxies are deployed from `deploy/fly/proxy`, where their Dockerfile is.
+The demo pair is the only thing that is not a default, and its file names say
+`demo`:
 
-`scripts/fly-deploy.sh live` ships a version to the live pair;
-`scripts/fly-deploy.sh demo` to the demo pair. Neither creates anything: what
-has to exist first is `scripts/fly-provision.sh live`, or `… demo`.
+```bash
+fly deploy --config deploy/fly/demo/fly.toml
+fly deploy deploy/fly/proxy --config deploy/fly/proxy/fly.demo.toml
+```
+
+The two backends deploy from the repository root, because the Dockerfile needs
+the whole project as its build context. The two proxies deploy from
+`deploy/fly/proxy`, where their Dockerfile is.
 
 Nothing here is required by the application: it is a 12-factor release, and
 [operations.md](operations.md) describes the environment contract any process
@@ -278,44 +295,38 @@ digest, and `Node.list/0`. What stays per node: reader rate-limit buckets, the
 deployments should therefore size `CM_READER_RATE_LIMIT_PER_MINUTE` per node,
 not for the deployment.
 
-## Continuous integration
+## Releases and images
 
-`.github/workflows/ci.yml` runs three jobs; the first two on every push and pull
-request, the third on every push and, with its expensive half, when somebody
-asks for the whole image:
+CI gates every push: static analysis, the suite with coverage and CRAP, and an
+image build that is scanned and checked for a non-root uid. The jobs, their
+timings and how to run them at home are in
+[developers.md](developers.md#quality-gates).
 
-| Job | Runs | What it is |
-| --- | --- | --- |
-| **Static analysis** | every push, every PR | `mix lint`: `compile --warnings-as-errors`, `deps.unlock --check-unused`, `format --check-formatted`, `credo --strict`, `lint.sobelow --config` (sobelow, with the quoted-key warning it provokes from `mix.lock` attributed rather than printed). About half a minute |
-| **Suite and complexity** | every push, every PR | Postgres 17 service, `mix cover` (the suite with coverage), then `mix complexity` (CRAP per function, threshold 30). Seven to eight minutes, and the gate that matters |
-| **Image, scan, non-root** | every push; the arm64 half also on a release tag or a dispatch that asks | `docker build` (amd64), Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), `id -u` must be `10001`, then the image is published. A push publishes the amd64 image the checks had to build anyway; a tag or a dispatch adds the arm64 half and publishes the index instead of a single-architecture image. That half is the expensive one — 14 m 41 s under QEMU |
+What a *release* means here:
 
-The image job `needs` the other two, so nothing is published from a commit that
-failed them. A push publishes the amd64 image, because the build is there
-anyway for the scan and the `id -u` check; what a push does not do is compile
-the release a second time under QEMU for arm64, which is where the minutes go.
-That half, and with it the multi-architecture index, is what a tag or a
-dispatch asks for. The breakage the image gate would catch is still two minutes
-at home:
+* **Tags follow the branch or tag name.** `ghcr.io/d-led/confluence_phx_mirror`
+  is published as `:main` (and `:latest`) on every push to main, and as
+  `:v1.2.3` for a release tag.
+* **There are no commit-hash tags.** A tag that changes with every push says
+  nothing about where the image came from, and the image already carries its
+  commit in `build_info.json`.
+* **A push publishes amd64 only.** The arm64 half is compiled under QEMU and is
+  the expensive part (about 15 minutes), so it is built on a release tag or on
+  request.
 
-```
+Catching an image breakage before a tag costs two minutes at home:
+
+```bash
 docker build .                                   # does it build at all
 scripts/quality.sh --image                       # builds it, checks uid 10001
 git tag v1.2.3 && git push origin v1.2.3         # a release, amd64 + arm64
 gh workflow run ci --ref main --field image=true # …or ask for a fresh index
 ```
 
-The published tags are `ghcr.io/d-led/confluence_phx_mirror` under the **branch
-or tag name**: `:main` (and `:latest` as well, for deployments that prefer it)
-on every push to main, `:v1.2.3` for a release. There are no commit-hash tags —
-a tag that changes with every push says nothing about where the image came
-from, and the image already carries its commit in `build_info.json`.
+One consequence worth knowing before pulling `:latest` on an arm64 host: that
+image is amd64 only until somebody dispatches the index, so the host runs it
+emulated. Release tags always carry both.
 
-One consequence worth knowing before deploying an `:latest` pull to an arm64
-host: the image a push publishes is amd64 only, so that host runs it emulated
-until someone dispatches the index. Release tags always carry both.
-
-`.github/dependabot.yml` opens weekly pull requests for Hex, npm,
-GitHub Actions and the proxy's image. The mirror image's base versions are build
-arguments, so they are bumped by hand — the four `ARG`s at the top of the
-`Dockerfile`.
+`.github/dependabot.yml` opens weekly pull requests for Hex, npm, GitHub Actions
+and the proxy's image. The mirror image's base versions are build arguments, so
+they are bumped by hand — the four `ARG`s at the top of the `Dockerfile`.
