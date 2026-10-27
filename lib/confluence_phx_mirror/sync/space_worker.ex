@@ -26,8 +26,11 @@ defmodule ConfluencePhxMirror.Sync.SpaceWorker do
            actor: @actor,
            trigger: trigger(args)
          ) do
-      {:ok, _run} -> :ok
-      {:error, :already_running} -> {:snooze, 30}
+      {:ok, _run} ->
+        :ok
+
+      {:error, :already_running} ->
+        Sync.wait_or_stand_down()
     end
   end
 

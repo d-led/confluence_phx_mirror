@@ -242,6 +242,9 @@ defmodule ConfluencePhxMirror.Sync do
 
   @abandoned "the process running this sync stopped before it finished"
 
+  # The modes that read the whole site, as opposed to one space or one page.
+  @whole_site_modes ~w(snapshot incremental)
+
   @doc """
   Stops a running sync.
 
@@ -302,6 +305,34 @@ defmodule ConfluencePhxMirror.Sync do
       {parsed, ""} -> parsed
       _ -> id
     end
+  end
+
+  @doc """
+  Whether a run that covers the whole site is in flight — a snapshot or an
+  incremental pull, as opposed to one space or one page.
+
+  A job that exists to read a single space has nothing to do while the whole site
+  is being read: the run is reading that space too. Asking is what lets such a
+  job stand down instead of waiting for a turn that will not come.
+  """
+  @spec whole_site_running?() :: boolean()
+  def whole_site_running? do
+    Repo.exists?(from r in SyncRun, where: r.status == "running" and r.mode in ^@whole_site_modes)
+  end
+
+  @doc """
+  What a job that reads one space or one page should do when a sync is already in
+  flight: wait, or stand down.
+
+  Waiting is right against another single-space run, which will be done shortly.
+  Standing down is right against a whole-site run, which is reading that space
+  anyway — and which, on a slow site, can be in flight for hours. A hundred and
+  forty jobs snoozing through such a run is what the queue looked like after one
+  stuck snapshot.
+  """
+  @spec wait_or_stand_down() :: {:snooze, pos_integer()} | {:cancel, atom()}
+  def wait_or_stand_down do
+    if whole_site_running?(), do: {:cancel, :superseded_by_a_whole_site_run}, else: {:snooze, 30}
   end
 
   @doc """
