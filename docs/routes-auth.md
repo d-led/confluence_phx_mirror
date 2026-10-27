@@ -210,31 +210,18 @@ one: it checks the claim against the membership the sync mirrored and ignores
 groups it has never seen. With `CM_PROXY_AUTH_GROUPS_HEADER` unset, asserted
 groups are not read at all — the proxy may send them, the mirror will not look.
 
-## Settings, one line each
+## Where the switches are listed
 
-| Variable | Default | Effect |
-| --- | --- | --- |
-| `CM_PROXY_AUTH` | off | trust `CM_PROXY_AUTH_HEADER` as the reader's identity |
-| `CM_PROXY_AUTH_HEADER` | `x-forwarded-email` | which header names the reader |
-| `CM_PROXY_AUTH_NAME_HEADER` | `x-forwarded-user` | which header names the display name |
-| `CM_PROXY_AUTH_GROUPS_HEADER` | – | which header carries asserted groups (unset = ignore them) |
-| `CM_PROXY_AUTH_MEMBERS_ONLY` | `true` | the `:proxy` door's policy when no policy is named |
-| `MIRROR_SELF_SIGNUP` | `false` | the `:sign_in` door's policy when no policy is named |
-| `CM_USER_POLICY` | – | names the policy for **both** doors |
-| `CM_ADMINS` | – | seeded administrator e-mails |
-| `CM_ADMIN_GROUPS` | – | synced groups that grant administration |
-| `MIRROR_AUTO_ADMIN` | off | dev/test only: every visitor is the bootstrap administrator; a production release refuses to start with it unless the source is the demo |
-| `MIRROR_ALLOW_SITE_DISABLED_READERS` | `false` | a reader the site deactivated keeps access |
-| `CM_TRUST_PROXY_HEADERS` | off | rate-limit buckets key on the last `X-Forwarded-For` hop instead of the proxy's address |
-| `CM_WEBHOOK_ENABLED` | `true` | the intake answers at all (off = the endpoint's own 404) |
-| `CM_WEBHOOK_REQUIRE_SIGNATURE` | `false` | a delivery must present a valid signature or token |
-| `CM_WEBHOOK_TOKENS` | – | `receiver=token,…` for senders that cannot compute an HMAC |
-| `MIRROR_ALLOW_UNSAFE_IDENTITY` | – | the acknowledgement `Config.IdentityGuard` demands before a production release honours `CM_PROXY_AUTH`, `MIRROR_AUTO_ADMIN` or `MIRROR_SELF_SIGNUP` while mirroring a real site |
+Every variable on this page — the proxy headers, the two door switches,
+`CM_USER_POLICY`, `CM_ADMINS`, `CM_ADMIN_GROUPS`, the webhook trio and
+`MIRROR_ALLOW_UNSAFE_IDENTITY` — is listed once, with its default, in
+[configuration.md](configuration.md#accounts-and-sign-in) and
+[its webhook section](configuration.md#webhooks).
 
-`Config.IdentityGuard` is the last word on the shortcuts: in a production
-release, with a real Confluence source, they are refused unless
-`MIRROR_ALLOW_UNSAFE_IDENTITY` is set. The demo source allows them, which is why
-the demo deployment needs no acknowledgement.
+This page is about what they *mean*; that page is the reference. The guard behind
+the shortcuts is `Config.IdentityGuard`: a production release mirroring a real
+site refuses to start with any of them on unless `MIRROR_ALLOW_UNSAFE_IDENTITY`
+says it was meant.
 
 ## Combinations worth knowing
 

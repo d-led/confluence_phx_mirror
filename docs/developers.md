@@ -117,16 +117,14 @@ flowchart TD
 
 ### Sync semantics
 
-A sync is recorded as a `SyncRun` (`running` → `succeeded` / `partial` /
-`failed`) with counters and errors. Failures are **per page**: one broken
-attachment or comment does not abort the run. Pages missing from a snapshot are
-marked deleted (rows are kept for audit), attachments removed in Confluence are
-deleted from Postgres and the blob store.
+What a sync *does* is the [site admin guide](site-admin-guide.md#pulling-content)'s
+subject. The two facts that belong here are code-level:
 
-Snapshots upsert all pages first, then render, so cross-space links resolve even
-when the target space appears later in the same run. A source that lists no
-pages for a space never marks that space's content deleted — the run is flagged
-`partial`.
+* **a run is a `SyncRun`** (`running` → `succeeded` / `partial` / `failed`) with
+  counters and errors, and a failure is recorded per page: one broken attachment
+  or comment does not abort the run;
+* **a snapshot upserts every page first, then renders**, so cross-space links
+  resolve even when the target space appears later in the same run.
 
 ## Tests
 

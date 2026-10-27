@@ -33,13 +33,9 @@ than the mirror, it is usually a question for whoever runs the Confluence site.
 
 ## Known limitations
 
-[design-notes.md](docs/design-notes.md#known-limitations) lists what the mirror
-deliberately does not do — no page history, no write-back, no re-implementation
-of browser-only macros.
-
-Two edges are worth knowing when you reason about what a reader can see:
-
-* **`include`-family macros are forwarded as the source rendered them**, without
-  re-checking who may read the included page.
-* **Confluence Cloud exposes space permissions as writes only**, so a space whose
-  source cannot report them stays open. Page restrictions are mirrored.
+[design-notes.md](docs/design-notes.md#known-limitations) is the one list of what
+the mirror deliberately does not do — no page history, no write-back, no
+re-implementation of browser-only macros — including the two edges that matter
+when you reason about what a reader can see: `include`-family macros are
+forwarded as the source rendered them, and space permissions exist only where the
+source can report them.

@@ -497,7 +497,7 @@ is not applied to exported code blocks.
 
 ## Who may read what
 
-Access is mirrored, not invented. Confluence decides who may read a page; the
+Access is mirrored, not invented. Confluence decides who may read a page, and the
 mirror replays that decision:
 
 > This page is about *what an admitted reader may open*. Who gets an account at
@@ -505,23 +505,17 @@ mirror replays that decision:
 > and which route accepts which credential — is
 > [routes-auth.md](routes-auth.md), next to this guide.
 
-* **Page restrictions** are read per page
-  (`GET /content/{id}/restriction/byOperation/read`) and stored in
-  `page_restrictions`. A restricted page is readable only by the listed users
-  and groups.
-* **Space permissions** are stored in `space_permissions`. Confluence Cloud
-  exposes them as *writes only* (`POST`/`DELETE /space/{key}/permission`), so a
-  source that cannot read them says `{:error, :not_supported}` and the space
-  stays open — the mirror already shows what the sync account can read.
-* **A space without rows is open.** Restrictions narrow; they never widen.
-* **A personal space belongs to one person.** Confluence keys it by its owner's
-  account id (`~5F057CBE0B38B10022628D68`), and only that account may read it —
-  whatever its permissions say, because a personal space usually has none and
-  "no rows means open" would publish one person's drafts. Nothing about the rule
-  is optional: not the space in the switcher, not its pages in search, not its
-  pages in an export or a macro listing. Mirror administrators see everything,
-  personal spaces included.
-* Mirror administrators always see everything.
+The rules themselves — a space without rows is open, a page restriction narrows
+it, a personal space belongs to its owner, an administrator sees everything — are
+stated once in
+[routes-auth.md](routes-auth.md#authorization-what-an-admitted-reader-may-see).
+Two consequences matter to an operator:
+
+* **A space whose permissions the source cannot report stays open.** Confluence
+  Cloud exposes space permissions as writes only, so the mirror shows what the
+  sync account can read (see [known limitations](design-notes.md#known-limitations)).
+* **A personal space is never open**, whatever its (usually empty) permissions
+  say: otherwise "no rows means open" would publish one person's drafts.
 
 Readers are matched by every identity their account stands for: its e-mail
 address, the identity it signed in with, and any further Confluence identity an
@@ -600,9 +594,6 @@ Two decisions, kept apart:
   palette, it chooses which half of it paints — and it is a cookie
   (`mirror_theme`), so the first paint is already right and no JavaScript is
   involved.
-
-Both end up as attributes on `<html>`: `data-theme` names the theme and
-`data-scheme` forces a palette for a theme that is not compiled in.
 
 Two themes ship:
 
@@ -726,34 +717,17 @@ Set `MIRROR_MAIL_FROM` and the Swoosh mailer settings for production.
   (`CM_ADMIN_GROUPS`, default `confluence-admins`) or seeded e-mails
   (`CM_ADMINS`). Seeded addresses can always request a sign-in link, even with
   self sign-up closed, so a fresh deployment has a way in.
-* API tokens: the reader creates their own under `/profile` (*API tokens*);
-  shown once, stored as an Argon2id digest (never the token). Raising the
-  hashing policy does not invalidate issued tokens — each one is rewritten the
-  next time it is used. Nobody else can create one for them: an administrator
-  can revoke a leaked token from *Users & tokens*, which only removes access.
-  See [api.md](api.md#authentication) for the client side.
+* API tokens: the reader creates their own under `/profile` (*API tokens*), shown
+  once and stored as a digest. Nobody can create one for somebody else; an
+  administrator can revoke a leaked one from *Users & tokens*, which only takes
+  access away. The client side is [api.md](api.md#authentication).
 * Behind an OAuth2/SSO proxy: `CM_PROXY_AUTH=true` trusts the identity header
-  the proxy sets (`CM_PROXY_AUTH_HEADER`, default `x-forwarded-email`;
-  `CM_PROXY_AUTH_NAME_HEADER`, default `x-forwarded-user`), so there is no
-  sign-up step. Roles and groups stay local. Enable it only when the app cannot
-  be reached except through the proxy.
-
-  A proxy usually authenticates your whole Atlassian organisation, which is
-  wider than the site being mirrored, so the mirror admits only:
-
-    * an administrator — seeded (`CM_ADMINS`), admin role, or a member of an
-      admin group; and
-    * an identity the sync has read about — a member of a group the content
-      mentions, a user named in a space permission or page restriction, or the
-      author of a page or a comment. Authorship counts: an author is on the site
-      before any permission names them, and the rule is that whoever may read on
-      Confluence may read here.
-
-  Everyone else gets a `403` page, and no account is created for them. The
-  question is answered by `Mirror.identity_known?/1`, which is the best the
-  mirror can do: Confluence Cloud has no API that lists a site's users.
-  `CM_PROXY_AUTH_MEMBERS_ONLY=false` restores the older behaviour, where the
-  proxy's word was enough.
+  the proxy sets, so there is no sign-up step; roles and groups stay local.
+  Enable it only when the app cannot be reached except through the proxy. Who is
+  then admitted — administrators, and identities the sync has read about, authors
+  included — is
+  [routes-auth.md](routes-auth.md#admission-may-this-identity-have-an-account);
+  everyone else gets a `403` page and no account is created.
 
 ## Switched-off accounts
 

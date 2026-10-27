@@ -181,33 +181,13 @@ release is still allowed without a flag (`CM_SOURCE=demo`); anything else needs
 proxy.
 
 Who may have an account is a policy, not a switch:
-`ConfluencePhxMirror.Accounts.UserPolicy`. A policy answers one question — may
-this arriving identity become a reader — and knows nothing about what a reader
-may open; that stays with the permissions the sync mirrored. Two ship with the
-mirror:
+`ConfluencePhxMirror.Accounts.UserPolicy` answers one question — may this arriving
+identity become a reader — and knows nothing about what a reader may open. Two
+ship: `new_users_can_read_public_spaces` (alias `allow_all`) and
+`readers_must_exist_in_confluence` (alias `members_only`, the default).
 
-* `new_users_can_read_public_spaces` — anyone who arrives gets an account, and
-  sees the spaces nobody restricted. This is the audience-wider-than-the-site
-  case: readers of a published handbook, a customer base, a whole organisation.
-* `readers_must_exist_in_confluence` (the default) — an administrator (seeded,
-  admin role, or a member of an admin group), or an identity the sync has read
-  about: a member of a group the content mentions, a user named in a space
-  permission or page restriction, the author of a page or a comment, or somebody
-  an identity provider asserts in a group the site also lists that person in.
-  Everyone else gets a `403` page and **no account is created**.
-
-Authorship counts because the rule is that whoever may read on Confluence may
-read the mirror: an author is on the site before any permission names them, and
-Confluence shows no user directory to ask.
-
-Confluence Cloud has no API that lists a site's users, so "read about" is the
-strongest statement the mirror can make. A deployment that names no policy keeps
-what the older switches implied: `CM_PROXY_AUTH_MEMBERS_ONLY=false` and
-`MIRROR_SELF_SIGNUP=true` each mean "anyone", for the door they belong to;
-naming `CM_USER_POLICY` replaces both. Policies compose in code
-(`{:any_of, [a, b]}`, `{:all_of, [a, b]}`), and a policy that needs to look
-something up — an allow-list an operator maintains, a cached membership check —
-owns that lookup rather than the plug that asks.
+Which policy applies at which door, how they compose, and what replaces them when
+none is named: [routes-auth.md](routes-auth.md#admission-may-this-identity-have-an-account).
 
 ## Webhooks
 
@@ -284,15 +264,9 @@ window (and a `Retry-After` header); API clients get JSON.
 
 ## Themes
 
-Appearance is two decisions. The **theme** is the site's brand — one palette pair
-for the whole mirror — and only an administrator chooses it, on
-`/admin/settings`; the choice is stored in the `settings` table and seeded from
-config. The **variant** is the reader's own from the header (`system`, `light`,
-`dark`) and lives in a cookie. `default` and `fresh-blue` ship; a site adds its
-own with `config :confluence_phx_mirror, :skins, [...]` (`name`, `label`, `note`,
-`colors`, `dark_colors`, `radius`, `border`, `depth`, `noise`) or as a standalone
-pack under `:skin_packs`. The full example, the supported colour keys and the
-`assets/css/author.css` escape hatch are in
+`CM_THEME` seeds the palette pair the whole site wears. Readers choose only
+`system`, `light` or `dark` — their own cookie. Choosing, declaring and shipping
+a theme, with the config keys a site may set, is
 [site-admin-guide.md](site-admin-guide.md#themes-and-variants).
 
 | Variable | Default | Purpose |
