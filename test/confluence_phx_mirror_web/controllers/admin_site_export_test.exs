@@ -11,10 +11,6 @@ defmodule ConfluencePhxMirrorWeb.AdminSiteExportTest do
   import ConfluencePhxMirror.Fixtures
 
   setup do
-    previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
-
     demo_snapshot!()
     :ok
   end

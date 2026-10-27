@@ -31,7 +31,11 @@ config :confluence_phx_mirror, Oban,
   plugins: false
 
 config :confluence_phx_mirror,
-  auto_admin: true,
+  # Off, unlike development. A test that needs an identity signs one in
+  # (`ConnCase.log_in/2`), so nothing global changes under a concurrent suite;
+  # `AutoAdminTest` turns the flag on for the tests that are about the flag
+  # itself.
+  auto_admin: false,
   self_signup: true,
   # Per partition, like the database: two suites in one checkout (a second
   # agent, a watcher) would otherwise delete each other's blobs mid-run, and the

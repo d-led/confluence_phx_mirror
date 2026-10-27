@@ -14,7 +14,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminWebhooksLiveTest do
   alias ConfluencePhxMirror.Webhooks
   alias ConfluencePhxMirror.Webhooks.Delivery
 
-  setup do
+  setup %{conn: conn} do
     previous = Application.get_env(:confluence_phx_mirror, :webhooks)
 
     Application.put_env(:confluence_phx_mirror, :webhooks,
@@ -23,7 +23,8 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminWebhooksLiveTest do
     )
 
     on_exit(fn -> Application.put_env(:confluence_phx_mirror, :webhooks, previous) end)
-    :ok
+
+    {:ok, conn: log_in_admin(conn)}
   end
 
   test "an unprotected intake is announced on the page", %{conn: conn} do

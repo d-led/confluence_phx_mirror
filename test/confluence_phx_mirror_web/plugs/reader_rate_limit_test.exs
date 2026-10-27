@@ -4,16 +4,10 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ReaderRateLimitTest do
   setup do
     previous_limit = Application.get_env(:confluence_phx_mirror, :reader_rate_limit)
     previous_trust = Application.get_env(:confluence_phx_mirror, :trust_proxy_headers)
-    previous_admin = Application.get_env(:confluence_phx_mirror, :auto_admin)
-
-    # These tests are about anonymous readers: an auto-provisioned account would
-    # key the limiter on the user instead of the address.
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
 
     on_exit(fn ->
       Application.put_env(:confluence_phx_mirror, :reader_rate_limit, previous_limit)
       Application.put_env(:confluence_phx_mirror, :trust_proxy_headers, previous_trust)
-      Application.put_env(:confluence_phx_mirror, :auto_admin, previous_admin)
     end)
 
     :ok

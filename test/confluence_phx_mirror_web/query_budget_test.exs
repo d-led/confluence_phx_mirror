@@ -15,9 +15,11 @@ defmodule ConfluencePhxMirrorWeb.QueryBudgetTest do
 
   alias ConfluencePhxMirror.QueryCounter
 
-  setup do
+  setup %{conn: conn} do
     demo_snapshot!()
-    :ok
+    # The budgets below are the administrator's screens as built; a reader whose
+    # permissions have to be consulted costs a few statements more.
+    {:ok, conn: log_in_admin(conn)}
   end
 
   # The home page currently spends two queries per space (a space read and a

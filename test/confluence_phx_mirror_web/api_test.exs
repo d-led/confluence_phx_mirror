@@ -12,9 +12,11 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
   # A word only the restricted page carries, for the search cases.
   @restricted_page_term "macros"
 
-  setup do
+  setup %{conn: conn} do
     demo_snapshot!()
-    :ok
+    # The API answers as the caller it is given; these cases are an
+    # administrator's.
+    {:ok, conn: log_in_admin(conn)}
   end
 
   describe "GET /api/v1" do
@@ -290,9 +292,6 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
   describe "read authorization" do
     setup do
       # The suite assumes an administrator; these cases need a real reader.
-      previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-      Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
       :ok
     end
 

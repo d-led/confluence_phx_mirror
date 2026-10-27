@@ -26,8 +26,11 @@ defmodule ConfluencePhxMirrorWeb.SpaceSwitcherTest do
   test "a personal space is listed by its owner's name alone", %{conn: conn} do
     space_fixture(%{key: "~712020f4c1", name: "Ann Example", type: "personal"})
 
-    assert sidebar(conn) =~ "Ann Example"
-    refute sidebar(conn) =~ "712020f4c1"
+    # Personal spaces are the owner's (and an administrator's) to see.
+    sidebar = sidebar(log_in_admin(conn))
+
+    assert sidebar =~ "Ann Example"
+    refute sidebar =~ "712020f4c1"
   end
 
   test "the top bar offers a switcher rather than the whole directory", %{conn: conn} do

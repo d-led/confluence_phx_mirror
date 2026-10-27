@@ -3,9 +3,11 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
 
   import ConfluencePhxMirror.Fixtures
 
-  setup do
+  setup %{conn: conn} do
     demo_snapshot!()
-    :ok
+    # The home rail and the feeds list what a reader may open; these cases are
+    # an administrator's, who sees the restricted spaces too.
+    {:ok, conn: log_in_admin(conn)}
   end
 
   test "GET / renders the mirror home with spaces and freshness", %{conn: conn} do

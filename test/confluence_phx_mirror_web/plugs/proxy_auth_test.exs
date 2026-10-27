@@ -23,16 +23,13 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
   setup do
     previous = Application.get_env(:confluence_phx_mirror, :proxy_auth)
     previous_members = Application.get_env(:confluence_phx_mirror, :proxy_auth_members_only)
-    previous_admin = Application.get_env(:confluence_phx_mirror, :auto_admin)
 
     Application.put_env(:confluence_phx_mirror, :proxy_auth, true)
     Application.put_env(:confluence_phx_mirror, :proxy_auth_members_only, true)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
 
     on_exit(fn ->
       Application.put_env(:confluence_phx_mirror, :proxy_auth, previous)
       Application.put_env(:confluence_phx_mirror, :proxy_auth_members_only, previous_members)
-      Application.put_env(:confluence_phx_mirror, :auto_admin, previous_admin)
     end)
 
     :ok

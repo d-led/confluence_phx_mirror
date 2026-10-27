@@ -8,9 +8,6 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
 
   setup do
     demo_snapshot!()
-    previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
     Settings.reload()
     on_exit(fn -> Settings.reload() end)
     :ok

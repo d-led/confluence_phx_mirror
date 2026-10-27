@@ -17,6 +17,9 @@ defmodule ConfluencePhxMirrorWeb.ConnCase do
 
   use ExUnit.CaseTemplate
 
+  alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.User
+
   using do
     quote do
       # The default endpoint for testing
@@ -35,6 +38,21 @@ defmodule ConfluencePhxMirrorWeb.ConnCase do
     ConfluencePhxMirror.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
+
+  @doc """
+  A conn with an account signed in, the way `/session` leaves one.
+
+  The suite has no ambient administrator: `auto_admin` is off in
+  `config/test.exs`, and the tests that are about that flag turn it on in one
+  file of their own (`AutoAdminTest`). So a test that needs an identity says
+  which one, and nothing global changes under a concurrent suite.
+  """
+  @spec log_in(Plug.Conn.t(), User.t()) :: Plug.Conn.t()
+  def log_in(conn, %User{} = user), do: Plug.Test.init_test_session(conn, %{user_id: user.id})
+
+  @doc "A conn with the bootstrap administrator (`admin@localhost`) signed in."
+  @spec log_in_admin(Plug.Conn.t()) :: Plug.Conn.t()
+  def log_in_admin(conn), do: log_in(conn, Accounts.ensure_admin!())
 
   @doc """
   The opening `<html>` tag of a page: the attributes the document is painted with.

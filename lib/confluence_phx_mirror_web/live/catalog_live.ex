@@ -221,7 +221,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
       |> readable(socket)
 
   defp entries(:attachments, socket, space, opts) do
-    space |> Catalog.attachments(opts) |> readable(socket)
+    space |> Catalog.attachments(opts) |> readable_files(socket)
   end
 
   # The catalog pages in the database, so a row the reader may not open is
@@ -229,6 +229,16 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
   # further page that turns out empty rather than hiding rows.
   defp readable(%{items: items} = result, socket) do
     %{result | items: Authorization.readable_pages(scope(socket), items)}
+  end
+
+  # A file is as readable as the page it hangs on, so the pages behind one
+  # window of attachments are filtered by the same rule as the pages themselves
+  # and the files are kept by the page they belong to.
+  defp readable_files(%{items: items} = result, socket) do
+    readable = Authorization.readable_pages(scope(socket), Enum.map(items, & &1.page))
+    page_ids = MapSet.new(readable, & &1.id)
+
+    %{result | items: Enum.filter(items, &MapSet.member?(page_ids, &1.page_id))}
   end
 
   defp tree(nil, _socket), do: %{nodes: [], truncated?: false}

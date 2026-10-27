@@ -20,20 +20,6 @@ defmodule ConfluencePhxMirrorWeb.OAuthTest do
   @redirect_uri "http://127.0.0.1:33418/callback"
   @verifier "a-verifier-long-enough-for-rfc-7636-0123456789-abcdef"
 
-  setup do
-    previous = Application.fetch_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-
-    on_exit(fn ->
-      case previous do
-        {:ok, value} -> Application.put_env(:confluence_phx_mirror, :auto_admin, value)
-        :error -> Application.delete_env(:confluence_phx_mirror, :auto_admin)
-      end
-    end)
-
-    :ok
-  end
-
   describe "discovery" do
     test "the protected-resource document names the MCP endpoint and the server", %{conn: conn} do
       body = conn |> get("/.well-known/oauth-protected-resource") |> json_response(200)

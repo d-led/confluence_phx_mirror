@@ -12,9 +12,6 @@ defmodule ConfluencePhxMirrorWeb.AccessTest do
     demo_snapshot!()
     # Readers are anonymous unless a test signs them in; administrators bypass
     # every permission check.
-    previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
     :ok
   end
 

@@ -16,9 +16,6 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersGuardTest do
 
   setup do
     # No automatic administrator: this test needs to know exactly who is left.
-    previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
     :ok
   end
 

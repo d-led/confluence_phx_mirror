@@ -8,6 +8,12 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror
 
+  # This screen is an administrator's: the suite's bootstrap account is signed
+  # in rather than the deployment pretending everyone is one.
+  setup %{conn: conn} do
+    {:ok, conn: log_in_admin(conn)}
+  end
+
   defp change_role(view, user, role) do
     render_submit(view, "change_role", %{"user_id" => to_string(user.id), "role" => role})
   end

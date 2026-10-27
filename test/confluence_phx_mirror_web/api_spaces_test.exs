@@ -16,16 +16,7 @@ defmodule ConfluencePhxMirrorWeb.ApiSpacesTest do
   setup do
     demo_snapshot!()
 
-    previous =
-      Map.new([:auto_admin, :admins], &{&1, Application.get_env(:confluence_phx_mirror, &1)})
-
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-
     on_exit(fn ->
-      Enum.each(previous, fn {key, value} ->
-        Application.put_env(:confluence_phx_mirror, key, value)
-      end)
-
       # The setting cache outlives the sandbox transaction that held the row.
       Settings.forget()
     end)
@@ -101,7 +92,10 @@ defmodule ConfluencePhxMirrorWeb.ApiSpacesTest do
   end
 
   defp as_admin(conn) do
+    previous = Application.get_env(:confluence_phx_mirror, :admins)
     Application.put_env(:confluence_phx_mirror, :admins, ["ops@example.com"])
+    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :admins, previous) end)
+
     user = user_fixture(%{email: "ops@example.com", role: "member"})
     init_test_session(conn, user_id: user.id)
   end

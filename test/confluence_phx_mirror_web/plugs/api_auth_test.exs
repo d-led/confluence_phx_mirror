@@ -15,10 +15,6 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuthTest do
   alias ConfluencePhxMirrorWeb.Plugs.ApiAuth
 
   setup do
-    previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
-
     user = user_fixture(%{email: "api-reader@example.com"})
     {:ok, token, _record} = Accounts.create_api_token(user, "test", {:system, "test"})
 

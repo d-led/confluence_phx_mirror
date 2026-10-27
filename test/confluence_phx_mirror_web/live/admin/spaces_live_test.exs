@@ -15,11 +15,8 @@ defmodule ConfluencePhxMirrorWeb.AdminSpacesLiveTest do
 
   setup do
     demo_snapshot!()
-    previous_admin = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
 
     on_exit(fn ->
-      Application.put_env(:confluence_phx_mirror, :auto_admin, previous_admin)
       # The setting cache outlives the sandbox transaction that held the row.
       Settings.forget()
     end)

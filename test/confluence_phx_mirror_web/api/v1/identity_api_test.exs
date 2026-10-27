@@ -22,7 +22,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.IdentityApiTest do
   @maria "557058:maria"
   @maria_name "Maria Sanchez"
 
-  setup do
+  setup %{conn: conn} do
     demo_snapshot!()
 
     space = space_fixture()
@@ -33,7 +33,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.IdentityApiTest do
         %{account_id: @maria, display_name: @maria_name}
       ])
 
-    :ok
+    {:ok, conn: log_in_admin(conn)}
   end
 
   test "an administrator reads the identities the content names, with their groups",

@@ -18,9 +18,6 @@ defmodule ConfluencePhxMirrorWeb.Live.ProfileLiveTest do
   setup do
     # Readers are anonymous unless a test signs them in; administrators bypass
     # every permission check, and the suite assumes one by default.
-    previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
     :ok
   end
 

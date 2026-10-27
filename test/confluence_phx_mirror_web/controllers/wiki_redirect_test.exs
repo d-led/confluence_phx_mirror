@@ -34,7 +34,7 @@ defmodule ConfluencePhxMirrorWeb.WikiRedirectTest do
     space = space_fixture(%{key: "ENG"})
     _page = page_fixture(space, %{title: "Architecture"})
 
-    conn = get(conn, "/wiki/rest/api/content?limit=5")
+    conn = conn |> log_in_admin() |> get("/wiki/rest/api/content?limit=5")
 
     assert json_response(conn, 200)["results"] != []
   end

@@ -123,7 +123,15 @@ defmodule ConfluencePhxMirrorWeb.SpaceSwitcherLiveTest do
     assert has_element?(view, "[role=option][data-value='#{personal.key}']", "Dmitry Ledentsov")
   end
 
+  # The switcher offers the reader the spaces they may open, and the session is
+  # where that reader comes from: a test that names a user gets them, and one
+  # that does not gets the administrator.
   defp switcher(session \\ %{}) do
+    session =
+      Map.put_new_lazy(session, "user_id", fn ->
+        ConfluencePhxMirror.Accounts.ensure_admin!().id
+      end)
+
     live_isolated(build_conn(), SpaceSwitcherLive, session: session)
   end
 

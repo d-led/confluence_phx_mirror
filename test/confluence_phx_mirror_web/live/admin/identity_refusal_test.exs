@@ -15,6 +15,10 @@ defmodule ConfluencePhxMirrorWeb.Live.Admin.IdentityRefusalTest do
 
   alias ConfluencePhxMirror.Accounts
 
+  setup %{conn: conn} do
+    {:ok, conn: log_in_admin(conn)}
+  end
+
   test "an identity another account already holds names that account", %{conn: conn} do
     admin = Accounts.ensure_admin!()
     holder = user_fixture(%{email: "holder@example.com"})

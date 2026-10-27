@@ -35,18 +35,7 @@ defmodule ConfluencePhxMirrorWeb.ApiSwaggerTest do
     assert html =~ "swagger-ui-frame"
   end
 
-  test "in development the page names the administrator a request is sent as", %{conn: conn} do
-    html = conn |> get("/api/docs/swagger") |> html_response(200)
-
-    assert html =~ "Development mode"
-    assert html =~ ConfluencePhxMirror.Accounts.Admins.bootstrap_email()
-  end
-
   test "elsewhere it says cookies carry the reader and a token serves scripts", %{conn: conn} do
-    previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
-
     html = conn |> get("/api/docs/swagger") |> html_response(200)
 
     refute html =~ "Development mode"

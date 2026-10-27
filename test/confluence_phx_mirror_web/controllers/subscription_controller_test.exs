@@ -8,9 +8,9 @@ defmodule ConfluencePhxMirrorWeb.SubscriptionControllerTest do
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Notifications
 
-  setup do
+  setup %{conn: conn} do
     demo_snapshot!()
-    :ok
+    {:ok, conn: log_in_admin(conn)}
   end
 
   test "a reader watches a page and comes back to it", %{conn: conn} do
@@ -63,9 +63,6 @@ defmodule ConfluencePhxMirrorWeb.SubscriptionControllerTest do
   describe "watching something the reader may not open" do
     setup do
       # The suite assumes an administrator; these cases need a real reader.
-      previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-      Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
       :ok
     end
 

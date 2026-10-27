@@ -18,7 +18,7 @@ defmodule ConfluencePhxMirrorWeb.McpProtocolTest do
 
   @settings [:auto_admin, :proxy_auth, :proxy_auth_members_only, :user_policy, :self_signup]
 
-  setup do
+  setup %{conn: conn} do
     previous = Map.new(@settings, &{&1, Application.fetch_env(:confluence_phx_mirror, &1)})
 
     on_exit(fn ->
@@ -28,7 +28,9 @@ defmodule ConfluencePhxMirrorWeb.McpProtocolTest do
       end)
     end)
 
-    :ok
+    # The lifecycle, the tools and the transport are exercised by a caller who
+    # may do them; `describe "authentication"` starts from nobody instead.
+    {:ok, conn: log_in_admin(conn)}
   end
 
   describe "initialize" do
@@ -225,8 +227,13 @@ defmodule ConfluencePhxMirrorWeb.McpProtocolTest do
   end
 
   describe "authentication" do
+    setup do
+      {:ok, conn: build_conn()}
+    end
+
     test "a demo mirror answers an anonymous caller as an administrator", %{conn: conn} do
       demo_snapshot!()
+      configure(auto_admin: true)
 
       assert {:ok, %{}} =
                conn

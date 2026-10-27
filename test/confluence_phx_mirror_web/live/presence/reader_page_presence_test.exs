@@ -84,6 +84,9 @@ defmodule ConfluencePhxMirrorWeb.ReaderPagePresenceTest do
   # anonymous reader is keyed by their connection, and a second process
   # tracking them would be a second reader.
   test "the narrow layout's count is the rail's, not one more", %{conn: conn} do
+    # One reader, two widgets: only the rail tracks, so the count stays one.
+    conn = log_in(conn, user_fixture(%{display_name: "Reader"}))
+
     {:ok, rail, _html} = open_page(conn, @page)
     {:ok, badge, _html} = open_badge(conn, @page)
 

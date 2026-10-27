@@ -74,7 +74,6 @@ defmodule ConfluencePhxMirrorWeb.AttachmentControllerTest do
   end
 
   test "a reader in the page's group downloads it, an anonymous one does not", %{conn: conn} do
-    restore_auto_admin()
     restrict_page_to_group(String.to_integer(Demo.open_page()), @attachment_readers)
     reader = reader_in_group(@attachment_readers)
 
@@ -109,12 +108,5 @@ defmodule ConfluencePhxMirrorWeb.AttachmentControllerTest do
     user = user_fixture()
     {:ok, user} = Accounts.update_groups(user, [group], {:system, "test"})
     user
-  end
-
-  # The suite assumes an administrator; this test needs a real reader.
-  defp restore_auto_admin do
-    previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
   end
 end

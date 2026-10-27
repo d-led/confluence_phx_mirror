@@ -18,9 +18,9 @@ defmodule ConfluencePhxMirrorWeb.PageResyncTest do
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Sync.PageWorker
 
-  setup do
+  setup %{conn: conn} do
     demo_snapshot!()
-    :ok
+    {:ok, conn: log_in_admin(conn)}
   end
 
   test "an administrator's page offers a resync, and taking it queues a fresh read of that page",
@@ -39,27 +39,15 @@ defmodule ConfluencePhxMirrorWeb.PageResyncTest do
     assert_enqueued(worker: PageWorker, args: %{"confluence_id" => Demo.open_page_number()})
   end
 
-  test "a reader is offered no resync and cannot take one", %{conn: conn} do
-    without_auto_admin(fn ->
-      served = conn |> get(page_path())
-      document = LazyHTML.from_fragment(html_response(served, 200))
+  test "a reader is offered no resync and cannot take one", %{conn: _admin} do
+    served = build_conn() |> get(page_path())
+    document = LazyHTML.from_fragment(html_response(served, 200))
 
-      assert Enum.empty?(LazyHTML.query(document, resync_control()))
+    assert Enum.empty?(LazyHTML.query(document, resync_control()))
 
-      refused = served |> post(resync_path())
-      assert html_response(refused, 404)
-      refute_enqueued(worker: PageWorker)
-    end)
-  end
-
-  # The development convenience that signs every visitor in as an administrator
-  # is what the suite runs with, so a reader is only a reader without it.
-  defp without_auto_admin(fun) do
-    previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
-
-    fun.()
+    refused = served |> post(resync_path())
+    assert html_response(refused, 404)
+    refute_enqueued(worker: PageWorker)
   end
 
   defp page_path, do: URLs.page_path("ENG", Demo.open_page(), Demo.open_page_slug())

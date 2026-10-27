@@ -24,6 +24,10 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
 
+  setup %{conn: conn} do
+    {:ok, conn: log_in_admin(conn)}
+  end
+
   describe "the screen is a URL" do
     test "a space's address opens its panel, and a click moves the address there", %{conn: conn} do
       space = a_space_read_by("linked@example.com")

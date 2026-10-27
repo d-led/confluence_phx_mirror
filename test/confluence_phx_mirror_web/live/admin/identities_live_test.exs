@@ -16,6 +16,10 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesLiveTest do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Mirror
 
+  setup %{conn: conn} do
+    {:ok, conn: log_in_admin(conn)}
+  end
+
   @guest "5f057cbe0b38b10022628d68"
 
   test "the people Confluence's content names are listed with their groups", %{conn: conn} do

@@ -14,10 +14,6 @@ defmodule ConfluencePhxMirrorWeb.DisabledAccountTest do
   alias ConfluencePhxMirror.Accounts
 
   setup do
-    previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    Application.put_env(:confluence_phx_mirror, :auto_admin, false)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
-
     # An administrator who stays on, so switching an account off here is
     # allowed: the mirror never lets its last administrator go.
     user_fixture(%{email: "keeper@example.com", role: "admin"})

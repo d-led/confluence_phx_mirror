@@ -15,11 +15,11 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.SyncRunControllerTest do
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.SyncRun
 
-  setup do
+  setup %{conn: conn} do
     older = run_fixture(~U[2026-10-01 10:00:00Z])
     newer = run_fixture(~U[2026-10-02 10:00:00Z])
 
-    {:ok, older: older, newer: newer}
+    {:ok, conn: log_in_admin(conn), older: older, newer: newer}
   end
 
   test "an administrator reads the history newest first, one window at a time",

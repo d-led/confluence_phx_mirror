@@ -4,9 +4,9 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
   import Phoenix.LiveViewTest
   import ConfluencePhxMirror.Fixtures
 
-  setup do
+  setup %{conn: conn} do
     demo_snapshot!()
-    :ok
+    {:ok, conn: log_in_admin(conn)}
   end
 
   test "search LiveView searches every field by default", %{conn: conn} do
