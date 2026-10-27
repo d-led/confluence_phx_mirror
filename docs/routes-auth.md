@@ -16,6 +16,31 @@ The companion test for the combinations below is
 `test/confluence_phx_mirror_web/auth_matrix_test.exs` — settings × identities ×
 doors, asserted through the real plugs rather than by reading this page.
 
+## The path a request takes
+
+```mermaid
+flowchart TD
+  A[reader or client] --> B{proxy route?}
+  B -->|browser path| C[oauth2-proxy: session or 302 to GitHub]
+  B -->|skipped path| D[straight to the app]
+  C -->|X-Forwarded-Email + Proto| E[ProxyAuth: 403 if the policy refuses]
+  D --> F{app credential}
+  F -->|API/MCP token, Basic, signature, PKCE| G[ApiAuth / McpAuth / WebhookAuth]
+  E --> H[Scope.for_user once per request]
+  G --> H
+  H --> I[Authorization: what may be read]
+```
+
+Two rules follow, and most confusion is a mix-up of the two:
+
+* **A skipped path carries no identity at all.** On `/api/…`, `/wiki/rest/api/…`,
+  `/webhooks/…` and the machine halves of `/oauth`, the app's own credential is
+  the only identity, and `CM_PROXY_AUTH` is never consulted.
+* **A refusal is a `404`, not a `403`.** A restricted page and a page that was
+  never mirrored answer identically. The exception is the admission step: the
+  proxy door says `403` when the *policy* refuses an identity before any content
+  is chosen.
+
 ## Layer 1 — the proxy
 
 Public entry point: the `confluence-mirror` app, oauth2-proxy v7.15.5 with the
@@ -149,11 +174,6 @@ lets one more reader in, a *removal* keeps an identity the site names out (see
 Both are marked rows in the same tables, and a resource left with nothing but
 removals is closed to everybody but an administrator — never open, because
 "no rows" already means open.
-
-A refusal is a **404, not a 403**: a restricted page and a page that was never
-mirrored answer identically, so the mirror does not confirm that content exists.
-The one exception is the proxy door, which answers `403` when the *policy*
-refuses an identity before any content is chosen.
 
 ## Administration
 
