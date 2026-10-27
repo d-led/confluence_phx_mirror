@@ -62,6 +62,8 @@ all.
 
 ```
 GET /api/v1/spaces
+POST /api/v1/spaces
+DELETE /api/v1/spaces/:key
 GET /api/v1/spaces/:key/pages
 GET /api/v1/pages/:id
 GET /api/v1/pages/:id/{children,ancestors,descendants,labels,attachments,comments,backlinks}
@@ -122,7 +124,7 @@ Both calls are an **administrator's**: a run's error is what the node said when
 the sync broke, which is an operator's reading rather than a reader's. Another
 token gets `403 not_authorized`.
 
-### Identities: the only writes
+### Identities
 
 `GET /api/v1/identities?q=&limit=&offset=` lists the Confluence accounts the
 mirror knows — the authors of pages and comments, and the account ids the
@@ -153,8 +155,40 @@ token gets `403 not_authorized`. The refusals are named rather than swallowed:
 | 409 | `not_a_link` | that is the identity the account signs in with, not a link |
 | 422 | `missing_account` | neither `user_id` nor `email` was given |
 
-These are the only writes the v1 API accepts; the rest of the mirror stays
-read-only.
+These are the only writes the v1 API accepts about an identity, and the only
+ones beside [the space whitelist](#spaces-the-whitelist-a-run-imports): the rest
+of the mirror stays read-only.
+
+### Spaces: the whitelist a run imports
+
+Which spaces a run imports is two lists that add up — the keys the deployment
+names (`CM_SPACES`) and the ones added here. `POST /api/v1/spaces` adds one:
+
+```json
+{"key": "ENG"}
+```
+
+The answer is the whitelist as it now stands: `{"key": "ENG", "every_space":
+false, "keys": ["ENG", "PROD"]}`. It only ever widens; nothing stops being
+imported by adding. A mirror that imports **every** space answers `409
+imports_every_space`, because naming one key there would narrow it to that key
+and the next run would trash the rest — narrowing a mirror starts with
+`CM_SPACES`.
+
+`DELETE /api/v1/spaces/:key` takes a key back out:
+
+```json
+{"key": "PROD", "removed": true, "pages_awaiting_trash": 3,
+ "every_space": false, "keys": ["ENG"]}
+```
+
+The next run stops importing it and trashes what it holds — softly: rows stay,
+and naming the key again brings them back. `pages_awaiting_trash` is what the
+next run will move, not what it has moved. A key `CM_SPACES` names cannot be
+removed this way, and the answer says so with `"removed": false`.
+
+Both calls are an **administrator's**; another token gets `403 not_authorized`.
+A missing `key` is `422 not_saved`.
 
 ## Confluence-compatible subset
 

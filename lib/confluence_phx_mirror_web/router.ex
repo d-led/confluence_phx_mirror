@@ -235,6 +235,15 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/spaces/:key", SpaceController, :show
     get "/spaces/:key/pages", PageController, :index
 
+    # The whitelist that decides what a run imports: the deployment's CM_SPACES
+    # plus the keys added here. Administrator-only, and the only writes about a
+    # space the API accepts — a removal stops a space being imported and the
+    # next run trashes what it holds.
+    # sobelow_skip ["Config.CSRF"]
+    post "/spaces", SpaceController, :create
+    # sobelow_skip ["Config.CSRF"]
+    delete "/spaces/:key", SpaceController, :delete
+
     get "/pages/:id", PageController, :show
     get "/pages/:id/children", PageController, :children
     get "/pages/:id/descendants", PageController, :descendants

@@ -68,7 +68,9 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
   @extra_routes [
     {"get", "/health"},
     {"post", "/api/v1/identities/{account_id}/link"},
-    {"delete", "/api/v1/identities/{account_id}/link"}
+    {"delete", "/api/v1/identities/{account_id}/link"},
+    {"post", "/api/v1/spaces"},
+    {"delete", "/api/v1/spaces/{key}"}
   ]
 
   # ---------------------------------------------------------------------------
@@ -556,6 +558,37 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
           409 => error("That identity is the account's own sign-in identity, not a link.")
         }
       },
+      {"post", "/api/v1/spaces"} => %{
+        tag: "Spaces",
+        summary: "Import one more space",
+        description:
+          "Administrator-only. Adds a key to the whitelist a run imports — the deployment's `CM_SPACES` plus " <>
+            "the keys added here. It only widens: nothing stops being imported this way. A mirror that imports " <>
+            "every space refuses, because naming one key would narrow it to that key and the next run would " <>
+            "trash the rest; set `CM_SPACES` to narrow a mirror.",
+        body: "SpaceWhitelistRequest",
+        responses: %{
+          201 => ok("SpaceWhitelist", "The key was added."),
+          403 => error("The token does not belong to an administrator."),
+          409 => error("This mirror imports every space; set `CM_SPACES` first."),
+          422 => error("No `key` was given.")
+        }
+      },
+      {"delete", "/api/v1/spaces/{key}"} => %{
+        tag: "Spaces",
+        summary: "Stop importing a space",
+        description:
+          "Administrator-only. Removes a key from the runtime whitelist. The next run stops importing it and " <>
+            "trashes what it holds — softly: rows stay, and naming the key again brings them back. A key " <>
+            "`CM_SPACES` names stays in force and the answer says so. `pages_awaiting_trash` is what the next " <>
+            "run will move, not what it has moved.",
+        params: [path_param("key", %{"type" => "string"}, "Space key, case-insensitive.")],
+        responses: %{
+          200 => ok("SpaceRemoval", "The removal was recorded."),
+          403 => error("The token does not belong to an administrator."),
+          422 => error("The change was not stored.")
+        }
+      },
       {"get", "/health"} => %{
         tag: "Health",
         summary: "Liveness and readiness",
@@ -779,6 +812,26 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
           ~w(key name)
         ),
       "SpaceList" => list_of("Space"),
+      "SpaceWhitelistRequest" =>
+        object(%{"key" => string("The space key to start importing.")}, ~w(key)),
+      "SpaceWhitelist" =>
+        object(%{
+          "key" => string("The key this call was about."),
+          "every_space" => %{"type" => "boolean"},
+          "keys" => %{"type" => "array", "items" => %{"type" => "string"}}
+        }),
+      "SpaceRemoval" =>
+        object(%{
+          "key" => string("The key this call was about."),
+          "removed" => %{
+            "type" => "boolean",
+            "description" => "False when `CM_SPACES` still names the key."
+          },
+          "pages_awaiting_trash" =>
+            integer("What the next run will move to the trash, not what it has moved."),
+          "every_space" => %{"type" => "boolean"},
+          "keys" => %{"type" => "array", "items" => %{"type" => "string"}}
+        }),
       "Author" =>
         object(%{
           "displayName" => string(),
