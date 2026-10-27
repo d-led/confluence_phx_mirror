@@ -184,8 +184,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLive do
       page_title="Jobs"
       sidebar?={false}
     >
+      <:subnav>
+        <.admin_nav current={:jobs} />
+      </:subnav>
+
       <.admin_header
-        current={:jobs}
         title="Jobs"
         subtitle="What Oban holds, in every state — the overview's queue lists only what is still waiting to start."
       />

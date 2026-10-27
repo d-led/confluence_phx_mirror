@@ -338,8 +338,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
       page_title="Confluence identities"
       sidebar?={false}
     >
+      <:subnav>
+        <.admin_nav current={:identities} />
+      </:subnav>
+
       <.admin_header
-        current={:identities}
         title="Confluence identities"
         subtitle="The Atlassian accounts the content names, and the account each one stands for here."
       />

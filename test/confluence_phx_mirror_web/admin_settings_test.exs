@@ -59,9 +59,14 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
 
     assert view
-           |> element("#limits-form")
-           |> render_submit(%{"limits" => %{"html" => "300", "api" => "", "attachments" => ""}}) =~
-             "Reader limits saved."
+           |> element("#settings-reading")
+           |> render_submit(%{
+             "values" => %{
+               "reader.html_limit" => "300",
+               "reader.api_limit" => "",
+               "reader.attachments_limit" => ""
+             }
+           }) =~ "Reading saved."
 
     assert Settings.reader_limit(:html) == 300
     assert Settings.stored("reader.api_limit") == nil
@@ -71,12 +76,24 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
 
     view
-    |> element("#limits-form")
-    |> render_submit(%{"limits" => %{"html" => "300", "api" => "", "attachments" => ""}})
+    |> element("#settings-reading")
+    |> render_submit(%{
+      "values" => %{
+        "reader.html_limit" => "300",
+        "reader.api_limit" => "",
+        "reader.attachments_limit" => ""
+      }
+    })
 
     view
-    |> element("#limits-form")
-    |> render_submit(%{"limits" => %{"html" => "", "api" => "", "attachments" => ""}})
+    |> element("#settings-reading")
+    |> render_submit(%{
+      "values" => %{
+        "reader.html_limit" => "",
+        "reader.api_limit" => "",
+        "reader.attachments_limit" => ""
+      }
+    })
 
     assert Settings.stored("reader.html_limit") == nil
     assert Settings.reader_limit(:html) == Settings.default("reader.html_limit")
@@ -87,20 +104,27 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
 
     html =
       view
-      |> element("#limits-form")
-      |> render_submit(%{"limits" => %{"html" => "300", "api" => "lots", "attachments" => ""}})
+      |> element("#settings-reading")
+      |> render_submit(%{
+        "values" => %{
+          "reader.html_limit" => "300",
+          "reader.api_limit" => "lots",
+          "reader.attachments_limit" => ""
+        }
+      })
 
     assert html =~ "Nothing was saved"
     assert Settings.stored("reader.html_limit") == nil
   end
 
-  test "an administrator turns notification mail off", %{conn: conn} do
+  test "an unchecked box turns notification mail off", %{conn: conn} do
     {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
 
+    # A cleared checkbox posts nothing at all, which is an explicit "off".
     assert view
-           |> element("#notifications-form")
-           |> render_submit(%{"notifications" => %{"enabled" => "false", "digest_hour" => "9"}}) =~
-             "Notification settings saved."
+           |> element("#settings-notifications")
+           |> render_submit(%{"values" => %{"notifications.digest_hour_utc" => "9"}}) =~
+             "Notifications saved."
 
     refute Settings.notifications_enabled?()
     assert Settings.digest_hour_utc() == 9
@@ -111,11 +135,50 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
 
     html =
       view
-      |> element("#notifications-form")
-      |> render_submit(%{"notifications" => %{"enabled" => "true", "digest_hour" => "24"}})
+      |> element("#settings-notifications")
+      |> render_submit(%{
+        "values" => %{
+          "notifications.enabled" => "true",
+          "notifications.digest_hour_utc" => "24"
+        }
+      })
 
     assert html =~ "Nothing was saved"
     assert Settings.stored("notifications.digest_hour_utc") == nil
+  end
+
+  test "every group the catalogue marks for this screen has a form", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    assert has_element?(view, "#theme-form")
+    assert has_element?(view, "#settings-reading")
+    assert has_element?(view, "#settings-sync")
+    assert has_element?(view, "#settings-notifications")
+    assert has_element?(view, "#settings-operations")
+
+    # A setting declared after the first release gets a control without the
+    # screen naming it.
+    assert has_element?(view, ~s([id="setting-search.page_size-input"]))
+
+    # The webhook switches live on their own screen, where the cost is spelled
+    # out; this page must not grow a second editor for them.
+    refute has_element?(view, "#settings-webhooks")
+  end
+
+  test "a group hands every field back to the deployment at once", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    view
+    |> element("#settings-reading")
+    |> render_submit(%{"values" => %{"reader.html_limit" => "300"}})
+
+    assert Settings.stored("reader.html_limit") == 300
+
+    assert view
+           |> element("#settings-reading-defaults")
+           |> render_click() =~ "Reading follows the deployment"
+
+    assert Settings.stored("reader.html_limit") == nil
   end
 
   test "a member is sent home, not shown the page", %{conn: conn} do

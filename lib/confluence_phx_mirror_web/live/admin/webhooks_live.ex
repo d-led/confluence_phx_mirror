@@ -147,8 +147,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
       page_title="Webhooks"
       sidebar?={false}
     >
+      <:subnav>
+        <.admin_nav current={:webhooks} />
+      </:subnav>
+
       <.admin_header
-        current={:webhooks}
         title="Webhooks"
         subtitle="What Confluence sent, and whether it could be trusted."
       />

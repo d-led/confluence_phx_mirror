@@ -22,6 +22,7 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   alias ConfluencePhxMirror.Mirror.{Comment, Page}
   alias ConfluencePhxMirror.Mirror.Search.{CQL, Filters, TextQuery}
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Settings
 
   @language "simple"
 
@@ -30,11 +31,10 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   # stay in step.
   @comment_vector "to_tsvector('#{@language}', coalesce(c.author_name, '') || ' ' || coalesce(c.body_text, ''))"
 
-  # Paging is deployment-sized (see config/runtime.exs), not a code constant.
-  defp search_config, do: Application.get_env(:confluence_phx_mirror, :search, [])
-
-  defp default_limit, do: Keyword.get(search_config(), :default_limit, 25)
-  defp max_limit, do: Keyword.get(search_config(), :max_limit, 100)
+  # Paging is an administrator's decision, falling back to the deployment's own
+  # configuration (`CM_SEARCH_*`); see ConfluencePhxMirror.Settings.
+  defp default_limit, do: Settings.search_default_limit()
+  defp max_limit, do: Settings.search_max_results()
 
   # When text and field filters are combined, both sides are scanned wider than
   # the page size so the intersection is not truncated.

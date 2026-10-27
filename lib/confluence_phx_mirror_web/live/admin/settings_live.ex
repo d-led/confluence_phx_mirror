@@ -3,11 +3,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   The settings screen: what an administrator can change while the mirror runs,
   and what only the environment can.
 
-  The editable half is `ConfluencePhxMirror.Settings` — the theme every reader
-  wears, the per-reader request limits, and whether notification mail goes out.
-  A field left blank means "no decision": the deployment's own configuration
-  applies again, which is what the placeholder shows. Saving a group is one
-  transaction, so either every field of it was stored and audited or none was.
+  The editable half is `ConfluencePhxMirror.Settings`, declared once in
+  `ConfluencePhxMirror.Settings.Catalogue` and rendered from it group by group.
+  One form per group, one transaction per save: either every field of the group
+  was stored and audited or none was.
+
+  A blank field means "no decision" — the deployment's own configuration applies
+  again, which is what the placeholder shows. A checkbox cannot be blank, so a
+  group's *use the deployment's values* button is what hands it back.
 
   The other half is the environment the mirror booted with, listed with the
   variable that sets it. The source, the sync schedule and the database cannot
@@ -20,15 +23,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   import ConfluencePhxMirrorWeb.AdminComponents
 
   alias ConfluencePhxMirror.Settings
+  alias ConfluencePhxMirror.Settings.Catalogue
   alias ConfluencePhxMirrorWeb.Admin.Config
   alias ConfluencePhxMirrorWeb.Admin.SettingsRefusal
   alias ConfluencePhxMirrorWeb.Skins
-
-  @limit_keys %{
-    "html" => "reader.html_limit",
-    "api" => "reader.api_limit",
-    "attachments" => "reader.attachments_limit"
-  }
 
   @impl true
   def mount(_params, _session, socket) do
@@ -51,19 +49,36 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
     end
   end
 
-  def handle_event("save_limits", %{"limits" => params}, socket) do
-    changes = Map.new(@limit_keys, fn {field, key} -> {key, params[field]} end)
+  def handle_event("save_group", %{"group" => key} = params, socket) do
+    values = Map.get(params, "values", %{})
 
-    save(socket, changes, "Reader limits saved.")
+    with %{title: title} = group <- group(key),
+         changes = changes(group, values),
+         {:ok, _applied} <- Settings.update(changes, actor(socket)) do
+      {:noreply, socket |> assign_settings() |> put_flash(:info, "#{title} saved.")}
+    else
+      nil -> {:noreply, socket}
+      {:error, reason} -> {:noreply, put_flash(socket, :error, SettingsRefusal.message(reason))}
+    end
   end
 
-  def handle_event("save_notifications", %{"notifications" => params}, socket) do
-    changes = %{
-      "notifications.enabled" => truthy?(params["enabled"]),
-      "notifications.digest_hour_utc" => params["digest_hour"]
-    }
+  def handle_event("use_default", %{"group" => key}, socket) do
+    case group(key) do
+      nil ->
+        {:noreply, socket}
 
-    save(socket, changes, "Notification settings saved.")
+      %{keys: keys, title: title} ->
+        case Settings.clear(keys, actor(socket)) do
+          {:ok, _cleared} ->
+            {:noreply,
+             socket
+             |> assign_settings()
+             |> put_flash(:info, "#{title} follows the deployment's configuration again.")}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, SettingsRefusal.message(reason))}
+        end
+    end
   end
 
   @impl true
@@ -82,8 +97,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
       page_title="Settings"
       sidebar?={false}
     >
+      <:subnav>
+        <.admin_nav current={:settings} />
+      </:subnav>
+
       <.admin_header
-        current={:settings}
         title="Settings"
         subtitle="What you can change while the mirror runs, then what only the environment can."
       />
@@ -138,90 +156,37 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
         </form>
 
         <form
-          id="limits-form"
-          phx-submit="save_limits"
+          :for={group <- @groups}
+          id={"settings-#{group.key}"}
+          phx-submit="save_group"
           class="rounded-xl border border-base-300/70 bg-base-100 p-4"
         >
+          <input type="hidden" name="group" value={group.key} />
+
           <fieldset>
             <legend class="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/70">
-              Reader limits
+              {group.title}
             </legend>
-            <p class="mt-1 text-xs text-base-content/70">
-              Requests per reader per minute. Empty means the value this deployment was configured
-              with; the placeholder is that value.
-            </p>
+            <p class="mt-1 text-xs text-base-content/70">{group.help}</p>
 
-            <div class="mt-3 grid gap-2 sm:grid-cols-3">
-              <.input
-                type="number"
-                name="limits[html]"
-                value={@limits.html}
-                label="HTML"
-                placeholder={to_string(@limits.defaults.html)}
-                min="1"
-                class="w-full input input-sm"
-              />
-              <.input
-                type="number"
-                name="limits[api]"
-                value={@limits.api}
-                label="API"
-                placeholder={to_string(@limits.defaults.api)}
-                min="1"
-                class="w-full input input-sm"
-              />
-              <.input
-                type="number"
-                name="limits[attachments]"
-                value={@limits.attachments}
-                label="Attachments"
-                placeholder={to_string(@limits.defaults.attachments)}
-                min="1"
-                class="w-full input input-sm"
-              />
+            <div class="mt-3 space-y-4">
+              <.setting_field :for={field <- group.fields} field={field} />
             </div>
           </fieldset>
 
-          <div class="mt-3 flex items-center justify-end">
-            <button type="submit" class="btn btn-primary btn-sm">Save limits</button>
-          </div>
-        </form>
-
-        <form
-          id="notifications-form"
-          phx-submit="save_notifications"
-          class="rounded-xl border border-base-300/70 bg-base-100 p-4"
-        >
-          <fieldset>
-            <legend class="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/70">
-              Notifications
-            </legend>
-            <p class="mt-1 text-xs text-base-content/70">
-              Whether the mirror mails watchers at all, and the UTC hour the daily digest goes out.
-            </p>
-
-            <div class="mt-3 grid items-end gap-2 sm:grid-cols-2">
-              <.input
-                type="checkbox"
-                name="notifications[enabled]"
-                label="Send e-mail"
-                checked={@notifications.enabled}
-              />
-              <.input
-                type="number"
-                name="notifications[digest_hour]"
-                value={@notifications.digest_hour}
-                label="Digest hour (UTC)"
-                placeholder={to_string(@notifications.default_hour)}
-                min="0"
-                max="23"
-                class="w-full input input-sm"
-              />
-            </div>
-          </fieldset>
-
-          <div class="mt-3 flex items-center justify-end">
-            <button type="submit" class="btn btn-primary btn-sm">Save notifications</button>
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              id={"settings-#{group.key}-defaults"}
+              phx-click="use_default"
+              phx-value-group={group.key}
+              class="btn btn-ghost btn-xs"
+            >
+              Use the deployment's values
+            </button>
+            <button type="submit" id={"settings-#{group.key}-save"} class="btn btn-primary btn-sm">
+              Save {String.downcase(group.title)}
+            </button>
           </div>
         </form>
       </div>
@@ -251,60 +216,123 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
     """
   end
 
-  defp save(socket, changes, message) do
-    case Settings.update(changes, actor(socket)) do
-      {:ok, _applied} ->
-        {:noreply, socket |> assign_settings() |> put_flash(:info, message)}
+  # The group a form names, or `nil` for a key this screen does not show.
+  defp group(key) do
+    Enum.find(Catalogue.groups(:settings), &(Atom.to_string(&1.key) == key))
+  end
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, SettingsRefusal.message(reason))}
-    end
+  # A checkbox posts nothing when it is cleared, which is an explicit "off":
+  # handing a group back to the deployment is the button, not an empty box.
+  defp changes(%{keys: keys}, values) do
+    Map.new(keys, fn key ->
+      case Catalogue.fetch!(key).type do
+        :boolean -> {key, values[key] in ~w(on true 1 yes)}
+        _typed -> {key, Map.get(values, key)}
+      end
+    end)
   end
 
   defp assign_settings(socket) do
     assign(socket,
       theme: Skins.theme(),
       themes: Skins.themes(),
-      limits: limits(),
-      notifications: notifications(),
+      groups: groups(),
       sections: Config.sections(socket.assigns.current_user)
     )
   end
 
-  defp limits do
+  defp groups do
+    Enum.map(Catalogue.groups(:settings), fn group ->
+      Map.put(group, :fields, Enum.map(group.keys, &field/1))
+    end)
+  end
+
+  defp field(key) do
+    spec = Catalogue.fetch!(key)
+
     %{
-      html: stored_field("reader.html_limit"),
-      api: stored_field("reader.api_limit"),
-      attachments: stored_field("reader.attachments_limit"),
-      defaults: %{
-        html: Settings.default("reader.html_limit"),
-        api: Settings.default("reader.api_limit"),
-        attachments: Settings.default("reader.attachments_limit")
-      }
+      key: key,
+      label: spec.label,
+      help: spec.help,
+      env: spec.env,
+      type: spec.type,
+      value: Settings.stored(key),
+      default: Settings.default(key)
     }
   end
 
-  defp notifications do
-    %{
-      enabled: Settings.notifications_enabled?(),
-      digest_hour: stored_field("notifications.digest_hour_utc"),
-      default_hour: Settings.default("notifications.digest_hour_utc")
-    }
+  attr :field, :map, required: true
+
+  defp setting_field(%{field: %{type: :boolean}} = assigns) do
+    ~H"""
+    <div>
+      <label
+        id={"setting-#{@field.key}"}
+        for={"setting-#{@field.key}-input"}
+        class="flex items-start justify-between gap-4"
+      >
+        <span class="min-w-0">
+          <span class="block text-sm">
+            {@field.label}
+            <span
+              :if={@field.value != nil}
+              class="ml-1 text-[10px] uppercase tracking-wide text-primary"
+            >
+              changed
+            </span>
+          </span>
+          <span class="block text-xs text-base-content/70">{@field.help}</span>
+        </span>
+        <input
+          type="checkbox"
+          id={"setting-#{@field.key}-input"}
+          name={"values[#{@field.key}]"}
+          checked={@field.value == true}
+          class="checkbox checkbox-sm mt-0.5"
+        />
+      </label>
+      <p class="mt-0.5 text-[11px] text-base-content/70">
+        Deployment: {on_off(@field.default)} · <code class="font-mono">{@field.env}</code>
+      </p>
+    </div>
+    """
   end
 
-  # Only a decision is shown in the field; what the deployment configured lives
-  # in the placeholder, so an empty box keeps meaning "no decision".
-  defp stored_field(key) do
-    case Settings.stored(key) do
-      nil -> ""
-      value -> to_string(value)
-    end
+  defp setting_field(%{field: %{type: type}} = assigns) when type in [:pos_integer, :hour] do
+    ~H"""
+    <div id={"setting-#{@field.key}"}>
+      <.input
+        type="number"
+        id={"setting-#{@field.key}-input"}
+        name={"values[#{@field.key}]"}
+        value={@field.value}
+        label={@field.label}
+        placeholder={to_string(@field.default)}
+        min={if(@field.type == :hour, do: 0, else: 1)}
+        max={if(@field.type == :hour, do: 23, else: nil)}
+        class="mt-1 w-full input input-sm"
+      />
+
+      <p class="text-xs text-base-content/70">
+        {@field.help}
+        <span :if={@field.value != nil} class="ml-1 text-[10px] uppercase tracking-wide text-primary">
+          changed
+        </span>
+      </p>
+
+      <p class="mt-0.5 text-[11px] text-base-content/70">
+        Empty means the deployment's {to_string(@field.default)} ·
+        <code class="font-mono">{@field.env}</code>
+      </p>
+    </div>
+    """
   end
+
+  defp on_off(true), do: "on"
+  defp on_off(false), do: "off"
+  defp on_off(nil), do: "the deployment's value"
 
   defp actor(socket), do: {:user, socket.assigns.current_user}
-
-  # A checked box posts "on"; an unchecked one posts nothing at all.
-  defp truthy?(value), do: value in ~w(on true 1 yes)
 
   # The theme is an attribute of `<html>`, which only a document request renders,
   # so the save reloads the page: the administrator sees the theme they just

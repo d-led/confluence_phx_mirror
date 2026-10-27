@@ -157,8 +157,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
       page_title="Missing pages"
       sidebar?={false}
     >
+      <:subnav>
+        <.admin_nav current={:upstream} />
+      </:subnav>
+
       <.admin_header
-        current={:upstream}
         title="Missing pages"
         subtitle="Gone from Confluence, still in this mirror."
       >

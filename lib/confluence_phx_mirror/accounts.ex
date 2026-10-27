@@ -21,11 +21,10 @@ defmodule ConfluencePhxMirror.Accounts do
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.GroupMember
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Settings
 
   @doc "Minutes a magic link stays valid."
-  def login_token_minutes do
-    Application.get_env(:confluence_phx_mirror, :accounts, [])[:login_token_minutes] || 15
-  end
+  def login_token_minutes, do: Settings.login_token_minutes()
 
   @api_token_bytes 32
   # How much of a token is stored in clear as the lookup key. Twelve base64

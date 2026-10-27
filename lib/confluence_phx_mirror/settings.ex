@@ -9,22 +9,17 @@ defmodule ConfluencePhxMirror.Settings do
   back. This is the difference between "a second default in a different place"
   and a real setting.
 
-  | key | decides | default from |
-  | --- | --- | --- |
-  | `theme` | the theme every reader wears | `:theme` (`CM_THEME`) |
-  | `reader.html_limit` | HTML requests per reader per minute | `:reader_rate_limit, :html` (`CM_READER_RATE_LIMIT_PER_MINUTE`) |
-  | `reader.api_limit` | API requests per reader per minute | `:reader_rate_limit, :api` |
-  | `reader.attachments_limit` | attachment downloads per reader per minute | `:reader_rate_limit, :attachments` |
-  | `notifications.enabled` | whether the mirror sends e-mail at all | `:notifications, :enabled` |
-  | `notifications.digest_hour_utc` | the hour daily digests go out | `:notifications, :digest_hour_utc` |
-  | `webhook.enabled` | whether the intake accepts deliveries at all | `:webhooks, :enabled` |
-  | `webhook.require_signature` | whether deliveries must be signed | `:webhooks, :require_signature` |
-  | `webhook.rate_limit` | deliveries accepted per address per minute | `:webhook_rate_limit, :limit` |
+  The keys, their types and where each default comes from are declared once in
+  `ConfluencePhxMirror.Settings.Catalogue`; this module is what reads and writes
+  them. A setting only lives there when the code that cares about it reads it
+  while serving a request or running a job. Anything read once at boot — the
+  source, the credentials, the database, the proxy's identity headers — stays
+  environment-only, and `/admin/settings` says so rather than pretending
+  otherwise.
 
-  Only settings whose readers look at the value while serving a request belong
-  here. Anything read once at boot — the source, the sync schedule, the
-  database — is still environment-only, and `/admin/settings` says so rather
-  than pretending otherwise.
+  Adding a setting needs no migration: `settings` is a key/value table, so a
+  key it has never seen is simply absent, and a key this code no longer knows is
+  ignored when the table is loaded.
 
   ## Reads and writes
 
@@ -45,39 +40,19 @@ defmodule ConfluencePhxMirror.Settings do
 
   alias ConfluencePhxMirror.{Audit, Repo}
   alias ConfluencePhxMirror.Audit.Entry
+  alias ConfluencePhxMirror.Settings.Catalogue
   alias ConfluencePhxMirror.Settings.Setting
 
   @type value :: String.t() | boolean() | integer() | nil
   @type changes :: %{optional(String.t()) => value()}
 
-  # type:    how a stored string becomes a value again, and what a write accepts
-  # default: where the deployment's own value comes from (`resolve/1` reads it),
-  #          so a setting nobody stored behaves exactly as the config says
-  @specs %{
-    "theme" => %{type: :string, default: :theme},
-    "reader.html_limit" => %{type: :pos_integer, default: {:reader_limit, :html, 240}},
-    "reader.api_limit" => %{type: :pos_integer, default: {:reader_limit, :api, 120}},
-    "reader.attachments_limit" => %{
-      type: :pos_integer,
-      default: {:reader_limit, :attachments, 300}
-    },
-    "notifications.enabled" => %{type: :boolean, default: {:notification, :enabled, true}},
-    "notifications.digest_hour_utc" => %{
-      type: :hour,
-      default: {:notification, :digest_hour_utc, 8}
-    },
-    "webhook.enabled" => %{type: :boolean, default: {:webhook, :enabled, true}},
-    "webhook.require_signature" => %{type: :boolean, default: {:webhook, :require_signature}},
-    "webhook.rate_limit" => %{type: :pos_integer, default: {:webhook, :limit}}
-  }
-
   @doc "Every key an administrator can own, in a stable order."
   @spec keys() :: [String.t()]
-  def keys, do: @specs |> Map.keys() |> Enum.sort()
+  def keys, do: Catalogue.keys()
 
   @doc "Whether `key` is a setting this mirror knows."
   @spec known?(String.t()) :: boolean()
-  def known?(key), do: Map.has_key?(@specs, key)
+  def known?(key), do: Catalogue.known?(key)
 
   @doc """
   What applies when nothing is stored: the deployment's own configuration.
@@ -130,6 +105,42 @@ defmodule ConfluencePhxMirror.Settings do
   @spec webhook_rate_limit() :: pos_integer() | nil
   def webhook_rate_limit, do: effective("webhook.rate_limit")
 
+  @doc "How many search hits one reader page shows."
+  @spec search_page_size() :: pos_integer()
+  def search_page_size, do: effective("search.page_size")
+
+  @doc "How many results a caller gets when it names no limit."
+  @spec search_default_limit() :: pos_integer()
+  def search_default_limit, do: effective("search.default_limit")
+
+  @doc "The most results one search may return, whatever a caller asks for."
+  @spec search_max_results() :: pos_integer()
+  def search_max_results, do: effective("search.max_results")
+
+  @doc "How long a magic sign-in link stays usable."
+  @spec login_token_minutes() :: pos_integer()
+  def login_token_minutes, do: effective("accounts.login_token_minutes")
+
+  @doc "Pages a sync run writes at once."
+  @spec sync_concurrency() :: pos_integer()
+  def sync_concurrency, do: effective("sync.concurrency")
+
+  @doc "Changed pages one run fetches details for."
+  @spec sync_detail_backlog() :: pos_integer()
+  def sync_detail_backlog, do: effective("sync.detail_backlog")
+
+  @doc "How far back a run asks Confluence for changes, in seconds."
+  @spec sync_lookback_seconds() :: pos_integer()
+  def sync_lookback_seconds, do: effective("sync.lookback_seconds")
+
+  @doc "Whether a whole-site export includes personal spaces."
+  @spec export_personal_spaces?() :: boolean()
+  def export_personal_spaces?, do: effective("export.personal_spaces") == true
+
+  @doc "How often the admin overview re-reads its numbers, in seconds."
+  @spec dashboard_refresh_seconds() :: pos_integer()
+  def dashboard_refresh_seconds, do: effective("dashboard.refresh_seconds")
+
   @doc """
   Loads every stored setting into memory. Called once, after the repository is
   up, so the request path never reads the table.
@@ -141,7 +152,7 @@ defmodule ConfluencePhxMirror.Settings do
       |> Repo.all()
       |> Map.new()
 
-    Enum.each(@specs, fn {key, _spec} ->
+    Enum.each(Catalogue.all(), fn {key, _spec} ->
       :persistent_term.put(term(key), decode(key, Map.get(stored, key)))
     end)
   end
@@ -161,7 +172,7 @@ defmodule ConfluencePhxMirror.Settings do
   """
   @spec forget() :: :ok
   def forget do
-    Enum.each(@specs, fn {key, _spec} -> :persistent_term.erase(term(key)) end)
+    Enum.each(Catalogue.all(), fn {key, _spec} -> :persistent_term.erase(term(key)) end)
     :ok
   end
 
@@ -373,12 +384,7 @@ defmodule ConfluencePhxMirror.Settings do
   defp encode(value) when is_integer(value), do: Integer.to_string(value)
   defp encode(value) when is_boolean(value), do: to_string(value)
 
-  defp fetch!(key) do
-    case Map.fetch(@specs, key) do
-      {:ok, spec} -> spec
-      :error -> raise ArgumentError, "#{inspect(key)} is not a setting this mirror knows"
-    end
-  end
+  defp fetch!(key), do: Catalogue.fetch!(key)
 
   defp term(key), do: {__MODULE__, key}
 
@@ -406,6 +412,34 @@ defmodule ConfluencePhxMirror.Settings do
     :confluence_phx_mirror
     |> Application.get_env(:webhook_rate_limit, [])
     |> Keyword.get(:limit, 60)
+  end
+
+  defp resolve({:search, key, floor}) do
+    :confluence_phx_mirror |> Application.get_env(:search, []) |> Keyword.get(key, floor)
+  end
+
+  defp resolve({:sync, key, floor}) do
+    :confluence_phx_mirror |> Application.get_env(:sync, []) |> Keyword.get(key, floor)
+  end
+
+  # The source's own options, the way `Sync` reads them: a demo snapshot keeps
+  # its own values even when the HTTP source is configured for a live site.
+  defp resolve({:source, key, floor}) do
+    :confluence_phx_mirror
+    |> Application.get_env(ConfluencePhxMirror.Confluence.Source.source(), [])
+    |> Keyword.get(key, floor)
+  end
+
+  defp resolve({:accounts, key, floor}) do
+    :confluence_phx_mirror |> Application.get_env(:accounts, []) |> Keyword.get(key, floor)
+  end
+
+  defp resolve({:admin_stats_refresh_seconds, floor}) do
+    Application.get_env(:confluence_phx_mirror, :admin_stats_refresh_seconds, floor)
+  end
+
+  defp resolve(:export_personal_spaces) do
+    Application.get_env(:confluence_phx_mirror, :export_personal_spaces, false)
   end
 
   defp reader_default(scope, floor) do

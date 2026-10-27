@@ -9,7 +9,7 @@ defmodule ConfluencePhxMirror.SettingsTest do
 
   @moduletag :empty_mirror
 
-  alias ConfluencePhxMirror.{Audit, Settings}
+  alias ConfluencePhxMirror.{Accounts, Audit, Settings}
 
   @actor {:system, "test"}
 
@@ -72,6 +72,23 @@ defmodule ConfluencePhxMirror.SettingsTest do
     end
   end
 
+  describe "a setting declared after the first release" do
+    test "takes its default from the deployment's configuration" do
+      put_config(:search, page_size: 12, default_limit: 7, max_limit: 50)
+
+      assert Settings.search_page_size() == 12
+      assert Settings.search_default_limit() == 7
+      assert Settings.search_max_results() == 50
+    end
+
+    test "is what the code that cares reads, once somebody stored it" do
+      assert {:ok, _applied} =
+               Settings.update(%{"accounts.login_token_minutes" => "45"}, @actor)
+
+      assert Accounts.login_token_minutes() == 45
+    end
+  end
+
   describe "a change covering several settings" do
     test "applies all of them and is one audit entry" do
       assert {:ok, applied} =
@@ -108,6 +125,42 @@ defmodule ConfluencePhxMirror.SettingsTest do
     test "refuses a key this mirror does not know" do
       assert {:error, {:unknown_key, "reader.magic"}} =
                Settings.update(%{"reader.magic" => "1"}, @actor)
+    end
+  end
+
+  describe "a value that cannot be a setting" do
+    test "is refused by its declared type, and nothing is written" do
+      refused = [
+        {"reader.html_limit", "0"},
+        {"reader.html_limit", "-3"},
+        {"reader.html_limit", "lots"},
+        {"notifications.digest_hour_utc", "24"},
+        {"notifications.digest_hour_utc", "-1"},
+        {"notifications.enabled", "maybe"},
+        {"theme", 42}
+      ]
+
+      for {key, value} <- refused do
+        assert {:error, {:invalid_value, ^key, ^value}} =
+                 Settings.update(%{key => value}, @actor),
+               "#{key} accepted #{inspect(value)}"
+      end
+
+      assert Settings.stored("reader.html_limit") == nil
+      assert Audit.recent(1) == []
+    end
+
+    test "is ignored when it is already in the table, and the deployment's value applies" do
+      ConfluencePhxMirror.Repo.insert!(%ConfluencePhxMirror.Settings.Setting{
+        key: "reader.html_limit",
+        value: "lots"
+      })
+
+      log = ExUnit.CaptureLog.capture_log(fn -> Settings.reload() end)
+
+      assert log =~ "unreadable setting reader.html_limit"
+      assert Settings.stored("reader.html_limit") == nil
+      assert Settings.reader_limit(:html) == Settings.default("reader.html_limit")
     end
   end
 

@@ -82,8 +82,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
       page_title="Trash"
       sidebar?={false}
     >
+      <:subnav>
+        <.admin_nav current={:trash} />
+      </:subnav>
+
       <.admin_header
-        current={:trash}
         title="Trash"
         subtitle="Content a sync no longer finds in Confluence. Nothing here is readable."
       >

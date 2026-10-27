@@ -23,6 +23,7 @@ defmodule ConfluencePhxMirror.Export do
   alias ConfluencePhxMirror.Export.Site
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Page, Space, URLs}
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sites
 
   @doc "Markdown of one page, with Confluence metadata as front matter."
@@ -52,11 +53,12 @@ defmodule ConfluencePhxMirror.Export do
   The mirror as a static site: every space the reader may see, as HTML pages,
   Markdown and attachments.
 
-  Personal spaces are left out unless the deployment asks for them
-  (`export_personal_spaces`). A personal space is somebody's own corner of the
-  site — drafts, notes, half-finished pages — and a site archive is a file that
-  leaves the building; one space's own archive (`space_site_archive/2`) is
-  unaffected, because asking for that one by name is not an accident.
+  Personal spaces are left out unless an administrator asks for them
+  (`export.personal_spaces`, seeded by `CM_EXPORT_PERSONAL_SPACES`). A personal
+  space is somebody's own corner of the site — drafts, notes, half-finished
+  pages — and a site archive is a file that leaves the building; one space's own
+  archive (`space_site_archive/2`) is unaffected, because asking for that one by
+  name is not an accident.
 
   See `ConfluencePhxMirror.Export.Site` for the shape of the archive and the
   rules its links follow.
@@ -70,7 +72,7 @@ defmodule ConfluencePhxMirror.Export do
   end
 
   defp without_personal_spaces(spaces) do
-    if Application.get_env(:confluence_phx_mirror, :export_personal_spaces, false) do
+    if Settings.export_personal_spaces?() do
       spaces
     else
       Enum.reject(spaces, &Authorization.personal_space?/1)

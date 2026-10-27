@@ -399,8 +399,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
       page_title="Permissions"
       sidebar?={false}
     >
+      <:subnav>
+        <.admin_nav current={:permissions} />
+      </:subnav>
+
       <.admin_header
-        current={:permissions}
         title="Permissions"
         subtitle="Mirrored from Confluence by the last sync, plus what an administrator decided here. A grant or a removal is marked, survives every run, and is in the audit log."
       />

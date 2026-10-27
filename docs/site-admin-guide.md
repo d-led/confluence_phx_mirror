@@ -135,8 +135,11 @@ when a sync pulls a newer snapshot.
 ## The admin area
 
 Everything you need to operate the mirror as a product lives under `/admin`,
-split by what each page is for. Every page carries the same tab strip, so you
-can move between them without going back to a hub:
+split by what each page is for. Every page carries the same sidebar down the
+left, grouped into monitoring, content, access and configuration, so you can
+move between them without going back to a hub; the page you are on is marked in
+it, and on a narrow screen the same list folds into a disclosure naming that
+page:
 
 * `/admin` (**live**, refreshes every 5 s) – the overview: freshness, sync runs
   (counters, errors, `running` → `succeeded` / `partial` / `failed`), recent
@@ -219,17 +222,23 @@ can move between them without going back to a hub:
   colleague. Grants and removals made here sit *on top of* what Confluence
   says; see [Permissions: who may read what](#permissions-who-may-read-what).
 * `/admin/settings` (**live**) – the setup screen, in two halves. The top is
-  what you can change while the mirror runs: the theme every reader wears, the
-  per-reader request limits, and whether notification mail goes out (with the
-  UTC hour for the digest). A field you leave empty means "no decision" — the
-  value this deployment was configured with applies again, and the placeholder
-  shows it. A save is one transaction: either every field of the form and its
-  audit entry were stored, or nothing was. The bottom half is what the mirror
-  booted with — source and sync pacing, identity and administrators, webhook and
-  mail delivery, storage and the proxy — each row naming the environment
-  variable that changes it, secrets shown as *configured* never printed. Those
-  are read at boot: change the variable and restart
-  ([themes and variants](#themes-and-variants)).
+  what you can change while the mirror runs, grouped as it is declared in
+  `ConfluencePhxMirror.Settings.Catalogue`: theme, reading (per-reader request
+  limits, search page and result sizes), sync (pages written at once, the detail
+  backlog, the lookback window), notifications, and operations (sign-in link
+  lifetime, personal spaces in a whole-site export, the overview's refresh
+  cadence). A group saves as one transaction: either every field of it and its
+  audit entry were stored, or nothing was. A field you leave empty means "no
+  decision" — the value this deployment was configured with applies again, and
+  the placeholder shows it; *use the deployment's values* hands a whole group
+  back. The bottom half is what the mirror booted with — source and credentials,
+  identity and administrators, webhook and mail delivery, storage and the proxy
+  — each row naming the environment variable that changes it, secrets shown as
+  *configured* never printed. Those are read at boot: change the variable and
+  restart ([themes and variants](#themes-and-variants)).
+  [configuration.md](configuration.md#editable-at-runtime) lists exactly which
+  variables are live and which need a restart. Webhook switches keep their own
+  screen (`/admin/webhooks`), where the cost of each is spelled out.
 * `/health` – database check, content counters and last sync; no auth, so it
   can back a probe ([operations.md](operations.md)).
 

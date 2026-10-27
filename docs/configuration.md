@@ -6,7 +6,48 @@ customisation point (themes). The app is configured only through the environment
 is read in `config/` or `lib/`, it belongs here.
 
 Configuration is read at boot; a running development server does **not** reload
-`config/*.exs` changes. Booleans accept `1`, `true` or `yes`.
+`config/*.exs` changes. Booleans accept `1`, `true` or `yes`. A handful of values
+are read *while the mirror runs*, so `/admin/settings` can override them without
+a restart — see [Editable at runtime](#editable-at-runtime); for those the
+variable only seeds the default.
+
+## Editable at runtime
+
+These are read while the mirror serves a request or runs a job, so an
+administrator can change them on `/admin/settings` and the change takes effect
+at once. The variable still decides the value a mirror that nobody has touched
+in the browser uses, and *use the deployment's values* hands a group back to it.
+The declared list is `ConfluencePhxMirror.Settings.Catalogue`; `POST
+/admin/settings` writes the `settings` table, audited as `settings.updated`.
+
+Adding a setting needs **no migration** — `settings` is a key/value table, so a
+key it has never seen is simply absent and one the code no longer knows is
+ignored when the table is loaded. Upgrading and rolling back therefore never
+touch stored decisions.
+
+| Setting | Variable | Default |
+| --- | --- | --- |
+| `theme` | `CM_THEME` | built-in `default` |
+| `reader.html_limit` | `CM_READER_RATE_LIMIT_PER_MINUTE` / `CM_RATE_LIMIT_HTML_PER_MINUTE` | `240` |
+| `reader.api_limit` | `CM_RATE_LIMIT_API_PER_MINUTE` | `120` |
+| `reader.attachments_limit` | `CM_RATE_LIMIT_ATTACHMENTS_PER_MINUTE` | `300` |
+| `search.page_size` | `CM_SEARCH_PAGE_SIZE` | `30` |
+| `search.default_limit` | `CM_SEARCH_DEFAULT_LIMIT` | `25` |
+| `search.max_results` | `CM_SEARCH_MAX_RESULTS` | `100` |
+| `sync.concurrency` | `CM_SYNC_CONCURRENCY` | `4` |
+| `sync.detail_backlog` | `CM_SYNC_DETAIL_BACKLOG` | `200` |
+| `sync.lookback_seconds` | `CM_SYNC_LOOKBACK_SECONDS` | `3600` |
+| `notifications.enabled` | `MIRROR_NOTIFICATIONS` | `true` |
+| `notifications.digest_hour_utc` | `MIRROR_DIGEST_HOUR_UTC` | `8` |
+| `webhook.enabled` | `CM_WEBHOOK_ENABLED` | `true` |
+| `webhook.require_signature` | `CM_WEBHOOK_REQUIRE_SIGNATURE` | `false` |
+| `webhook.rate_limit` | `CM_WEBHOOK_RATE_LIMIT_PER_MINUTE` | `60` |
+| `accounts.login_token_minutes` | `CM_LOGIN_TOKEN_MINUTES` | `15` |
+| `export.personal_spaces` | `CM_EXPORT_PERSONAL_SPACES` | `false` |
+| `dashboard.refresh_seconds` | `CM_ADMIN_STATS_REFRESH_SECONDS` | `30` |
+
+The webhook switches are edited on `/admin/webhooks`, where the cost of each is
+spelled out; the rest are on `/admin/settings`.
 
 ## Platform
 

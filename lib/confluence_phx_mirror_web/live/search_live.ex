@@ -27,9 +27,10 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   alias ConfluencePhxMirror.Catalog
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.Search
+  alias ConfluencePhxMirror.Settings
 
-  # How many results a reader page shows; deployment sized (CM_SEARCH_PAGE_SIZE).
-  defp page_size, do: Application.get_env(:confluence_phx_mirror, :search, [])[:page_size] || 30
+  # How many results a reader page shows; an administrator can change it.
+  defp page_size, do: Settings.search_page_size()
 
   @debounce 220
 

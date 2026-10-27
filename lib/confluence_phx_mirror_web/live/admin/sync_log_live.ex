@@ -271,8 +271,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
       page_title="Sync log"
       sidebar?={false}
     >
+      <:subnav>
+        <.admin_nav current={:sync_log} />
+      </:subnav>
+
       <.admin_header
-        current={:sync_log}
         title="Sync log"
         subtitle="Every page, file and Confluence call, line by line — kept in memory, not in the audit log."
       />

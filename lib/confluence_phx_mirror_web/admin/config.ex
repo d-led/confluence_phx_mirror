@@ -43,7 +43,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
           every(http[:reconcile_interval_seconds]),
           "CM_RECONCILE_INTERVAL_SECONDS"
         ),
-        row("Sync concurrency", count(http[:sync_concurrency]), "CM_SYNC_CONCURRENCY"),
         row(
           "Personal spaces",
           if(config(:sync, [])[:personal_spaces], do: "mirrored", else: "skipped"),

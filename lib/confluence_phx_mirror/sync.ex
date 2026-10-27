@@ -29,6 +29,7 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.PageUpdates
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sites
   alias Oban.Job
 
@@ -901,11 +902,7 @@ defmodule ConfluencePhxMirror.Sync do
      errors ++ fetch_errors ++ icon_errors ++ upsert_errors ++ detail_errors}
   end
 
-  defp detail_backlog do
-    :confluence_phx_mirror
-    |> Application.get_env(:sync, [])
-    |> Keyword.get(:detail_backlog, 200)
-  end
+  defp detail_backlog, do: Settings.sync_detail_backlog()
 
   defp raise_source_error(scope, id, reason) do
     raise "Confluence #{scope} fetch failed#{if id, do: " for #{inspect(id)}"}: #{inspect(reason)}"
@@ -1513,11 +1510,7 @@ defmodule ConfluencePhxMirror.Sync do
   # Detail work is network-bound (one attachments and one comments call per
   # changed page), so a handful run at once; the source's rate limiter still
   # paces the requests.
-  defp concurrency do
-    :confluence_phx_mirror
-    |> Application.get_env(Source.source(), [])
-    |> Keyword.get(:sync_concurrency, 4)
-  end
+  defp concurrency, do: Settings.sync_concurrency()
 
   defp render_entry(source, %{space: space, dto: dto, page: page, change: change}, index, opts) do
     check_cancelled!(opts)
@@ -2106,7 +2099,7 @@ defmodule ConfluencePhxMirror.Sync do
       Application.get_env(:confluence_phx_mirror, source, [])
       |> Keyword.get(:sync_interval_seconds, 0)
 
-    lookback = Application.get_env(:confluence_phx_mirror, :sync, [])[:lookback_seconds] || 3600
+    lookback = Settings.sync_lookback_seconds()
     DateTime.add(DateTime.utc_now(), -max(interval, lookback), :second)
   end
 

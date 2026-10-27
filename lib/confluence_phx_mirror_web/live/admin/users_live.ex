@@ -425,8 +425,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       page_title="Users &amp; tokens"
       sidebar?={false}
     >
+      <:subnav>
+        <.admin_nav current={:users} />
+      </:subnav>
+
       <.admin_header
-        current={:users}
         title="Users & tokens"
         subtitle="Accounts are mirror-local — no Confluence credentials are stored. Groups come from the last sync."
       />

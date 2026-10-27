@@ -20,6 +20,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Resources
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.{ReconcileRun, SnapshotWorker, SpaceWorker, SweepWorker}
   alias ConfluencePhxMirror.Sync.SyncRun
@@ -73,13 +74,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     end
   end
 
-  # The configuration says how long an admin waits for the totals to move; the
-  # timer wants milliseconds, and a zero or negative setting would mean a
-  # request loop, so a nonsense value falls back to the default.
+  # An administrator decides how long the overview waits for the totals to move;
+  # a zero or negative value would mean a request loop, so a nonsense value
+  # falls back to the built-in cadence.
   defp stats_refresh_ms do
-    case Application.get_env(:confluence_phx_mirror, :admin_stats_refresh_seconds) do
+    case Settings.dashboard_refresh_seconds() do
       seconds when is_integer(seconds) and seconds > 0 -> seconds * 1000
-      _unset -> @stats_seconds * 1000
+      _nonsense -> @stats_seconds * 1000
     end
   end
 
@@ -378,8 +379,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       page_title="Admin"
       sidebar?={false}
     >
+      <:subnav>
+        <.admin_nav current={:overview} />
+      </:subnav>
+
       <.admin_header
-        current={:overview}
         title="Overview"
         subtitle="Freshness, sync runs and recent activity. The sync and audit logs keep the detail."
       >
@@ -794,19 +798,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     Application.get_env(:confluence_phx_mirror, :admin_dashboard, false)
   end
 
-  # What the download holds, according to what this deployment does with
-  # personal spaces — the same switch `Export.site_archive/2` reads, so the
-  # sentence cannot claim a policy the archive does not follow.
+  # What the download holds, according to the policy in force — the same
+  # setting `Export.site_archive/2` reads, so the sentence cannot claim a policy
+  # the archive does not follow.
   defp export_hint do
-    if export_personal_spaces?() do
-      "Every space, page and attachment as a static site, personal spaces included (CM_EXPORT_PERSONAL_SPACES is on)"
+    if Settings.export_personal_spaces?() do
+      "Every space, page and attachment as a static site, personal spaces included (an administrator turned that on)"
     else
-      "Every shared space, page and attachment as a static site — personal spaces are left out (CM_EXPORT_PERSONAL_SPACES=1 includes them)"
+      "Every shared space, page and attachment as a static site — personal spaces are left out (an administrator can include them)"
     end
-  end
-
-  defp export_personal_spaces? do
-    Application.get_env(:confluence_phx_mirror, :export_personal_spaces, false)
   end
 
   # One list in the order an operator waits through it: what is queued, then

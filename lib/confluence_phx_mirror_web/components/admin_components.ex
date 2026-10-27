@@ -1,34 +1,79 @@
 defmodule ConfluencePhxMirrorWeb.AdminComponents do
   @moduledoc """
-  The admin area's chrome: one compact header and the section tabs, so the
-  admin screens read as parts of one place instead of six.
+  The admin area's chrome: a grouped sidebar naming every admin page, and the
+  page's own header — title, one line of context, its actions.
 
-  The split follows what each page is for: Overview and Webhooks are live,
-  Sync log and Audit stream, Users are editable, and Settings is a static read
-  of the configuration the mirror booted with.
+  The sidebar is rendered into `Layouts.app`'s `:subnav` slot, so the admin
+  screens share one left column instead of repeating a tab strip in each
+  template. The grouping follows what an operator is doing: watching the
+  mirror, minding its content, deciding who may read it, and configuring it.
   """
 
   use ConfluencePhxMirrorWeb, :html
 
-  @tabs [
-    {:overview, "Overview", "hero-squares-2x2"},
-    {:jobs, "Jobs", "hero-queue-list"},
-    {:sync_log, "Sync log", "hero-bars-arrow-down"},
-    {:webhooks, "Webhooks", "hero-bolt"},
-    {:audit, "Audit", "hero-clipboard-document-list"},
-    {:trash, "Trash", "hero-trash"},
-    {:upstream, "Missing pages", "hero-arrow-path"},
-    {:users, "Users", "hero-users"},
-    {:identities, "Identities", "hero-identification"},
-    {:permissions, "Permissions", "hero-lock-closed"},
-    {:settings, "Settings", "hero-cog-6-tooth"}
+  @sections [
+    {"Monitoring",
+     [
+       {:overview, "Overview", "hero-squares-2x2"},
+       {:jobs, "Jobs", "hero-queue-list"},
+       {:sync_log, "Sync log", "hero-bars-arrow-down"}
+     ]},
+    {"Content",
+     [
+       {:upstream, "Missing pages", "hero-arrow-path"},
+       {:trash, "Trash", "hero-trash"},
+       {:audit, "Audit log", "hero-clipboard-document-list"}
+     ]},
+    {"Access",
+     [
+       {:users, "Users", "hero-users"},
+       {:identities, "Identities", "hero-identification"},
+       {:permissions, "Permissions", "hero-lock-closed"}
+     ]},
+    {"Configuration",
+     [
+       {:webhooks, "Webhooks", "hero-bolt"},
+       {:settings, "Settings", "hero-cog-6-tooth"}
+     ]}
   ]
 
+  @pages Enum.flat_map(@sections, fn {_title, pages} -> pages end)
+
   @doc """
-  The admin page header: title, one line of context, the page's actions and the
-  tabs to the other admin sections.
+  The admin sidebar: every page, grouped, with the current one marked.
+
+  Narrow screens get a disclosure carrying the current page's name instead of
+  a column, so eleven entries do not push the content off the screen.
   """
-  attr :current, :atom, required: true, values: Enum.map(@tabs, &elem(&1, 0))
+  attr :current, :atom, required: true, values: Enum.map(@pages, &elem(&1, 0))
+
+  def admin_nav(assigns) do
+    assigns = assign(assigns, :page, page!(assigns.current))
+
+    ~H"""
+    <details class="lg:hidden">
+      <summary class="flex cursor-pointer items-center gap-2 rounded-lg border border-base-300/70 bg-base-100 px-3 py-2 text-sm font-medium">
+        <.icon name={@page.icon} class="size-4 shrink-0 text-base-content/70" />
+        {@page.label}
+        <span class="ml-auto text-[11px] font-normal uppercase tracking-wider text-base-content/70">
+          Administration
+        </span>
+      </summary>
+      <div class="mt-2 rounded-xl border border-base-300/70 bg-base-100 p-3">
+        <.nav_sections current={@current} />
+      </div>
+    </details>
+
+    <nav aria-label="Administration" class="hidden lg:block">
+      <.nav_sections current={@current} />
+    </nav>
+    """
+  end
+
+  @doc """
+  The admin page header: title, one line of context and the page's own actions.
+  The way to the other admin pages is the sidebar (`admin_nav/1`).
+  """
   attr :title, :string, required: true
   attr :subtitle, :string, default: nil
   slot :actions
@@ -44,31 +89,48 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
         {render_slot(@actions)}
       </div>
     </header>
-
-    <nav
-      class="mt-3 -mb-px flex gap-1 overflow-x-auto border-b border-base-300/70"
-      aria-label="Administration"
-    >
-      <.link
-        :for={{key, label, icon} <- tabs()}
-        navigate={tab_path(key)}
-        class={[
-          "inline-flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2 text-xs font-medium transition",
-          if(@current == key,
-            do: "border-primary text-primary",
-            else:
-              "border-transparent text-base-content/70 hover:border-base-300 hover:text-base-content"
-          )
-        ]}
-        aria-current={@current == key && "page"}
-      >
-        <.icon name={icon} class="size-3.5 shrink-0" /> {label}
-      </.link>
-    </nav>
     """
   end
 
-  defp tabs, do: @tabs
+  attr :current, :atom, required: true
+
+  defp nav_sections(assigns) do
+    ~H"""
+    <div :for={{title, pages} <- sections()} class="mb-6 last:mb-0">
+      <p class="mb-1.5 px-3 text-[13px] font-semibold text-base-content">{title}</p>
+      <ul class="space-y-0.5">
+        <li :for={{key, label, icon} <- pages}>
+          <.link
+            navigate={page_path(key)}
+            aria-current={key == @current && "page"}
+            class={[
+              "relative flex items-center gap-2.5 rounded-lg py-1.5 pl-4 pr-3 text-[13px] transition",
+              if(key == @current,
+                do: "bg-primary/10 font-medium text-primary",
+                else: "text-base-content/80 hover:bg-base-200/70 hover:text-base-content"
+              )
+            ]}
+          >
+            <span
+              :if={key == @current}
+              aria-hidden="true"
+              class="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-primary"
+            ></span>
+            <.icon name={icon} class="size-4 shrink-0" />
+            {label}
+          </.link>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  defp sections, do: @sections
+
+  defp page!(key) do
+    {^key, label, icon} = Enum.find(@pages, fn {candidate, _label, _icon} -> candidate == key end)
+    %{label: label, icon: icon}
+  end
 
   @doc """
   Who this mirror let in, and the dialog that lets one more — for a space or for a
@@ -353,15 +415,17 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
     """
   end
 
-  defp tab_path(:overview), do: ~p"/admin"
-  defp tab_path(:jobs), do: ~p"/admin/jobs"
-  defp tab_path(:sync_log), do: ~p"/admin/sync-log"
-  defp tab_path(:webhooks), do: ~p"/admin/webhooks"
-  defp tab_path(:audit), do: ~p"/admin/audit"
-  defp tab_path(:trash), do: ~p"/admin/trash"
-  defp tab_path(:upstream), do: ~p"/admin/upstream"
-  defp tab_path(:users), do: ~p"/admin/users"
-  defp tab_path(:identities), do: ~p"/admin/identities"
-  defp tab_path(:permissions), do: ~p"/admin/permissions"
-  defp tab_path(:settings), do: ~p"/admin/settings"
+  # One address per admin page. Kept beside the section list so a new entry
+  # without a path fails to compile rather than rendering a dead link.
+  defp page_path(:overview), do: ~p"/admin"
+  defp page_path(:jobs), do: ~p"/admin/jobs"
+  defp page_path(:sync_log), do: ~p"/admin/sync-log"
+  defp page_path(:webhooks), do: ~p"/admin/webhooks"
+  defp page_path(:audit), do: ~p"/admin/audit"
+  defp page_path(:trash), do: ~p"/admin/trash"
+  defp page_path(:upstream), do: ~p"/admin/upstream"
+  defp page_path(:users), do: ~p"/admin/users"
+  defp page_path(:identities), do: ~p"/admin/identities"
+  defp page_path(:permissions), do: ~p"/admin/permissions"
+  defp page_path(:settings), do: ~p"/admin/settings"
 end

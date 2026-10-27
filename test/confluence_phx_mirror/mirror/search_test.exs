@@ -4,6 +4,7 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Mirror.Search
+  alias ConfluencePhxMirror.Settings
 
   setup do
     demo_snapshot!()
@@ -113,6 +114,15 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
       {:ok, results} = Search.search("space = ENG", limit: 50)
 
       assert length(results) == 1
+    end
+
+    test "an administrator's cap overrides the configuration" do
+      Settings.update(%{"search.max_results" => 2}, {:system, "test"})
+      on_exit(fn -> Settings.forget() end)
+
+      {:ok, results} = Search.search("space = ENG", limit: 50)
+
+      assert length(results) == 2
     end
   end
 

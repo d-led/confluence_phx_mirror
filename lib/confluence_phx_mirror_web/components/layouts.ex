@@ -53,6 +53,9 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   slot :rail
   slot :toolbar
 
+  slot :subnav,
+    doc: "a left column for screens that carry their own navigation, such as the admin area"
+
   def app(assigns) do
     assigns =
       assign(assigns,
@@ -300,7 +303,21 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
             @wide? && "py-2",
             !@wide? && "max-w-[88rem] py-3 sm:py-5 lg:py-6"
           ]}>
-            {render_slot(@inner_block)}
+            <%= if @subnav != [] do %>
+              <%!-- A screen that brings its own navigation gets a column for it
+              instead of a strip above the content. The column is sticky so the
+              list stays reachable down a long page. --%>
+              <div class="lg:flex lg:items-start lg:gap-8">
+                <div class="mb-5 lg:sticky lg:top-[4.5rem] lg:mb-0 lg:w-60 lg:shrink-0">
+                  {render_slot(@subnav)}
+                </div>
+                <div class="min-w-0 flex-1">
+                  {render_slot(@inner_block)}
+                </div>
+              </div>
+            <% else %>
+              {render_slot(@inner_block)}
+            <% end %>
           </div>
         </main>
 

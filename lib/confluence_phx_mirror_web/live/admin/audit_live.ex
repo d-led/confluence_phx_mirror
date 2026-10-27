@@ -111,8 +111,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLive do
       page_title="Audit log"
       sidebar?={false}
     >
+      <:subnav>
+        <.admin_nav current={:audit} />
+      </:subnav>
+
       <.admin_header
-        current={:audit}
         title="Audit log"
         subtitle="Every change the mirror made or saw — newest first, append-only."
       />
