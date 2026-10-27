@@ -47,7 +47,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.FullRereadTest do
 
     view |> element("#full-sync") |> render_click()
 
-    assert render(view) =~ "Full re-read queued"
+    assert has_element?(view, "#dashboard-job-queued")
+    assert has_element?(view, ~s(#dashboard-job-queued-link[href^="/admin/jobs#job-"]))
 
     assert [job] = all_enqueued(worker: SweepWorker)
     assert job.args["trigger"] =~ "re-reading everything"

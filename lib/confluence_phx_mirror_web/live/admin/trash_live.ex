@@ -125,6 +125,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
         </:actions>
       </.admin_header>
 
+      <.job_notice :if={@queued} job={@queued.job} what={@queued.what} id="trash-job-queued" />
+
       <p
         :if={@empty?}
         id="trash-empty"
@@ -315,6 +317,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
     assign(socket,
       spaces: spaces,
       pages: pages,
+      queued: nil,
       spaces_list: Enum.map(spaces, &elem(&1, 0)),
       space_count: length(spaces),
       page_count: pages_total,
@@ -336,13 +339,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
     case %{"older_than_days" => days, "asked_by" => who(socket)}
          |> PurgeWorker.new()
          |> Oban.insert() do
-      {:ok, _job} ->
+      {:ok, job} ->
         socket
-        |> put_flash(
-          :info,
-          "Deleting #{length(due.spaces)} spaces and #{length(due.pages)} pages in the " <>
-            "background; watch it in Jobs."
-        )
+        |> assign(:queued, %{
+          job: job,
+          what:
+            "A purge of #{length(due.spaces)} spaces and #{length(due.pages)} pages older than #{days} days"
+        })
+        |> put_flash(:info, "Purging in the background.")
         |> assign(retention_confirming: false)
 
       {:error, reason} ->

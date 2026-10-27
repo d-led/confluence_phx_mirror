@@ -20,13 +20,13 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesSyncTest do
     {:ok, conn: Plug.Test.init_test_session(conn, %{"user_id" => ops.id})}
   end
 
-  test "the button queues a people run and says it runs in the background", %{conn: conn} do
+  test "the button queues a people run and links to the job", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/admin/identities")
 
-    html = view |> element("#sync-identities") |> render_click()
+    view |> element("#sync-identities") |> render_click()
 
-    assert html =~ "runs in the background"
-    assert html =~ "ops-identities@example.com"
+    assert has_element?(view, "#identities-job-queued")
+    assert has_element?(view, ~s(#identities-job-queued-link[href^="/admin/jobs#job-"]))
     assert_enqueued(worker: PeopleWorker)
   end
 end

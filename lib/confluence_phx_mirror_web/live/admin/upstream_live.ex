@@ -158,8 +158,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   end
 
   # A job that could not be queued says why, rather than leaving the click
-  # looking like it worked.
-  defp queued({:ok, _job}, socket, message), do: put_flash(socket, :info, message)
+  # looking like it worked; one that could is named, with the way to watch it.
+  defp queued({:ok, job}, socket, message) do
+    socket
+    |> assign(:queued, %{job: job, what: message})
+    |> put_flash(:info, "Queued as job #{job.id}.")
+  end
 
   defp queued({:error, reason}, socket, _message),
     do: put_flash(socket, :error, "Could not start it: #{inspect(reason)}")
@@ -201,6 +205,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
           </button>
         </:actions>
       </.admin_header>
+
+      <.job_notice
+        :if={@queued}
+        job={@queued.job}
+        what={@queued.what}
+        id="upstream-job-queued"
+      />
 
       <p
         :if={@paused?}
@@ -432,6 +443,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
 
     assign(socket,
       paused?: Settings.sync_paused?(),
+      queued: nil,
       spaces: spaces,
       pages: pages,
       spaces_list: Enum.map(spaces, & &1.space),
@@ -513,12 +525,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
           "A check is already queued or running. This click joined it."
         )
 
-      {:ok, _job} ->
-        put_flash(
-          socket,
-          :info,
-          "Checking. It only asks Confluence what it has, and the result appears here."
-        )
+      {:ok, job} ->
+        socket
+        |> assign(:queued, %{job: job, what: "A check of what the site still lists"})
+        |> put_flash(:info, "Checking — it only asks Confluence what it has.")
 
       {:error, reason} ->
         put_flash(socket, :error, "Could not start the check: #{inspect(reason)}")

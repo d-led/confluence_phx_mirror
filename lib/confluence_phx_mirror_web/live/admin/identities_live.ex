@@ -35,6 +35,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
        people_query: "",
        people_page: 1,
        paused?: Settings.sync_paused?(),
+       queued: nil,
        account_pick: nil,
        account_query: "",
        account_results: nil,
@@ -79,13 +80,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
     args = %{"trigger" => "the identities screen, by #{socket.assigns.current_user.email}"}
 
     case args |> PeopleWorker.new() |> Oban.insert() do
-      {:ok, _job} ->
+      {:ok, job} ->
         {:noreply,
-         put_flash(
-           socket,
-           :info,
-           "Reading the site's groups and memberships — this runs in the background. Its progress is in Jobs."
-         )}
+         socket
+         |> assign(:queued, %{job: job, what: "A read of the site's groups and memberships"})
+         |> put_flash(:info, "Reading the site's groups and memberships.")}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Could not queue it: #{inspect(reason)}")}
@@ -370,6 +369,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
           </button>
         </:actions>
       </.admin_header>
+
+      <.job_notice
+        :if={@queued}
+        job={@queued.job}
+        what={@queued.what}
+        id="identities-job-queued"
+      />
 
       <p :if={@paused?} id="identities-paused" class="mt-3 max-w-3xl text-xs">
         Confluence calls are paused, so memberships cannot be re-read now — these are the groups the

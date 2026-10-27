@@ -50,7 +50,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
     {:ok,
      socket
-     |> assign(page_title: "Overview", open_menu: nil, space_query: "")
+     |> assign(page_title: "Overview", open_menu: nil, space_query: "", queued: nil)
      |> assign(spaces_like(""))
      |> load()}
   end
@@ -109,36 +109,46 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   end
 
   defp snapshot(_params, socket) do
-    %{"trigger" => requested_by(socket), "scope" => "the whole site, what changed"}
-    |> SnapshotWorker.new()
-    |> Oban.insert()
+    queued =
+      %{"trigger" => requested_by(socket), "scope" => "the whole site, what changed"}
+      |> SnapshotWorker.new()
+      |> Oban.insert()
 
-    {:noreply, put_flash(socket, :info, "Sync queued. Runs appear below within seconds.")}
+    {:noreply, notice(socket, queued, "A sync of what changed")}
   end
 
   defp full_sync(_params, socket) do
-    %{"trigger" => "#{requested_by(socket)}, re-reading everything", "scope" => "every space"}
-    |> SweepWorker.new()
-    |> Oban.insert()
+    queued =
+      %{"trigger" => "#{requested_by(socket)}, re-reading everything", "scope" => "every space"}
+      |> SweepWorker.new()
+      |> Oban.insert()
 
-    {:noreply,
-     put_flash(
-       socket,
-       :info,
-       "Full re-read queued: every space is re-read, one at a time."
-     )}
+    {:noreply, notice(socket, queued, "A full re-read, one space at a time")}
   end
 
   defp sync_space(%{"key" => key}, socket) do
-    %{"space_key" => key, "trigger" => requested_by(socket)}
-    |> SpaceWorker.new()
-    |> Oban.insert()
+    queued =
+      %{"space_key" => key, "trigger" => requested_by(socket)}
+      |> SpaceWorker.new()
+      |> Oban.insert()
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Space #{key} queued for refresh.")
-     |> assign(open_menu: nil, space_query: "")
-     |> assign(spaces_like(""))}
+    socket
+    |> assign(open_menu: nil, space_query: "")
+    |> assign(spaces_like(""))
+    |> notice(queued, "A refresh of #{key}")
+    |> then(&{:noreply, &1})
+  end
+
+  # A queued job is only useful if the operator can find it again: the notice
+  # names it and links to its row on Jobs, where the worker's own record is.
+  defp notice(socket, {:ok, job}, what) do
+    socket
+    |> assign(:queued, %{job: job, what: what})
+    |> put_flash(:info, "#{what} is queued.")
+  end
+
+  defp notice(socket, {:error, reason}, what) do
+    put_flash(socket, :error, "Could not queue #{String.downcase(what)}: #{inspect(reason)}")
   end
 
   # A cancel either exits the process doing the work (this node) or records the
@@ -467,6 +477,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           </a>
         </:actions>
       </.admin_header>
+
+      <.job_notice
+        :if={@queued}
+        job={@queued.job}
+        what={@queued.what}
+        id="dashboard-job-queued"
+      />
 
       <%!-- Paused is not an error, and it is not invisible either: nothing is
       being read from the site, so every number below is as old as the last

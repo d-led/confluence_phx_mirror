@@ -136,6 +136,36 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
   end
 
   @doc """
+  "It is queued" is half an answer; the other half is where to watch it.
+
+  Every admin action that hands work to Oban answers with the job it created, and
+  renders this: one line saying what was queued and a link to that job's own row
+  on the Jobs page — which refreshes itself and shows the worker's record, the
+  failure if there is one, and the way to its log. The flash is still sent,
+  because a flash survives the redirect that some of these actions cause; the
+  notice is the part a reader can click.
+  """
+  attr :job, :any, required: true, doc: "the Oban job that was just queued"
+  attr :what, :string, required: true, doc: "what was queued, in words"
+  attr :id, :string, default: "job-queued"
+
+  def job_notice(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-info/10 px-3 py-2 text-xs"
+    >
+      <span>
+        {@what} — queued as job <span class="font-mono">#{@job.id}</span>.
+      </span>
+      <a href={"/admin/jobs#job-#{@job.id}"} id={"#{@id}-link"} class="link shrink-0">
+        Watch it on Jobs
+      </a>
+    </div>
+    """
+  end
+
+  @doc """
   A list's filter: one field, and the answer travels in the URL.
 
   A filter that lives in the address is a filter a colleague can be sent, and

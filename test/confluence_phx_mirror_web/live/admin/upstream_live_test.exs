@@ -218,9 +218,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
   test "asking for a verify pass queues the job and reads nothing", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/admin/upstream")
 
-    html = view |> element("#check-upstream") |> render_click()
+    view |> element("#check-upstream") |> render_click()
 
-    assert html =~ "Checking. It only asks Confluence what it has"
+    assert has_element?(view, "#upstream-job-queued")
+    assert has_element?(view, ~s(#upstream-job-queued-link[href^="/admin/jobs#job-"]))
     assert_enqueued(worker: ReconcileWorker)
   end
 

@@ -120,7 +120,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLiveTest do
 
       html = view |> element("#confirm-purge-due") |> render_click()
 
-      assert html =~ "Deleting 0 spaces and 1 pages in the background"
+      assert html =~ "A purge of 0 spaces and 1 pages older than 30 days"
+      assert has_element?(view, ~s(#trash-job-queued-link[href^="/admin/jobs#job-"]))
       assert_enqueued(worker: PurgeWorker)
 
       # Queued, not done: the job removes it when it runs.
