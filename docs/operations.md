@@ -163,9 +163,9 @@ checked against reality rather than against the values you meant to set:
 [info] database pool: 20 connections (1 × 20)
 ```
 
-**Sizing from readers, not from hope.** A page view costs about 15 queries
+**Sizing from readers, not from hope.** A page view costs about 25 queries
 (measured — `test/confluence_phx_mirror_web/query_budget_test.exs` pins the
-number per screen). At ~2 ms per query, one connection serves roughly ten page
+number per screen). At ~2 ms per query, one connection serves roughly eight page
 views per second, so:
 
 | concurrent readers | busy page views/s | connections needed |

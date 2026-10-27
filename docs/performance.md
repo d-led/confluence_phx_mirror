@@ -257,24 +257,33 @@ releases and development to development.
 
 ## What it measured
 
-Two kinds of number. **Statements and bytes are budgets the suite enforces**
-(warm mirror, 1000 spaces × 1000 pages); **rps and p95 are one development
-server**, 50 concurrent readers — shapes to compare against, not capacities. The
-load column is 100 spaces × 300 pages of generated content, searched by a phrase
-that appears in ~30 pages.
+Two kinds of number. **Statement counts are budgets the suite enforces** —
+`query_budget_test.exs` over the demo snapshot on every `mix test`, and
+`scale_test.exs` with a thousand spaces behind it. **rps and p95 are one
+development server**, 50 concurrent readers: shapes to compare against, not
+capacities.
 
-| screen | statements | response | suite median | 50 readers, 30 000 pages |
-| --- | --- | --- | --- | --- |
-| a page view | 16 | 48 KB | 3.9 ms | 720 rps, p95 84 ms |
-| space overview | 13 | 35 KB | 4.4 ms | 215 rps, p95 341 ms |
-| space catalog | 11 | 80 KB | 4.6 ms | 352 rps, p95 203 ms |
-| home page | 15 | 36 KB | 6.5 ms | 516 rps, p95 187 ms |
-| search | 18 | 93 KB | 470 ms | 170 rps, p95 464 ms |
+| screen | statements (pinned) | response | 50 readers, 30 000 pages |
+| --- | --- | --- | --- |
+| a page view | 25 | ~48 KB | 720 rps, p95 84 ms |
+| space landing (`/spaces/:key`) | 24 | ~35 KB | — |
+| space overview | 17 | ~35 KB | 215 rps, p95 341 ms |
+| space catalog | 13 | ≤150 KB | 352 rps, p95 203 ms |
+| home page | 16 | ~36 KB | 516 rps, p95 187 ms |
+| search (`q=rate`) | 24 | ~93 KB | 170 rps, p95 464 ms |
+| people directory | 12 | — | — |
+
+The page view and the landing carry the same cost because they are the same
+screen: the reader's rail and the compact readers badge are two mounts of
+`PagePresenceLive`, and the second one repeats three statements.
+
+The rps/p95 column predates those islands. Re-run `scripts/load-test.sh` rather
+than trusting it; the statement counts are the contract.
 
 `k6`'s 200-reader journey over the same content is the profile to compare a
-change with — run it rather than trusting a stored number. (The harness now
-fetches page URLs directly; it used to follow a redirect first, which cost every
-page sample a second round trip.)
+change with — run it rather than trusting a stored number. (The harness fetches
+page URLs directly; it used to follow a redirect first, which cost every page
+sample a second round trip.)
 
 Statement counts do not move with the size of the mirror; response sizes move a
 little (a wider branch, more text); timings move with the data the way the
