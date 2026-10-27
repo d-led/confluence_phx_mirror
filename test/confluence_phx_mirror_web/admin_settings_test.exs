@@ -16,6 +16,34 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     :ok
   end
 
+  test "typing a space key offers the spaces the site lists", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    view
+    |> element(~s([id="setting-sync.spaces-input"]))
+    |> render_change(%{"values" => %{"sync.spaces" => "eng"}})
+
+    assert has_element?(view, ~s([id="sync.spaces-suggestions-ENG"]))
+  end
+
+  test "picking a suggested space writes it into the field, then saves it", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    view
+    |> element(~s([id="setting-sync.spaces-input"]))
+    |> render_change(%{"values" => %{"sync.spaces" => "PROD, eng"}})
+
+    view |> element(~s([id="sync.spaces-suggestions-ENG"])) |> render_click()
+
+    assert has_element?(view, ~s(input#setting-sync\\.spaces-input[value="PROD, ENG"]))
+
+    view
+    |> element("#settings-sync")
+    |> render_submit(%{"values" => %{"sync.spaces" => "PROD, ENG"}})
+
+    assert Settings.stored("sync.spaces") == ["PROD", "ENG"]
+  end
+
   test "an administrator sets the theme every reader wears", %{conn: conn} do
     conn = sign_in(conn, admin_user())
     {:ok, view, html} = live(conn, ~p"/admin/settings")

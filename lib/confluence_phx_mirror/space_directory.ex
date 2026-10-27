@@ -18,10 +18,12 @@ defmodule ConfluencePhxMirror.SpaceDirectory do
   import Cachex.Spec, only: [expiration: 1]
 
   alias ConfluencePhxMirror.Confluence.Source
+  alias ConfluencePhxMirror.Mirror.Space
   alias ConfluencePhxMirror.Sites
 
   @cache __MODULE__
   @ttl :timer.minutes(10)
+  @suggestions 8
 
   @doc false
   def child_spec(_opts) do
@@ -41,6 +43,43 @@ defmodule ConfluencePhxMirror.SpaceDirectory do
   @doc "The spaces the source lists, asking it now and replacing what was held."
   @spec refresh(keyword()) :: {:ok, [map()]} | {:error, term()}
   def refresh(opts \\ []), do: fetch(opts, true)
+
+  @doc """
+  The spaces worth offering while a key is being typed.
+
+  `term` is matched against the key and the name, in any case, so `load` finds
+  `LOAD01` and "Load test". `:excluding` is what the field already names —
+  suggesting a key that is already there wastes the reader's eyes — and
+  `:limit` is how many a field has room for.
+
+  Personal spaces are never suggested: a mirror does not publish someone's
+  private space, so offering one would be offering a mistake.
+  """
+  @spec suggest(String.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
+  def suggest(term, opts \\ []) do
+    excluding = opts |> Keyword.get(:excluding, []) |> Enum.map(&Space.normalise_key/1)
+    limit = Keyword.get(opts, :limit, @suggestions)
+
+    with {:ok, spaces} <- available(Keyword.take(opts, [:source, :type])) do
+      {:ok,
+       spaces
+       |> Enum.reject(&(&1[:type] == "personal" or Space.normalise_key(&1.key) in excluding))
+       |> Enum.filter(&matches?(&1, term))
+       |> Enum.sort_by(&{String.downcase(&1[:name] || ""), &1.key})
+       |> Enum.take(limit)}
+    end
+  end
+
+  defp matches?(_space, term) when term in [nil, ""], do: true
+
+  defp matches?(space, term) do
+    needle = term |> String.trim() |> String.downcase()
+
+    needle == "" or contains?(space.key, needle) or contains?(space[:name], needle)
+  end
+
+  defp contains?(nil, _needle), do: false
+  defp contains?(text, needle), do: String.contains?(String.downcase(text), needle)
 
   defp fetch(opts, fresh?) do
     source = Keyword.get(opts, :source) || Source.source()

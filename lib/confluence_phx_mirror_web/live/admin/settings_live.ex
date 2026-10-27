@@ -24,13 +24,39 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
 
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Settings.Catalogue
+  alias ConfluencePhxMirror.SpaceDirectory
   alias ConfluencePhxMirrorWeb.Admin.Config
+  alias ConfluencePhxMirrorWeb.Admin.KeyField
   alias ConfluencePhxMirrorWeb.Admin.SettingsRefusal
   alias ConfluencePhxMirrorWeb.Skins
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, socket |> assign(page_title: "Settings") |> assign_settings()}
+    {:ok,
+     socket
+     |> assign(page_title: "Settings")
+     |> assign(space_draft: nil, space_suggestions: [])
+     |> assign_settings()}
+  end
+
+  @impl true
+  def handle_event("suggest_spaces", %{"values" => values}, socket) do
+    draft = Map.get(values, "sync.spaces", "")
+
+    {:noreply, put_draft(socket, draft)}
+  end
+
+  # A picked space goes where the operator was typing. The field is the only
+  # place this screen holds unsaved text, so the draft — not the stored value —
+  # is what a completion rewrites, and the browser is told to show it.
+  def handle_event("pick_space", %{"key" => key}, socket) do
+    draft = KeyField.complete(socket.assigns.space_draft, key)
+
+    {:noreply,
+     socket
+     |> assign(:space_draft, draft)
+     |> put_draft_from_assigns()
+     |> push_event("space_key_value", %{value: draft})}
   end
 
   @impl true
@@ -55,7 +81,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
     with %{title: title} = group <- group(key),
          changes = changes(group, values),
          {:ok, _applied} <- Settings.update(changes, actor(socket)) do
-      {:noreply, socket |> assign_settings() |> put_flash(:info, "#{title} saved.")}
+      {:noreply,
+       socket
+       |> assign(:space_draft, nil)
+       |> assign_settings()
+       |> put_flash(:info, "#{title} saved.")}
     else
       nil -> {:noreply, socket}
       {:error, reason} -> {:noreply, put_flash(socket, :error, SettingsRefusal.message(reason))}
@@ -72,6 +102,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
           {:ok, _cleared} ->
             {:noreply,
              socket
+             |> assign(:space_draft, nil)
              |> assign_settings()
              |> put_flash(:info, "#{title} follows the deployment's configuration again.")}
 
@@ -236,19 +267,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
     assign(socket,
       theme: Skins.theme(),
       themes: Skins.themes(),
-      groups: groups(),
+      groups: groups(socket.assigns[:space_draft], socket.assigns[:space_suggestions] || []),
       sections: Config.sections(socket.assigns.current_user)
     )
   end
 
-  defp groups do
+  defp groups(draft, suggestions) do
     Enum.map(Catalogue.groups(:settings), fn group ->
-      Map.put(group, :fields, Enum.map(group.keys, &field/1))
+      Map.put(group, :fields, Enum.map(group.keys, &field(&1, draft, suggestions)))
     end)
   end
 
-  defp field(key) do
+  defp field(key, draft, suggestions) do
     spec = Catalogue.fetch!(key)
+    value = Settings.stored(key)
 
     %{
       key: key,
@@ -256,9 +288,48 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
       help: spec.help,
       env: spec.env,
       type: spec.type,
-      value: Settings.stored(key),
+      value: value,
       default: Settings.default(key)
     }
+    |> with_completion(spec.type, draft, value, suggestions)
+  end
+
+  # Only a list of space keys is typed against the site's own listing; every
+  # other field is a number or a checkbox the site has no opinion about.
+  defp with_completion(field, :csv, draft, value, suggestions) do
+    Map.merge(field, %{
+      draft: draft || csv_value(value),
+      suggestions: suggestions
+    })
+  end
+
+  defp with_completion(field, _type, _draft, _value, _suggestions), do: field
+
+  # The suggestion rows live in the group's field maps, so they reach the page
+  # only when the groups are rebuilt — assigning the list alone would change
+  # nothing a reader can see.
+  defp put_draft(socket, draft) do
+    socket
+    |> assign(space_draft: draft)
+    |> put_draft_from_assigns()
+  end
+
+  defp put_draft_from_assigns(socket) do
+    socket
+    |> assign(:space_suggestions, suggestions(socket.assigns.space_draft))
+    |> assign_settings()
+  end
+
+  # What the operator is typing answers the suggestion list, and the list comes
+  # from the cache `SpaceDirectory` keeps: typing costs no request.
+  defp suggestions(draft) do
+    with true <- KeyField.open?(draft),
+         {:ok, spaces} <-
+           SpaceDirectory.suggest(KeyField.pending(draft), excluding: KeyField.named(draft)) do
+      spaces
+    else
+      _closed_or_unreachable -> []
+    end
   end
 
   attr :field, :map, required: true
@@ -331,14 +402,22 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   defp setting_field(%{field: %{type: :csv}} = assigns) do
     ~H"""
     <div id={"setting-#{@field.key}"}>
-      <.input
-        type="text"
+      <%!-- A plain input rather than `<.input>`: that component's global
+      attribute list does not carry `phx-change`, and this field is the one the
+      site has suggestions for. --%>
+      <label class="block text-sm" for={"setting-#{@field.key}-input"}>{@field.label}</label>
+      <.space_key_input
         id={"setting-#{@field.key}-input"}
         name={"values[#{@field.key}]"}
-        value={csv_value(@field.value)}
-        label={@field.label}
-        placeholder="ENG, PROD"
+        value={@field.draft}
+        change="suggest_spaces"
         class="mt-1 w-full input input-sm"
+      />
+
+      <.space_suggestions
+        id={"#{@field.key}-suggestions"}
+        suggestions={@field.suggestions}
+        label="Spaces Confluence lists"
       />
 
       <p class="text-xs text-base-content/70">

@@ -34,12 +34,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
     key = params["key"] || ""
 
     if SpaceScope.wanted() == :all do
-      {:noreply,
-       put_flash(
-         socket,
-         :error,
-         "This mirror imports every space, so naming one would narrow it to the keys you name. Set CM_SPACES first."
-       )}
+      {:noreply, put_flash(socket, :error, narrowing_refusal())}
     else
       change(socket, SpaceScope.add(key, actor(socket)), added_message(key))
     end
@@ -51,6 +46,23 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
       SpaceScope.remove(key, actor(socket)),
       "#{key} removed — the next run stops importing it."
     )
+  end
+
+  # Typing narrows what the site lists; picking one adds it. The list comes from
+  # `SpaceDirectory`, so a keystroke costs no request to Confluence.
+  def handle_event("suggest", %{"key" => typed}, socket) do
+    {:noreply, assign(socket, add_key: typed, space_suggestions: suggestions(typed))}
+  end
+
+  def handle_event("pick_space", %{"key" => key}, socket) do
+    if SpaceScope.wanted() == :all do
+      {:noreply, put_flash(socket, :error, narrowing_refusal())}
+    else
+      socket
+      |> assign(:add_key, "")
+      |> push_event("space_key_value", %{value: ""})
+      |> change(SpaceScope.add(key, actor(socket)), added_message(key))
+    end
   end
 
   def handle_event("refresh", _params, socket) do
@@ -188,18 +200,30 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
           class="mt-3 flex flex-wrap items-end gap-2"
         >
           <label class="block text-xs" for="add-space-key">Space</label>
-          <select id="add-space-key" name="key" class="select select-sm">
-            <option :for={space <- elem(@offers, 1)} value={space.key}>
-              {space[:name] || space.key} ({space.key})
-            </option>
-          </select>
+          <.space_key_input
+            id="add-space-key"
+            name="key"
+            value={@add_key}
+            change="suggest"
+            class="input input-sm w-56 font-mono"
+          />
           <button type="submit" id="add-space-submit" class="btn btn-primary btn-sm">
             Add
           </button>
         </form>
 
+        <div :if={match?({:ok, [_ | _]}, @offers)} class="max-w-md">
+          <.space_suggestions
+            id="add-space-suggestions"
+            suggestions={@space_suggestions}
+            label="Spaces to add"
+          />
+        </div>
+
         <p :if={match?({:ok, [_ | _]}, @offers)} class="mt-2 max-w-2xl text-xs text-base-content/70">
-          Adding a key widens the list; the next run imports it. Nothing is removed that way.
+          A key or a name narrows the site's own listing — every space it has is on offer, and
+          personal spaces never are. Adding a key widens the list; the next run imports it, and
+          nothing is removed that way.
         </p>
       </section>
     </Layouts.app>
@@ -223,8 +247,24 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
       added: SpaceScope.added(),
       window: @mirrored_window,
       mirrored: Mirror.spaces_by_last_sync(@mirrored_window),
-      offers: offers()
+      offers: offers(),
+      add_key: socket.assigns[:add_key] || "",
+      space_suggestions: socket.assigns[:space_suggestions] || []
     )
+  end
+
+  # What to type ahead of: the site's own listing, cached, minus whatever is
+  # already imported and minus personal spaces. A site that does not answer has
+  # nothing to offer, which is the same screen as "nothing left to add".
+  defp suggestions(typed) do
+    case SpaceDirectory.suggest(typed, excluding: SpaceScope.fixed() ++ SpaceScope.added()) do
+      {:ok, spaces} -> spaces
+      {:error, _unreachable} -> []
+    end
+  end
+
+  defp narrowing_refusal do
+    "This mirror imports every space, so naming one would narrow it to the keys you name. Set CM_SPACES first."
   end
 
   # Only what is not already imported is worth offering: a mirror that takes

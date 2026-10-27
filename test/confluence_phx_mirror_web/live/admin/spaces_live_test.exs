@@ -35,12 +35,26 @@ defmodule ConfluencePhxMirrorWeb.AdminSpacesLiveTest do
     refute has_element?(view, "#add-space")
   end
 
-  test "a whitelisted mirror offers only what it does not import", %{conn: conn} do
+  test "what is typed is answered from the site's listing, minus what it imports", %{conn: conn} do
     configured_spaces(["ENG"])
     {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces")
 
-    assert has_element?(view, ~s(#add-space-key option[value="PROD"]))
-    refute has_element?(view, ~s(#add-space-key option[value="ENG"]))
+    view |> element("#add-space-key") |> render_change(%{"key" => "prod"})
+
+    assert has_element?(view, "[id=\"add-space-suggestions-PROD\"]")
+    refute has_element?(view, "[id=\"add-space-suggestions-ENG\"]")
+  end
+
+  test "picking a suggested space adds it", %{conn: conn} do
+    configured_spaces(["ENG"])
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces")
+
+    view |> element("#add-space-key") |> render_change(%{"key" => "pro"})
+    html = view |> element(~s([id="add-space-suggestions-PROD"])) |> render_click()
+
+    assert html =~ "PROD added"
+    assert SpaceScope.wanted() == ["ENG", "PROD"]
+    assert has_element?(view, "#whitelist-PROD")
   end
 
   test "adding a space widens the whitelist", %{conn: conn} do

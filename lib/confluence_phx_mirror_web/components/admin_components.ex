@@ -134,6 +134,88 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
   end
 
   @doc """
+  The field a space key is typed into.
+
+  It carries the suggestions' own event (`:change`) and one hook, because a
+  picked key has to be *written* into the field: the browser keeps the value of
+  the input it has focus in, so an answer from the server cannot patch it, and a
+  click that changes nothing on screen reads as a click that did nothing.
+  """
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :value, :string, default: ""
+  attr :change, :string, required: true, doc: "the event asked for suggestions while typing"
+  attr :class, :string, default: "input input-sm"
+
+  def space_key_input(assigns) do
+    ~H"""
+    <input
+      type="text"
+      id={@id}
+      name={@name}
+      value={@value}
+      phx-change={@change}
+      phx-debounce="150"
+      phx-hook=".SpaceKeyField"
+      autocomplete="off"
+      placeholder="LOAD01"
+      class={@class}
+    />
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".SpaceKeyField">
+      export default {
+        mounted() {
+          this.handleEvent("space_key_value", ({ value }) => {
+            this.el.value = value
+            if (document.activeElement === this.el) {
+              this.el.setSelectionRange(value.length, value.length)
+            }
+          })
+        }
+      }
+    </script>
+    """
+  end
+
+  @doc """
+  Spaces worth naming, offered under the field they are typed into.
+
+  A space key is four to ten letters nobody memorises, and the site already
+  knows every one of them: typing `load` should offer `LOAD01`, not a validation
+  error after the fact. The list comes from `SpaceDirectory`, so a screenful of
+  keys costs no request of its own.
+
+  Picking one sends `pick_space` with the key; what that means is the screen's
+  decision — this page adds it, the settings screen puts it in the field.
+  """
+  attr :id, :string, required: true
+  attr :suggestions, :list, default: []
+  attr :label, :string, required: true, doc: "what the list is a list of, for a screen reader"
+
+  def space_suggestions(assigns) do
+    ~H"""
+    <ul
+      :if={@suggestions != []}
+      id={@id}
+      aria-label={@label}
+      class="mt-1 divide-y divide-base-300/60 overflow-hidden rounded-lg border border-base-300/70 bg-base-100"
+    >
+      <li :for={space <- @suggestions}>
+        <button
+          type="button"
+          phx-click="pick_space"
+          phx-value-key={space.key}
+          id={"#{@id}-#{space.key}"}
+          class="flex w-full items-baseline justify-between gap-3 px-2.5 py-1.5 text-left text-xs transition hover:bg-base-200"
+        >
+          <span class="truncate">{space[:name] || space.key}</span>
+          <span class="shrink-0 font-mono text-[11px] text-base-content/70">{space.key}</span>
+        </button>
+      </li>
+    </ul>
+    """
+  end
+
+  @doc """
   Who this mirror let in, and the dialog that lets one more — for a space or for a
   page.
 
