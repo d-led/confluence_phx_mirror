@@ -40,11 +40,20 @@ config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
 # and `/admin/jobs` keeps listing work that nobody is doing. A restarted machine
 # (a deploy, an OOM kill) is exactly how a long sync ends, so the rescuer is not
 # optional here.
+#
+# `rescue_after` is how long a job may look silent before it counts as orphaned,
+# so it has to be longer than the longest legitimate run. Half an hour is not:
+# first listing of a site this size takes well over one (123k pages at ~20 a
+# second), and the rescuer retried a run that was working perfectly well — the
+# retry found the sync gate held, said so, and left the job row `completed` with
+# no attempts left while the real run went on. Six hours is past any run this
+# mirror has done; the per-space marker (`spaces.pages_listed_at`) means an
+# interruption resumes instead of restarting, so waiting longer costs nothing.
 config :confluence_phx_mirror, Oban,
   repo: ConfluencePhxMirror.Repo,
   queues: [sync: 4, notifications: 10],
   pruner: [max_age: {1, :day}],
-  lifeline: [rescue_after: :timer.minutes(30)],
+  lifeline: [rescue_after: :timer.hours(6)],
   cron: [crontab: [{"0 * * * *", ConfluencePhxMirror.Notifications.DigestWorker}]]
 
 # Where the mirrored content comes from. `DemoSource` ships a rich offline
