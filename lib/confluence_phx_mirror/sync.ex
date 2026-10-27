@@ -761,10 +761,21 @@ defmodule ConfluencePhxMirror.Sync do
         {people, people_errors, refreshed} = sync_groups(source, opts)
         record_phase(opts, "spaces")
         {spaces, icon_errors} = ensure_spaces_for(source, dtos, opts)
+
+        # A space the site names and this mirror has never listed is read here,
+        # whatever mode the run is: `changed_since` only reports pages that
+        # moved inside its window, so such a space would otherwise wait for a
+        # snapshot nobody knew to run.
+        {discovered, discovered_counts, discovered_errors, deleted, skipped_spaces} =
+          discover_spaces(source, opts)
+
+        spaces = Enum.uniq_by(spaces ++ discovered, & &1.id)
         {spaces, permission_errors} = sync_space_permissions(source, spaces)
 
-        {entries, counts, errors} =
+        {entries, changed_counts, errors} =
           upsert_entries(dtos, spaces, Keyword.put(opts, :force, touched))
+
+        counts = add_counts(changed_counts, discovered_counts)
 
         resolve_trees(spaces)
         log_listing(dtos, entries)
@@ -784,6 +795,9 @@ defmodule ConfluencePhxMirror.Sync do
           |> Map.merge(caught_up)
           |> Map.merge(%{
             "spaces" => length(spaces),
+            "spaces_discovered" => length(discovered),
+            "deleted" => deleted,
+            "skipped_spaces" => skipped_spaces,
             "skipped_personal" => skipped_personal,
             "details_relisted" => length(extra),
             "group_members" => people + new_people + group_rows
@@ -794,6 +808,7 @@ defmodule ConfluencePhxMirror.Sync do
          errors ++
            touched_errors ++
            icon_errors ++
+           discovered_errors ++
            permission_errors ++
            people_errors ++
            newcomer_errors ++
@@ -989,6 +1004,11 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
+  # The same rule for a space the mirror already holds: a personal space that was
+  # skipped when the site was listed is not read now because it exists here.
+  defp importable_space?(%Space{type: "personal"}), do: personal_spaces?()
+  defp importable_space?(%Space{}), do: true
+
   # A space nobody asked for is not imported. Because the trash compares against
   # this same list, a space that leaves the whitelist is trashed — softly: its
   # rows stay, and naming it again brings it back on the next run.
@@ -1000,6 +1020,55 @@ defmodule ConfluencePhxMirror.Sync do
       keys ->
         {kept, outside} = Enum.split_with(space_dtos, &SpaceScope.import?(keys, &1.key))
         {kept, length(outside)}
+    end
+  end
+
+  # `changed_since` only names pages that moved inside the window, so a space the
+  # site created outside it — or one whose row was made by a single changed page,
+  # whose listing was never read — would wait for a snapshot nobody knew to run.
+  # Every run therefore reads the site's space list once and finishes what it
+  # finds: a row for a space the mirror has never seen, and a full page listing
+  # for every space whose listing has never been read.
+  #
+  # The pages come in with their bodies (a listing carries `body.storage`), so
+  # the space is readable as soon as this returns; comments, attachments and
+  # restrictions are the detail backlog's business, at its own bounded rate.
+  defp discover_spaces(source, opts) do
+    case source.spaces(opts) do
+      {:ok, dtos} ->
+        {dtos, personal} = importable_spaces(dtos)
+        {dtos, outside} = whitelisted_spaces(dtos)
+        listed = Mirror.space_listing_state()
+
+        {unknown, known} = Enum.split_with(dtos, &(not Map.has_key?(listed, &1.key)))
+        {new_spaces, icon_errors} = upsert_spaces(source, unknown)
+
+        unlisted =
+          known
+          |> Enum.map(&listed[&1.key])
+          |> Enum.reject(& &1.pages_listed_at)
+          |> Enum.filter(&(importable_space?(&1) and SpaceScope.import?(&1.key)))
+
+        spaces = new_spaces ++ unlisted
+
+        if spaces != [] do
+          Log.add(
+            :info,
+            "the site names #{length(spaces)} space(s) this mirror has never listed; reading them now",
+            spaces: length(spaces)
+          )
+        end
+
+        {_entries, counts, listing_errors, deleted} = sync_pages_of(spaces, source, opts)
+
+        # `_entries` is deliberate: their pages are readable from the listing
+        # body, and rendering them here would make one run cost a snapshot.
+        {spaces, counts, icon_errors ++ listing_errors, deleted, personal + outside}
+
+      {:error, reason} ->
+        # Reported, not swallowed: a mirror that cannot list the site cannot
+        # know what it is missing, and the operator should see that in the run.
+        {[], %{changed: 0, unchanged: 0}, [error("spaces", nil, reason)], 0, 0}
     end
   end
 
@@ -1328,6 +1397,11 @@ defmodule ConfluencePhxMirror.Sync do
                 Space.audit_event_pages_deleted(space, deleted_count)
               )
             end
+
+            # The space is only marked as listed once the whole listing landed:
+            # a run stopped halfway leaves it unlisted, and the next run reads it
+            # again rather than believing half of it.
+            Mirror.mark_space_listed(space)
 
             counts = add_counts(counts, space_counts)
             record_progress(opts, counts)

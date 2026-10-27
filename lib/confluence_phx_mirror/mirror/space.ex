@@ -29,6 +29,10 @@ defmodule ConfluencePhxMirror.Mirror.Space do
     field :icon_media_type, :string
     field :icon_sha256, :string
     field :synced_at, :utc_datetime
+    # When this space's *page listing* was last read. `nil` means nobody has ever
+    # listed it: the row may have been made by a single changed page, so the run
+    # that sees it must read the space properly (see `Sync`).
+    field :pages_listed_at, :utc_datetime
     field :deleted_at, :utc_datetime
 
     has_many :pages, ConfluencePhxMirror.Mirror.Page

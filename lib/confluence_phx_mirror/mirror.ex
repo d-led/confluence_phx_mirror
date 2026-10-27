@@ -2340,6 +2340,35 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.one()
   end
 
+  @doc """
+  Every live space, by key — what a run compares the site's own listing against.
+
+  The whole struct comes back because a run needs three things from it at once:
+  whether the space exists here at all, when its pages were last listed (`nil`
+  means never, which is the case a run must repair), and whether it is personal.
+  """
+  @spec space_listing_state() :: %{String.t() => Space.t()}
+  def space_listing_state do
+    from(s in Space, where: is_nil(s.deleted_at))
+    |> Repo.all()
+    |> Map.new(&{&1.key, &1})
+  end
+
+  @doc """
+  Records that `space`'s page listing has now been read.
+
+  Written after the listing completes, never before: a run killed in the middle
+  of a space leaves that space unlisted, and the next run reads it again instead
+  of believing half of it.
+  """
+  @spec mark_space_listed(Space.t()) :: :ok
+  def mark_space_listed(%Space{id: id}) do
+    from(s in Space, where: s.id == ^id)
+    |> Repo.update_all(set: [pages_listed_at: DateTime.utc_now() |> DateTime.truncate(:second)])
+
+    :ok
+  end
+
   defp last_sync_key(nil), do: dynamic(true)
   defp last_sync_key(key), do: dynamic([s], s.key == ^String.upcase(key))
 

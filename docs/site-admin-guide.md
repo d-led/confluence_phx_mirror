@@ -106,10 +106,22 @@ on a Confluence site has one (`~accountid`), it holds their drafts, and it is
 rarely the site an operator means to publish. The rule holds for every kind of
 run — a whole-site snapshot, an incremental pull that happens to find a new page
 in someone's private space, a webhook — so the space cannot arrive through the
-back door; the run's counters say how many pages it left out
-(`skipped_personal`). An incremental run asks the site for its space list to
-tell; if that call fails, the run fails rather than guessing. Syncing one space
-by key is still a request rather than a discovery: that one is honoured.
+back door; the run's counters say how many spaces it left out
+(`skipped_spaces`) and how many pages (`skipped_personal`). Syncing one space by
+key is still a request rather than a discovery: that one is honoured.
+
+Every run also reads the site's **space list** once, whatever mode it is. That is
+how a space created outside an incremental run's lookback window arrives at all:
+`changed_since` only names pages that moved inside the window, so a space nobody
+has listed would otherwise wait for a snapshot nobody knew to run. The same read
+finishes a space whose row was created by one changed page and whose listing was
+therefore never read — `spaces.pages_listed_at` remembers the last full listing,
+and a space is only marked once that listing has landed, so an interrupted run
+resumes instead of believing half a space. Its pages arrive with their bodies (a
+listing carries them); comments, attachments and restrictions follow through the
+detail backlog, so raising `sync.detail_backlog` is what speeds a catch-up. A
+space-list read that fails makes the run `partial` rather than quietly short, and
+`spaces_discovered` counts what the read added.
 
 A run also settles **who** before **what**: the people it already knows get their
 groups read first, then the content, then the groups the content's restrictions

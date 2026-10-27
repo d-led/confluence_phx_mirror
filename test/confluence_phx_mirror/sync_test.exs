@@ -13,6 +13,7 @@ defmodule ConfluencePhxMirror.SyncTest do
     EditedSource,
     EmptyListingSource,
     HttpSource,
+    SpaceDroppingSource,
     SpaceIconSource,
     TrafficSource
   }
@@ -44,6 +45,11 @@ defmodule ConfluencePhxMirror.SyncTest do
     import Ecto.Query, only: [from: 2]
 
     Repo.all(from(s in Space, where: is_nil(s.deleted_at), order_by: s.key, select: s.key))
+  end
+
+  # What the old code left behind: a space row nothing has ever listed.
+  defp unlisted!(space) do
+    Repo.update_all(from(s in Space, where: s.id == ^space.id), set: [pages_listed_at: nil])
   end
 
   describe "snapshot" do
@@ -304,6 +310,48 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert run.stats["attachments"] == 0
       assert run.stats["comments"] == 0
       assert run.stats["links"] == 0
+    end
+  end
+
+  describe "spaces the mirror has not read" do
+    test "a space that appears on the site is mirrored by the next incremental run" do
+      # The mirror is built from a site that does not have PROD yet.
+      Application.put_env(:confluence_phx_mirror, SpaceDroppingSource, drop: ["PROD"])
+      on_exit(fn -> Application.delete_env(:confluence_phx_mirror, SpaceDroppingSource) end)
+
+      assert {:ok, _first} = Sync.run(:snapshot, source: SpaceDroppingSource)
+      assert live_space_keys() == ["ENG"]
+
+      # The site has it now, and nothing about it moved inside an incremental
+      # run's window: only the space list can say it exists.
+      assert {:ok, run} = Sync.run(:incremental)
+
+      assert run.stats["spaces_discovered"] == 1
+      assert live_space_keys() == ["ENG", "PROD"]
+      assert Repo.get_by(Page, confluence_id: 2001).space_id == Mirror.get_space_by_key("PROD").id
+    end
+
+    test "a space whose listing was never read is read, not believed half-way" do
+      # What the old code left behind: a space row made by one changed page,
+      # holding a fraction of the space, with nothing to say so.
+      {:ok, _snapshot} = Sync.run(:snapshot)
+      prod = Mirror.get_space_by_key("PROD")
+      Repo.delete_all(from(p in Page, where: p.space_id == ^prod.id))
+      unlisted!(prod)
+
+      assert {:ok, run} = Sync.run(:incremental)
+
+      assert run.stats["spaces_discovered"] == 1
+      assert Repo.aggregate(from(p in Page, where: p.space_id == ^prod.id), :count) > 1
+      assert %{pages_listed_at: %DateTime{}} = Mirror.get_space_by_key("PROD")
+    end
+
+    test "a space that has been listed is not listed again" do
+      {:ok, _snapshot} = Sync.run(:snapshot)
+
+      assert {:ok, run} = Sync.run(:incremental)
+
+      assert run.stats["spaces_discovered"] == 0
     end
   end
 
