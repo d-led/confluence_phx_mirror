@@ -1,6 +1,19 @@
 # MCP server
 
-`.vscode/mcp.json` — local, demo mirror (no token):
+A **read-only** [Model Context Protocol](https://modelcontextprotocol.io) server:
+an assistant can search the mirror, walk its space trees and read pages as
+Markdown. No tool call changes anything — content changes only through
+[Sync](site-admin-guide.md#pulling-content).
+
+## Connect in two steps
+
+| Step | Local demo | Deployed mirror |
+| --- | --- | --- |
+| 1. point the client at | `http://localhost:4000/api/mcp` | `https://your-mirror-url/api/mcp` |
+| 2. credentials | none (development assumes an administrator) | nothing to paste: the client opens a browser and authorizes itself |
+
+In VS Code, put the block below in `.vscode/mcp.json` (the file is gitignored).
+The local one is the demo mirror:
 
 ```json
 {
@@ -13,7 +26,7 @@
 }
 ```
 
-Deployed — nothing to paste, the client authorizes itself in a browser:
+Deployed, the same block with your host — the client walks the OAuth flow itself:
 
 ```json
 {
@@ -25,11 +38,6 @@ Deployed — nothing to paste, the client authorizes itself in a browser:
   }
 }
 ```
-
-The mirror is a **read-only** [Model Context Protocol](https://modelcontextprotocol.io)
-server: an assistant can search it, walk its space trees and read pages as Markdown.
-Nothing a tool call does changes the mirror; content changes only through
-[Sync](site-admin-guide.md#syncing).
 
 ## Endpoint
 
