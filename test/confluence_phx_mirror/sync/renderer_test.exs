@@ -93,6 +93,35 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
                ~s(src="https://dled.atlassian.net/wiki/download/attachments/999/other.png")
     end
 
+    test "resolves another page's file when the mirror holds it" do
+      # A download URL names the owner, and a page may link a file it does not
+      # own; the lookup is the mirror's answer about content outside this page.
+      with_lookup =
+        context(%{
+          attachment_lookup: fn
+            999, "other.png" ->
+              %{confluence_id: 9002, page_confluence_id: 999, space_key: "OPS"}
+
+            _owner, _filename ->
+              nil
+          end
+        })
+
+      html = ~s(<a href="/wiki/download/attachments/999/other.png">other</a>)
+
+      assert Renderer.render(html, with_lookup).html =~
+               ~s(href="/attachments/OPS/999/9002/other.png")
+    end
+
+    test "leaves the link to the source when the mirror has no answer either" do
+      with_lookup = context(%{attachment_lookup: fn _owner, _filename -> nil end})
+
+      html = ~s(<a href="/wiki/download/attachments/999/other.png">other</a>)
+
+      assert Renderer.render(html, with_lookup).html =~
+               ~s(href="https://dled.atlassian.net/wiki/download/attachments/999/other.png")
+    end
+
     test "resolves a file that lives in a comment, served under its page" do
       # Observed on a real site: Confluence's export view rewrites an image
       # pasted into a comment to the *page's* download path, so the page is the

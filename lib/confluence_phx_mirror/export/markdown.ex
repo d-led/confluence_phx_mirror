@@ -274,13 +274,33 @@ defmodule ConfluencePhxMirror.Export.Markdown do
 
     case Map.get(attachments, href) do
       nil ->
-        if String.starts_with?(href, "/attachments/"),
-          do: Path.basename(href),
-          else: nil
+        foreign_attachment(href, ctx)
 
       path ->
         path
     end
+  end
+
+  # A mirror attachment path the archive does not carry is another page's file.
+  # The page body points at the mirror (the reader opens it there), but a file in
+  # a zip has no server behind it, so the export sends the reader back to where
+  # the bytes came from instead of to a path that is not in the archive.
+  defp foreign_attachment("/attachments/" <> _rest = href, ctx) do
+    with [_, owner, name] <- Regex.run(~r{^/attachments/[^/]+/(\d+)/[^/]+/(.+)$}, href),
+         origin when is_binary(origin) and origin != "" <- Map.get(ctx, :source_url) do
+      origin |> site_origin() |> Kernel.<>("/wiki/download/attachments/#{owner}/#{name}")
+    else
+      _ -> Path.basename(href)
+    end
+  end
+
+  defp foreign_attachment(href, _ctx) do
+    if String.starts_with?(href, "/attachments/"), do: Path.basename(href)
+  end
+
+  defp site_origin(url) do
+    uri = URI.parse(url)
+    %{uri | path: nil, query: nil, fragment: nil} |> URI.to_string() |> String.trim_trailing("/")
   end
 
   defp page_path(href, ctx) do

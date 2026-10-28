@@ -2458,6 +2458,67 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
+  Resolves an attachment by the content it hangs off and its file name — the two
+  things a Confluence download URL names.
+
+  A page can link a file it does not own: attachments are shared across a space
+  by pasting a link, and the URL then names the *other* page. The rendering of
+  one page therefore needs an answer about attachments outside it, and this is
+  that answer — the attachment plus what a reader route needs, or nil when the
+  mirror does not hold the file or the page holding it has been trashed.
+  """
+  @spec attachment_ref(integer(), String.t()) :: map() | nil
+  def attachment_ref(owner_confluence_id, filename) do
+    from(a in Attachment,
+      join: p in Page,
+      on: p.id == a.page_id,
+      join: s in Space,
+      on: s.id == p.space_id,
+      where:
+        p.confluence_id == ^owner_confluence_id and a.filename == ^filename and
+          is_nil(p.deleted_at),
+      order_by: [asc: a.id],
+      limit: 1,
+      select: %{
+        confluence_id: a.confluence_id,
+        page_confluence_id: p.confluence_id,
+        space_key: s.key,
+        filename: a.filename
+      }
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Live pages whose body names a Confluence download path.
+
+  A page that links a file it does not own can be rendered before the owner's
+  attachments are stored, so the link is left pointing at the source and the page
+  gets a second chance once the run has everything (`Sync` asks for these after a
+  whole-site or whole-space read). The window is the pages that could have such a
+  link at all, which is a small share of a mirror.
+  """
+  @spec pages_with_attachment_links(pos_integer()) :: [Page.t()]
+  def pages_with_attachment_links(limit \\ 2_000) do
+    from(p in Page,
+      where: is_nil(p.deleted_at) and like(p.body_export, "%/download/attachments/%"),
+      order_by: [desc: p.external_updated_at],
+      limit: ^limit,
+      preload: [:space]
+    )
+    |> Repo.all()
+  end
+
+  @doc "Replaces a page's rendered body, leaving its text and search vector alone."
+  @spec relink_body_export(Page.t(), String.t()) :: :ok | {:error, Ecto.Changeset.t()}
+  def relink_body_export(%Page{} = page, html) do
+    case update_rendered(page, %{body_export: html}) do
+      {:ok, _page} -> :ok
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  @doc """
   The links a page draws, in the order they appear.
 
   The rail shows a handful of them, so the window is asked of the database; a

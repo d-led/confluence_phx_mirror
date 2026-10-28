@@ -37,7 +37,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
           required(:space_key) => String.t(),
           required(:base_url) => String.t() | nil,
           optional(:pages) => %{integer() => page_ref()},
-          optional(:attachments) => %{{integer(), String.t()} => attachment_ref()}
+          optional(:attachments) => %{{integer(), String.t()} => attachment_ref()},
+          optional(:attachment_lookup) => (integer(), String.t() -> attachment_ref() | nil)
         }
 
   @type link :: %{
@@ -378,6 +379,41 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     [{name, value} | List.keydelete(attrs, name, 0)]
   end
 
+  @doc """
+  Rewrites the attachment links of an already rendered body it can now answer.
+
+  A page may be rendered before the file it links exists in the mirror — the
+  owner arrives later in the same run — and the first pass leaves that link
+  pointing at the source. This is the second chance: only `href` and `src` on
+  anchors and images are touched, and only when the answer is now a mirrored
+  attachment, so everything else about the body stays exactly as it was.
+  """
+  @spec relink_attachments(String.t(), map()) :: String.t()
+  def relink_attachments(html, context) when is_binary(html) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.traverse_and_update(fn
+      {"a", attrs, children} -> {"a", relink(attrs, "href", context), children}
+      {"img", attrs, children} -> {"img", relink(attrs, "src", context), children}
+      node -> node
+    end)
+    |> Floki.raw_html()
+    |> restore_spaces()
+  end
+
+  defp relink(attrs, attribute, context) do
+    case List.keyfind(attrs, attribute, 0) do
+      {_, value} ->
+        case classify_href(value, context) do
+          {:attachment, path} -> put_attribute(attrs, attribute, path)
+          _other -> attrs
+        end
+
+      nil ->
+        attrs
+    end
+  end
+
   @doc false
   # Classifies a raw href into what the mirror should do with it:
   #
@@ -420,17 +456,34 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   # Confluence's download path names the content the file hangs off, and that is
   # not always the page: a screenshot pasted into a comment is
-  # `/download/attachments/9306117/…`, naming the comment. The map is keyed by
-  # that owner and the filename, so a page file and a comment file of the same
-  # name cannot be mistaken for one another, and the mirror still serves both
-  # under the page they belong to.
+  # `/download/attachments/9306117/…`, naming the comment, and a page that links
+  # a colleague's file names *that* page. The map is keyed by the owner and the
+  # filename, so a page file and a comment file of the same name cannot be
+  # mistaken for one another, and the mirror still serves both under the page
+  # they belong to.
   defp attachment_link({owner_id, filename}, href, context) do
-    case get_in(context, [:attachments, {owner_id, filename}]) do
+    case find_attachment(owner_id, filename, context) do
       %{confluence_id: attachment_id, page_confluence_id: page_id, space_key: space_key} ->
         {:attachment, URLs.attachment_path(space_key, page_id, attachment_id, filename)}
 
       _ ->
         {:external, absolutise(href, context)}
+    end
+  end
+
+  # The page's own files are already in the context. One it does not own is
+  # asked of the mirror, because a download URL names the owner and a link to
+  # another page's file is as internal as a link to another page — when the
+  # mirror holds it, which the lookup answers.
+  defp find_attachment(owner_id, filename, context) do
+    get_in(context, [:attachments, {owner_id, filename}]) ||
+      ask_mirror(owner_id, filename, context)
+  end
+
+  defp ask_mirror(owner_id, filename, context) do
+    case Map.get(context, :attachment_lookup) do
+      lookup when is_function(lookup, 2) -> lookup.(owner_id, filename)
+      _ -> nil
     end
   end
 

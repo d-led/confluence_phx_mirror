@@ -445,7 +445,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
       <li><a href="/wiki/download/attachments/1005/notes.md?version=1">notes.md</a> — markdown notes</li>
     </ul>
     <h2 id="cross-page">Cross-page attachment</h2>
-    <p>This link points at an attachment of #{page_link(1002, "Architecture Overview")} and therefore stays on the source site:</p>
+    <p>This link points at an attachment of #{page_link(1002, "Architecture Overview")}, so the mirror resolves it like any other file it holds:</p>
     <p><a href="/wiki/download/attachments/1002/diagram.svg?version=1">diagram.svg (from Architecture Overview)</a></p>
     #{panel(:note, "Blob layout", "<p>Files are stored by space, page and attachment id — no database blobs, no S3 dependency. The store is behind a behaviour, so S3 can be added later.</p>")}
     """)

@@ -700,6 +700,7 @@ defmodule ConfluencePhxMirror.Sync do
         {new_people, newcomer_errors, _} = sync_groups(source, opts, newcomers(refreshed))
         record_phase(opts, "details")
         {stats, detail_errors} = sync_details(source, entries, index, opts)
+        relink_attachment_links()
 
         # Restrictions and permissions are in by now, so the groups the content
         # depends on can finally be asked about.
@@ -1776,7 +1777,8 @@ defmodule ConfluencePhxMirror.Sync do
       space_key: space.key,
       base_url: site_origin(dto.url),
       pages: index,
-      attachments: attachment_map
+      attachments: attachment_map,
+      attachment_lookup: &Mirror.attachment_ref/2
     }
 
     rendered =
@@ -1915,6 +1917,30 @@ defmodule ConfluencePhxMirror.Sync do
         search_text: search_text(text, page, page.space, Mirror.attachments(page)),
         synced_at: now()
       })
+    end)
+  end
+
+  # A page that links a file it does not own can be rendered before the owner's
+  # attachments are stored, so a whole-site or whole-space read ends by offering
+  # those links a second chance. Only pages whose body names a download path are
+  # looked at — a small share of a mirror — and a page whose links all resolved
+  # the first time is not written again.
+  defp relink_attachment_links do
+    Enum.each(Mirror.pages_with_attachment_links(), fn page ->
+      base_url = site_origin(page.external_url)
+
+      if base_url do
+        context = %{
+          page: page,
+          space_key: page.space.key,
+          base_url: base_url,
+          attachments: %{},
+          attachment_lookup: &Mirror.attachment_ref/2
+        }
+
+        html = Renderer.relink_attachments(page.body_export, context)
+        if html != page.body_export, do: Mirror.relink_body_export(page, html)
+      end
     end)
   end
 

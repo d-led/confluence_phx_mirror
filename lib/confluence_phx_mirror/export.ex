@@ -41,6 +41,8 @@ defmodule ConfluencePhxMirror.Export do
   """
   @spec page_markdown(Page.t(), map()) :: String.t()
   def page_markdown(%Page{} = page, ctx) do
+    ctx = Map.put(ctx, :source_url, page.external_url)
+
     front_matter(page) <> "\n" <> Markdown.from_html(page.body_export, ctx)
   end
 
@@ -70,10 +72,10 @@ defmodule ConfluencePhxMirror.Export do
   page as it reads — the image, the PDF, the CSV — with no mirror and no
   network.
 
-  The files are the ones the body points at. The sync rewrites a file the
-  mirror holds to the mirror's own download path and leaves every other link
-  alone, so a body that points at another page's file sends the reader back to
-  Confluence instead: that file is not this page's to hand out.
+  The files are the ones the body points at. A file another page owns is carried
+  too: the mirror holds it, the link was rewritten to the mirror's own download
+  path when it resolved, and a reader who opens the zip wants the pictures more
+  than they want a citation of who owned them.
   """
   @spec page_archive(Page.t()) :: Enumerable.t()
   def page_archive(%Page{} = page) do
@@ -265,8 +267,10 @@ defmodule ConfluencePhxMirror.Export do
 
   # The sync rewrote every file the body mentions — an image or a link to one —
   # to the mirror's own download path, so the body is the complete list of
-  # files the page shows.
-  @attachment_path ~r{/attachments/[^/?#"'\s]+/\d+/(\d+)/[^/?#"'\s]+}
+  # files the page shows. The attachment's id is whatever Confluence spelled it
+  # as: `9001` on a hand-written snapshot, `att426191` on Cloud, which numbers
+  # pages but prefixes its files.
+  @attachment_path ~r{/attachments/[^/?#"'\s]+/[^/?#"'\s]+/([^/?#"'\s]+)/[^/?#"'\s]+}
 
   defp referenced_files(%Page{} = page) do
     page.body_export
