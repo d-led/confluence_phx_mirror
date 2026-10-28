@@ -184,8 +184,8 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       result = Renderer.render(html, context(%{page: page()}))
 
-      assert result.html =~ "Sorry, this content cannot be shown in the static mirror."
-      assert result.html =~ "A jira issues search is rendered live by Confluence."
+      assert result.html =~ "export renderer is not yet implemented."
+      assert result.html =~ "a Jira issues search"
       assert result.html =~ "original page"
     end
 
@@ -199,8 +199,7 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     test "an unknown macro is named as it is" do
       html = ~s(<ac:structured-macro ac:name="acme-widget"></ac:structured-macro>)
 
-      assert Renderer.render(html, context()).html =~
-               "The acme-widget macro is rendered live by Confluence."
+      assert Renderer.render(html, context()).html =~ "the acme-widget macro"
     end
 
     test "a macro nobody can draw keeps the body a reader came for" do
@@ -213,7 +212,8 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       result = Renderer.render(html, context())
 
-      assert result.html =~ "cannot be shown in the static mirror"
+      assert result.html =~ "export renderer is not yet implemented"
+      assert result.html =~ "ConfiForms table"
       assert result.html =~ "The holiday calendar lives here."
     end
 
@@ -234,7 +234,7 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert result.html =~ "mirror-aura-tabs"
       assert result.html =~ "<summary>Install</summary>"
       assert result.html =~ "Run mix setup."
-      refute result.html =~ "cannot be shown"
+      refute result.html =~ "not yet implemented"
     end
   end
 

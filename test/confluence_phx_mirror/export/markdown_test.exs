@@ -77,4 +77,43 @@ defmodule ConfluencePhxMirror.Export.MarkdownTest do
     assert md =~ "**Why?**"
     assert md =~ "Because."
   end
+
+  # The macros resolve to HTML at sync time, so the Markdown export reads that
+  # HTML like any other — but only if the shapes the renderers chose convert.
+  # These three are the shapes that matter: a tab, a listing and a placeholder.
+  describe "macro output" do
+    test "a tab becomes its summary in bold with the tab's content under it" do
+      md =
+        Markdown.from_html(
+          ~s(<div class="mirror-aura-tabs"><details class="mirror-aura-tab" open="open"><summary>Install</summary><p>Run mix setup.</p></details></div>),
+          @ctx
+        )
+
+      assert md =~ "**Install**"
+      assert md =~ "Run mix setup."
+    end
+
+    test "a generated listing stays a list a reader can follow" do
+      md =
+        Markdown.from_html(
+          ~s(<p class="mirror-dynamic-heading">Child pages</p><ul class="mirror-dynamic-list"><li><a href="/spaces/ENG/pages/1003/macros">Macros</a></li></ul>),
+          @ctx
+        )
+
+      assert md =~ "Child pages"
+      assert md =~ "- [Macros](../Macros/Macros.md)"
+    end
+
+    test "the not-implemented widget reads as a note, not as prose" do
+      md =
+        Markdown.from_html(
+          ~s(<blockquote class="mirror-macro-placeholder"><p>This macro's export renderer is not yet implemented.</p><p>Appfire's table filter.</p></blockquote><p>The table follows.</p>),
+          @ctx
+        )
+
+      assert md =~ "> This macro's export renderer is not yet implemented."
+      assert md =~ "> Appfire's table filter."
+      assert md =~ "The table follows."
+    end
+  end
 end

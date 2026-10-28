@@ -21,8 +21,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Sync.DynamicContent.Marker
-  alias ConfluencePhxMirror.Sync.Emoticons
-  alias ConfluencePhxMirror.Sync.VendorMacros
+  alias ConfluencePhxMirror.Sync.{Emoticons, MacroPlaceholder, VendorMacros}
 
   @type page_ref :: %{space_key: String.t(), confluence_id: integer(), slug: String.t()}
 
@@ -181,14 +180,22 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   defp macro_label(name), do: Map.get(@macro_labels, name, "the #{name} macro")
 
   # A macro the mirror cannot draw still has content. Most of these are
-  # containers — a tab whose body holds the page somebody wrote — so the notice
+  # containers — a tab whose body holds the page somebody wrote — so the widget
   # comes first and the body follows it, rather than replacing it.
   defp unresolved(name, parameters, body, context) do
     case Marker.build(name, parameters) do
-      {:ok, marker} -> marker
-      :error -> unavailable(macro_label(name), context, body)
+      {:ok, marker} ->
+        marker
+
+      :error ->
+        MacroPlaceholder.widget(name, label: label(name), url: external_url(context)) ++ body
     end
   end
+
+  defp label(name), do: VendorMacros.label(name) || macro_label(name)
+
+  defp external_url(%{page: %{external_url: url}}) when is_binary(url) and url != "", do: url
+  defp external_url(_context), do: nil
 
   defp rich_text_body(children) do
     Enum.flat_map(children, fn
@@ -213,26 +220,18 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   # The link is written as a plain Confluence URL so the usual anchor rewriting
   # turns it into an absolute link back to the original page.
-  defp unavailable(what, context), do: unavailable(what, context, [])
-
-  defp unavailable(what, context, body) do
-    notice =
-      {"div", [{"class", "mirror-unavailable"}],
-       [
-         {"p", [],
-          [
-            {"strong", [], ["Sorry, this content cannot be shown in the static mirror."]},
-            " ",
-            what |> String.capitalize(),
-            " is rendered live by Confluence."
-          ]},
-         {"p", [], ["Open the ", original_link(context), " to see it there."]}
-       ]}
-
-    case body do
-      [] -> notice
-      body -> [notice, {"div", [{"class", "mirror-unavailable-body"}], body}]
-    end
+  defp unavailable(what, context) do
+    {"div", [{"class", "mirror-unavailable"}],
+     [
+       {"p", [],
+        [
+          {"strong", [], ["Sorry, this content cannot be shown in the static mirror."]},
+          " ",
+          what |> String.capitalize(),
+          " is rendered live by Confluence."
+        ]},
+       {"p", [], ["Open the ", original_link(context), " to see it there."]}
+     ]}
   end
 
   defp original_link(%{page: %{external_url: url}}) when is_binary(url) and url != "" do

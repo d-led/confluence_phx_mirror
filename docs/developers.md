@@ -203,6 +203,19 @@ a live query, a writable form or a ticking clock cannot be answered from a store
 page, so it stays with the fallback, which says what it was and shows what the
 page still holds.
 
+### Mind the Markdown export
+
+Whatever a renderer or an extension emits is exported twice: as the page a reader
+opens, and as Markdown in the site archive. Only a few shapes survive the second
+trip, so choose them deliberately — a heading, a paragraph, a list, a pipe table,
+a `pre` for source, and `details`/`summary` for anything collapsible. The
+not-implemented widget (`Sync.MacroPlaceholder`) is a `blockquote` for exactly
+this reason: the exporter already turns a quote into a `>` block, so the note
+reads as a note in both outputs instead of being flattened into prose.
+
+A renderer that needs a shape the exporter cannot express is a sign the macro
+should render plainer, not that the exporter needs a special case.
+
 ### Who is reading, and which deployment
 
 Two pieces of global state decide what a test sees, and the suite keeps both

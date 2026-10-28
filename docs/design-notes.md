@@ -162,6 +162,20 @@ lying about the source, so they fall back to `Sync.Renderer`, which **keeps the
 macro's body** and says what the macro was — a vendor macro is usually a
 container, and dropping its body would lose the page somebody wrote.
 
+### The placeholder every undrawn macro gets
+
+Anything no renderer and no extension draws — a Confluence macro on the list
+above, a vendor key nobody has written an extension for, a macro from an app the
+mirror has never heard of — becomes one widget
+(`Sync.MacroPlaceholder`): *"This macro's export renderer is not yet
+implemented."*, then the macro's human name (registered vendor names, then
+Confluence's own labels, then the raw `ac:name`), then the body the page held.
+
+The wording names the gap as the mirror's, because it is. And the widget is a
+`blockquote`: the Markdown export turns a quote into a `>` block, so the note
+survives the site archive as a note rather than being flattened into prose — the
+same node serves both outputs, so the two cannot drift apart.
+
 ## Space and site customisation
 
 Confluence lets a site and a space look different; a mirror that ignores this

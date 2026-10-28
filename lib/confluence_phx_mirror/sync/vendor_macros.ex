@@ -54,7 +54,39 @@ defmodule ConfluencePhxMirror.Sync.VendorMacros do
     end
   end
 
-  @doc "Every vendor macro an extension draws, sorted."
+  @doc """
+  Every vendor macro an extension draws, sorted.
+  """
   @spec names() :: [String.t()]
   def names, do: @extensions |> Map.keys() |> Enum.sort()
+
+  # Known and deliberately not drawn: their point is a query, a UI or a writable
+  # backend the mirror does not have. They are registered all the same, so "not
+  # implemented" is a decision on the record and the placeholder names the macro
+  # a reader is missing.
+  @unimplemented %{
+    "table-filter" => "Appfire's table filter",
+    "pivot-table" => "Appfire's pivot table",
+    "chart-from-table" => "Appfire's chart from a table",
+    "table-exporter" => "Appfire's table exporter",
+    "forms-by-adaptavist" => "Adaptavist's forms",
+    "confiform-container" => "Vertuna's ConfiForms container",
+    "confiform-table" => "Vertuna's ConfiForms table"
+  }
+
+  @doc """
+  A vendor macro's human name, or nil when no vendor claims the name.
+
+      iex> label("table-filter")
+      "Appfire's table filter"
+  """
+  @spec label(String.t()) :: String.t() | nil
+  def label(name) do
+    name = String.downcase(name)
+    Map.get(@unimplemented, name) || if(Map.has_key?(@extensions, name), do: name)
+  end
+
+  @doc "The vendor macros the mirror knows and does not draw, sorted."
+  @spec unimplemented() :: [String.t()]
+  def unimplemented, do: @unimplemented |> Map.keys() |> Enum.sort()
 end
