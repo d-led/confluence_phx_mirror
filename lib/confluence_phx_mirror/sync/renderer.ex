@@ -20,6 +20,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   """
 
   alias ConfluencePhxMirror.Mirror.URLs
+  alias ConfluencePhxMirror.Sync.DynamicContent.Marker
   alias ConfluencePhxMirror.Sync.Emoticons
 
   @type page_ref :: %{space_key: String.t(), confluence_id: integer(), slug: String.t()}
@@ -56,25 +57,32 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # Macros Confluence renders in the browser (Jira issues, page tree, Connect
   # and Forge apps) do not survive the REST API: the export carries an iframe or
   # an unexpanded macro. A static mirror cannot run them, so it says so instead
-  # of pretending — inventing output would be a lie about the source.
+  # of pretending — inventing output would be a lie about the source. The keys
+  # are Confluence's own `ac:name` values; the ones the mirror can draw never
+  # reach this map (`Sync.DynamicContent.Marker` intercepts them first).
   @live_only_elements ~w(iframe object embed)
 
   @macro_labels %{
     "jira" => "a Jira issues search",
     "jiraissues" => "a Jira issues list",
     "jirachart" => "a Jira chart",
-    "toc" => "a table of contents",
+    "advanced-roadmaps-plan-macro" => "an Advanced Roadmaps plan",
     "pagetree" => "a page tree",
-    "children" => "a child pages list",
     "blog-posts" => "a blog posts list",
     "recently-updated" => "a recently updated list",
-    "contentbylabel" => "a content by label list",
-    "page-properties-report" => "a page properties report",
     "contributors" => "a contributors list",
-    "tasks-report" => "a tasks report",
+    "tasks-report-macro" => "a tasks report",
+    "content-report-table" => "a content report table",
+    "space-attachments" => "a space attachments list",
+    "spaces-list" => "a spaces list",
     "livesearch" => "a live search box",
     "gadget" => "an external gadget",
-    "widget" => "an external widget"
+    "widget" => "an external widget",
+    "iframe" => "an embedded page",
+    "rss" => "an RSS feed",
+    "roadmap" => "a roadmap",
+    "chart" => "a chart",
+    "gallery" => "an image gallery"
   }
 
   # Floki's parser drops text runs that are only whitespace, but the exporter
@@ -149,10 +157,16 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       {tag, _attrs, _children} when tag in @live_only_elements ->
         unavailable("this embedded content", context)
 
-      {"ac:structured-macro", attrs, _children} = node ->
+      {"ac:structured-macro", attrs, children} = node ->
         case List.keyfind(attrs, "ac:name", 0) do
-          {"ac:name", name} -> unavailable(macro_label(name), context)
-          nil -> node
+          {"ac:name", name} ->
+            case Marker.build(name, parameters(children)) do
+              {:ok, marker} -> marker
+              :error -> unavailable(macro_label(name), context)
+            end
+
+          nil ->
+            node
         end
 
       node ->
@@ -161,6 +175,20 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   end
 
   defp macro_label(name), do: Map.get(@macro_labels, name, "the #{name} macro")
+
+  # The options a stored macro carries, in the order the page wrote them.
+  defp parameters(children) do
+    Enum.flat_map(children, fn
+      {"ac:parameter", attrs, value} ->
+        case List.keyfind(attrs, "ac:name", 0) do
+          {"ac:name", name} -> [{name, value |> Floki.text() |> String.trim()}]
+          nil -> []
+        end
+
+      _other ->
+        []
+    end)
+  end
 
   # The link is written as a plain Confluence URL so the usual anchor rewriting
   # turns it into an absolute link back to the original page.

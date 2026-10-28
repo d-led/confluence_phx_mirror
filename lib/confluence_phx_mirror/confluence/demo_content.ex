@@ -403,7 +403,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
       database and bakes the result into the page: no JavaScript, still searchable.
     </p>
     <div class="mirror-macro" data-macro="content-by-label" data-labels="architecture" data-limit="5"></div>
-    <div class="mirror-macro" data-macro="page-properties-report" data-columns="Owner,Status"></div>
+    <div class="mirror-macro" data-macro="detailssummary" data-columns="Owner,Status"></div>
     """)
   end
 

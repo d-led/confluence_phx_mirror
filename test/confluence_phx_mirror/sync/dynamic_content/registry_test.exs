@@ -22,8 +22,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
     end
   end
 
-  test "the names the design notes promise are all drawable" do
-    assert Registry.macros() == ["children", "content-by-label", "page-properties-report", "toc"]
+  test "the names the mirror draws are Confluence's own ac:name keys" do
+    assert Registry.macros() == ["children", "content-by-label", "detailssummary", "toc"]
+  end
+
+  test "the friendly spellings resolve to the macro Confluence stores" do
+    assert Registry.canonical("page-properties-report") == "detailssummary"
+    assert Registry.fetch("page-properties-report") == Registry.fetch("detailssummary")
+    assert Registry.fetch("table-of-contents") == Registry.fetch("toc")
+    assert "page-properties-report" in Registry.names()
   end
 
   test "a macro the mirror does not know is not a registered name" do
