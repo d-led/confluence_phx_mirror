@@ -15,19 +15,11 @@ defmodule ConfluencePhxMirrorWeb.ApiIdentityTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Accounts.UserPolicy.NewUsersCanReadPublicSpaces
+  alias ConfluencePhxMirror.TestConfig
 
   @settings [:proxy_auth, :proxy_auth_members_only, :self_signup, :auto_admin, :user_policy]
 
   setup do
-    previous = Map.new(@settings, &{&1, Application.fetch_env(:confluence_phx_mirror, &1)})
-
-    on_exit(fn ->
-      Enum.each(previous, fn
-        {key, :error} -> Application.delete_env(:confluence_phx_mirror, key)
-        {key, {:ok, value}} -> Application.put_env(:confluence_phx_mirror, key, value)
-      end)
-    end)
-
     # A mirroring deployment: the proxy is the door, nobody is assumed, and an
     # arriving identity gets an account.
     configure(
@@ -85,8 +77,6 @@ defmodule ConfluencePhxMirrorWeb.ApiIdentityTest do
   end
 
   defp configure(pairs) do
-    Enum.each(pairs, fn {key, value} ->
-      Application.put_env(:confluence_phx_mirror, key, value)
-    end)
+    Enum.each(pairs, fn {key, value} -> TestConfig.put(key, value) end)
   end
 end

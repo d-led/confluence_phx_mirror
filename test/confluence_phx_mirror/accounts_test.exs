@@ -55,9 +55,7 @@ defmodule ConfluencePhxMirror.AccountsTest do
     end
 
     test "unknown addresses do not get an account when self sign-up is off" do
-      original = Application.get_env(:confluence_phx_mirror, :self_signup)
-      Application.put_env(:confluence_phx_mirror, :self_signup, false)
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :self_signup, original) end)
+      TestConfig.put(:self_signup, false)
 
       assert {:error, :unknown_email} = Accounts.request_login("nobody@example.com")
       refute Accounts.get_user_by_email("nobody@example.com")

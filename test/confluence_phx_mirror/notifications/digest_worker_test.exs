@@ -11,6 +11,7 @@ defmodule ConfluencePhxMirror.Notifications.DigestWorkerTest do
 
   alias ConfluencePhxMirror.{Demo, Mirror, Notifications, Settings}
   alias ConfluencePhxMirror.Notifications.DigestWorker
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     demo_snapshot!()
@@ -74,15 +75,10 @@ defmodule ConfluencePhxMirror.Notifications.DigestWorkerTest do
   defp refuse_deliveries do
     config = Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Mailer, [])
 
-    Application.put_env(
-      :confluence_phx_mirror,
+    TestConfig.put(
       ConfluencePhxMirror.Mailer,
       Keyword.put(config, :adapter, ConfluencePhxMirror.FailingMailer)
     )
-
-    on_exit(fn ->
-      Application.put_env(:confluence_phx_mirror, ConfluencePhxMirror.Mailer, config)
-    end)
   end
 
   # `Email.digest/2` addresses the reader the same way every other mail does.

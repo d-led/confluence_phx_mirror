@@ -17,6 +17,7 @@ defmodule ConfluencePhxMirror.Export.SitePersonalTest do
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Mirror.Space
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     demo_snapshot!()
@@ -24,7 +25,6 @@ defmodule ConfluencePhxMirror.Export.SitePersonalTest do
     # type, not its key, so what makes it personal is the fact, not the name.
     Repo.update_all(from(s in Space, where: s.key == "PROD"), set: [type: "personal"])
 
-    on_exit(fn -> Application.delete_env(:confluence_phx_mirror, :export_personal_spaces) end)
     :ok
   end
 
@@ -37,7 +37,7 @@ defmodule ConfluencePhxMirror.Export.SitePersonalTest do
   end
 
   test "a deployment that wants them puts them back" do
-    Application.put_env(:confluence_phx_mirror, :export_personal_spaces, true)
+    TestConfig.put(:export_personal_spaces, true)
 
     assert "spaces/PROD/index.html" in archive_names()
   end

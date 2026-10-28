@@ -11,18 +11,12 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminWebhooksLiveTest do
 
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Settings
+  alias ConfluencePhxMirror.TestConfig
   alias ConfluencePhxMirror.Webhooks
   alias ConfluencePhxMirror.Webhooks.Delivery
 
   setup %{conn: conn} do
-    previous = Application.get_env(:confluence_phx_mirror, :webhooks)
-
-    Application.put_env(:confluence_phx_mirror, :webhooks,
-      secret: "the-secret",
-      require_signature: false
-    )
-
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :webhooks, previous) end)
+    TestConfig.put(:webhooks, secret: "the-secret", require_signature: false)
 
     {:ok, conn: log_in_admin(conn)}
   end

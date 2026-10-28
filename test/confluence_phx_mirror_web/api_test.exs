@@ -6,6 +6,7 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.TestConfig
 
   # A group the demo snapshot never grants to anybody.
   @unlisted_group "eng-readers"
@@ -259,16 +260,13 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
 
   describe "reader rate limiting" do
     test "returns 429 with Retry-After once the API budget is spent", %{conn: _conn} do
-      original = Application.get_env(:confluence_phx_mirror, :reader_rate_limit)
-
-      Application.put_env(:confluence_phx_mirror, :reader_rate_limit,
+      TestConfig.put(
+        :reader_rate_limit,
         enabled: true,
         html: [limit: 1_000, period_ms: 60_000],
         api: [limit: 1, period_ms: 60_000],
         attachments: [limit: 1_000, period_ms: 60_000]
       )
-
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :reader_rate_limit, original) end)
 
       user = user_fixture(%{email: "rate-limited@example.com"})
       {:ok, plain, _} = Accounts.create_api_token(user, "rate", {:system, "test"})

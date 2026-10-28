@@ -23,16 +23,8 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
   alias ConfluencePhxMirror.TestConfig
 
   setup do
-    previous = Application.get_env(:confluence_phx_mirror, :proxy_auth)
-    previous_members = Application.get_env(:confluence_phx_mirror, :proxy_auth_members_only)
-
-    Application.put_env(:confluence_phx_mirror, :proxy_auth, true)
-    Application.put_env(:confluence_phx_mirror, :proxy_auth_members_only, true)
-
-    on_exit(fn ->
-      Application.put_env(:confluence_phx_mirror, :proxy_auth, previous)
-      Application.put_env(:confluence_phx_mirror, :proxy_auth_members_only, previous_members)
-    end)
+    TestConfig.put(:proxy_auth, true)
+    TestConfig.put(:proxy_auth_members_only, true)
 
     :ok
   end
@@ -96,14 +88,14 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
   end
 
   test "members-only can be switched off, so the proxy's word is enough again" do
-    Application.put_env(:confluence_phx_mirror, :proxy_auth_members_only, false)
+    TestConfig.put(:proxy_auth_members_only, false)
 
     assert html_response(visit("stranger@example.com"), 200)
     assert Accounts.get_user_by_email("stranger@example.com")
   end
 
   test "the header is ignored when proxy auth is off", %{conn: conn} do
-    Application.put_env(:confluence_phx_mirror, :proxy_auth, false)
+    TestConfig.put(:proxy_auth, false)
 
     conn = conn |> put_req_header("x-forwarded-email", "jane@example.com") |> get(~p"/")
 
@@ -112,18 +104,6 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
   end
 
   describe "the deployment's policy" do
-    setup do
-      previous = Application.get_env(:confluence_phx_mirror, :user_policy)
-      previous_groups = Application.get_env(:confluence_phx_mirror, :proxy_auth_groups_header)
-
-      on_exit(fn ->
-        Application.put_env(:confluence_phx_mirror, :user_policy, previous)
-        Application.put_env(:confluence_phx_mirror, :proxy_auth_groups_header, previous_groups)
-      end)
-
-      :ok
-    end
-
     test "a policy that admits everybody lets a stranger in" do
       use_policy(NewUsersCanReadPublicSpaces)
 
@@ -132,7 +112,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
     end
 
     test "a policy that needs the site refuses a stranger even when the proxy is not members-only" do
-      Application.put_env(:confluence_phx_mirror, :proxy_auth_members_only, false)
+      TestConfig.put(:proxy_auth_members_only, false)
       use_policy(ReadersMustExistInConfluence)
 
       assert html_response(visit("stranger@example.com"), 403)
@@ -151,7 +131,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
       # The proxy can only say what the identity provider told it. The mirror
       # checks that claim against its own membership, so an asserted group is
       # evidence only when the site lists this person in it.
-      Application.put_env(:confluence_phx_mirror, :proxy_auth_groups_header, "x-forwarded-groups")
+      TestConfig.put(:proxy_auth_groups_header, "x-forwarded-groups")
       use_policy(ReadersMustExistInConfluence)
       in_group("sam@example.com", "confluence-users")
 
@@ -174,7 +154,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuthTest do
   end
 
   defp use_policy(policy) do
-    Application.put_env(:confluence_phx_mirror, :user_policy, policy)
+    TestConfig.put(:user_policy, policy)
   end
 
   # Signing in is what an operator looks for on the users screen and in the log

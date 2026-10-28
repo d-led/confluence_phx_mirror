@@ -8,6 +8,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportLinkTest do
 
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
+  alias ConfluencePhxMirror.TestConfig
+
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
 
@@ -37,8 +39,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportLinkTest do
   end
 
   test "the tooltip says what this deployment's archive holds", %{conn: conn} do
-    on_exit(fn -> Application.delete_env(:confluence_phx_mirror, :export_personal_spaces) end)
-
     {:ok, view, _html} = live(conn, ~p"/admin")
 
     assert view |> element("#export-site") |> render() =~ "personal spaces are left out"
@@ -46,7 +46,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportLinkTest do
     # The flag changes the archive, so it has to change the sentence: a tooltip
     # that states one policy while the switch is on is a lie in the one place an
     # operator looks before downloading somebody's space.
-    Application.put_env(:confluence_phx_mirror, :export_personal_spaces, true)
+    TestConfig.put(:export_personal_spaces, true)
     {:ok, view, _html} = live(conn, ~p"/admin")
 
     hint = view |> element("#export-site") |> render()

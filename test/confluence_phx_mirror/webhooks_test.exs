@@ -206,7 +206,7 @@ defmodule ConfluencePhxMirror.WebhooksTest do
     end
 
     test "without a secret, the refusal says the intake is not configured" do
-      Application.put_env(:confluence_phx_mirror, :webhooks, require_signature: true)
+      TestConfig.put(:webhooks, require_signature: true)
       body = JSON.encode!(payload("page_updated", 1002))
 
       assert {:error, :not_configured} = Webhooks.receive(JSON.decode!(body), body, [])

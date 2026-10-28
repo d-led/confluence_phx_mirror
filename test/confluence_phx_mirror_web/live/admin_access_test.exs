@@ -6,6 +6,7 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
 
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     demo_snapshot!()
@@ -24,7 +25,7 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
   end
 
   test "a seeded administrator opens the dashboard", %{conn: conn} do
-    with_env(:admins, ["ops@example.com"])
+    TestConfig.put(:admins, ["ops@example.com"])
     conn = sign_in(conn, user_fixture(%{email: "ops@example.com", role: "member"}))
 
     assert {:ok, _view, html} = live(conn, ~p"/admin")
@@ -32,7 +33,7 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
   end
 
   test "a member of the admin group opens the dashboard", %{conn: conn} do
-    with_env(:admin_groups, ["confluence-admins"])
+    TestConfig.put(:admin_groups, ["confluence-admins"])
 
     {:ok, _} =
       Mirror.replace_group_members("confluence-admins", [
@@ -46,8 +47,8 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
   end
 
   test "a seeded administrator may sign in even with self sign-up closed" do
-    with_env(:admins, ["new-ops@example.com"])
-    with_env(:self_signup, false)
+    TestConfig.put(:admins, ["new-ops@example.com"])
+    TestConfig.put(:self_signup, false)
 
     assert {:ok, :sent} = Accounts.request_login("new-ops@example.com")
     assert Accounts.get_user_by_email("new-ops@example.com")
@@ -83,7 +84,7 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
     end
 
     test "an administrator reads the mirror's own metrics", %{conn: conn} do
-      with_env(:admins, ["ops@example.com"])
+      TestConfig.put(:admins, ["ops@example.com"])
       conn = sign_in(conn, user_fixture(%{email: "ops@example.com", role: "member"}))
 
       # The dashboard groups metrics by the first segment of their name, and
@@ -95,7 +96,7 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
     end
 
     test "an administrator keeps every page", %{conn: conn} do
-      with_env(:admins, ["ops@example.com"])
+      TestConfig.put(:admins, ["ops@example.com"])
       conn = sign_in(conn, user_fixture(%{email: "ops@example.com", role: "member"}))
 
       for page <- @dashboard_pages do
@@ -106,10 +107,4 @@ defmodule ConfluencePhxMirrorWeb.AdminAccessTest do
   end
 
   defp sign_in(conn, user), do: Plug.Test.init_test_session(conn, %{"user_id" => user.id})
-
-  defp with_env(key, value) do
-    previous = Application.get_env(:confluence_phx_mirror, key)
-    Application.put_env(:confluence_phx_mirror, key, value)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, key, previous) end)
-  end
 end

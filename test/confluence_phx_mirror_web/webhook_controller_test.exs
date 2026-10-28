@@ -8,6 +8,7 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync.PageWorker
+  alias ConfluencePhxMirror.TestConfig
   alias ConfluencePhxMirror.Webhooks.Delivery
 
   @secret "test-webhook-secret"
@@ -79,14 +80,11 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
 
   describe "when signatures are required" do
     setup do
-      previous = Application.get_env(:confluence_phx_mirror, :webhooks)
-
-      Application.put_env(:confluence_phx_mirror, :webhooks,
+      TestConfig.put(:webhooks,
         secret: @secret,
         require_signature: true
       )
 
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :webhooks, previous) end)
       :ok
     end
 
@@ -126,15 +124,9 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
 
   describe "route tokens" do
     setup do
-      previous = Application.get_env(:confluence_phx_mirror, :webhook_tokens)
-
-      Application.put_env(:confluence_phx_mirror, :webhook_tokens, %{
+      TestConfig.put(:webhook_tokens, %{
         "confluence" => "route-token"
       })
-
-      on_exit(fn ->
-        Application.put_env(:confluence_phx_mirror, :webhook_tokens, previous || %{})
-      end)
 
       :ok
     end
@@ -180,16 +172,10 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
 
   describe "metering the intake" do
     setup do
-      previous = Application.get_env(:confluence_phx_mirror, :webhook_rate_limit)
-
-      Application.put_env(:confluence_phx_mirror, :webhook_rate_limit,
+      TestConfig.put(:webhook_rate_limit,
         limit: 2,
         period_ms: 60_000
       )
-
-      on_exit(fn ->
-        Application.put_env(:confluence_phx_mirror, :webhook_rate_limit, previous)
-      end)
 
       :ok
     end
@@ -235,14 +221,11 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
 
   describe "when the intake is switched off" do
     setup do
-      previous = Application.get_env(:confluence_phx_mirror, :webhooks)
-
-      Application.put_env(:confluence_phx_mirror, :webhooks,
+      TestConfig.put(:webhooks,
         secret: @secret,
         enabled: false
       )
 
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :webhooks, previous) end)
       :ok
     end
 

@@ -15,12 +15,12 @@ defmodule ConfluencePhxMirror.Confluence.SyntheticSourceTest do
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Synthetic
+  alias ConfluencePhxMirror.TestConfig
 
   @config [spaces: 2, pages_per_space: 6, branching: 2]
 
   setup do
-    Application.put_env(:confluence_phx_mirror, SyntheticSource, @config)
-    on_exit(fn -> Application.delete_env(:confluence_phx_mirror, SyntheticSource) end)
+    TestConfig.put(SyntheticSource, @config)
     :ok
   end
 

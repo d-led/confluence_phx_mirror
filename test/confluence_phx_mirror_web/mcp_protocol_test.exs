@@ -15,19 +15,11 @@ defmodule ConfluencePhxMirrorWeb.McpProtocolTest do
   alias ConfluencePhxMirror.Accounts.UserPolicy.NewUsersCanReadPublicSpaces
   alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Mcp.Tools
+  alias ConfluencePhxMirror.TestConfig
 
   @settings [:auto_admin, :proxy_auth, :proxy_auth_members_only, :user_policy, :self_signup]
 
   setup %{conn: conn} do
-    previous = Map.new(@settings, &{&1, Application.fetch_env(:confluence_phx_mirror, &1)})
-
-    on_exit(fn ->
-      Enum.each(previous, fn
-        {key, :error} -> Application.delete_env(:confluence_phx_mirror, key)
-        {key, {:ok, value}} -> Application.put_env(:confluence_phx_mirror, key, value)
-      end)
-    end)
-
     # The lifecycle, the tools and the transport are exercised by a caller who
     # may do them; `describe "authentication"` starts from nobody instead.
     {:ok, conn: log_in_admin(conn)}
@@ -328,8 +320,6 @@ defmodule ConfluencePhxMirrorWeb.McpProtocolTest do
   end
 
   defp configure(pairs) do
-    Enum.each(pairs, fn {key, value} ->
-      Application.put_env(:confluence_phx_mirror, key, value)
-    end)
+    Enum.each(pairs, fn {key, value} -> TestConfig.put(key, value) end)
   end
 end

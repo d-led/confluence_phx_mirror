@@ -11,6 +11,7 @@ defmodule ConfluencePhxMirror.SettingsTest do
 
   alias ConfluencePhxMirror.{Accounts, Audit, Settings}
   alias ConfluencePhxMirror.Confluence.Source
+  alias ConfluencePhxMirror.TestConfig
 
   @actor {:system, "test"}
 
@@ -34,7 +35,7 @@ defmodule ConfluencePhxMirror.SettingsTest do
     end
 
     test "follows the configuration when it changes" do
-      put_config(:notifications, enabled: false, digest_hour_utc: 5)
+      TestConfig.put(:notifications, enabled: false, digest_hour_utc: 5)
 
       assert Settings.notifications_enabled?() == false
       assert Settings.digest_hour_utc() == 5
@@ -75,7 +76,7 @@ defmodule ConfluencePhxMirror.SettingsTest do
 
   describe "a setting declared after the first release" do
     test "takes its default from the deployment's configuration" do
-      put_config(:search, page_size: 12, default_limit: 7, max_limit: 50)
+      TestConfig.put(:search, page_size: 12, default_limit: 7, max_limit: 50)
 
       assert Settings.search_page_size() == 12
       assert Settings.search_default_limit() == 7
@@ -249,7 +250,7 @@ defmodule ConfluencePhxMirror.SettingsTest do
     end
 
     test "close an intake the deployment leaves open" do
-      put_config(:webhooks, enabled: true, secret: "the-secret")
+      TestConfig.put(:webhooks, enabled: true, secret: "the-secret")
 
       assert Settings.webhook_enabled?()
       assert {:ok, _} = Settings.put_webhook_enabled(false, @actor)
@@ -260,21 +261,12 @@ defmodule ConfluencePhxMirror.SettingsTest do
     end
   end
 
-  defp put_config(key, value) do
-    previous = Application.fetch_env(:confluence_phx_mirror, key)
-    Application.put_env(:confluence_phx_mirror, key, value)
-
-    on_exit(fn ->
-      case previous do
-        {:ok, old} -> Application.put_env(:confluence_phx_mirror, key, old)
-        :error -> Application.delete_env(:confluence_phx_mirror, key)
-      end
-    end)
-  end
-
   # A source has options this test does not care about, so it widens the list
   # instead of replacing it.
   defp merge_config(key, value) do
-    put_config(key, Keyword.merge(Application.get_env(:confluence_phx_mirror, key, []), value))
+    TestConfig.put(
+      key,
+      Keyword.merge(Application.get_env(:confluence_phx_mirror, key, []), value)
+    )
   end
 end

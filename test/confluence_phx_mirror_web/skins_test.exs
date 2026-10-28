@@ -2,6 +2,7 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
   alias ConfluencePhxMirror.Settings
+  alias ConfluencePhxMirror.TestConfig
   alias ConfluencePhxMirrorWeb.Skins
 
   defmodule TestPack do
@@ -27,18 +28,6 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
     :ok
   end
 
-  defp put_config(key, value) do
-    previous = Application.fetch_env(:confluence_phx_mirror, key)
-    Application.put_env(:confluence_phx_mirror, key, value)
-
-    on_exit(fn ->
-      case previous do
-        {:ok, old} -> Application.put_env(:confluence_phx_mirror, key, old)
-        :error -> Application.delete_env(:confluence_phx_mirror, key)
-      end
-    end)
-  end
-
   describe "themes" do
     test "ships the default and the Fresh blue pack" do
       names = Enum.map(Skins.themes(), & &1.name)
@@ -48,7 +37,7 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
     end
 
     test "takes a theme from a pack, light and dark together" do
-      put_config(:skin_packs, [TestPack])
+      TestConfig.put(:skin_packs, [TestPack])
 
       assert Skins.theme?("pack-theme")
       assert Skins.style() =~ ~s([data-theme="pack-theme"]{color-scheme:light)
@@ -56,15 +45,15 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
     end
 
     test "a pack cannot shadow the built-in theme" do
-      put_config(:skin_packs, [TestPack])
-      put_config(:skins, [%{name: "default", colors: %{primary: "#ff0000"}}])
+      TestConfig.put(:skin_packs, [TestPack])
+      TestConfig.put(:skins, [%{name: "default", colors: %{primary: "#ff0000"}}])
 
       assert Skins.get_theme("default").builtin?
       refute Skins.style() =~ "#ff0000"
     end
 
     test "drops unknown keys and unsafe values" do
-      put_config(:skins, [
+      TestConfig.put(:skins, [
         %{
           name: "brand",
           colors: %{primary: "red; } body { display: none", secondary: "#0b5fff"},
@@ -82,26 +71,26 @@ defmodule ConfluencePhxMirrorWeb.SkinsTest do
 
   describe "the theme the site wears" do
     test "is the configured seed when nothing is stored" do
-      put_config(:theme, "fresh-blue")
+      TestConfig.put(:theme, "fresh-blue")
 
       assert Skins.theme() == "fresh-blue"
     end
 
     test "a stored theme beats the seed" do
-      put_config(:theme, "default")
+      TestConfig.put(:theme, "default")
       Settings.put_theme("fresh-blue", {:system, "test"})
 
       assert Skins.theme() == "fresh-blue"
     end
 
     test "falls back to default when the seed names nothing this site offers" do
-      put_config(:theme, "no-such-theme")
+      TestConfig.put(:theme, "no-such-theme")
 
       assert Skins.theme() == "default"
     end
 
     test "validate!/0 stops the release on a misspelt seed" do
-      put_config(:theme, "fres-blue")
+      TestConfig.put(:theme, "fres-blue")
 
       assert_raise ArgumentError, ~r/is not a theme this site offers/, fn ->
         Skins.validate!()

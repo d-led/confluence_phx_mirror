@@ -26,6 +26,7 @@ defmodule ConfluencePhxMirrorWeb.AuthMatrixTest do
   }
 
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.TestConfig
 
   @settings [
     :proxy_auth,
@@ -38,15 +39,6 @@ defmodule ConfluencePhxMirrorWeb.AuthMatrixTest do
   ]
 
   setup do
-    previous = Map.new(@settings, &{&1, Application.fetch_env(:confluence_phx_mirror, &1)})
-
-    on_exit(fn ->
-      Enum.each(previous, fn
-        {key, :error} -> Application.delete_env(:confluence_phx_mirror, key)
-        {key, {:ok, value}} -> Application.put_env(:confluence_phx_mirror, key, value)
-      end)
-    end)
-
     # The arrangement a mirroring deployment starts from: the proxy is the door
     # and admits site members, self sign-up is closed, no policy is named.
     configure(
@@ -173,9 +165,7 @@ defmodule ConfluencePhxMirrorWeb.AuthMatrixTest do
   end
 
   defp configure(pairs) do
-    Enum.each(pairs, fn {key, value} ->
-      Application.put_env(:confluence_phx_mirror, key, value)
-    end)
+    Enum.each(pairs, fn {key, value} -> TestConfig.put(key, value) end)
   end
 
   # The proxy's side of the arrangement: an identity arrives as a header.

@@ -13,17 +13,13 @@ defmodule ConfluencePhxMirrorWeb.AutoAdminTest do
 
   import ConfluencePhxMirror.Fixtures
 
+  alias ConfluencePhxMirror.TestConfig
+
   alias ConfluencePhxMirror.Blobs.{Key, Store}
   alias ConfluencePhxMirror.Mirror
 
-  setup do
-    previous = Application.get_env(:confluence_phx_mirror, :auto_admin)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :auto_admin, previous) end)
-    :ok
-  end
-
   test "an enabled deployment opens the admin screens to a visitor", %{conn: conn} do
-    Application.put_env(:confluence_phx_mirror, :auto_admin, true)
+    TestConfig.put(:auto_admin, true)
 
     assert conn |> get(~p"/admin") |> html_response(200)
   end
@@ -33,7 +29,7 @@ defmodule ConfluencePhxMirrorWeb.AutoAdminTest do
   end
 
   test "the sign-in page says when nobody has to sign in", %{conn: conn} do
-    Application.put_env(:confluence_phx_mirror, :auto_admin, true)
+    TestConfig.put(:auto_admin, true)
 
     assert conn |> get(~p"/session") |> html_response(200) =~ "An administrator is assumed"
   end
@@ -43,7 +39,7 @@ defmodule ConfluencePhxMirrorWeb.AutoAdminTest do
   end
 
   test "the first request of a browser is answered as the administrator everywhere", %{conn: conn} do
-    Application.put_env(:confluence_phx_mirror, :auto_admin, true)
+    TestConfig.put(:auto_admin, true)
 
     space = space_with_icon("<svg/>")
 
@@ -59,7 +55,7 @@ defmodule ConfluencePhxMirrorWeb.AutoAdminTest do
   end
 
   test "the swagger page names the administrator a request will be sent as", %{conn: conn} do
-    Application.put_env(:confluence_phx_mirror, :auto_admin, true)
+    TestConfig.put(:auto_admin, true)
 
     html = conn |> get("/api/docs/swagger") |> html_response(200)
 
