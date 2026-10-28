@@ -120,9 +120,9 @@ into the page for everybody, so everything a macro lists must be at least as
 wide as the page listing it. Applying that once in
 `Sync.DynamicContent.Source.Mirror` means a macro written next year inherits it.
 
-Resolved today: `content-by-label`, `page-properties-report`, `toc` and
-`children`. What is left falls into three buckets, and only the first is a
-mirroring problem:
+Resolved today: `content-by-label`, `page-properties-report` (Confluence's key is
+`detailssummary`), `toc` and `children`. What is left falls into three buckets,
+and only the first is a mirroring problem:
 
 | Macro | Data it needs | Where it comes from |
 | --- | --- | --- |
@@ -131,14 +131,36 @@ mirroring problem:
 | `attachments` | the page's files | `attachments` + blob store |
 | `excerpt`, `excerpt-include`, `include` | another page's body | `pages.body_export` |
 | `contributors` | authors and versions | `author_name` (one author today) |
-| `tasks-report` | inline tasks | inline tasks in `body_export` |
+| `tasks-report-macro` | inline tasks | inline tasks in `body_export` |
 | `jira`, `jiraissues`, `jirachart` | issue data | needs Jira credentials: out of scope |
 | `livesearch`, `gadget`, `widget` | a client, or a third-party app | impossible statically |
-| Forge/Connect app macros | the app | a placeholder is the honest answer |
+| Forge/Connect app macros | the app | a placeholder is the honest answer, and the body is kept |
 
 The order to implement them is by value per line: `include`/`excerpt-include`
 (pages that build other pages), then `recently-updated`, then `attachments`.
 Each is one module and one line in the registry; nothing else changes.
+
+### Vendor macros: extensions, one file per app
+
+The marketplace's layout macros are a different shape of problem. Their content
+is *on the page* — a tab group wraps its tabs, a card grid wraps its cards — so
+they need no app and no query, only the knowledge of what the wrapper means.
+They live in `Sync.VendorMacros`, one module per vendor, registered by their own
+`ac:name`:
+
+| Vendor | Keys | Drawn as |
+| --- | --- | --- |
+| Seibert Media (Aura) | `aura-tab-group`, `aura-tab`, `aura-cards`, `aura-title`, `aura-progress-bar`, `aura-countdown` | `<details>` per tab, a grid, a heading, a bar with its value; the countdown keeps its date and says it cannot tick |
+| Karma | `karma-section`, `karma-row`, `karma-column` | `div`s that keep their children in order |
+| Adaptavist | `tabs`, `tab`, `tooltip`, `latex-block` | `<details>`, a `title` attribute, and a LaTeX block that shows its source and says so |
+
+**Not drawn, on purpose:** `table-filter`, `pivot-table`, `chart-from-table`,
+`table-exporter`, `forms-by-adaptavist`, `confiform-*`. The first four exist to
+run a query or a UI over a table a reader can already see; the last two are
+writable forms with a backend. A static mirror that invented an answer would be
+lying about the source, so they fall back to `Sync.Renderer`, which **keeps the
+macro's body** and says what the macro was — a vendor macro is usually a
+container, and dropping its body would lose the page somebody wrote.
 
 ## Space and site customisation
 

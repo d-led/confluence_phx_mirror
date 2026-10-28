@@ -532,6 +532,105 @@
 
 .confluence-content .mirror-toc a:hover { border-bottom-color: currentColor; }
 
+/* Third-party layout macros drawn as plain HTML ------------------------ */
+
+.confluence-content .mirror-aura-tabs,
+.confluence-content .mirror-tabs {
+  margin: 1rem 0;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.6rem;
+  overflow: hidden;
+}
+
+.confluence-content .mirror-aura-tab,
+.confluence-content .mirror-tab {
+  border-top: 1px solid var(--color-base-300);
+}
+
+.confluence-content .mirror-aura-tab:first-child,
+.confluence-content .mirror-tab:first-child { border-top: 0; }
+
+.confluence-content .mirror-aura-tab > summary,
+.confluence-content .mirror-tab > summary {
+  padding: 0.5rem 0.9rem;
+  background: var(--color-base-200);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.confluence-content .mirror-aura-tab > p,
+.confluence-content .mirror-tab > p {
+  padding: 0.1rem 0.9rem 0.6rem;
+  margin: 0;
+}
+
+.confluence-content .mirror-aura-cards {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  margin: 1rem 0;
+}
+
+.confluence-content .mirror-aura-cards > * {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.5rem;
+  background: var(--color-base-100);
+}
+
+.confluence-content .mirror-progress {
+  display: flex;
+  align-items: center;
+  height: 0.6rem;
+  margin: 0.75rem 0;
+  border-radius: 999px;
+  background: var(--color-base-300);
+  overflow: hidden;
+}
+
+.confluence-content .mirror-progress > span {
+  display: block;
+  height: 100%;
+  padding-left: 0.4rem;
+  font-size: 0.6rem;
+  line-height: 0.6rem;
+  color: var(--color-base-100);
+  background: var(--color-primary);
+}
+
+.confluence-content .mirror-layout {
+  margin: 0.75rem 0;
+}
+
+.confluence-content .mirror-layout.karma-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.confluence-content .mirror-layout.karma-row > .mirror-layout {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+.confluence-content .mirror-tooltip {
+  border-bottom: 1px dotted currentColor;
+  cursor: help;
+}
+
+.confluence-content .mirror-latex pre {
+  margin: 0.25rem 0 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.confluence-content .mirror-unavailable-body {
+  margin: 0.5rem 0 0;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--color-base-300);
+}
+
 /* Content only live Confluence can render (macros, app iframes) ---------- */
 
 .confluence-content .mirror-unavailable {

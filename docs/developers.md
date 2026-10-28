@@ -182,6 +182,27 @@ Do not query the database from a renderer: add a callback to
 audience rule is applied — a macro is resolved once, for every reader of the
 page, so what it lists may only be what those readers may open.
 
+### Adding a vendor extension
+
+A third-party macro that needs nothing but its own page is an *extension*, not a
+renderer: it runs while the storage is sanitised and receives the macro's name,
+its `<ac:parameter>` values and its already-rewritten body.
+
+1. `lib/confluence_phx_mirror/sync/vendor_macros/<vendor>.ex` — one file per
+app, implementing `ConfluencePhxMirror.Sync.VendorMacros.Extension`. Its
+`draw/1` gets `%{name: "aura-tab", parameters: %{"title" => "Install"}, body:
+[...]}` and answers with `Floki` nodes.
+2. One line per `ac:name` in `ConfluencePhxMirror.Sync.VendorMacros`.
+3. A spec in `test/confluence_phx_mirror/sync/vendor_macros_test.exs` — storage
+node in, HTML out, no database.
+
+Two rules decide whether an extension belongs at all. **Draw the body**: the
+fallback keeps it, so an extension that understands the wrapper should hand it
+on rather than start from scratch. And **do not invent**: a macro whose point is
+a live query, a writable form or a ticking clock cannot be answered from a stored
+page, so it stays with the fallback, which says what it was and shows what the
+page still holds.
+
 ### Who is reading, and which deployment
 
 Two pieces of global state decide what a test sees, and the suite keeps both

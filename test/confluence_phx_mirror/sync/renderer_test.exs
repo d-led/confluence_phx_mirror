@@ -202,6 +202,40 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert Renderer.render(html, context()).html =~
                "The acme-widget macro is rendered live by Confluence."
     end
+
+    test "a macro nobody can draw keeps the body a reader came for" do
+      html = """
+      <ac:structured-macro ac:name="confiform-table">
+        <ac:parameter ac:name="formName">Holidays</ac:parameter>
+        <ac:rich-text-body><p>The holiday calendar lives here.</p></ac:rich-text-body>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ "cannot be shown in the static mirror"
+      assert result.html =~ "The holiday calendar lives here."
+    end
+
+    test "a vendor layout macro is drawn instead of apologised for" do
+      html = """
+      <ac:structured-macro ac:name="aura-tab-group">
+        <ac:rich-text-body>
+          <ac:structured-macro ac:name="aura-tab">
+            <ac:parameter ac:name="title">Install</ac:parameter>
+            <ac:rich-text-body><p>Run mix setup.</p></ac:rich-text-body>
+          </ac:structured-macro>
+        </ac:rich-text-body>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ "mirror-aura-tabs"
+      assert result.html =~ "<summary>Install</summary>"
+      assert result.html =~ "Run mix setup."
+      refute result.html =~ "cannot be shown"
+    end
   end
 
   defp page do
