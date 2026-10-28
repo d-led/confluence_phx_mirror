@@ -78,7 +78,7 @@ defmodule ConfluencePhxMirror.MixProject do
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.2.0"},
       {:lazy_html, ">= 0.1.0", only: :test},
-      {:phoenix_test, "~> 0.12.1", only: :test, runtime: false},
+      {:phoenix_test, "~> 0.13.1", only: :test, runtime: false},
       {:phoenix_live_dashboard, "~> 0.9.1"},
       # The dashboard's Ecto Stats page is a browser over this package's
       # queries — index usage, sequential scans, cache hits, bloat — and it
@@ -96,7 +96,7 @@ defmodule ConfluencePhxMirror.MixProject do
        depth: 1},
       {:daisyui,
        github: "saadeghi/daisyui",
-       tag: "v5.5.20",
+       tag: "v5.7.50",
        sparse: "packages/bundle",
        app: false,
        compile: false,
