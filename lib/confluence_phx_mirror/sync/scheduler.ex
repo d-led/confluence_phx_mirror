@@ -25,6 +25,7 @@ defmodule ConfluencePhxMirror.Sync.Scheduler do
   require Logger
 
   alias ConfluencePhxMirror.Settings
+  alias ConfluencePhxMirror.Sync
 
   # How often a switched-off schedule looks again, so switching it back on does
   # not wait for a release.
@@ -66,10 +67,9 @@ defmodule ConfluencePhxMirror.Sync.Scheduler do
   def handle_info(:tick, clock) do
     case interval(clock) do
       seconds when seconds > 0 ->
-        clock
-        |> job(seconds)
-        |> clock.worker.new()
-        |> Oban.insert()
+        args = job(clock, seconds)
+
+        Sync.enqueue(clock.worker, args)
         |> log_enqueue(clock)
 
         schedule(seconds)

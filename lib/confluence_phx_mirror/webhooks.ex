@@ -24,6 +24,7 @@ defmodule ConfluencePhxMirror.Webhooks do
   import Ecto.Query
 
   alias ConfluencePhxMirror.{Audit, Mirror, Repo, Settings}
+  alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.{PageWorker, SpaceWorker}
   alias ConfluencePhxMirror.Webhooks.Delivery
 
@@ -247,7 +248,7 @@ defmodule ConfluencePhxMirror.Webhooks do
   defp enqueue_page(delivery, id, event) do
     args = %{"confluence_id" => id, "trigger" => "the #{event} webhook"}
 
-    case args |> PageWorker.new() |> Oban.insert() do
+    case Sync.enqueue(PageWorker, args) do
       {:ok, job} ->
         Audit.log(
           actor(delivery),
@@ -278,7 +279,7 @@ defmodule ConfluencePhxMirror.Webhooks do
       key ->
         args = %{"space_key" => key, "trigger" => "the #{event} webhook"}
 
-        case args |> SpaceWorker.new() |> Oban.insert() do
+        case Sync.enqueue(SpaceWorker, args) do
           {:ok, job} ->
             Audit.log(
               actor(delivery),

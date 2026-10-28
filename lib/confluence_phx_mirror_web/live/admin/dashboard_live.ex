@@ -111,9 +111,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
   defp snapshot(_params, socket) do
     queued =
-      %{"trigger" => requested_by(socket), "scope" => "the whole site, what changed"}
-      |> SnapshotWorker.new()
-      |> Oban.insert()
+      Sync.enqueue(SnapshotWorker, %{
+        "trigger" => requested_by(socket),
+        "scope" => "the whole site, what changed"
+      })
 
     {:noreply, notice(socket, queued, "A sync of what changed")}
   end
@@ -140,18 +141,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
   defp full_sync(_params, socket) do
     queued =
-      %{"trigger" => "#{requested_by(socket)}, re-reading everything", "scope" => "every space"}
-      |> SweepWorker.new()
-      |> Oban.insert()
+      Sync.enqueue(SweepWorker, %{
+        "trigger" => "#{requested_by(socket)}, re-reading everything",
+        "scope" => "every space"
+      })
 
     {:noreply, notice(socket, queued, "A full re-read, one space at a time")}
   end
 
   defp sync_space(%{"key" => key}, socket) do
-    queued =
-      %{"space_key" => key, "trigger" => requested_by(socket)}
-      |> SpaceWorker.new()
-      |> Oban.insert()
+    queued = Sync.enqueue(SpaceWorker, %{"space_key" => key, "trigger" => requested_by(socket)})
 
     socket
     |> assign(open_menu: nil, space_query: "")

@@ -28,6 +28,8 @@ defmodule ConfluencePhxMirror.Sync.SweepWorker do
   require Logger
 
   alias ConfluencePhxMirror.Confluence.Source
+  alias ConfluencePhxMirror.Settings
+  alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.SpaceWorker
 
   @default_trigger "the sweep"
@@ -40,8 +42,19 @@ defmodule ConfluencePhxMirror.Sync.SweepWorker do
 
   @impl true
   def perform(%Oban.Job{args: args}) do
-    trigger = trigger(args)
+    if Settings.sync_paused?() do
+      # The sweep is a listing of the site before it is anything else, so a
+      # paused mirror does not start one: the job keeps its place in the queue,
+      # and the fan-out waits with it instead of queueing a space per space
+      # that would only snooze.
+      Logger.info("sweep waiting: Confluence calls are paused")
+      Sync.paused_wait()
+    else
+      sweep(trigger(args))
+    end
+  end
 
+  defp sweep(trigger) do
     # A sweep that could not list the site queued nothing: raise so Oban records
     # the failure instead of a job that "finished" having done no work.
     spaces =
@@ -64,7 +77,7 @@ defmodule ConfluencePhxMirror.Sync.SweepWorker do
   defp queue(space_key, trigger, position) do
     args = %{"space_key" => space_key, "trigger" => trigger}
 
-    case args |> SpaceWorker.new(schedule_in: position * @spacing_seconds) |> Oban.insert() do
+    case Sync.enqueue(SpaceWorker, args, schedule_in: position * @spacing_seconds) do
       {:ok, _job} -> :ok
       {:error, reason} -> raise "could not queue a sync of #{space_key}: #{inspect(reason)}"
     end

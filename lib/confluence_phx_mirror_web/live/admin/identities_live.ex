@@ -22,6 +22,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Settings
+  alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.PeopleWorker
   alias ConfluencePhxMirrorWeb.Admin.Paging
 
@@ -79,7 +80,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
   def handle_event("sync_people", _params, socket) do
     args = %{"trigger" => "the identities screen, by #{socket.assigns.current_user.email}"}
 
-    case args |> PeopleWorker.new() |> Oban.insert() do
+    case Sync.enqueue(PeopleWorker, args) do
       {:ok, job} ->
         {:noreply,
          socket

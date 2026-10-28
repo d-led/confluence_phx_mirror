@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   alias ConfluencePhxMirror.Mirror.Page
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Notifications
+  alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.Emoticons
   alias ConfluencePhxMirror.Sync.PageWorker
   alias ConfluencePhxMirror.Webhooks
@@ -103,12 +104,10 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   end
 
   defp enqueue_resync(conn, page) do
-    %{
+    Sync.enqueue(PageWorker, %{
       "confluence_id" => page.confluence_id,
       "trigger" => "the page view, by #{conn.assigns[:current_user].email}"
-    }
-    |> PageWorker.new()
-    |> Oban.insert()
+    })
 
     conn
     |> put_flash(:info, "Re-reading “#{page.title}”, its attachments and its comments.")

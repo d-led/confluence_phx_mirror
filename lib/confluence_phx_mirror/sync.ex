@@ -102,6 +102,38 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   @doc """
+  Queues a job that will read the site.
+
+  While the mirror is paused nothing it queues can run, so a request that arrives
+  meanwhile says the same thing as the job already waiting: "look at this again
+  when the pause ends". It joins that job instead of adding one behind it, which
+  keeps the queue one row per page or space however long the pause lasts.
+
+  Coalescing loses nothing precisely because nothing is read: the job that
+  survives reads the page, space or group as it stands when it finally runs,
+  whatever the requests it absorbed had to say. An unserialised window of this
+  kind would be wrong in the ordinary case — an event arriving while a run holds
+  the page may be about a change that run will not see — so a mirror that is not
+  paused keeps each worker's own uniqueness period.
+
+  Returns what `Oban.insert/1` returns. For a coalesced request the job is the
+  one already in the queue, with `conflict?: true`.
+  """
+  @spec enqueue(module(), map(), keyword()) :: {:ok, Job.t()} | {:error, term()}
+  def enqueue(worker, args, opts \\ []) do
+    worker.new(args, coalescing(opts))
+    |> Oban.insert()
+  end
+
+  defp coalescing(opts) do
+    if Settings.sync_paused?() do
+      Keyword.update(opts, :unique, [period: :infinity], &Keyword.put(&1, :period, :infinity))
+    else
+      opts
+    end
+  end
+
+  @doc """
   What a job should do when the mirror is paused: come back later.
 
   A snooze keeps the job (and its place in the queue) instead of failing it, and

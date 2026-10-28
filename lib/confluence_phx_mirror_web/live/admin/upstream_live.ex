@@ -22,6 +22,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   import ConfluencePhxMirrorWeb.AdminComponents
 
   alias ConfluencePhxMirror.{Jobs, Mirror, Settings}
+  alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.{ReconcileRun, ReconcileWorker, TrashAbsentWorker}
   alias ConfluencePhxMirror.Trash
   alias ConfluencePhxMirror.Trash.TrashAllAbsentWorker
@@ -516,8 +517,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLive do
   # avoided duplicate as `conflict?: true` rather than an error, so a second
   # click while one is queued or running says so instead of saying nothing.
   defp queue_check(socket) do
-    case ReconcileWorker.new(%{"trigger" => "the admin screen, by #{who(socket)}"})
-         |> Oban.insert() do
+    case Sync.enqueue(ReconcileWorker, %{"trigger" => "the admin screen, by #{who(socket)}"}) do
       {:ok, %{conflict?: true}} ->
         put_flash(
           socket,
