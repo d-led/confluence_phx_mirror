@@ -482,6 +482,77 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
   defp condition({:cmp, field, op, value}, builder), do: comparison(field, op, value, builder)
 
+  defp condition({:in, field, values}, builder), do: membership(field, values, :in, builder)
+
+  defp condition({:not_in, field, values}, builder),
+    do: membership(field, values, :not_in, builder)
+
+  # Set membership ------------------------------------------------------------
+
+  # Eight fields are plain columns, read from one table so a new one is a line
+  # here rather than another clause. A text column compares lowercased; a number
+  # or an instant compares as the parser typed it.
+  @membership_columns %{
+    title: {"lower(p.title)", :text},
+    type: {"p.type", :text},
+    status: {"p.status", :text},
+    creator: {"lower(p.author_name)", :text},
+    id: {"p.confluence_id", :value},
+    version: {"p.version_number", :value},
+    created: {"p.external_created_at", :value},
+    lastmodified: {"p.external_updated_at", :value}
+  }
+
+  defp membership(:space, values, kind, builder) do
+    array_membership(
+      "upper(s.key)",
+      Enum.map(values, &(&1 |> to_string() |> String.upcase())),
+      kind,
+      builder
+    )
+  end
+
+  # A page can carry several labels, so "one of these labels" is an overlap with
+  # the stored array rather than an equality.
+  defp membership(:label, values, kind, builder) do
+    {placeholder, builder} =
+      param(builder, Enum.map(values, &(&1 |> to_string() |> String.trim() |> String.downcase())))
+
+    {wrap(kind, "p.labels && #{placeholder}"), builder}
+  end
+
+  defp membership(:ancestor, values, kind, builder) do
+    {placeholder, builder} = param(builder, values)
+    {wrap(kind, "#{placeholder} && p.ancestors"), builder}
+  end
+
+  defp membership(:parent, values, kind, builder) do
+    {placeholder, builder} = param(builder, values)
+
+    {wrap(
+       kind,
+       "p.parent_id IN (SELECT id FROM pages WHERE confluence_id = ANY(#{placeholder}))"
+     ), builder}
+  end
+
+  defp membership(field, values, kind, builder) do
+    case Map.get(@membership_columns, field) do
+      nil -> raise ArgumentError, "unsupported CQL membership: #{field}"
+      {column, :text} -> array_membership(column, downcased(values), kind, builder)
+      {column, :value} -> array_membership(column, values, kind, builder)
+    end
+  end
+
+  defp array_membership(column, values, kind, builder) do
+    {placeholder, builder} = param(builder, values)
+    {wrap(kind, "#{column} = ANY(#{placeholder})"), builder}
+  end
+
+  defp wrap(:in, sql), do: "(#{sql})"
+  defp wrap(:not_in, sql), do: "(NOT #{sql})"
+
+  defp downcased(values), do: Enum.map(values, &(&1 |> to_string() |> String.downcase()))
+
   # Comparisons ---------------------------------------------------------------
 
   defp comparison(:text, :contains, value, builder) do
@@ -506,6 +577,18 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
     {"to_tsvector('#{@language}', p.title) @@ websearch_to_tsquery('#{@language}', #{placeholder})",
      builder}
+  end
+
+  # "does not contain" is the negation of a match, not a separate index lookup:
+  # one definition of what containing means, so the two cannot drift apart.
+  defp comparison(:text, :not_contains, value, builder) do
+    {condition, builder} = comparison(:text, :contains, value, builder)
+    {"(NOT #{condition})", builder}
+  end
+
+  defp comparison(:title, :not_contains, value, builder) do
+    {condition, builder} = comparison(:title, :contains, value, builder)
+    {"(NOT #{condition})", builder}
   end
 
   defp comparison(:title, op, value, builder) when op in [:eq, :neq] do
@@ -591,19 +674,22 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   defp order_sql(nil, _text_query, builder),
     do: {"rank DESC, p.external_updated_at DESC NULLS LAST", builder}
 
-  defp order_sql({field, direction}, _text_query, builder) do
-    column =
-      case field do
-        :lastmodified -> "p.external_updated_at"
-        :created -> "p.external_created_at"
-        :version -> "p.version_number"
-        :title -> "p.title"
-        :id -> "p.confluence_id"
-      end
+  defp order_sql([], text_query, builder), do: order_sql(nil, text_query, builder)
 
-    dir = if direction == :asc, do: "ASC", else: "DESC"
-    {"#{column} #{dir} NULLS LAST", builder}
+  defp order_sql(order_by, _text_query, builder) when is_list(order_by) do
+    {Enum.map_join(order_by, ", ", &order_column/1), builder}
   end
+
+  defp order_column({field, direction}) do
+    dir = if direction == :asc, do: "ASC", else: "DESC"
+    "#{order_column_name(field)} #{dir} NULLS LAST"
+  end
+
+  defp order_column_name(:lastmodified), do: "p.external_updated_at"
+  defp order_column_name(:created), do: "p.external_created_at"
+  defp order_column_name(:version), do: "p.version_number"
+  defp order_column_name(:title), do: "p.title"
+  defp order_column_name(:id), do: "p.confluence_id"
 
   defp param(builder, value) do
     placeholder = "$" <> Integer.to_string(builder.next)
@@ -622,6 +708,8 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   def terms({:not, inner}), do: terms(inner)
   def terms({:cmp, field, :contains, value}) when field in [:text, :title], do: [value]
   def terms({:cmp, _, _, _}), do: []
+  def terms({:in, _, _}), do: []
+  def terms({:not_in, _, _}), do: []
 
   # The snippet opens on a word boundary: a cut inside a word reads as corrupt
   # text ("ry platform service has a runbook"), so the window starts after the

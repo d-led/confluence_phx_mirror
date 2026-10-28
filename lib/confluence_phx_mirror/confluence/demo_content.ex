@@ -421,11 +421,12 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         <tr><td class="confluenceTd"><code>type</code></td><td class="confluenceTd"><code>=</code></td><td class="confluenceTd"><code>type = blogpost</code></td></tr>
         <tr><td class="confluenceTd"><code>creator</code></td><td class="confluenceTd"><code>=</code></td><td class="confluenceTd"><code>creator = "Jane Doe"</code></td></tr>
         <tr><td class="confluenceTd"><code>ancestor</code></td><td class="confluenceTd"><code>=</code></td><td class="confluenceTd"><code>ancestor = 1000</code></td></tr>
-        <tr><td class="confluenceTd"><code>created</code>, <code>lastmodified</code></td><td class="confluenceTd"><code>&gt;</code>, <code>&lt;</code></td><td class="confluenceTd"><code>lastmodified &gt; "2026-10-01"</code></td></tr>
+        <tr><td class="confluenceTd"><code>created</code>, <code>lastmodified</code></td><td class="confluenceTd"><code>&gt;</code>, <code>&lt;</code></td><td class="confluenceTd"><code>lastmodified &gt; startOfMonth()</code></td></tr>
+        <tr><td class="confluenceTd">any field</td><td class="confluenceTd"><code>in</code>, <code>not in</code></td><td class="confluenceTd"><code>label in (architecture, design)</code></td></tr>
       </tbody>
     </table>
     <h2 id="examples">Examples</h2>
-    #{code("text", ~s|space = ENG AND label = architecture ORDER BY lastmodified DESC\ntext ~ "rate limit" AND type = page\nancestor = 1000 AND title ~ "guide"|)}
+    #{code("text", ~s|space = ENG AND label = architecture ORDER BY lastmodified DESC, title\nlabel in (architecture, design) and space not in (OLD, ARCHIVE)\ntext ~ "rate limit" AND type = page\nlastmodified > startOfDay("-7d") AND title !~ draft|)}
     <p>The same CQL works against <code>GET /api/v1/search?cql=…</code>; see the #{page_link(1008, "API Guide")}.</p>
     #{panel(:tip, "Performance", "<p>Label and ancestor filters use GIN indexes on array columns; text filters use the generated <code>tsvector</code> index. A page tree filter never walks the tree recursively.</p>")}
     """)

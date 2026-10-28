@@ -153,13 +153,31 @@ an existing read-only client at the mirror and its queries keep working.
 ```
 space = ENG AND label = architecture
 text ~ "rate limit" OR title ~ "release"
-ancestor = 1000 AND lastmodified > "2026-10-01"
-type = blogpost ORDER BY lastmodified DESC LIMIT 10
+label in (architecture, design) AND space not in (OLD, ARCHIVE)
+title !~ draft
+lastmodified > now("-4w") AND created < startOfYear()
+type = blogpost ORDER BY lastmodified DESC, title ASC LIMIT 10
 ```
 
 Supported fields: `text`, `title`, `space`, `label`, `type`, `status`,
 `creator`, `ancestor`, `parent`, `id`, `version`, `created`, `lastmodified`.
-Operators: `=`, `!=`, `~`, `>`, `<`, `>=`, `<=`; `AND`, `OR`, `NOT`, parentheses.
+Operators: `=`, `!=`, `~` (contains), `!~` (does not contain), `>`, `<`, `>=`,
+`<=`, `IN`, `NOT IN`; `AND`, `OR`, `NOT`, parentheses, `ORDER BY` on one or more
+fields with `ASC`/`DESC`, and `LIMIT`. Keywords and field names are
+case-insensitive, as in Confluence's own examples.
+
+Date functions resolve **when the query is parsed**, so "today" means the day
+the query was written: `now()`, `startOfDay()`, `endOfDay()`, and the week,
+month and year versions, each taking an optional `"-7d"` increment (`y`, `M`,
+`w`, `d`, `h`, `m`; the sign defaults to plus). `lastmodified > startOfDay("-7d")`
+is the last week.
+
+Two things are refused with an explanation rather than approximated, because a
+mirror answers a query once and for everybody: `currentUser()` and the other
+user-specific functions (`favouriteSpaces()`, `recentlyViewedContent()`,
+`recentlyViewedSpaces()`), and every field whose data a read-only sync never
+stored (`mention`, `watcher`, `favourite`, `pageStatus`, `macro`, `container`,
+`space.title`, `space.type`, `space.category`, the `user.*` fields).
 
 `pages.search_vector` is a **stored generated column** (`title` weighted `A`,
 body `B`) with a GIN index; labels and ancestors are `text[]`/`bigint[]` arrays

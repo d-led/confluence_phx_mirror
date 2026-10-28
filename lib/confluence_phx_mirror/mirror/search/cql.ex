@@ -3,19 +3,32 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
   A small, strict CQL parser.
 
   Confluence's CQL is large; the mirror supports the subset that makes sense for
-  a read-only cache:
+  a read-only cache — the operators, fields and functions that can be answered
+  from what a sync stored, and an honest error for the rest:
 
       space = ENG AND label = architecture
       text ~ "rate limit" OR title ~ "release"
-      ancestor = 1000 AND lastmodified > "2026-10-01"
-      type = blogpost ORDER BY lastmodified DESC LIMIT 10
+      label in (architecture, design) AND space not in (OLD, ARCHIVE)
+      title !~ draft
+      lastmodified > now("-4w") AND created < startOfYear()
+      type = blogpost ORDER BY lastmodified DESC, title ASC LIMIT 10
 
-  Supported fields: `text`, `title`, `space`, `label`, `type`, `status`,
-  `creator`, `ancestor`, `parent`, `id`, `version`, `created`, `lastmodified`.
+  Supported operators: `=`, `!=`, `>`, `>=`, `<`, `<=`, `~`, `!~`, `IN`,
+  `NOT IN`. Supported fields: `text`, `title`, `space`, `label`, `type`,
+  `status`, `creator`, `ancestor`, `parent`, `id`, `version`, `created`,
+  `lastmodified`. Supported functions: `now()`, `startOfDay()`, `endOfDay()` and
+  their week, month and year siblings, each with an optional `"-7d"` style
+  increment (`Mirror.Search.CQL.Functions`).
+
+  Two things are refused rather than approximated, because a mirror answers a
+  query once for every reader: `currentUser()` and the other user-specific
+  functions, and any field the sync never stored.
 
   The parser returns an AST; `ConfluencePhxMirror.Mirror.Search` compiles it to
   parameterised Ecto queries.
   """
+
+  alias ConfluencePhxMirror.Mirror.Search.CQL.Functions
 
   defmodule Query do
     @moduledoc "Parsed CQL query."
@@ -24,7 +37,7 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
 
     @type t :: %__MODULE__{
             filter: term(),
-            order_by: {atom(), :asc | :desc} | nil,
+            order_by: [{atom(), :asc | :desc}] | nil,
             limit: pos_integer() | nil
           }
   end
@@ -53,6 +66,27 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
     "version" => :version,
     "created" => :created,
     "lastmodified" => :lastmodified
+  }
+
+  @operators "=, !=, ~, !~, >, <, >=, <=, IN, NOT IN"
+
+  # Fields Confluence documents that a read-only mirror cannot answer, with the
+  # reason — telling a reader "unknown field" for `watcher` would send them
+  # looking for a typo that is not there.
+  @unsupported %{
+    "mention" => "the sync keeps authors, not the people a page mentions",
+    "watcher" => "watching is per person, and the mirror answers once for every reader",
+    "favourite" => "favourites are per person, and the mirror answers once for every reader",
+    "favorite" => "favourites are per person, and the mirror answers once for every reader",
+    "pagestatus" => "page status is not mirrored",
+    "macro" => "the mirror resolves the macros it knows and indexes no macro names",
+    "container" => "the mirror has no container field; use parent or ancestor",
+    "space.title" => "narrow by space key; a space's title is searchable as text",
+    "space.type" => "the mirror does not store space types",
+    "space.category" => "space categories are not mirrored",
+    "user" => "user search is not mirrored",
+    "user.fullname" => "user search is not mirrored",
+    "user.accountid" => "user search is not mirrored"
   }
 
   @doc """
@@ -86,7 +120,7 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
   defp tokenize(<<?,, rest::binary>>, acc), do: tokenize(rest, [:comma | acc])
 
   defp tokenize(<<?~, rest::binary>>, acc), do: tokenize(rest, [{:op, :contains} | acc])
-
+  defp tokenize(<<?!, ?~, rest::binary>>, acc), do: tokenize(rest, [{:op, :not_contains} | acc])
   defp tokenize(<<?!, ?=, rest::binary>>, acc), do: tokenize(rest, [{:op, :neq} | acc])
   defp tokenize(<<?>, ?=, rest::binary>>, acc), do: tokenize(rest, [{:op, :gte} | acc])
   defp tokenize(<<?<, ?=, rest::binary>>, acc), do: tokenize(rest, [{:op, :lte} | acc])
@@ -102,7 +136,7 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
   end
 
   defp tokenize(input, acc) do
-    case Regex.run(~r/^([A-Za-z_][A-Za-z0-9_]*|-?\d+(?:\.\d+)?)/, input) do
+    case Regex.run(~r/^([A-Za-z_][A-Za-z0-9_.]*|-?\d+(?:\.\d+)?)/, input) do
       [matched, word] ->
         rest = binary_part(input, byte_size(matched), byte_size(input) - byte_size(matched))
         tokenize(rest, [token(word) | acc])
@@ -112,15 +146,22 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
     end
   end
 
-  defp token(word) when word in ~w(AND OR NOT), do: {:keyword, String.downcase(word)}
-  defp token(word) when word in ~w(ORDER BY ASC DESC LIMIT), do: {:keyword, String.downcase(word)}
+  # Confluence writes its own examples in lower case (`and`, `in`, `desc`), and
+  # CQL is case-insensitive about keywords and fields alike. A word that is one
+  # of them says so; anything else is a value.
+  defp token(word) do
+    case String.downcase(word) do
+      keyword when keyword in ~w(and or not in) -> {:keyword, keyword}
+      keyword when keyword in ~w(order by asc desc limit) -> {:keyword, keyword}
+      _ -> value(word)
+    end
+  end
 
-  defp token(word),
-    do:
-      if(Regex.match?(~r/^-?\d+$/, word),
-        do: {:number, String.to_integer(word)},
-        else: {:word, word}
-      )
+  defp value(word) do
+    if Regex.match?(~r/^-?\d+$/, word),
+      do: {:number, String.to_integer(word)},
+      else: {:word, word}
+  end
 
   # ---------------------------------------------------------------------------
   # Parser: OR < AND < NOT < primary
@@ -169,9 +210,8 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
 
   defp parse_primary([{:word, field} | rest]) do
     with {:ok, field} <- validate_field(field),
-         {:ok, op, rest} <- parse_operator(rest),
-         {:ok, value, rest} <- parse_value(field, rest) do
-      {:ok, {:cmp, field, op, value}, rest}
+         {:ok, op, rest} <- parse_operator(rest) do
+      parse_operand(field, op, rest)
     end
   end
 
@@ -179,17 +219,114 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
   defp parse_primary([token | _]), do: {:error, "unexpected token #{inspect(token)}"}
 
   defp parse_operator([{:op, op} | rest]), do: {:ok, op, rest}
-  defp parse_operator(_), do: {:error, "expected an operator (=, !=, ~, >, <, >=, <=)"}
+  defp parse_operator([{:keyword, "not"}, {:keyword, "in"} | rest]), do: {:ok, :not_in, rest}
+  defp parse_operator([{:keyword, "in"} | rest]), do: {:ok, :in, rest}
+  defp parse_operator(_), do: {:error, "expected an operator (#{@operators})"}
 
-  defp parse_value(field, [{:string, value} | rest]), do: validate_value(field, value, rest)
-  defp parse_value(field, [{:number, value} | rest]), do: validate_value(field, value, rest)
-  defp parse_value(field, [{:word, value} | rest]), do: validate_value(field, value, rest)
-  defp parse_value(_field, _), do: {:error, "expected a value"}
+  # `IN` names a set, everything else names one value (or a function).
+  defp parse_operand(field, op, rest) when op in [:in, :not_in] do
+    with {:ok, values, rest} <- parse_list(field, rest) do
+      {:ok, {if(op == :in, do: :in, else: :not_in), field, values}, rest}
+    end
+  end
+
+  defp parse_operand(field, op, rest) do
+    with {:ok, value, rest} <- parse_value(field, rest) do
+      {:ok, {:cmp, field, op, value}, rest}
+    end
+  end
+
+  defp parse_list(field, [:lparen | rest]), do: parse_list_values(field, rest, [])
+
+  defp parse_list(_field, [{:word, name}, :lparen | _rest]), do: {:error, function_error(name)}
+
+  defp parse_list(field, _tokens),
+    do: {:error, "IN expects a list in parentheses, as in #{field} IN (a, b)"}
+
+  defp parse_list_values(field, tokens, acc) do
+    with {:ok, value, rest} <- parse_list_value(field, tokens) do
+      case rest do
+        [:comma | rest] -> parse_list_values(field, rest, [value | acc])
+        [:rparen | rest] -> {:ok, Enum.reverse([value | acc]), rest}
+        _ -> {:error, "expected , or ) in the list"}
+      end
+    end
+  end
+
+  defp parse_list_value(_field, [{:word, name}, :lparen | _rest]) do
+    {:error, function_error(name)}
+  end
+
+  defp parse_list_value(field, tokens), do: parse_scalar(field, tokens)
+
+  defp parse_value(field, [{:word, name}, :lparen | rest]) do
+    with {:ok, arguments, rest} <- parse_arguments(rest),
+         {:ok, value} <- call(field, name, arguments) do
+      {:ok, value, rest}
+    end
+  end
+
+  defp parse_value(field, tokens), do: parse_scalar(field, tokens)
+
+  defp parse_scalar(field, [{:string, value} | rest]), do: validate_value(field, value, rest)
+  defp parse_scalar(field, [{:number, value} | rest]), do: validate_value(field, value, rest)
+  defp parse_scalar(field, [{:word, value} | rest]), do: validate_value(field, value, rest)
+  defp parse_scalar(_field, _tokens), do: {:error, "expected a value"}
+
+  defp parse_arguments([:rparen | rest]), do: {:ok, [], rest}
+
+  defp parse_arguments(tokens) do
+    with {:ok, argument, rest} <- parse_argument(tokens) do
+      case rest do
+        [:comma | rest] ->
+          with {:ok, arguments, rest} <- parse_arguments(rest) do
+            {:ok, [argument | arguments], rest}
+          end
+
+        [:rparen | rest] ->
+          {:ok, [argument], rest}
+
+        _ ->
+          {:error, "expected , or ) in the function arguments"}
+      end
+    end
+  end
+
+  defp parse_argument([{:string, value} | rest]), do: {:ok, value, rest}
+  defp parse_argument([{:number, value} | rest]), do: {:ok, value, rest}
+  defp parse_argument([{:word, value} | rest]), do: {:ok, value, rest}
+  defp parse_argument(_tokens), do: {:error, "expected a function argument"}
+
+  # A function is resolved here, at parse time, so "yesterday" means yesterday
+  # when the query was written and not when it runs.
+  defp call(field, name, arguments) do
+    cond do
+      Functions.user_specific?(name) ->
+        {:error, function_error(name)}
+
+      !Functions.known?(name) ->
+        {:error, "unknown function #{name}()"}
+
+      field not in @date_fields ->
+        {:error, "#{name}() answers a date, so it cannot be compared with #{field}"}
+
+      true ->
+        Functions.resolve(name, arguments)
+    end
+  end
+
+  defp function_error(name) do
+    "#{name}() depends on who is asking, and the mirror answers a query once for " <>
+      "every reader: name the value instead"
+  end
 
   defp validate_field(field) do
-    case Map.fetch(@fields, String.downcase(field)) do
-      {:ok, atom} -> {:ok, atom}
-      :error -> {:error, "unknown field #{inspect(field)}"}
+    name = String.downcase(field)
+
+    case {Map.fetch(@fields, name), Map.fetch(@unsupported, name)} do
+      {{:ok, atom}, _} -> {:ok, atom}
+      {_, {:ok, reason}} -> {:error, "the mirror cannot answer #{field}: #{reason}"}
+      {_, :error} -> {:error, "unknown field #{inspect(field)}"}
     end
   end
 
@@ -249,27 +386,38 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
     end
   end
 
-  defp parse_order([{:keyword, "order"}, {:keyword, "by"}, {:word, field} | rest]) do
-    case Map.fetch(@order_atoms, String.downcase(field)) do
-      :error ->
-        {:error, "cannot order by #{inspect(field)}"}
-
-      {:ok, atom} ->
-        {direction, rest} =
-          case rest do
-            [{:keyword, "asc"} | rest] -> {:asc, rest}
-            [{:keyword, "desc"} | rest] -> {:desc, rest}
-            rest -> {:desc, rest}
-          end
-
-        {:ok, {atom, direction}, rest}
-    end
+  defp parse_order([{:keyword, "order"}, {:keyword, "by"} | rest]) do
+    parse_order_fields(rest, [])
   end
 
   defp parse_order([{:keyword, "order"} | _]),
     do: {:error, "expected ORDER BY <field> [ASC|DESC]"}
 
   defp parse_order(rest), do: {:ok, nil, rest}
+
+  defp parse_order_fields([{:word, field} | rest], acc) do
+    with {:ok, atom} <- order_atom(field) do
+      {direction, rest} = order_direction(rest)
+
+      case rest do
+        [:comma | rest] -> parse_order_fields(rest, [{atom, direction} | acc])
+        rest -> {:ok, Enum.reverse([{atom, direction} | acc]), rest}
+      end
+    end
+  end
+
+  defp parse_order_fields(_tokens, _acc), do: {:error, "expected a field to order by"}
+
+  defp order_atom(field) do
+    case Map.fetch(@order_atoms, String.downcase(field)) do
+      {:ok, atom} -> {:ok, atom}
+      :error -> {:error, "cannot order by #{inspect(field)}"}
+    end
+  end
+
+  defp order_direction([{:keyword, "asc"} | rest]), do: {:asc, rest}
+  defp order_direction([{:keyword, "desc"} | rest]), do: {:desc, rest}
+  defp order_direction(rest), do: {:desc, rest}
 
   defp parse_limit([{:keyword, "limit"}, {:number, limit} | rest])
        when limit > 0 and limit <= 500,
@@ -285,4 +433,7 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
 
   @doc "Fields that can be ordered by."
   def order_fields, do: Map.keys(@order_atoms)
+
+  @doc "Operators the mirror understands, for documentation and errors."
+  def operators, do: @operators
 end
