@@ -68,8 +68,6 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     "jiraissues" => "a Jira issues list",
     "jirachart" => "a Jira chart",
     "advanced-roadmaps-plan-macro" => "an Advanced Roadmaps plan",
-    "blog-posts" => "a blog posts list",
-    "contributors" => "a contributors list",
     "tasks-report-macro" => "a tasks report",
     "space-attachments" => "a space attachments list",
     "spaces-list" => "a spaces list",

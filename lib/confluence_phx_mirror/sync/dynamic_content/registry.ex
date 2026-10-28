@@ -22,9 +22,11 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
 
   @renderers %{
     "attachments" => Renderers.Attachments,
+    "blog-posts" => Renderers.BlogPosts,
     "children" => Renderers.Children,
     "content-by-label" => Renderers.ContentByLabel,
     "content-report-table" => Renderers.ContentReportTable,
+    "contributors" => Renderers.Contributors,
     "detailssummary" => Renderers.PagePropertiesReport,
     "excerpt-include" => Renderers.ExcerptInclude,
     "include" => Renderers.Include,

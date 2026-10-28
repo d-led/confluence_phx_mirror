@@ -409,6 +409,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     <div class="mirror-macro" data-macro="content-report-table" data-cql="label = architecture order by lastmodified desc limit 10"></div>
     <p>An excerpt include reads the excerpt another page declares, not its body:</p>
     <div class="mirror-macro" data-macro="excerpt-include" data-page="Architecture Overview"></div>
+    <div class="mirror-macro" data-macro="contributors" data-limit="5"></div>
     """)
   end
 
@@ -536,6 +537,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     <p>#{page_link(2001, "Release 2.0")} — published 1 October 2026.</p>
     <h2 id="pages">Pages</h2>
     #{children_macro([2002])}
+    <div class="mirror-macro" data-macro="blog-posts" data-limit="5"></div>
     """)
   end
 

@@ -66,4 +66,40 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.SourceMirrorTest do
 
     assert Source.Mirror.page_by_title(host, "OPS/Runbooks") == :error
   end
+
+  describe "contributors" do
+    test "counts the pages each person wrote in the host's space, most first" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      host = page_fixture(docs, %{title: "Home", confluence_id: 97_120, author_name: "Jane Doe"})
+
+      page_fixture(docs, %{title: "Two", confluence_id: 97_121, author_name: "Jane Doe"})
+      page_fixture(docs, %{title: "Three", confluence_id: 97_122, author_name: "Sam Rivera"})
+
+      assert {:ok, [%{name: "Jane Doe", pages: 2}, %{name: "Sam Rivera", pages: 1}]} =
+               Source.Mirror.contributors(host, nil, limit: 10)
+    end
+
+    test "leaves out a person who only wrote a page these readers cannot open" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      host = page_fixture(docs, %{title: "Home", confluence_id: 97_123, author_name: "Jane Doe"})
+
+      draft =
+        page_fixture(docs, %{title: "Draft", confluence_id: 97_124, author_name: "Priya Nair"})
+
+      {:ok, _} =
+        Mirror.replace_page_restrictions(draft, [
+          %{subject_type: "group", subject_key: "docs-team"}
+        ])
+
+      assert {:ok, [%{name: "Jane Doe"}]} = Source.Mirror.contributors(host, nil, limit: 10)
+    end
+
+    test "takes the number of people it was asked for" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      host = page_fixture(docs, %{title: "Home", confluence_id: 97_125, author_name: "Jane Doe"})
+      page_fixture(docs, %{title: "Other", confluence_id: 97_126, author_name: "Sam Rivera"})
+
+      assert {:ok, [%{name: "Jane Doe"}]} = Source.Mirror.contributors(host, nil, limit: 1)
+    end
+  end
 end

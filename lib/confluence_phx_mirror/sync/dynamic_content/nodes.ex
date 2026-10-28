@@ -54,6 +54,21 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Nodes do
      ]}
   end
 
+  @doc "A list of people: the name, and how much of the space it stands on."
+  def person_list(people),
+    do: {"ul", [{"class", "mirror-dynamic-list"}], Enum.map(people, &person_item/1)}
+
+  defp person_item(%{name: name, pages: pages}) do
+    {"li", [],
+     [
+       {"span", [], [name]},
+       {"span", [{"class", "mirror-dynamic-meta"}], [" · " <> written(pages)]}
+     ]}
+  end
+
+  defp written(1), do: "1 page"
+  defp written(count), do: "#{count} pages"
+
   @doc """
   A page's files: name linked to the mirrored blob, type and size beside it.
 

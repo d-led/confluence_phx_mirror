@@ -76,6 +76,22 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
               {:ok, [Page.t()]} | {:error, String.t()}
 
   @doc """
+  The people whose names are on the pages of a space, most prolific first.
+
+  Each row is `%{name:, account_id:, pages:}`, counted over the pages the host's
+  readers may open — a person who wrote only inside a restricted part of the
+  space is not named. `space` is a key, or nil for the host's own space; `:limit`
+  caps how many people come back.
+
+  A space larger than the port is willing to scan is `{:error, :too_large}`
+  rather than a partial count: "wrote 12 pages" is a statement, and half a
+  statement is not one.
+  """
+  @callback contributors(host :: Page.t(), space :: String.t() | nil, keyword()) ::
+              {:ok, [%{name: String.t(), account_id: String.t() | nil, pages: pos_integer()}]}
+              | {:error, :too_large}
+
+  @doc """
   The files attached to `page`, by file name.
 
   An attachment is exactly as readable as the page holding it, so a macro that

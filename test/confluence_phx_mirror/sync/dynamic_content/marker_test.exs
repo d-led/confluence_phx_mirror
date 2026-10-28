@@ -71,7 +71,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.MarkerTest do
 
   test "a macro the mirror cannot draw is left to the caller to explain" do
     assert Marker.build("jira", []) == :error
-    assert Marker.build("blog-posts", []) == :error
+    assert Marker.build("livesearch", []) == :error
     assert Marker.drawable?("children")
   end
 

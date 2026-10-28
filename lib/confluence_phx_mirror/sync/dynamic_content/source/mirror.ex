@@ -75,6 +75,33 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   @impl true
   def attachments(%Page{} = page), do: Mirror.attachments(page)
 
+  # A contributor list is about names and counts, not about bodies: the scan is
+  # one light row per page, and the audience rule decides which of those rows may
+  # be counted. Past the cap the answer is `:too_large` — a count that quietly
+  # stopped halfway is worse than a sentence saying the space is too big to count.
+  @contributor_scan 5_000
+
+  @impl true
+  def contributors(%Page{} = host, space, opts) do
+    rows = Mirror.space_authors(space_id(space, host), limit: @contributor_scan + 1)
+
+    if length(rows) > @contributor_scan do
+      {:error, :too_large}
+    else
+      {:ok, rows |> visible_to(host) |> ranked(opts)}
+    end
+  end
+
+  defp ranked(rows, opts) do
+    rows
+    |> Enum.group_by(&{&1.name, &1.account_id})
+    |> Enum.map(fn {{name, account_id}, pages} ->
+      %{name: name, account_id: account_id, pages: length(pages)}
+    end)
+    |> Enum.sort_by(&{-&1.pages, &1.name})
+    |> Enum.take(Keyword.get(opts, :limit, 10))
+  end
+
   # A marker may name a space; one that does not lists every space, which is how
   # Confluence's own macro behaves. A key the mirror does not import is the
   # host's space, so the marker still renders something.

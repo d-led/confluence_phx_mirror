@@ -2097,6 +2097,31 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
+  Who is named on each page of a space, one light row per page.
+
+  A contributor list is names and counts, not content: the body stays in the
+  database and one row per page is all the counting needs. The rows carry the
+  space they are in as well as the page id, because the caller that narrows them
+  (`Authorization.readable_alongside/2`) decides both from those two numbers.
+
+  Options: `:limit` — rows to read, so a caller can ask for one more than its cap
+  and learn whether the space was larger than it meant to scan.
+  """
+  def space_authors(space_id, opts \\ []) do
+    from(p in Page,
+      where: p.space_id == ^space_id and is_nil(p.deleted_at) and not is_nil(p.author_name),
+      select: %{
+        id: p.id,
+        space_id: p.space_id,
+        name: p.author_name,
+        account_id: p.author_account_id
+      }
+    )
+    |> limit_rows(Keyword.get(opts, :limit))
+    |> Repo.all()
+  end
+
+  @doc """
   How many children a page has.
 
   A front page with five hundred children is normal in a big space, and a page

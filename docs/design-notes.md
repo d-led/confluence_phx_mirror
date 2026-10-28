@@ -122,21 +122,26 @@ wide as the page listing it. Applying that once in
 
 Resolved today: `content-by-label`, `page-properties-report` (Confluence's key is
 `detailssummary`), `toc`, `children`, `pagetree`, `recently-updated`,
-`attachments`, `content-report-table`, `include`, `excerpt-include` and
-`excerpt`. What is left falls into two buckets, and only the first is a
-mirroring problem:
+`attachments`, `content-report-table`, `include`, `excerpt-include`, `excerpt`,
+`blog-posts` and `contributors`. Three are left, and none of them is a renderer
+away:
 
-| Macro | Data it needs | Where it comes from |
+| Macro | Data it needs | Why it is not drawn |
 | --- | --- | --- |
-| `blog-posts` | page metadata, filtered | `external_updated_at`, `type` — the same query `recently-updated` runs |
-| `contributors` | authors and versions | `author_name` (one author today) |
-| `tasks-report-macro` | inline tasks | inline tasks in `body_export` |
-| `jira`, `jiraissues`, `jirachart` | issue data | needs Jira credentials: out of scope |
+| `tasks-report-macro` | inline tasks across a space | the tasks are inside each page's stored body, so a report is a scan of the space's bodies at every expansion. It wants an index built while pages are rendered — a feature of its own, not a renderer. A page already shows its own tasks inline |
+| `jira`, `jiraissues`, `jirachart` | issue data | needs Jira credentials: out of scope for a mirror |
 | `livesearch`, `gadget`, `widget` | a client, or a third-party app | impossible statically |
 | Forge/Connect app macros | the app | a placeholder is the honest answer, and the body is kept |
 
-The next one to write is `blog-posts`: the same query `recently-updated` runs with
-`type = blogpost`, so the work is a renderer and a test.
+`blog-posts` is one query the port already had: `type = blogpost`, ordered by
+`created`, with the `space`/`label` filters `recently-updated` also asks for —
+`Sync.DynamicContent.Listing` writes those filters once for both.
+
+`contributors` is the one macro whose data the mirror plainly does not have:
+Confluence names *every* editor of a page, and a sync reads one author — the one
+on the latest version. So the macro counts **pages per person** in a space and
+says so, and it counts only pages the host's readers may open. Past five thousand
+pages it says the space is too large to count rather than report half a number.
 
 `include` and `excerpt-include` are the two macros whose answer is a body rather
 than a list, and both come with two guards the mirror has to own, because

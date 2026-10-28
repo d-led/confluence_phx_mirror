@@ -460,6 +460,18 @@ defmodule ConfluencePhxMirror.SyncTest do
 
       # The excerpt this page includes is another page's words, in this one.
       assert Floki.text(document) =~ "read-only cache"
+
+      # One author per page is what a sync reads, so the list counts pages.
+      assert "Contributors" in texts(document, "p.mirror-dynamic-heading")
+    end
+
+    test "the product home lists the space's blog posts" do
+      demo_snapshot!()
+
+      document = Floki.parse_fragment!(Repo.get_by!(Page, confluence_id: 2000).body_export)
+
+      assert "Blog posts" in texts(document, "p.mirror-dynamic-heading")
+      assert "Release 2.0" in texts(document, "ul.mirror-dynamic-list a")
     end
 
     test "lists a page's own files, linked at their mirrored bytes" do
