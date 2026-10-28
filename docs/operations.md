@@ -340,12 +340,16 @@ Two consequences worth knowing:
   mirror has never seen is included — that is how a mirror whose snapshots kept
   dying finds the fifty spaces it never had.
 
-A node that dies mid-job leaves its Oban row `executing`; `Oban.Plugins.Lifeline`
-rescues those after thirty minutes and retries them, so the queue never keeps
-listing work nobody is doing. `Oban.Pruner` keeps a finished job for a day
-(`max_age: {1, :day}`) instead of the queue's default minute, because the job
-row is the only per-space evidence a sweep leaves behind — "space LOAD431: 935
-pages, done".
+A node that dies mid-job leaves its Oban row `executing`. The mirror clears the
+ones it can prove are dead: a job that should be holding the sync lock and is
+not (`Sync.abandon_abandoned_runs/0`, once the row is a minute old). The rest — a
+verify pass, a sweep, a trash pass, which take no lock because they are not a
+sync — wait for `Oban.Plugins.Lifeline`, which rescues a silent job after six
+hours and retries it. Six hours is past the longest listing this mirror has done,
+and a pass resumes rather than restarting, so waiting costs only the turn.
+`Oban.Pruner` keeps a finished job for a day (`max_age: {1, :day}`) instead of
+the queue's default minute, because the job row is the only per-space evidence a
+sweep leaves behind — "space LOAD431: 935 pages, done".
 
 ### A re-read, sized
 

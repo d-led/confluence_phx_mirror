@@ -9,7 +9,7 @@ defmodule ConfluencePhxMirror.SyncGateTest do
 
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
-  alias ConfluencePhxMirror.Sync.{Gate, SnapshotWorker, SyncRun}
+  alias ConfluencePhxMirror.Sync.{Gate, ReconcileWorker, SnapshotWorker, SyncRun}
   alias ConfluencePhxMirror.TestConfig
 
   setup do
@@ -100,7 +100,7 @@ defmodule ConfluencePhxMirror.SyncGateTest do
       # This is the shape production got into: the run row was already closed
       # (a deploy killed it), but the job stayed `executing` — and an executing
       # job keeps its uniqueness, so the next scheduled pull was turned away.
-      job = insert_executing_job(minutes_ago: 10)
+      job = insert_executing_job(SnapshotWorker, minutes_ago: 10)
 
       assert Sync.abandon_abandoned_runs() == 0
 
@@ -111,9 +111,20 @@ defmodule ConfluencePhxMirror.SyncGateTest do
                %{id: nil, mode: "incremental"} |> SnapshotWorker.new() |> Oban.insert()
     end
 
+    test "a job that runs beside the lock is not judged by it" do
+      # A verify pass takes no lock, because it is not a sync: it spends minutes
+      # asking the site how many pages each space holds. Reading the free lock as
+      # "nobody is doing that" cancelled a healthy pass a minute in, every time.
+      job = insert_executing_job(ReconcileWorker, minutes_ago: 10)
+
+      assert Sync.abandon_abandoned_runs() == 0
+
+      assert Repo.get!(Oban.Job, job.id).state == "executing"
+    end
+
     test "a job that has only just started is left alone" do
       # It has not taken the lock yet; silence is not death.
-      job = insert_executing_job(minutes_ago: 0)
+      job = insert_executing_job(SnapshotWorker, minutes_ago: 0)
 
       Sync.abandon_abandoned_runs()
 
@@ -195,8 +206,8 @@ defmodule ConfluencePhxMirror.SyncGateTest do
     |> Repo.insert!()
   end
 
-  defp insert_executing_job(minutes_ago: minutes) do
-    {:ok, job} = %{id: nil, mode: "incremental"} |> SnapshotWorker.new() |> Oban.insert()
+  defp insert_executing_job(worker, minutes_ago: minutes) do
+    {:ok, job} = worker.new(%{}) |> Oban.insert()
 
     attempted_at = DateTime.add(DateTime.utc_now(), -minutes * 60, :second)
 

@@ -394,12 +394,20 @@ defmodule ConfluencePhxMirror.Sync do
   died — a deploy, an OOM kill, a Machine going away. Saying so beats leaving a
   run that looks busy forever, and beats a timeout that would have to guess.
 
-  The job of such a run is cancelled with it, and so is any sync job left
-  `executing` while the lock is free: Oban's own rescuer cannot help promptly —
-  it may not, since a long listing is not a dead node (see `config/config.exs`) —
-  and an `executing` job keeps its uniqueness, which turns the next scheduled
-  pull away for as long as it stays stuck. The advisory lock is the better
-  witness: free means nobody is running a sync, whatever the job rows say.
+  The job of such a run is cancelled with it, and so is any job left `executing`
+  while the lock is free — but only a job that runs under the lock, because that
+  is the whole of the evidence: holding the lock is how a job proves it is
+  alive, and a synchronised worker that is not holding it has nothing behind its
+  row. Oban's own rescuer cannot help promptly — it may not, since a long
+  listing is not a dead node (see `config/config.exs`) — and an `executing` job
+  keeps its uniqueness, which turns the next scheduled pull away for as long as
+  it stays stuck.
+
+  A verify pass, a sweep and a trash pass are on the same queue and take no lock,
+  because they are not a sync. Reading their silence as death cancelled every
+  pass a minute after it started — a pass over a real site takes longer than
+  that. Their liveness is Oban's business (six hours of silence is past any
+  pass) or an administrator's cancellation.
 
   Returns how many runs it closed.
   """
@@ -419,11 +427,24 @@ defmodule ConfluencePhxMirror.Sync do
   # moment before reading silence as death.
   @gate_grace_seconds 60
 
+  # The workers whose `perform/1` is a `Sync.run/2`, and therefore the only jobs
+  # the sweep may judge. Adding a worker to this list says "a free lock means my
+  # process is gone"; leaving one out says "I run beside the lock, and may".
+  @synchronised_workers [
+    ConfluencePhxMirror.Sync.PageWorker,
+    ConfluencePhxMirror.Sync.PeopleWorker,
+    ConfluencePhxMirror.Sync.SnapshotWorker,
+    ConfluencePhxMirror.Sync.SpaceWorker
+  ]
+
   defp release_orphaned_jobs do
     cutoff = DateTime.add(DateTime.utc_now(), -@gate_grace_seconds, :second)
+    # Oban records a worker as its module name without the `Elixir.` prefix.
+    workers = Enum.map(@synchronised_workers, &inspect/1)
 
     from(j in Job,
-      where: j.queue == "sync" and j.state == "executing" and j.attempted_at < ^cutoff
+      where: j.queue == "sync" and j.state == "executing" and j.attempted_at < ^cutoff,
+      where: j.worker in ^workers
     )
     |> Repo.all()
     |> Enum.each(fn job ->
