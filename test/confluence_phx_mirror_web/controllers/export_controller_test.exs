@@ -3,6 +3,8 @@ defmodule ConfluencePhxMirrorWeb.ExportControllerTest do
 
   import ConfluencePhxMirror.Fixtures
 
+  alias ConfluencePhxMirror.Demo
+
   setup do
     demo_snapshot!()
     :ok
@@ -15,6 +17,23 @@ defmodule ConfluencePhxMirrorWeb.ExportControllerTest do
     assert conn.resp_body =~ "## Overview"
     assert header(conn, "content-type") =~ "text/markdown"
     assert header(conn, "content-disposition") =~ "architecture_overview.md"
+  end
+
+  test "downloads one page with the files it links to", %{conn: conn} do
+    conn = get(conn, ~p"/spaces/ENG/pages/1002/export.zip")
+
+    assert conn.status == 200
+    assert header(conn, "content-type") =~ "application/zip"
+    assert header(conn, "content-disposition") =~ "architecture_overview_markdown_"
+  end
+
+  test "a page archive follows the page's own access rules", %{conn: conn} do
+    body =
+      conn
+      |> get(~p"/spaces/ENG/pages/#{Demo.restricted_page()}/export.zip")
+      |> html_response(404)
+
+    assert body =~ "That page is not mirrored"
   end
 
   test "offers a space as a ZIP download", %{conn: conn} do

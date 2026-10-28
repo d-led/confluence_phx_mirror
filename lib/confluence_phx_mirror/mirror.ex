@@ -2511,6 +2511,25 @@ defmodule ConfluencePhxMirror.Mirror do
     end
   end
 
+  @doc """
+  Attachments by their Confluence ids, with the page and space they hang off.
+
+  An export reads a page's body once and then collects the files the body
+  names, so this answers for the whole body in one statement instead of one per
+  file.
+  """
+  @spec attachments_by_confluence_ids([String.t()]) :: [Attachment.t()]
+  def attachments_by_confluence_ids([]), do: []
+
+  def attachments_by_confluence_ids(ids) do
+    from(a in Attachment,
+      where: a.confluence_id in ^ids,
+      order_by: [asc: a.filename, asc: a.confluence_id],
+      preload: [page: :space]
+    )
+    |> Repo.all()
+  end
+
   def comments(%Page{id: id}) do
     from(c in Comment,
       where: c.page_id == ^id and is_nil(c.deleted_at),

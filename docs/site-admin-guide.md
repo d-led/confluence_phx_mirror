@@ -454,7 +454,7 @@ Confluence-compatible REST surface — see [api.md](api.md#search-cql-on-postgre
 
 ## Exporting the mirror
 
-Two ZIPs and a page, one shape: files that work from disk — no server, no
+Three ZIPs and a page, one shape: files that work from disk — no server, no
 network, no build step.
 
 | Where | What | Who |
@@ -462,6 +462,8 @@ network, no build step.
 | `/spaces/:key/site.zip` (space overview → Export) | that space as a static site | anyone who may read the space |
 | `/admin/export/site.zip` (admin dashboard → Static site) | every space as one static site | administrators only |
 | `/spaces/:key/export.zip` | that space as Markdown + attachments | anyone who may read the space |
+| `/spaces/:key/pages/:id/export.md` (page rail → Export) | one page as Markdown | anyone who may read the page |
+| `/spaces/:key/pages/:id/export.zip` (page rail → Export) | one page as Markdown + the files it links to | anyone who may read the page |
 
 **A download says what it is and when it was made**, in lowercase words joined
 by underscores, with the moment in UTC:
@@ -471,11 +473,27 @@ dled_site_20261026T101530Z.zip                  the whole site, as a static site
 engineering_handbook_site_20261026T101530Z.zip   one space, as a static site
 engineering_handbook_markdown_20261026T101530Z.zip  one space, as Markdown
 architecture_overview.md                        one page
+architecture_overview_markdown_20261026T101530Z.zip  one page, with its files
 ```
 
 So two copies of the same space sit side by side in a downloads folder instead
 of the second replacing the first, and nothing in a name needs quoting on a
 command line or in a URL.
+
+**The page ZIP is the one to take if images matter.** A `.md` file names its
+pictures but carries none of them, so a viewer paints a broken frame. The ZIP
+unpacks into
+
+```text
+architecture_overview.md
+attachments/architecture.csv
+attachments/diagram.svg
+```
+
+with the Markdown pointing at `attachments/…`, so the page reads as it does
+here. It carries the files the body links to and nothing else; a link to
+another page's file stays a Confluence address, because that file is not this
+page's to hand out.
 
 The static site contains:
 

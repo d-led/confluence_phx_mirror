@@ -1,7 +1,7 @@
 defmodule ConfluencePhxMirrorWeb.ExportController do
   @moduledoc """
-  Downloads: one page as Markdown, a space as a streaming ZIP of Markdown, and
-  a space as a standalone static site.
+  Downloads: one page as Markdown, one page with its files as a ZIP, a space as
+  a streaming ZIP of Markdown, and a space as a standalone static site.
 
   Exports only read the mirror; nothing here writes content anywhere except the
   reader's browser.
@@ -42,9 +42,7 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
   end
 
   def page(conn, %{"space_key" => space_key, "id" => id}) do
-    with {id, ""} <- Integer.parse(id),
-         {:ok, page} <- Mirror.find_page_by_path(space_key, id),
-         true <- Authorization.can_read_page?(scope(conn), page) do
+    with {:ok, page} <- readable_page(conn, space_key, id) do
       conn
       |> put_resp_content_type("text/markdown; charset=utf-8")
       |> put_resp_header(
@@ -52,8 +50,21 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
         ~s(attachment; filename="#{Export.page_filename(page)}")
       )
       |> send_resp(200, Export.page_markdown(page))
-    else
-      _ -> NotFound.call(conn, "That page is not mirrored.")
+    end
+  end
+
+  @doc """
+  One page as a ZIP: the Markdown and, beside it, an `attachments/` folder with
+  the files the page links to — what a Markdown viewer needs to render the page
+  off a disk.
+  """
+  def page_archive(conn, %{"space_key" => space_key, "id" => id}) do
+    with {:ok, page} <- readable_page(conn, space_key, id) do
+      ArchiveDownload.send(
+        conn,
+        Export.page_archive(page),
+        Export.page_archive_name(page)
+      )
     end
   end
 
@@ -65,6 +76,16 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
       {:ok, space}
     else
       _ -> NotFound.call(conn, "Space #{key} is not mirrored.")
+    end
+  end
+
+  defp readable_page(conn, space_key, id) do
+    with {id, ""} <- Integer.parse(id),
+         {:ok, page} <- Mirror.find_page_by_path(space_key, id),
+         true <- Authorization.can_read_page?(scope(conn), page) do
+      {:ok, page}
+    else
+      _ -> NotFound.call(conn, "That page is not mirrored.")
     end
   end
 

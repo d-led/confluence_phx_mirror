@@ -115,15 +115,29 @@
     </.rail_section>
 
     <.rail_section title="Export" icon="hero-arrow-down-tray">
-      <a
-        href={~p"/spaces/#{@space.key}/pages/#{@page.confluence_id}/export.md"}
-        class="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-      >
-        Download this page as Markdown
-      </a>
+      <ul class="space-y-1.5">
+        <li>
+          <a
+            href={~p"/spaces/#{@space.key}/pages/#{@page.confluence_id}/export.md"}
+            class="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            Download this page as Markdown
+          </a>
+        </li>
+        <li>
+          <a
+            href={~p"/spaces/#{@space.key}/pages/#{@page.confluence_id}/export.zip"}
+            class="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            Download with its files (.zip)
+          </a>
+        </li>
+      </ul>
       <p class="mt-1 text-[11px] text-base-content/70">
-        Metadata is included as front matter; the whole space is available as a ZIP from the
-        space overview.
+        Metadata is included as front matter. The ZIP holds the Markdown and an
+        <code>attachments/</code>
+        folder, so images and file links open without this mirror. The whole space is available
+        as a ZIP from the space overview.
       </p>
     </.rail_section>
   </:rail>

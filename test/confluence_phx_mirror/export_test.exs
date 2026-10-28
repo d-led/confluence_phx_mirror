@@ -8,6 +8,7 @@ defmodule ConfluencePhxMirror.ExportTest do
   alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Mirror.URLs
 
   setup do
     demo_snapshot!()
@@ -27,6 +28,62 @@ defmodule ConfluencePhxMirror.ExportTest do
 
     test "names the file after the title" do
       assert Export.page_filename(Mirror.get_page!(1002)) == "architecture_overview.md"
+    end
+  end
+
+  describe "a page archive" do
+    setup do
+      %{page: Mirror.get_page!(1002)}
+    end
+
+    test "holds the Markdown and the files the page shows", %{page: page} do
+      assert page |> archive() |> Map.keys() |> Enum.sort() == [
+               "architecture_overview.md",
+               "attachments/architecture.csv",
+               "attachments/diagram.svg"
+             ]
+    end
+
+    test "points the Markdown into the folder beside it", %{page: page} do
+      assert %{"architecture_overview.md" => markdown} = archive(page)
+
+      assert markdown =~ "![Sync architecture diagram](attachments/diagram.svg)"
+      assert markdown =~ "[architecture.csv](attachments/architecture.csv)"
+    end
+
+    test "reads a file's bytes only while the archive is written", %{page: page} do
+      assert {_path, data} =
+               Enum.find(Export.page_archive(page), &(elem(&1, 0) == "attachments/diagram.svg"))
+
+      assert is_function(data, 0)
+      assert data.() =~ "<svg"
+    end
+
+    test "sends a reader back to Confluence for another page's file" do
+      assert %{"attachments_and_images.md" => markdown} = archive(Mirror.get_page!(1005))
+
+      assert markdown =~ "[diagram.svg (from Architecture Overview)](https://"
+      assert markdown =~ "/download/attachments/1002/diagram.svg"
+    end
+
+    test "keeps two files whose names only differ where a file name cannot" do
+      space = space_fixture()
+      id = System.unique_integer([:positive])
+
+      body =
+        Enum.map_join([{7001, "q3 report.pdf"}, {7002, "q3-report.pdf"}], fn {file, name} ->
+          ~s(<a href="#{URLs.attachment_path(space.key, id, file, name)}">#{name}</a>)
+        end)
+
+      page = page_fixture(space, %{confluence_id: id, body_export: "<p>#{body}</p>"})
+      attachment_fixture(page, %{confluence_id: "7001", filename: "q3 report.pdf"})
+      attachment_fixture(page, %{confluence_id: "7002", filename: "q3-report.pdf"})
+
+      assert page |> Export.page_archive() |> entry_names() == [
+               "page_#{id}.md",
+               "attachments/q3-report-7001.pdf",
+               "attachments/q3-report-7002.pdf"
+             ]
     end
   end
 
@@ -121,6 +178,13 @@ defmodule ConfluencePhxMirror.ExportTest do
   end
 
   defp entry_names(entries), do: Enum.map(entries, &elem(&1, 0))
+
+  defp archive(page) do
+    page
+    |> Export.page_archive()
+    |> Export.Zip.chunks()
+    |> archive_contents()
+  end
 
   defp archive_contents(chunks) do
     path = Path.join(System.tmp_dir!(), "mirror-export-#{System.unique_integer([:positive])}.zip")

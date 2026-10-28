@@ -2,10 +2,12 @@ defmodule ConfluencePhxMirror.Export do
   @moduledoc """
   Exports of the mirror: Markdown, and the mirror as a static site.
 
-  A page exports as one `.md` file; a space exports as a ZIP containing a
-  folder tree that mirrors the page hierarchy, one Markdown file per page, and
-  each page's attachments next to it. Links between pages and to attachments
-  are rewritten to relative paths, so the archive works offline.
+  A page exports as one `.md` file, or — when the files it links to have to
+  travel with it — as a small ZIP holding the Markdown and an `attachments/`
+  folder beside it. A space exports as a ZIP containing a folder tree that
+  mirrors the page hierarchy, one Markdown file per page, and each page's
+  attachments next to it. Links between pages and to attachments are rewritten
+  to relative paths, so the archive works offline.
 
   `ConfluencePhxMirror.Export.Site` is the same idea for readers who want the
   pages themselves: HTML, the site's theme, an offline search index and the
@@ -22,7 +24,7 @@ defmodule ConfluencePhxMirror.Export do
   alias ConfluencePhxMirror.Export.Markdown
   alias ConfluencePhxMirror.Export.Site
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Mirror.{Page, Space, URLs}
+  alias ConfluencePhxMirror.Mirror.{Attachment, Page, Space, URLs}
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sites
 
@@ -43,7 +45,49 @@ defmodule ConfluencePhxMirror.Export do
   end
 
   @doc "Filename offered to the browser for one page."
-  def page_filename(%Page{} = page), do: slug(page.title, "page_#{page.confluence_id}") <> ".md"
+  def page_filename(%Page{} = page), do: page_name(page) <> ".md"
+
+  @doc """
+  Filename offered for one page's Markdown archive.
+
+      architecture_overview_markdown_20261028T101530Z.zip
+  """
+  @spec page_archive_name(Page.t(), DateTime.t()) :: String.t()
+  def page_archive_name(%Page{} = page, at \\ DateTime.utc_now()),
+    do: download_name([page_name(page), "markdown"], at) <> ".zip"
+
+  # A page's name in a file name: the one `.md` file and the archive around it
+  # are the same page, so they are spelled the same way.
+  defp page_name(%Page{} = page), do: slug(page.title, "page_#{page.confluence_id}")
+
+  @doc """
+  One page as a ZIP: the Markdown, and beside it an `attachments/` folder with
+  every file the page's body links to.
+
+  One `.md` file names its images and its file links but carries none of them,
+  so a Markdown viewer paints a broken picture. This archive is the same
+  Markdown with those files next to it, which is all a viewer needs to show the
+  page as it reads — the image, the PDF, the CSV — with no mirror and no
+  network.
+
+  The files are the ones the body points at. The sync rewrites a file the
+  mirror holds to the mirror's own download path and leaves every other link
+  alone, so a body that points at another page's file sends the reader back to
+  Confluence instead: that file is not this page's to hand out.
+  """
+  @spec page_archive(Page.t()) :: Enumerable.t()
+  def page_archive(%Page{} = page) do
+    files = page |> referenced_files() |> named_files()
+
+    Stream.concat(
+      [{page_filename(page), fn -> page_markdown(page, attachments_ctx(files)) end}],
+      Stream.map(files, fn {file, path} -> {path, fn -> read_blob(file.blob_key) end} end)
+    )
+  end
+
+  defp attachments_ctx(files) do
+    %{attachments: Map.new(files, fn {file, path} -> {attachment_url(file), path} end)}
+  end
 
   @doc "Filename offered to the browser for a space archive."
   def archive_name(%Space{} = space, at \\ DateTime.utc_now()),
@@ -210,20 +254,68 @@ defmodule ConfluencePhxMirror.Export do
     page
     |> Mirror.attachments()
     |> Enum.map(fn attachment ->
-      name = Key.sanitise_filename(attachment.filename)
-      target = folder <> "/attachments/" <> name
-      blob_key = attachment.blob_key
-
-      {target,
-       fn ->
-         with key when is_binary(key) <- blob_key,
-              {:ok, data} <- Store.read(key) do
-           data
-         else
-           _ -> ""
-         end
-       end}
+      target = folder <> "/attachments/" <> local_name(attachment)
+      {target, fn -> read_blob(attachment.blob_key) end}
     end)
+  end
+
+  # ---------------------------------------------------------------------------
+  # One page's files
+  # ---------------------------------------------------------------------------
+
+  # The sync rewrote every file the body mentions — an image or a link to one —
+  # to the mirror's own download path, so the body is the complete list of
+  # files the page shows.
+  @attachment_path ~r{/attachments/[^/?#"'\s]+/\d+/(\d+)/[^/?#"'\s]+}
+
+  defp referenced_files(%Page{} = page) do
+    page.body_export
+    |> to_string()
+    |> then(&Regex.scan(@attachment_path, &1))
+    |> Enum.map(fn [_, confluence_id] -> confluence_id end)
+    |> Enum.uniq()
+    |> Mirror.attachments_by_confluence_ids()
+  end
+
+  # The path the body links to, built the way the sync built it, so the
+  # Markdown converter finds the file under the href it reads.
+  defp attachment_url(%Attachment{} = file) do
+    URLs.attachment_path(
+      file.page.space.key,
+      file.page.confluence_id,
+      file.confluence_id,
+      file.filename
+    )
+  end
+
+  # One folder holds every file, and two of them can want the same name: a
+  # comment's screenshot and the page's own. The attachment's id keeps both, and
+  # only shows up where a name really repeats.
+  defp named_files(files) do
+    names = Enum.frequencies_by(files, &local_name/1)
+
+    Enum.map(files, fn file ->
+      name = local_name(file)
+      name = if names[name] > 1, do: disambiguated_name(file, name), else: name
+      {file, "attachments/" <> name}
+    end)
+  end
+
+  defp local_name(%Attachment{} = file), do: Key.sanitise_filename(file.filename)
+
+  defp disambiguated_name(%Attachment{} = file, name) do
+    Path.rootname(name) <> "-" <> to_string(file.confluence_id) <> Path.extname(name)
+  end
+
+  # An attachment whose bytes never landed keeps its entry, empty: the archive
+  # is a copy of the mirror, and a missing file is the mirror saying so.
+  defp read_blob(nil), do: ""
+
+  defp read_blob(key) do
+    case Store.read(key) do
+      {:ok, data} -> data
+      {:error, _missing} -> ""
+    end
   end
 
   defp index_markdown(space, pages, plan) do

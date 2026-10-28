@@ -123,6 +123,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
     # An administrator re-reads one page from Confluence; see PageController.resync/2.
     post "/spaces/:space_key/pages/:id/resync", PageController, :resync
     get "/spaces/:space_key/pages/:id/export.md", ExportController, :page
+    # The same page as a ZIP: the Markdown and the files it links to, side by
+    # side, so its images open off a disk. See ExportController.page_archive/2.
+    get "/spaces/:space_key/pages/:id/export.zip", ExportController, :page_archive
     get "/spaces/:space_key/pages/:id/:slug", PageController, :show
     get "/spaces/:key/export.zip", ExportController, :space
     # The space as a static site: HTML, Markdown and attachments, cross-linked
