@@ -126,6 +126,14 @@ defmodule ConfluencePhxMirror.Settings do
   @spec sync_concurrency() :: pos_integer()
   def sync_concurrency, do: effective("sync.concurrency")
 
+  @doc """
+  How long a deleted space or page waits in the trash before its rows and its
+  attachment files are purged, in days. `0` keeps the trash until somebody
+  empties it by hand.
+  """
+  @spec trash_retention_days() :: non_neg_integer()
+  def trash_retention_days, do: effective("trash.retention_days")
+
   @doc "Changed pages one run fetches details for."
   @spec sync_detail_backlog() :: pos_integer()
   def sync_detail_backlog, do: effective("sync.detail_backlog")
@@ -522,6 +530,10 @@ defmodule ConfluencePhxMirror.Settings do
 
   defp resolve({:accounts, key, floor}) do
     :confluence_phx_mirror |> Application.get_env(:accounts, []) |> Keyword.get(key, floor)
+  end
+
+  defp resolve({:trash, key, floor}) do
+    :confluence_phx_mirror |> Application.get_env(:trash, []) |> Keyword.get(key, floor)
   end
 
   defp resolve({:admin_stats_refresh_seconds, floor}) do

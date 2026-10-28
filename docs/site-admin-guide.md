@@ -160,6 +160,12 @@ upgrade works through a long-standing site without one enormous run. The run's
 counters report how many it caught up (`details_caught_up`); those pages count
 as unchanged, because their own content did not change.
 
+Neither is a feature of one kind of run. A page's comments and files are read
+whenever the page itself is read, in every mode: the first snapshot, the nightly
+incremental, a webhook-driven page sync and a single page fetched from
+`/admin` alike. The modes differ in *which* pages they read, never in what a read
+brings back.
+
 The mirror is **read-only**. Readers cannot edit anything; content only changes
 when a sync pulls a newer snapshot.
 
@@ -256,8 +262,9 @@ page:
 * `/admin/trash` (**live**) – content a sync no longer finds in Confluence:
   trashed spaces with their page counts, and trashed pages and blog posts, each
   with a purge button. "Empty the trash" asks for a second click. Purging is the
-  only thing that deletes content, and it takes the comments and attachment
-  files with it.
+  only thing that deletes content by hand, and it takes the comments and
+  attachment files with it; a nightly job does the same for what has sat there
+  longer than [the holding period](#the-trash).
 * `/admin/spaces` (**live**) – which spaces this mirror imports, and which ones
   it could. The keys the environment fixes (`CM_SPACES`) are shown as such; the
   ones added here are removable, and a key the environment names cannot be
@@ -342,6 +349,36 @@ Two tables back the logs and are worth knowing when you query them directly:
 A run that ends `partial` is not a failure: something was skipped and the run's
 errors say what. A run that ends `failed` means the source itself was
 unreachable or rejected the credentials.
+
+## The trash
+
+A sync never deletes. A page the site stopped listing is **trashed**: it stops
+being served, keeps its comments, its files and its audit trail, and appears on
+`/admin/trash` where an administrator can purge it. A later run that finds the
+page listed again brings it back as it was. That reversibility is the point — a
+wrong site, a revoked permission or a source that listed nothing for a minute is
+a mistake you can walk back from.
+
+Trashing alone would also mean the mirror grows by everything ever deleted: the
+rows *and the attachment bytes*. So a deleted space or page waits a while and is
+then purged for good, files included:
+
+* **`trash.retention_days`** (variable `CM_TRASH_RETENTION_DAYS`, default
+  `30`) is how long the holding period is. It is on `/admin/settings` under
+  *Operations*, next to the sign-in link lifetime and the overview's refresh
+  cadence, and it is the same number the trash screen uses.
+* A job runs once a night at 03:30 UTC and removes exactly what is older than
+the period — never anything younger, never anything still published.
+* `0` switches the nightly job off. The trash then keeps everything until
+somebody empties it on `/admin/trash`, which is what a mirror of an archive you
+want complete wants.
+
+Purging deletes the rows first and the files after they commit, so a failed file
+delete leaves an invisible orphan rather than a page pointing at bytes that are
+gone; `mix mirror.blobs.sweep` ([operations.md](operations.md)) is the net for
+those. A trashed space is purged as a whole, which is why its page count is on
+the screen: the one decision removes the space, its pages, their comments and
+every file under them.
 
 ## The demo snapshot
 

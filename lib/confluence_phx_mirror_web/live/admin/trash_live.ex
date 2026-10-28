@@ -21,10 +21,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
   # list is a page of them with a filter over all of them.
   @per_page 25
 
-  # The holding period the screen starts with. "Delete it later" needs a later,
-  # and thirty days is long enough to notice a mistake and say so.
-  @retention_days 30
-
   @impl true
   def mount(_params, _session, socket) do
     {:ok, socket |> assign(page_title: "Trash", q: "", page: 1) |> load()}
@@ -311,8 +307,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLive do
       )
 
     pages_total = Trash.count_pages(query: q)
-    # Whatever holding period the operator typed survives a reload of the lists.
-    days = Map.get(socket.assigns, :days, @retention_days)
+    # Whatever holding period the operator typed survives a reload of the lists;
+    # the first answer is the deployment's (`trash.retention_days`), which is
+    # also what the nightly purge uses.
+    days = Map.get(socket.assigns, :days, Trash.retention_days())
 
     assign(socket,
       spaces: spaces,

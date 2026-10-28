@@ -87,7 +87,7 @@ defmodule ConfluencePhxMirror.TrashRetentionTest do
       page: page
     } do
       other = space_fixture(%{key: "OPS", name: "Operations"})
-      elsewhere = page_fixture(other, %{confluence_id: 2002, title: "Gone too"})
+      page_fixture(other, %{confluence_id: 2002, title: "Gone too"})
       kept = page_fixture(other, %{confluence_id: 2003, title: "Still there"})
 
       # What a check does: name the ids the site has, and mark the rest.

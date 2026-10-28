@@ -472,17 +472,32 @@ holding period you type (30 days to begin with) and removes exactly those — ro
 comments and attachment blobs, one audit entry per row. Nothing live is ever
 included, however old its absence.
 
+The same policy also runs on its own: a cron entry runs
+`ConfluencePhxMirror.Trash.PurgeWorker` once a night at 03:30 UTC with no
+arguments, and it uses `trash.retention_days` (`CM_TRASH_RETENTION_DAYS`,
+default `30`). That is the number `/admin/settings` shows and the one the screen
+uses, so "what a policy would remove" means the same thing wherever you ask. Set
+it to `0` and the nightly job does nothing at all: the trash then waits for an
+administrator.
+
 Both bulk actions run as Oban jobs on the `:sync` queue, not inside the click:
-`ConfluencePhxMirror.Sync.TrashAbsentWorker` takes a space's absent pages and
-`ConfluencePhxMirror.Trash.PurgeWorker` takes the expired rows, so a mirror with
-thousands of either never builds the work into a request. `/admin/jobs` shows
-each with its scope, and the audit trail names whose decision it was. The same
-two steps are available in code:
+`ConfluencePhxMirror.Sync.TrashAbsentWorker` moves one space's missing pages to
+the trash, `ConfluencePhxMirror.Trash.TrashAllAbsentWorker` everything the check
+marked across spaces, and `ConfluencePhxMirror.Trash.PurgeWorker` takes the
+expired rows — so a mirror with thousands of either never builds the work into a
+request. `/admin/jobs` shows each with its scope, and the audit trail names whose
+decision it was. The same two steps are available in code:
 
 ```elixir
 ConfluencePhxMirror.Trash.due(30)              # what a policy would remove
 ConfluencePhxMirror.Trash.purge_due(actor, 30) # remove it
 ```
+
+Files are deleted after their rows commit, so a crash between the two leaves an
+invisible blob rather than a page pointing at bytes that are gone.
+`mix mirror.blobs.sweep` finds those orphans (`--force` deletes, `--force
+--if-older-than 3600` spares files a run in flight may still be writing); it is
+the net for crashed deletes, not a retention policy of its own.
 
 `pages.deleted_reason` records why a row is there: `"vanished"` when the site
 stopped listing it, `"manual"` when somebody decided.

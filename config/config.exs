@@ -54,7 +54,19 @@ config :confluence_phx_mirror, Oban,
   queues: [sync: 4, notifications: 10],
   pruner: [max_age: {1, :day}],
   lifeline: [rescue_after: :timer.hours(6)],
-  cron: [crontab: [{"0 * * * *", ConfluencePhxMirror.Notifications.DigestWorker}]]
+  # `DigestWorker` — the watchers' e-mail, once an hour.
+  #
+  # `PurgeWorker` — the trash's holding period, once a night. A page the site
+  # stopped listing keeps its rows *and its attachment files* until it is purged,
+  # so without this a mirror that mirrors a living site grows by everything ever
+  # deleted. The job reads `trash.retention_days` (default 30, `0` switches it
+  # off) and does nothing when there is nothing due.
+  cron: [
+    crontab: [
+      {"0 * * * *", ConfluencePhxMirror.Notifications.DigestWorker},
+      {"30 3 * * *", ConfluencePhxMirror.Trash.PurgeWorker}
+    ]
+  ]
 
 # Where the mirrored content comes from. `DemoSource` ships a rich offline
 # snapshot so the mirror can be demoed without Confluence credentials; use
@@ -95,6 +107,10 @@ config :confluence_phx_mirror,
   search: [page_size: 30, default_limit: 25, max_limit: 100],
   # Passwordless sign-in links.
   accounts: [login_token_minutes: 15],
+  # How long a deleted space or page waits in the trash, rows and attachment
+  # files alike, before a nightly purge removes both. `0` keeps the trash until
+  # somebody empties it by hand. Editable at runtime (`trash.retention_days`).
+  trash: [retention_days: 30],
   # How far back an incremental pull starts when the source has no cursor.
   sync: [lookback_seconds: 3600, personal_spaces: false, detail_backlog: 200],
   # How often an open admin overview re-reads its totals, the run table and the

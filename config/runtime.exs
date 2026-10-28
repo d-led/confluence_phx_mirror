@@ -266,6 +266,14 @@ if export_personal = System.get_env("CM_EXPORT_PERSONAL_SPACES") do
   config :confluence_phx_mirror, export_personal_spaces: export_personal in ~w(1 true yes)
 end
 
+# How long a deleted space or page waits in the trash before the nightly purge
+# removes its rows and its attachment files. `0` keeps the trash: nothing is
+# purged until somebody empties it by hand.
+if retention = System.get_env("CM_TRASH_RETENTION_DAYS") do
+  config :confluence_phx_mirror,
+    trash: [retention_days: String.to_integer(retention)]
+end
+
 if header = System.get_env("CM_PROXY_AUTH_HEADER") do
   config :confluence_phx_mirror, :proxy_auth_header, String.downcase(header)
 end

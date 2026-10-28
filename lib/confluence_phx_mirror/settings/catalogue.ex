@@ -255,6 +255,16 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       env: "CM_EXPORT_PERSONAL_SPACES",
       ui: :settings
     },
+    "trash.retention_days" => %{
+      type: :non_negative,
+      default: {:trash, :retention_days, 30},
+      group: :operations,
+      label: "Days a deleted space or page is kept",
+      help:
+        "A page the site stopped listing, or one an administrator deleted, waits this long in the trash \u2014 its rows and its attachment files \u2014 before a nightly purge removes both. `0` keeps the trash until somebody empties it by hand.",
+      env: "CM_TRASH_RETENTION_DAYS",
+      ui: :settings
+    },
     "dashboard.refresh_seconds" => %{
       type: :pos_integer,
       default: {:admin_stats_refresh_seconds, 30},
@@ -289,7 +299,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     },
     operations: %{
       title: "Operations",
-      help: "Sign-in links, exports and the overview's own cadence."
+      help: "Sign-in links, the trash, exports and the overview's own cadence."
     },
     webhooks: %{
       title: "Webhooks",
@@ -326,6 +336,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "webhook.rate_limit",
     "accounts.login_token_minutes",
     "export.personal_spaces",
+    "trash.retention_days",
     "dashboard.refresh_seconds"
   ]
 

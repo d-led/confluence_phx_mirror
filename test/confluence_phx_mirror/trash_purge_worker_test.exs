@@ -13,7 +13,8 @@ defmodule ConfluencePhxMirror.Trash.PurgeWorkerTest do
 
   import ConfluencePhxMirror.Fixtures
 
-  alias ConfluencePhxMirror.{Mirror, Trash}
+  alias ConfluencePhxMirror.Blobs.Store
+  alias ConfluencePhxMirror.{Mirror, TestConfig, Trash}
   alias ConfluencePhxMirror.Trash.PurgeWorker
 
   setup do
@@ -26,6 +27,32 @@ defmodule ConfluencePhxMirror.Trash.PurgeWorkerTest do
     age!(old, 40)
 
     %{space: space, old: old}
+  end
+
+  test "unscheduled args use the configured holding period", %{old: old} do
+    TestConfig.put(:trash, retention_days: 30)
+
+    assert :ok = perform_job(PurgeWorker, %{})
+
+    assert Repo.get(Mirror.Page, old.id) == nil
+    assert Trash.pages() |> Enum.map(fn {page, _} -> page.title end) == ["Just gone"]
+  end
+
+  test "a holding period of zero stands the job down", %{old: old} do
+    TestConfig.put(:trash, retention_days: 0)
+
+    assert :ok = perform_job(PurgeWorker, %{})
+
+    assert Repo.get(Mirror.Page, old.id)
+    assert length(Trash.pages()) == 2
+  end
+
+  test "the args win over the setting, because the screen said so", %{old: old} do
+    TestConfig.put(:trash, retention_days: 0)
+
+    assert :ok = perform_job(PurgeWorker, %{"older_than_days" => 30})
+
+    assert Repo.get(Mirror.Page, old.id) == nil
   end
 
   test "purges what the holding period has expired", %{old: old} do
@@ -47,6 +74,16 @@ defmodule ConfluencePhxMirror.Trash.PurgeWorkerTest do
     assert :ok = perform_job(PurgeWorker, %{"older_than_days" => 0})
 
     assert {:ok, _} = Mirror.find_page(page.confluence_id)
+  end
+
+  test "a purged page takes its attachment files with it", %{old: old} do
+    key = "attachments/#{old.confluence_id}/a-file.txt"
+    {:ok, ^key} = Store.put(key, "the bytes a reader downloaded")
+    attachment_fixture(old, %{confluence_id: "1", blob_key: key})
+
+    assert :ok = perform_job(PurgeWorker, %{"older_than_days" => 30})
+
+    refute Store.exists?(key), "leaving the bytes behind is what made the mirror grow"
   end
 
   defp age!(%_{} = row, days) do

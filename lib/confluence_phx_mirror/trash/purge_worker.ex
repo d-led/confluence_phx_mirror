@@ -25,13 +25,25 @@ defmodule ConfluencePhxMirror.Trash.PurgeWorker do
   alias ConfluencePhxMirror.Trash
 
   @impl true
-  def perform(%Oban.Job{args: %{"older_than_days" => days} = args}) when is_integer(days) do
-    %{spaces: spaces, pages: pages} = Trash.purge_due(actor(args), days)
+  def perform(%Oban.Job{args: args}) do
+    case retention_days(args) do
+      0 ->
+        :ok
 
-    Logger.info("purged #{spaces} spaces and #{pages} pages trashed #{days} days ago or more")
+      days ->
+        %{spaces: spaces, pages: pages} = Trash.purge_due(actor(args), days)
 
-    :ok
+        Logger.info("purged #{spaces} spaces and #{pages} pages trashed #{days} days ago or more")
+
+        :ok
+    end
   end
+
+  # The screen hands the number it showed before the click; the nightly job has
+  # none of its own and takes the deployment's (`trash.retention_days`). Zero
+  # means "keep the trash": nothing to do, and no reason to walk it.
+  defp retention_days(%{"older_than_days" => days}) when is_integer(days), do: days
+  defp retention_days(_args), do: Trash.retention_days()
 
   defp actor(%{"asked_by" => email}) when is_binary(email) do
     {:system, "the retention policy, asked by #{email}"}

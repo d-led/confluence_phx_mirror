@@ -77,6 +77,7 @@ and rolling back never touch stored decisions.
 | `accounts.login_token_minutes` | `CM_LOGIN_TOKEN_MINUTES` | `15` |
 | `export.personal_spaces` | `CM_EXPORT_PERSONAL_SPACES` | `false` |
 | `dashboard.refresh_seconds` | `CM_ADMIN_STATS_REFRESH_SECONDS` | `30` |
+| `trash.retention_days` | `CM_TRASH_RETENTION_DAYS` | `30` |
 
 The webhook switches are edited on `/admin/webhooks`, where the cost of each is
 spelled out; everything else is on `/admin/settings`.
@@ -242,6 +243,13 @@ delivery does, are in the [site admin guide](site-admin-guide.md#webhooks).
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `MIRROR_BLOB_ROOT` | `var/mirror` | blob store root for attachment bytes |
+| `CM_TRASH_RETENTION_DAYS` | `30` | days a deleted space or page waits in the trash before the nightly purge removes its rows *and its attachment files*. `0` switches the purge off, leaving the trash to whoever empties it on `/admin/trash`. Editable at runtime as `trash.retention_days` |
+
+A page the site stopped listing keeps its comments and its files until it is
+purged, so without a holding period a mirror of a living site grows by
+everything ever deleted. The nightly job removes what is older than the period
+and nothing younger; trashing a page never removes anything by itself. See
+[site-admin-guide.md](site-admin-guide.md#the-trash).
 
 ## Reader rate limits
 

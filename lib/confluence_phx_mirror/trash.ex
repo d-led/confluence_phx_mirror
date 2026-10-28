@@ -9,13 +9,16 @@ defmodule ConfluencePhxMirror.Trash do
       mistake — wrong site, revoked permission, a source that listed nothing —
       stays reversible and the audit trail stays readable;
     * an **administrator** empties the trash from `/admin/trash`, which removes
-      the rows and the attachment blobs for good.
+      the rows and the attachment blobs for good;
+    * or the **nightly purge** does the same to whatever has been sitting there
+      longer than the holding period (`trash.retention_days`), so a mirror of a
+      living site does not grow by every page ever deleted.
 
   Purges refuse anything that is still live, so the trash screen cannot become a
   "delete a space" button by accident.
   """
 
-  alias ConfluencePhxMirror.{Audit, Blobs.Store, Mirror}
+  alias ConfluencePhxMirror.{Audit, Blobs.Store, Mirror, Settings}
   alias ConfluencePhxMirror.Audit.Entry
   alias ConfluencePhxMirror.Mirror.{Counters, Page, Space}
 
@@ -32,6 +35,16 @@ defmodule ConfluencePhxMirror.Trash do
   def empty? do
     spaces() == [] and pages(limit: 1) == []
   end
+
+  @doc """
+  How long a deleted space or page is kept, in days (`trash.retention_days`).
+
+  The nightly purge and the trash screen both ask this, so "delete what has been
+  here 30 days" means the same number in both places. `0` switches the purge
+  off and leaves the trash to whoever empties it by hand.
+  """
+  @spec retention_days() :: non_neg_integer()
+  def retention_days, do: Settings.trash_retention_days()
 
   @doc """
   What a retention policy would purge: everything trashed at least `days` ago.

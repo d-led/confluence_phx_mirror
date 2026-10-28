@@ -36,6 +36,9 @@ config :confluence_phx_mirror,
   # `AutoAdminTest` turns the flag on for the tests that are about the flag
   # itself.
   auto_admin: false,
+  # The nightly purge never runs here: the worker is driven by a test that asks
+  # for it, so a test's trashed rows cannot disappear under it.
+  trash: [retention_days: 30],
   self_signup: true,
   # Per partition, like the database: two suites in one checkout (a second
   # agent, a watcher) would otherwise delete each other's blobs mid-run, and the
