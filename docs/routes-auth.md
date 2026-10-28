@@ -166,7 +166,7 @@ Mirrored from Confluence by the sync, replayed per request:
 | page | page restrictions narrow the space; an unrestricted page inherits it |
 | personal space (`~accountid`) | belongs to the account the key names — owner only |
 | administrator | reads everything, including restricted and personal content |
-| no account at all | the public spaces |
+| no account at all | the public spaces ([details](#public-documentation-sites)) |
 
 Two of those rows can be adjusted here, without changing Confluence: a *grant*
 lets one more reader in, a *removal* keeps an identity the site names out (see
@@ -174,6 +174,55 @@ lets one more reader in, a *removal* keeps an identity the site names out (see
 Both are marked rows in the same tables, and a resource left with nothing but
 removals is closed to everybody but an administrator — never open, because
 "no rows" already means open.
+
+## Public documentation sites
+
+A mirror can be the engine of a public documentation site, and the audience
+question is already answered: **a reader with no account is a reader**.
+`Scope.for_user(nil)` is the anonymous scope, the sync mirrors Confluence's
+`anonymousAccess` as the `anonymous` subject, and `permitted_subjects/1` matches
+that subject for everybody. So a stranger reads exactly the spaces and pages the
+site marks anonymous and gets `404` for everything else — never a `403`, never a
+sign-in wall — narrowed inside the same statements that narrow a signed-in
+reader: catalogues, search, the sidebar branch, attachments, exports
+(`test/confluence_phx_mirror_web/controllers/access_test.exs`). Personal spaces
+are never anonymous.
+
+What makes a mirror private today is the **proxy**, not `Authorization`: the
+shipped oauth2-proxy authenticates every browser path and skips only the machine
+ones ([layer 1](#layer-1--the-proxy)), so a visitor never reaches the app without
+an identity. Publishing is therefore a deployment decision — let the reader paths
+through unauthenticated — and the app already answers correctly once it is made.
+
+The shell still offers a *Sign in* button to that visitor
+(`Layouts` → `@current_user`), with nothing configured behind it on such a
+deployment: a nudge, not a wall, and the one piece of chrome a public site
+should drop.
+
+### The rule to narrow before publishing
+
+`can_read_space?/2`, `restrict_spaces/2` and `readable_alongside/3` all read a
+space with **no synced permission rows as open**: "the sync account could read it
+and nobody narrowed it" is fair when the audience had to be admitted first. To
+the internet it is not — a permissions read that failed, or a space the sync has
+never listed, is indistinguishable from "everyone". A public deployment wants the
+narrower reading: *open only with an explicit `anonymous` grant*. That is a
+change of rule, not a switch that widens one, and it is the one thing standing
+between "supported" and "safe to expose".
+
+### What a stranger should not see
+
+Two more questions are content rather than permission, and `anonymousAccess` does
+not answer either:
+
+| Question | Surfaces it reaches |
+| --- | --- |
+| whose name is on a page | page meta, comment authors, catalogue bylines, `/people/:account_id`, API presenters, Markdown and site exports |
+| do comments belong on the site | the page view, comment search hits **and the snippet that quotes them**, `…/comments`, exports, MCP results |
+
+Each needs one seam — a byline function, a comment read — rather than a condition
+per surface, or a surface gets forgotten. Excluding comments where they are drawn
+only would still publish their text through full-text search.
 
 ## Administration
 
