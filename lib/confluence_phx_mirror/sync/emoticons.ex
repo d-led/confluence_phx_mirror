@@ -261,10 +261,49 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
   # `<ac:emoji-fallback=":smile:">` would be a name, not a character: only a
   # value that is not a shortcode counts as the literal emoji.
   defp character(value) when is_binary(value) do
-    if String.starts_with?(value, ":") and String.ends_with?(value, ":"), do: nil, else: value
+    if String.starts_with?(value, ":") and String.ends_with?(value, ":"),
+      do: nil,
+      else: unescape(value)
   end
 
   defp character(nil), do: nil
+
+  # Confluence writes a few emoji into storage as escapes instead of a character
+  # — `ac:emoji-fallback="\uD83D\uDDD3"` is a calendar, not twelve letters — and
+  # an export view copies that text into the body, where a reader sees the
+  # escape. A fallback that is nothing but escapes is decoded; a run that names
+  # no character is no fallback at all, and the caller's next rule decides.
+  @escapes ~r/^(?:\\u[0-9a-fA-F]{4})+$/
+  @escaped_codepoint ~r/\\u([0-9a-fA-F]{4})/
+
+  defp unescape(value) do
+    if Regex.match?(@escapes, value), do: decode(value), else: value
+  end
+
+  defp decode(value) do
+    codepoints =
+      @escaped_codepoint
+      |> Regex.scan(value, capture: :all_but_first)
+      |> Enum.map(fn [hex] -> String.to_integer(hex, 16) end)
+
+    case scalars(codepoints, []) do
+      {:ok, characters} -> Enum.map_join(characters, &<<&1::utf8>>)
+      :error -> nil
+    end
+  end
+
+  # A surrogate half names nothing on its own; a high half followed by a low one
+  # is the character between them.
+  defp scalars([high, low | rest], characters)
+       when high in 0xD800..0xDBFF and low in 0xDC00..0xDFFF,
+       do: scalars(rest, [0x10000 + (high - 0xD800) * 0x400 + (low - 0xDC00) | characters])
+
+  defp scalars([half | _rest], _characters) when half in 0xD800..0xDFFF, do: :error
+
+  defp scalars([character | rest], characters),
+    do: scalars(rest, [character | characters])
+
+  defp scalars([], characters), do: {:ok, Enum.reverse(characters)}
 
   defp attribute(attrs, key) do
     case List.keyfind(attrs, key, 0) do

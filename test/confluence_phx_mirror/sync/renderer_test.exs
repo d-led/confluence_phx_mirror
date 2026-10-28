@@ -371,6 +371,20 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert Renderer.render(html, context()).html =~ "Party 🙂"
     end
 
+    test "an emoji Confluence escaped instead of writing it is still the character" do
+      html = """
+      <p>Meeting <img class="emoticon emoticon-blue-star" data-emoji-shortname=":calendar_spiral:"
+                      data-emoji-id="1f5d3" data-emoji-fallback="\\uD83D\\uDDD3"
+                      src="https://dled.atlassian.net/wiki/images/icons/emoticons/star_blue.png" /></p>
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ "Meeting 🗓"
+      assert result.text =~ "🗓"
+      refute result.html =~ "\\u"
+    end
+
     test "an image it cannot name stays an image" do
       html =
         ~s(<p>Odd <img class="transform-error" src="https://dled.atlassian.net/placeholder/error" /></p>)

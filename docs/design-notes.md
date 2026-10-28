@@ -334,7 +334,10 @@ an unrelated paragraph of the page.
   Standard emoji and the classic emoticons carry a fallback character or a
   classic name and need no storage to resolve. A body mirrored before this
   existed gets the characters on its next sync — a page from its own stored
-  storage at render time.
+  storage at render time. A few fallbacks are written as escapes rather than as
+  a character (`ac:emoji-fallback="\uD83D\uDDD3"` is a calendar), and an export
+  view copies that text into the body, so `Sync.Emoticons` decodes a fallback
+  that is nothing but escapes instead of leaving the reader the five letters.
 * Comments are read-only and rendered flat (one reply level styled).
 * Confluence Cloud does not expose *space* permissions for reading, so they are
   mirrored only when a source can supply them; page restrictions are synced.

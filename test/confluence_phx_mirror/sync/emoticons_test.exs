@@ -16,6 +16,22 @@ defmodule ConfluencePhxMirror.Sync.EmoticonsTest do
              ]) == "🚀"
     end
 
+    test "a fallback Confluence wrote as an escape is the character it names" do
+      assert Emoticons.from_attributes([
+               {"ac:name", "blue-star"},
+               {"ac:emoji-shortname", ":calendar_spiral:"},
+               {"ac:emoji-id", "1f5d3"},
+               {"ac:emoji-fallback", "\\uD83D\\uDDD3"}
+             ]) == "🗓"
+    end
+
+    test "an escape that names no character is not a fallback" do
+      assert Emoticons.from_attributes([
+               {"ac:emoji-shortname", ":check_mark:"},
+               {"ac:emoji-fallback", "\\uD83D"}
+             ]) == "✅"
+    end
+
     test "a short name without a fallback still resolves" do
       assert Emoticons.from_attributes([{"ac:emoji-shortname", ":check_mark:"}]) == "✅"
     end
@@ -96,6 +112,16 @@ defmodule ConfluencePhxMirror.Sync.EmoticonsTest do
                     alt="(smile)" />
                """)
              ) == "🙂"
+    end
+
+    test "the fallback an export writes as an escape is the character it names" do
+      assert Emoticons.from_image(
+               attributes("""
+               <img class="emoticon emoticon-blue-star" data-emoji-shortname=":calendar_spiral:"
+                    data-emoji-id="1f5d3" data-emoji-fallback="\\uD83D\\uDDD3"
+                    src="https://dled.atlassian.net/wiki/images/icons/emoticons/star_blue.png" />
+               """)
+             ) == "🗓"
     end
 
     test "the file name still names the emoticon when no data attributes survive" do
