@@ -457,6 +457,9 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert "Macros Gallery" in texts(document, "ul.mirror-tree li a")
       assert "Recently updated" in texts(document, "p.mirror-dynamic-heading")
       assert "Last modified" in texts(document, "thead th")
+
+      # The excerpt this page includes is another page's words, in this one.
+      assert Floki.text(document) =~ "read-only cache"
     end
 
     test "lists a page's own files, linked at their mirrored bytes" do

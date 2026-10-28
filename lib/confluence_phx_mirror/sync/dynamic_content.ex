@@ -39,8 +39,13 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent do
   A caller may name the port (`%{space: space, page: page, source: StubContent}`),
   which is how a macro is tested without a database; production leaves it out.
   """
-  @spec expand(String.t(), %{optional(:source) => module(), space: term(), page: term()}) ::
-          String.t()
+  @spec expand(String.t(), %{
+          optional(:source) => module(),
+          optional(:depth) => non_neg_integer(),
+          optional(:seen) => [integer()],
+          space: term(),
+          page: term()
+        }) :: String.t()
   def expand(html, %{space: space, page: page} = given) when is_binary(html) do
     document = Floki.parse_fragment!(html)
 
@@ -48,7 +53,9 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent do
       space: space,
       page: page,
       headings: headings(document),
-      source: Map.get(given, :source, Source.Mirror)
+      source: Map.get(given, :source, Source.Mirror),
+      depth: Map.get(given, :depth, 0),
+      seen: Map.get(given, :seen, [page.id])
     }
 
     document

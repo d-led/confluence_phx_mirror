@@ -407,6 +407,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     <div class="mirror-macro" data-macro="recently-updated" data-limit="5"></div>
     <div class="mirror-macro" data-macro="pagetree" data-root="Getting Started"></div>
     <div class="mirror-macro" data-macro="content-report-table" data-cql="label = architecture order by lastmodified desc limit 10"></div>
+    <p>An excerpt include reads the excerpt another page declares, not its body:</p>
+    <div class="mirror-macro" data-macro="excerpt-include" data-page="Architecture Overview"></div>
     """)
   end
 

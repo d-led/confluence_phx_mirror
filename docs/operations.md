@@ -416,6 +416,14 @@ day old, and a stale answer is worse than a new question. The screen shows a pas
 in flight, with how many spaces it has settled, rather than saying nobody has
 checked.
 
+A pass takes **no sync lock**, deliberately: it reads counts and listings and
+writes nothing a sync would race with, and the lock would make a webhook's page
+sync wait minutes for a check. That is why the mirror's orphan sweep only judges
+jobs that *should* be holding the lock ([a full re-read is a queue of
+spaces](#a-full-re-read-is-a-queue-of-spaces-not-one-run)): a pass is minutes
+long by design, and reading a free lock as a dead node used to cancel every pass
+a minute in.
+
 A pass runs when somebody presses **Check Confluence**, and — when
 `CM_RECONCILE_INTERVAL_SECONDS` is set — on that schedule too (`0`, the default,
 leaves it on demand only). It asks nothing of a healthy site, so a daily pass is

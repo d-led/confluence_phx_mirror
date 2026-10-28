@@ -83,6 +83,13 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     "gallery" => "an image gallery"
   }
 
+  # A macro whose body *is* its answer: the excerpt a page declares for others to
+  # include. There is nothing to draw and nothing to explain, so the words stay —
+  # wrapped the way Confluence's own export view wraps them, so that an excerpt
+  # include on another page finds the region whether or not the export expanded
+  # this macro for us.
+  @body_is_the_answer ~w(excerpt)
+
   # Floki's parser drops text runs that are only whitespace, but the exporter
   # relies on them for the visible space between inline elements (two status
   # lozenges would touch, `<strong>` next to `<em>` would read "onetwo").
@@ -157,6 +164,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
       {"ac:structured-macro", attrs, children} = node ->
         case List.keyfind(attrs, "ac:name", 0) do
+          {"ac:name", name} when name in @body_is_the_answer ->
+            excerpt_region(children)
+
           {"ac:name", name} ->
             parameters = parameters(children)
             body = rich_text_body(children)
@@ -194,6 +204,11 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp external_url(%{page: %{external_url: url}}) when is_binary(url) and url != "", do: url
   defp external_url(_context), do: nil
+
+  # The excerpt region, in the shape Confluence's export view uses for one.
+  defp excerpt_region(children) do
+    [{"div", [{"class", "excerpt-macro"}], rich_text_body(children)}]
+  end
 
   defp rich_text_body(children) do
     Enum.flat_map(children, fn

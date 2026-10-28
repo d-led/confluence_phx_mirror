@@ -60,7 +60,13 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.StubContent do
   @impl true
   def page_by_title(_host, title) do
     record({:page_by_title, title})
-    answer(:page_by_title, :error)
+
+    # A script may answer per title — `fn "Ops" -> {:ok, page} end` — which is
+    # how a chain of pages that include each other is written down.
+    case answer(:page_by_title, :error) do
+      fun when is_function(fun, 1) -> fun.(title)
+      answer -> answer
+    end
   end
 
   @impl true

@@ -81,6 +81,13 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.MarkerTest do
     assert attribute(attributes, "data-sort") == "creation"
   end
 
+  test "the page an include names is carried as the page it named" do
+    assert {:ok, {"div", attributes, []}} =
+             Marker.build("include", [{"Page", "Architecture Overview"}])
+
+    assert attribute(attributes, "data-page") == "Architecture Overview"
+  end
+
   defp attribute(attributes, name), do: attributes |> List.keyfind(name, 0) |> elem(1)
 
   test "a stored macro renders through the expander once it is a marker" do

@@ -122,22 +122,37 @@ wide as the page listing it. Applying that once in
 
 Resolved today: `content-by-label`, `page-properties-report` (Confluence's key is
 `detailssummary`), `toc`, `children`, `pagetree`, `recently-updated`,
-`attachments` and `content-report-table`. What is left falls into two buckets,
-and only the first is a mirroring problem:
+`attachments`, `content-report-table`, `include`, `excerpt-include` and
+`excerpt`. What is left falls into two buckets, and only the first is a
+mirroring problem:
 
 | Macro | Data it needs | Where it comes from |
 | --- | --- | --- |
 | `blog-posts` | page metadata, filtered | `external_updated_at`, `type` — the same query `recently-updated` runs |
-| `excerpt`, `excerpt-include`, `include` | another page's body | `pages.body_export` |
 | `contributors` | authors and versions | `author_name` (one author today) |
 | `tasks-report-macro` | inline tasks | inline tasks in `body_export` |
 | `jira`, `jiraissues`, `jirachart` | issue data | needs Jira credentials: out of scope |
 | `livesearch`, `gadget`, `widget` | a client, or a third-party app | impossible statically |
 | Forge/Connect app macros | the app | a placeholder is the honest answer, and the body is kept |
 
-The next one to write is `include`/`excerpt-include` — pages that build other
-pages, and the only remaining macro whose answer is a body rather than a list.
-Each is one module and one line in the registry; nothing else changes.
+The next one to write is `blog-posts`: the same query `recently-updated` runs with
+`type = blogpost`, so the work is a renderer and a test.
+
+`include` and `excerpt-include` are the two macros whose answer is a body rather
+than a list, and both come with two guards the mirror has to own, because
+Confluence has neither:
+
+* **Audience.** The body is baked into the host for everyone who may read it, so
+  the page named may only be one at least as wide as the host — the port's
+  `page_by_title/2` answers `:error` for anything narrower, exactly as a listing
+  leaves such a page out.
+* **Termination.** A page may include itself, and two pages may include each
+  other; nothing in Confluence refuses it. `Sync.DynamicContent.Included` carries
+  the pages that produced the body (`seen`) and a budget of five (`depth`) in the
+  `Context`, and a ring or a chain stops with a sentence rather than a timeout.
+
+The included body is expanded **as the page it came from**, so a table of
+contents inside an include lists the included headings, not the host's.
 
 `content-report-table` is the one that paid for the CQL parser twice over. The
 macro is a page asking a query, the mirror's search box asks the same grammar,

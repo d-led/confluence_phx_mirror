@@ -246,6 +246,21 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert result.html =~ "The holiday calendar lives here."
     end
 
+    test "an excerpt keeps its words, wrapped the way the export view wraps one" do
+      # The body *is* the answer, so there is nothing to draw and nothing to
+      # explain. The wrapper is what an excerpt include on another page reads.
+      html = """
+      <ac:structured-macro ac:name="excerpt">
+        <ac:rich-text-body><p>A read-only cache.</p></ac:rich-text-body>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ ~s(<div class="excerpt-macro"><p>A read-only cache.</p></div>)
+      refute result.html =~ "not yet implemented"
+    end
+
     test "a vendor layout macro is drawn instead of apologised for" do
       html = """
       <ac:structured-macro ac:name="aura-tab-group">

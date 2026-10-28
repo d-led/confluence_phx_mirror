@@ -51,8 +51,9 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   @callback descendants(host :: Page.t(), page :: Page.t(), keyword()) :: [Page.t()]
 
   @doc """
-  The page titled `title` in the host's space, when the host's readers may open
-  it.
+  The page titled `title` in the host's space — or in the space `title` names as
+  `KEY/Page Title`, the way Confluence writes a cross-space reference — when the
+  host's readers may open it.
 
   One answer for two situations — there is no such page, or these readers may
   not know it exists — because a macro baked into a public page must not tell a

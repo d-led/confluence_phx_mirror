@@ -26,6 +26,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "content-by-label" => Renderers.ContentByLabel,
     "content-report-table" => Renderers.ContentReportTable,
     "detailssummary" => Renderers.PagePropertiesReport,
+    "excerpt-include" => Renderers.ExcerptInclude,
+    "include" => Renderers.Include,
     "pagetree" => Renderers.PageTree,
     "recently-updated" => Renderers.RecentlyUpdated,
     "toc" => Renderers.Toc

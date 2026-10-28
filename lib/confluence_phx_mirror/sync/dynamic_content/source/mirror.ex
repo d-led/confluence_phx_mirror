@@ -44,8 +44,24 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   @impl true
   def page_by_title(%Page{} = host, title) do
     with {:ok, space} <- space_of(host),
-         {:ok, page} <- Mirror.find_page_by_title(space.key, title) do
-      if readable?(host, page), do: {:ok, page}, else: :error
+         {:ok, page} <- find_in_space(space.key, title),
+         true <- readable?(host, page) do
+      {:ok, page}
+    else
+      _ -> :error
+    end
+  end
+
+  # Confluence writes a page in another space as `KEY/Page Title`. A title that
+  # merely contains a slash — "A/B testing" — is a title, so the prefix only
+  # counts when it is shaped like a key *and* names a space this mirror holds.
+  defp find_in_space(host_key, title) do
+    with [prefix, rest] when rest != "" <- String.split(title, "/", parts: 2),
+         true <- String.match?(prefix, ~r/^[A-Z][A-Z0-9_]*$/),
+         {:ok, _space} <- Mirror.find_space(prefix) do
+      Mirror.find_page_by_title(prefix, rest)
+    else
+      _ -> Mirror.find_page_by_title(host_key, title)
     end
   end
 

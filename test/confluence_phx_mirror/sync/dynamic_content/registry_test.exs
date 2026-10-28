@@ -29,6 +29,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
              "content-by-label",
              "content-report-table",
              "detailssummary",
+             "excerpt-include",
+             "include",
              "pagetree",
              "recently-updated",
              "toc"
