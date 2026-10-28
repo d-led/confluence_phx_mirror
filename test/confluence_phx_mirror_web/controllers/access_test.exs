@@ -7,6 +7,7 @@ defmodule ConfluencePhxMirrorWeb.AccessTest do
   alias ConfluencePhxMirror.Blobs.{Key, Store}
   alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     demo_snapshot!()
@@ -142,6 +143,78 @@ defmodule ConfluencePhxMirrorWeb.AccessTest do
 
       assert text(trail) =~ Demo.open_page_parent_title()
       refute text(trail) =~ Demo.restricted_page_title()
+    end
+  end
+
+  # A mirror put on the internet is a different deployment from one behind the
+  # proxy: a visitor is a reader, and silence in the permission tables is not a
+  # permission. See `docs/routes-auth.md`.
+  describe "a public site" do
+    setup do
+      TestConfig.put(:public_site, true)
+      :ok
+    end
+
+    test "serves nothing from a space whose permissions were never stored", %{conn: conn} do
+      assert conn
+             |> get(~p"/spaces/ENG/pages/#{Demo.open_page()}/#{Demo.open_page_slug()}")
+             |> html_response(404)
+    end
+
+    test "serves what the site marks anonymous", %{conn: conn} do
+      space = Mirror.get_space!("ENG")
+
+      {:ok, _} =
+        Mirror.replace_space_permissions(space, [
+          %{operation: "read", subject_type: "anonymous", subject_key: nil}
+        ])
+
+      assert conn
+             |> get(~p"/spaces/ENG/pages/#{Demo.open_page()}/#{Demo.open_page_slug()}")
+             |> html_response(200)
+    end
+
+    test "offers no sign-in to a deployment that has no door", %{conn: conn} do
+      assert conn |> get(~p"/about") |> html_response(200) =~ "Spaces"
+      refute build_conn() |> get(~p"/about") |> html_response(200) =~ "Sign in"
+    end
+  end
+
+  test "a mirror behind a door still offers the way in", %{conn: conn} do
+    assert conn |> get(~p"/about") |> html_response(200) =~ "Sign in"
+  end
+
+  describe "what a deployment publishes" do
+    test "comments go with the setting, and so does the sentence about them", %{conn: conn} do
+      path = ~p"/spaces/ENG/pages/#{Demo.open_page()}/#{Demo.open_page_slug()}"
+
+      assert conn |> get(path) |> html_response(200) =~ ~s(id="comments")
+
+      TestConfig.with([exclude_comments: true], fn ->
+        body = build_conn() |> get(path) |> html_response(200)
+
+        refute body =~ ~s(id="comments")
+        refute body =~ "No comments on the original page."
+      end)
+    end
+
+    test "bylines go with the setting", %{conn: conn} do
+      path = ~p"/spaces/ENG/pages/#{Demo.open_page()}/#{Demo.open_page_slug()}"
+
+      # The page body may name people — a mention is the page's text, not a
+      # byline — so the claim is about the byline element itself.
+      assert conn |> get(path) |> html_response(200) =~ ~s(id="page-byline")
+
+      TestConfig.with([anonymize_contributors: true], fn ->
+        refute build_conn() |> get(path) |> html_response(200) =~ ~s(id="page-byline")
+      end)
+    end
+
+    test "the people directory closes with it", %{conn: conn} do
+      TestConfig.with([anonymize_contributors: true], fn ->
+        assert build_conn() |> get(~p"/people/557058:jane.doe") |> html_response(404)
+        assert {:error, {:redirect, %{to: "/"}}} = build_conn() |> live(~p"/people")
+      end)
     end
   end
 

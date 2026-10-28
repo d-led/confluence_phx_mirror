@@ -12,11 +12,22 @@ defmodule ConfluencePhxMirrorWeb.PeopleController do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Catalog
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirrorWeb.NotFound
 
   @list_page 25
 
   def show(conn, %{"account_id" => account_id} = params) do
+    if Publishing.anonymise_contributors?() do
+      # The page is a byline with the mirror's content attached to it, so a
+      # deployment that publishes no names publishes none of these either.
+      NotFound.call(conn, "This mirror does not publish its contributors.")
+    else
+      render_author(conn, account_id, params)
+    end
+  end
+
+  defp render_author(conn, account_id, params) do
     case Mirror.find_author(account_id) do
       nil ->
         NotFound.call(conn, "Nobody with that account wrote mirrored content.")

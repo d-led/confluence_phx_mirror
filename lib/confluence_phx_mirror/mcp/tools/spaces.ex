@@ -14,6 +14,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Spaces do
   alias ConfluencePhxMirror.Mcp.{Args, Links}
   alias ConfluencePhxMirror.Mcp.Tools.Pages
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Publishing
 
   @doc "`confluence_list_spaces`: the spaces the reader may see."
   def list(args, scope) do
@@ -161,7 +162,10 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Spaces do
       Enum.map_join(posts, "\n", fn post ->
         "- #{post.title} (id #{post.confluence_id})" <>
           " — #{Pages.iso(post.external_updated_at) || "unknown"}" <>
-          if(post.author_name, do: " by #{post.author_name}", else: "") <>
+          if(post.author_name && not Publishing.anonymise_contributors?(),
+            do: " by #{post.author_name}",
+            else: ""
+          ) <>
           "\n  #{Links.page(Map.put(post, :space, space))}"
       end)
   end
@@ -176,7 +180,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Spaces do
       "space" => space.key,
       "url" => Links.page(Map.put(post, :space, space)),
       "updated" => Pages.iso(post.external_updated_at),
-      "author" => post.author_name
+      "author" => Publishing.byline(post.author_name)
     }
   end
 end

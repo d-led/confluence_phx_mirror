@@ -27,6 +27,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
   alias ConfluencePhxMirror.Catalog
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.URLs
+  alias ConfluencePhxMirror.Publishing
 
   # One page of a catalog. `?limit=` cannot raise it: a catalog is a browse view,
   # not an export.
@@ -37,6 +38,17 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    # The people directory is a list of names, so a deployment that publishes no
+    # names has no such directory: sending the reader home is the honest answer
+    # the router cannot give a LiveView.
+    if socket.assigns.live_action == :people and Publishing.anonymise_contributors?() do
+      {:ok, redirect(socket, to: "/")}
+    else
+      catalog(socket)
+    end
+  end
+
+  defp catalog(socket) do
     copy = copy(socket.assigns.live_action, nil, "")
 
     {:ok,

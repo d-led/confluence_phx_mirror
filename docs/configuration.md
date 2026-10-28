@@ -190,6 +190,20 @@ ship: `new_users_can_read_public_spaces` (alias `allow_all`) and
 Which policy applies at which door, how they compose, and what replaces them when
 none is named: [routes-auth.md](routes-auth.md#admission-may-this-identity-have-an-account).
 
+## Publishing
+
+For a mirror put on the internet as a documentation site. All three are off: a
+mirror behind its proxy publishes to the people it admitted.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CM_PUBLIC_SITE` | `false` | a visitor with no account is a reader: a space whose permissions the sync never stored is **closed** to them (open only with an explicit `anonymousAccess` grant), and the shell offers no sign-in. Admitted readers keep the mirror's own reading of a space with no permissions |
+| `CM_ANONYMIZE_CONTRIBUTORS` | `false` | no bylines anywhere a stranger can read them: page meta, comments, catalogues, `/people`, the API, the Markdown and site exports, MCP answers. `/admin` still shows them |
+| `CM_EXCLUDE_COMMENTS` | `false` | comments are not published: the page draws no comments section, `Mirror.comments/1` answers none to the exports, the API and MCP, and full-text search neither finds a page through a comment nor quotes one |
+
+The audience rule, why a public site needs the narrower one, and what the proxy
+has to allow: [routes-auth.md](routes-auth.md#public-documentation-sites).
+
 ## Webhooks
 
 | Variable | Default | Purpose |

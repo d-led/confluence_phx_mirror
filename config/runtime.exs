@@ -360,6 +360,23 @@ api_docs =
 
 config :confluence_phx_mirror, api_docs: api_docs
 
+# Publishing: three settings for a mirror put on the internet as a documentation
+# site, all off. A mirror behind its proxy publishes to the people it admitted,
+# and that is the default nobody has to choose.
+#
+# `CM_PUBLIC_SITE` is the one that changes an answer: a space whose read
+# permissions the sync never stored is open to admitted readers and closed to a
+# stranger, because "no rows" cannot be read as "everyone" once everyone
+# includes the internet (see `ConfluencePhxMirror.Authorization`). It also drops
+# the sign-in affordance, which on a public deployment points at nothing.
+#
+# The other two are content: whether contributor names and comments are
+# published at all (`ConfluencePhxMirror.Publishing`).
+config :confluence_phx_mirror,
+  public_site: System.get_env("CM_PUBLIC_SITE") in ~w(1 true yes),
+  anonymize_contributors: System.get_env("CM_ANONYMIZE_CONTRIBUTORS") in ~w(1 true yes),
+  exclude_comments: System.get_env("CM_EXCLUDE_COMMENTS") in ~w(1 true yes)
+
 config :confluence_phx_mirror,
   notifications: [
     enabled: System.get_env("MIRROR_NOTIFICATIONS", "true") in ~w(1 true yes),

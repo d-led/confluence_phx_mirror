@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   alias ConfluencePhxMirror.Mirror.Page
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Notifications
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.Emoticons
   alias ConfluencePhxMirror.Sync.PageWorker
@@ -265,6 +266,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       children: children_window(scope(conn), page),
       child_count: Mirror.count_children(page, filter: filter),
       attachments: Mirror.attachments(page),
+      comments?: not Publishing.exclude_comments?(),
       comments: page |> Mirror.comments() |> Enum.map(&with_emoticons/1),
       backlinks: Mirror.backlinks(page, filter: filter),
       outgoing_links: Mirror.outgoing_links(page, filter: filter),

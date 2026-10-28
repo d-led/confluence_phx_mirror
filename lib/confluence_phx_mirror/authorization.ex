@@ -42,6 +42,7 @@ defmodule ConfluencePhxMirror.Authorization do
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{PageRestriction, Space, SpacePermission}
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Repo
 
   import Ecto.Query
@@ -124,6 +125,7 @@ defmodule ConfluencePhxMirror.Authorization do
            (not exists(read_permissions()) or exists(read_permissions_for(scope)))) or
           (s.type == "personal" and fragment("lower(?)", s.key) == ^owner_key(scope))
       )
+      |> deny_unlisted_to_strangers(scope)
     end
   end
 
@@ -166,8 +168,31 @@ defmodule ConfluencePhxMirror.Authorization do
            exists(own_space_of_page(scope))) and
           (not exists(page_read_restrictions()) or exists(page_read_restrictions_for(scope)))
       )
+      |> deny_unlisted_spaces_to_strangers(scope)
     end
   end
+
+  # A space with no synced read permissions is open — to a reader this deployment
+  # admitted, because the sync account could read it and nobody narrowed it. A
+  # stranger is not that reader: on a public site the same silence would mean
+  # "everyone", and a permissions read that failed, or a space the sync has never
+  # listed, is indistinguishable from it. So a stranger is held to what the site
+  # actually says: a synced permission row, and one that names them.
+  defp deny_unlisted_to_strangers(query, %Scope{} = scope) do
+    if stranger?(scope), do: where(query, [s], exists(read_permissions())), else: query
+  end
+
+  defp deny_unlisted_spaces_to_strangers(query, %Scope{} = scope) do
+    if stranger?(scope),
+      do: where(query, [p], exists(page_space_permissions())),
+      else: query
+  end
+
+  # A stranger is a reader with no account on a deployment that serves one: the
+  # mirror knows nothing about them, and must not take silence in its own tables
+  # for a permission.
+  defp stranger?(%Scope{} = scope),
+    do: Publishing.public_site?() and not Scope.signed_in?(scope)
 
   defp page_space_permissions do
     from(sp in SpacePermission,
@@ -298,7 +323,9 @@ defmodule ConfluencePhxMirror.Authorization do
   """
   @spec uniform_readership?(Scope.t()) :: boolean()
   def uniform_readership?(%Scope{} = scope) do
-    Scope.admin?(scope) or (not Mirror.any_permissions?() and not Mirror.any_personal_spaces?())
+    Scope.admin?(scope) or
+      (not stranger?(scope) and not Mirror.any_permissions?() and
+         not Mirror.any_personal_spaces?())
   end
 
   @doc """
@@ -341,9 +368,14 @@ defmodule ConfluencePhxMirror.Authorization do
   defp space_visible?(scope, space_id, spaces, owners) do
     case Map.fetch(owners, space_id) do
       {:ok, key} -> owns_key?(scope, key)
-      :error -> allows?(scope, Map.get(spaces, space_id, []))
+      :error -> space_subjects_allow?(scope, Map.get(spaces, space_id, []))
     end
   end
+
+  # No rows means open, exactly like space_allows?/2 — and closed to a stranger
+  # for the same reason.
+  defp space_subjects_allow?(scope, []), do: not stranger?(scope)
+  defp space_subjects_allow?(scope, subjects), do: allows?(scope, subjects)
 
   @doc """
   The pages from `pages` that may be listed on `host` without telling a reader
@@ -380,6 +412,12 @@ defmodule ConfluencePhxMirror.Authorization do
 
   # A personal space's audience is its owner, and only its owner: a page in one
   # may not be listed on any page open to more people than that.
+  #
+  # A space with no synced permissions is open to admitted readers, and to a
+  # stranger on a public site it is exactly as wide as the anonymous grant did or
+  # did not make it — so on such a deployment that audience is the narrowest one
+  # there is, which is what keeps a stranger who may read the host from being
+  # shown the title of a page they may not open.
   defp space_subjects(page, spaces, owners) do
     case Map.fetch(owners, page.space_id) do
       {:ok, key} ->
@@ -387,10 +425,16 @@ defmodule ConfluencePhxMirror.Authorization do
 
       :error ->
         case Map.get(spaces, page.space_id, []) do
-          [] -> :everyone
+          [] -> unlisted_audience()
           subjects -> MapSet.new(subjects, &{&1.subject_type, &1.subject_key})
         end
     end
+  end
+
+  @anonymous_readers MapSet.new([{"anonymous", nil}])
+
+  defp unlisted_audience do
+    if Publishing.public_site?(), do: @anonymous_readers, else: :everyone
   end
 
   defp at_least_as_wide?(:everyone, _host), do: true
@@ -437,7 +481,7 @@ defmodule ConfluencePhxMirror.Authorization do
 
   defp space_allows?(scope, space_id) do
     case Mirror.space_permissions(space_id) do
-      [] -> true
+      [] -> not stranger?(scope)
       subjects -> Enum.any?(subjects, &subject_matches?(scope, &1))
     end
   end

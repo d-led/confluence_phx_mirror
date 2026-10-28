@@ -4,6 +4,7 @@ defmodule ConfluencePhxMirror.Mirror.Search.TextTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Mirror.Search
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     demo_snapshot!()
@@ -104,5 +105,20 @@ defmodule ConfluencePhxMirror.Mirror.Search.TextTest do
     # Occurrence counting alone would put the page that says the word twenty
     # times first, and it is never the page the reader meant.
     assert hd(titles("escalation")) == "Escalation policy"
+  end
+
+  test "a comment a deployment does not publish is not searchable either" do
+    space = space_fixture(%{key: "HID", name: "Hidden comments"})
+    page = page_fixture(space, %{title: "Release notes", confluence_id: 97_050})
+
+    comment_fixture(page, %{body_text: "zebra", body_export: "<p>zebra</p>"})
+
+    # Found through the comment, and the snippet quotes it.
+    assert "Release notes" in titles("zebra")
+    assert {:ok, [%{comment: %{}}]} = Search.text("zebra")
+
+    TestConfig.put(:exclude_comments, true)
+
+    refute "Release notes" in titles("zebra")
   end
 end

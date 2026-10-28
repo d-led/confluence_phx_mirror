@@ -17,6 +17,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Search do
   alias ConfluencePhxMirror.Mcp.Args
   alias ConfluencePhxMirror.Mcp.Tools.Pages
   alias ConfluencePhxMirror.Mirror.Search
+  alias ConfluencePhxMirror.Publishing
 
   # The arguments the UI's advanced form sends; anything else in a tool call
   # (limits, sorting) is handled here and must not leak into a CQL clause.
@@ -148,7 +149,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Search do
   defp comment(comment) do
     %{
       "id" => to_string(comment.confluence_id),
-      "author" => comment.author_name,
+      "author" => Publishing.byline(comment.author_name),
       "created" => Pages.iso(comment.external_created_at)
     }
   end
@@ -171,7 +172,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Search do
   defp comment_line(nil), do: ""
 
   defp comment_line(comment) do
-    "\n   matched in a comment by #{comment.author_name || "Anonymous"}" <>
+    "\n   matched in a comment by #{Publishing.byline(comment.author_name) || "Anonymous"}" <>
       case Pages.iso(comment.external_created_at) do
         nil -> ""
         date -> " on #{date}"

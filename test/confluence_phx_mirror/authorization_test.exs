@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirror.AuthorizationTest do
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.Page
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     demo_snapshot!()
@@ -80,6 +81,50 @@ defmodule ConfluencePhxMirror.AuthorizationTest do
       ])
 
     assert Authorization.can_read_page?(reader(outsider), page)
+  end
+
+  describe "a public site" do
+    # A mirror put on the internet cannot read silence in its own permission
+    # tables as "everyone": a read that failed, or a space the sync never
+    # stored, is indistinguishable from it. ENG has no permission rows at all.
+    setup do
+      TestConfig.put(:public_site, true)
+      :ok
+    end
+
+    test "a space whose permissions were never stored is not open to a stranger" do
+      eng = Mirror.get_space_by_key("ENG")
+
+      refute Authorization.can_read_space?(anonymous(), eng)
+      refute Enum.any?(Authorization.readable_spaces(anonymous()), &(&1.key == "ENG"))
+    end
+
+    test "its pages are not open either, whichever way the question is asked" do
+      refute Authorization.can_read_page?(anonymous(), Mirror.get_page!(1002))
+
+      ids = from(p in Page, as: :page, where: p.confluence_id == 1002, select: p.confluence_id)
+
+      assert Repo.all(Authorization.restrict_pages(ids, anonymous())) == []
+    end
+
+    test "a reader with an account keeps the mirror's own reading of it" do
+      assert Authorization.can_read_space?(
+               reader("someone@example.com"),
+               Mirror.get_space_by_key("ENG")
+             )
+    end
+
+    test "a stranger reads what the site marks anonymous" do
+      space = space_fixture(%{key: "PUB", name: "Published"})
+
+      {:ok, _} =
+        Mirror.replace_space_permissions(space, [
+          %{operation: "read", subject_type: "anonymous", subject_key: nil}
+        ])
+
+      assert Authorization.can_read_space?(anonymous(), space)
+      assert Authorization.can_read_space?(reader("someone@example.com"), space)
+    end
   end
 
   describe "a personal space" do

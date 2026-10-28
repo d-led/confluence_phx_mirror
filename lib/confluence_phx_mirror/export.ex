@@ -25,6 +25,7 @@ defmodule ConfluencePhxMirror.Export do
   alias ConfluencePhxMirror.Export.Site
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Page, Space, URLs}
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sites
 
@@ -354,7 +355,7 @@ defmodule ConfluencePhxMirror.Export do
     space: #{inspect(page.space.key)}
     confluence_id: #{page.confluence_id}
     version: #{page.version_number}
-    author: #{inspect(page.author_name || "unknown")}
+    author: #{inspect(Publishing.byline(page.author_name) || "unknown")}
     updated: #{iso8601(page.external_updated_at)}
     url: #{inspect(page.external_url)}
     labels: [#{Enum.join(page.labels || [], ", ")}]

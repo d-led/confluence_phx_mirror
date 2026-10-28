@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.Presenter do
 
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.URLs
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirrorWeb.Endpoint
   alias ConfluencePhxMirrorWeb.Time
 
@@ -153,7 +154,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.Presenter do
         if(comment.parent_id, do: [%{"id" => to_string(comment.parent_id)}], else: []),
       "history" => %{
         "createdDate" => Time.iso(comment.external_created_at),
-        "createdBy" => %{"displayName" => comment.author_name}
+        "createdBy" => %{"displayName" => Publishing.byline(comment.author_name)}
       },
       "body" => %{"export_view" => %{"value" => comment.body_export, "representation" => "view"}},
       "_links" => %{"original" => comment.external_url}
@@ -171,7 +172,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.Presenter do
   def search_comment(comment) do
     %{
       "id" => to_string(comment.confluence_id),
-      "author" => comment.author_name,
+      "author" => Publishing.byline(comment.author_name),
       "created" => Time.iso(comment.external_created_at),
       "_links" => %{"original" => comment.external_url}
     }
@@ -235,7 +236,12 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.Presenter do
     }
   end
 
+  # A byline the deployment publishes, or `nil`: the account id is the same
+  # person by another name, so it goes with it.
   defp author(page) do
-    %{"displayName" => page.author_name, "accountId" => page.author_account_id}
+    %{
+      "displayName" => Publishing.byline(page.author_name),
+      "accountId" => Publishing.byline(page.author_account_id)
+    }
   end
 end

@@ -21,6 +21,7 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
   alias ConfluencePhxMirror.Mirror.{Comment, Page}
   alias ConfluencePhxMirror.Mirror.Search.{CQL, Filters, TextQuery}
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Settings
 
@@ -293,6 +294,7 @@ defmodule ConfluencePhxMirror.Mirror.Search do
         JOIN spaces s ON s.id = p.space_id
         WHERE c.deleted_at IS NULL
           AND p.deleted_at IS NULL
+          AND #{comments_published()}
           AND #{@comment_vector} @@ #{tsquery}
           AND NOT EXISTS (
             SELECT 1 FROM pages p2
@@ -402,6 +404,13 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   # own, so the best matching comment is asked for separately — one statement
   # for the whole page of results, and only when some row says the page itself
   # did not match.
+  #
+  # A deployment that publishes no comments searches none of them: the hit would
+  # name a page through text nobody may read, and the snippet would quote it.
+  # `comments_published/0` is the same constant the text clause uses, so the two
+  # cannot drift apart.
+  defp comments_published, do: if(Publishing.exclude_comments?(), do: "false", else: "true")
+
   defp comment_hits(_rows, ""), do: %{}
 
   # The two identifiers are the fixed expression and language above; the page
@@ -410,24 +419,29 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   defp comment_hits(rows, text_query) do
     page_ids = for [id, _rank, false] <- rows, do: id
 
-    if page_ids == [] do
-      %{}
-    else
-      sql = """
-      SELECT DISTINCT ON (c.page_id) c.page_id, c.id
-      FROM comments c
-      WHERE c.page_id = ANY($1)
-        AND c.deleted_at IS NULL
-        AND #{@comment_vector} @@ websearch_to_tsquery('#{@language}', $2)
-      ORDER BY c.page_id,
-               ts_rank_cd(#{@comment_vector}, websearch_to_tsquery('#{@language}', $2)) DESC
-      """
-
-      rows = Repo.query!(sql, [page_ids, text_query]).rows
-      comments = rows |> Enum.map(fn [_page_id, comment_id] -> comment_id end) |> load_comments()
-
-      Map.new(rows, fn [page_id, comment_id] -> {page_id, comments[comment_id]} end)
+    cond do
+      page_ids == [] -> %{}
+      Publishing.exclude_comments?() -> %{}
+      true -> matching_comments(page_ids, text_query)
     end
+  end
+
+  # sobelow_skip ["SQL.Query"]
+  defp matching_comments(page_ids, text_query) do
+    sql = """
+    SELECT DISTINCT ON (c.page_id) c.page_id, c.id
+    FROM comments c
+    WHERE c.page_id = ANY($1)
+      AND c.deleted_at IS NULL
+      AND #{@comment_vector} @@ websearch_to_tsquery('#{@language}', $2)
+    ORDER BY c.page_id,
+             ts_rank_cd(#{@comment_vector}, websearch_to_tsquery('#{@language}', $2)) DESC
+    """
+
+    rows = Repo.query!(sql, [page_ids, text_query]).rows
+    comments = rows |> Enum.map(fn [_page_id, comment_id] -> comment_id end) |> load_comments()
+
+    Map.new(rows, fn [page_id, comment_id] -> {page_id, comments[comment_id]} end)
   end
 
   defp load_pages([]), do: []

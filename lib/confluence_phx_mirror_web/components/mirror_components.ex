@@ -7,6 +7,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   use ConfluencePhxMirrorWeb, :html
 
   alias ConfluencePhxMirror.Mirror.URLs
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirrorWeb.Time
 
   @doc """
@@ -276,11 +277,13 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     doc: "drawn after the sync stamp; the page's readers, on screens too narrow for the rail"
 
   def page_meta(assigns) do
+    assigns = assign(assigns, :byline, Publishing.byline(assigns.page.author_name))
+
     ~H"""
     <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/70">
-      <span class="inline-flex items-center gap-1">
+      <span :if={@byline} id="page-byline" class="inline-flex items-center gap-1">
         <.icon name="hero-user-circle" class="size-3.5" />
-        {(@page.author_name || "Unknown author") |> to_string()}
+        {@byline}
       </span>
       <.local_time at={@page.external_updated_at} class="inline-flex items-center gap-1">
         <.icon name="hero-clock" class="size-3.5" /> Updated {Time.ago(@page.external_updated_at)}
@@ -497,7 +500,14 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     roots = Enum.filter(assigns.comments, &is_nil(&1.parent_id))
     replies = Enum.group_by(Enum.reject(assigns.comments, &is_nil(&1.parent_id)), & &1.parent_id)
 
-    assigns = assign(assigns, roots: roots, replies: replies)
+    # A deployment that publishes no names publishes none here either: the
+    # initials bubble is the name, spelled shorter.
+    assigns =
+      assign(assigns,
+        roots: roots,
+        replies: replies,
+        authors?: not Publishing.anonymise_contributors?()
+      )
 
     ~H"""
     <section id="comments" class="mt-8 border-t border-base-300/70 pt-4">
@@ -510,12 +520,17 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
       </p>
       <div class="space-y-5">
         <article :for={comment <- @roots} class="flex gap-3">
-          <span class="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-base-200 text-xs font-semibold text-base-content/70">
+          <span
+            :if={@authors?}
+            class="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-base-200 text-xs font-semibold text-base-content/70"
+          >
             {initials(comment.author_name)}
           </span>
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-baseline gap-2">
-              <span class="text-sm font-medium">{comment.author_name || "Anonymous"}</span>
+              <span :if={@authors?} class="text-sm font-medium">
+                {comment.author_name || "Anonymous"}
+              </span>
               <.local_time
                 at={comment.external_created_at}
                 class="text-[11px] text-base-content/70"
@@ -530,12 +545,15 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
               :for={reply <- Map.get(@replies, comment.id, [])}
               class="mt-3 flex gap-3 border-l-2 border-base-300/70 pl-3"
             >
-              <span class="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-base-200 text-[10px] font-semibold text-base-content/70">
+              <span
+                :if={@authors?}
+                class="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-base-200 text-[10px] font-semibold text-base-content/70"
+              >
                 {initials(reply.author_name)}
               </span>
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-baseline gap-2">
-                  <span class="text-xs font-medium">{reply.author_name}</span>
+                  <span :if={@authors?} class="text-xs font-medium">{reply.author_name}</span>
                   <.local_time
                     at={reply.external_created_at}
                     class="text-[10px] text-base-content/70"
@@ -623,7 +641,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
         class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-base-content/70"
       >
         <.icon name="hero-chat-bubble-left-right" class="size-3" />
-        <span>Comment by {@result.comment.author_name || "Anonymous"}</span>
+        <span>Comment by {Publishing.byline(@result.comment.author_name) || "Anonymous"}</span>
         <span aria-hidden="true">·</span>
         <span>{Time.ago(@result.comment.external_created_at)}</span>
       </p>

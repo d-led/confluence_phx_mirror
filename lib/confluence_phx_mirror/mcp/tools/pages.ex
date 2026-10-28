@@ -14,6 +14,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Pages do
   alias ConfluencePhxMirror.Mcp.{Args, Links, Markdown, PageRef}
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.Page
+  alias ConfluencePhxMirror.Publishing
 
   # A malformed `parent_id` chain would otherwise recurse until the process
   # dies; the sync resolves parents into a tree, so this is a guard, not a rule.
@@ -263,7 +264,11 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Pages do
 
   defp updated(page) do
     date = iso(page.external_updated_at) || "unknown"
-    if page.author_name, do: "#{date} by #{page.author_name}", else: date
+
+    case Publishing.byline(page.author_name) do
+      nil -> date
+      byline -> "#{date} by #{byline}"
+    end
   end
 
   defp labels(%{labels: []}), do: nil

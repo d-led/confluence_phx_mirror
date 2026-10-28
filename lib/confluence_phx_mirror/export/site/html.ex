@@ -13,6 +13,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
   use Phoenix.Component
 
   alias ConfluencePhxMirror.Export.Site
+  alias ConfluencePhxMirror.Publishing
 
   @doc """
   The archive's front page.
@@ -252,7 +253,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
               Archived
             </span>
             <span :if={@page.status == "draft"} class="badge badge-info badge-xs">Draft</span>
-            <span :if={@page.author_name}>by {@page.author_name}</span>
+            <span :if={Publishing.byline(@page.author_name)}>by {@page.author_name}</span>
             <span :if={@updated}>updated {@updated}</span>
             <span>version {@page.version_number}</span>
             <a :if={@original} href={@original} class="link link-primary">Original on Confluence</a>

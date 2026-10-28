@@ -17,6 +17,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
 
   alias ConfluencePhxMirror.Mirror.Attachment
   alias ConfluencePhxMirror.Mirror.URLs
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirrorWeb.Time
 
   @doc """
@@ -171,7 +172,12 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
           </p>
           <%!-- `relative` keeps the label links clickable above the card-wide overlay. --%>
           <div class="relative z-10 mt-2 flex flex-wrap items-center gap-2">
-            <span class="text-[11px] text-base-content/70">by {post.author_name}</span>
+            <span
+              :if={not Publishing.anonymise_contributors?()}
+              class="text-[11px] text-base-content/70"
+            >
+              by {post.author_name}
+            </span>
             <.label_chips labels={post.labels} />
           </div>
         </article>
@@ -198,7 +204,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
             <span class="block truncate font-medium">{page.title}</span>
             <span class="mt-0.5 block text-xs text-base-content/70">
               {content_kind(page.type)} · {page.status}
-              <%= if page.author_name do %>
+              <%= if page.author_name && not Publishing.anonymise_contributors?() do %>
                 · {page.author_name}
               <% end %>
             </span>
@@ -279,7 +285,9 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
                 {page.status}
               </span>
             </td>
-            <td class="hidden text-xs text-base-content/70 lg:table-cell">{page.author_name}</td>
+            <td class="hidden text-xs text-base-content/70 lg:table-cell">
+              {Publishing.byline(page.author_name)}
+            </td>
             <td class="whitespace-nowrap text-right text-xs text-base-content/70">
               <.local_time at={page.external_updated_at}>
                 {Time.ago(page.external_updated_at)}

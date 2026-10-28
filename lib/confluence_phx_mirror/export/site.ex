@@ -41,6 +41,7 @@ defmodule ConfluencePhxMirror.Export.Site do
   alias ConfluencePhxMirror.Export.Site.{Chrome, Content, HTML, Search}
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Page, Space, URLs}
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sites
   alias ConfluencePhxMirrorWeb.Skins
@@ -615,7 +616,7 @@ defmodule ConfluencePhxMirror.Export.Site do
 
   defp comment_data(comment, context) do
     %{
-      author: comment.author_name || "Anonymous",
+      author: Publishing.byline(comment.author_name) || "Anonymous",
       at: stamp(comment.external_created_at),
       body: Content.rewrite(comment.body_export, context)
     }

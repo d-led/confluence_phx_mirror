@@ -229,7 +229,10 @@
       </p>
     </nav>
 
-    <.comment_thread page={@page} comments={@comments} />
+    <%!-- A deployment that does not publish comments does not draw the section
+    at all: "no comments on the original page" would be a statement about the
+    page, and this is a statement about the deployment. --%>
+    <.comment_thread :if={@comments?} page={@page} comments={@comments} />
   </article>
 
   <%!-- A sync can replace this page while it is being read. The notice is an

@@ -199,30 +199,31 @@ The shell still offers a *Sign in* button to that visitor
 deployment: a nudge, not a wall, and the one piece of chrome a public site
 should drop.
 
-### The rule to narrow before publishing
+### The rule a public site narrows
 
-`can_read_space?/2`, `restrict_spaces/2` and `readable_alongside/3` all read a
-space with **no synced permission rows as open**: "the sync account could read it
-and nobody narrowed it" is fair when the audience had to be admitted first. To
-the internet it is not — a permissions read that failed, or a space the sync has
-never listed, is indistinguishable from "everyone". A public deployment wants the
-narrower reading: *open only with an explicit `anonymous` grant*. That is a
-change of rule, not a switch that widens one, and it is the one thing standing
-between "supported" and "safe to expose".
+`can_read_space?/2`, `restrict_spaces/2`, `restrict_pages/2` and the in-memory
+cousins read a space with **no synced permission rows as open**: "the sync
+account could read it and nobody narrowed it" is fair when the audience had to be
+admitted first. To the internet it is not — a permissions read that failed, or a
+space the sync has never listed, is indistinguishable from "everyone".
+
+So `CM_PUBLIC_SITE=true` narrows that one rule for the reader who has no account:
+a stranger sees a space only if the site says `anonymousAccess`, and the macro
+audience rule (`readable_alongside/3`) treats an unlisted space as the anonymous
+audience for the same reason, so a listing baked into an anonymous-readable page
+cannot name a page from one. A reader with an account keeps the mirror's reading —
+including spaces whose permissions were never stored — because that is what the
+sync account itself could see.
 
 ### What a stranger should not see
 
 Two more questions are content rather than permission, and `anonymousAccess` does
-not answer either:
+not answer either. Each is one setting and one seam, so no surface is left out:
 
-| Question | Surfaces it reaches |
-| --- | --- |
-| whose name is on a page | page meta, comment authors, catalogue bylines, `/people/:account_id`, API presenters, Markdown and site exports |
-| do comments belong on the site | the page view, comment search hits **and the snippet that quotes them**, `…/comments`, exports, MCP results |
-
-Each needs one seam — a byline function, a comment read — rather than a condition
-per surface, or a surface gets forgotten. Excluding comments where they are drawn
-only would still publish their text through full-text search.
+| Setting | Seam | Reaches |
+| --- | --- | --- |
+| `CM_ANONYMIZE_CONTRIBUTORS` | `Publishing.byline/1` | page meta, comment authors, catalogue bylines, `/people` (closed), API presenters, Markdown and site exports, MCP answers |
+| `CM_EXCLUDE_COMMENTS` | `Mirror.comments/1`, `Mirror.Search` | the page view (no section at all), comment search hits **and the snippet that quotes them**, `…/comments`, exports, MCP results |
 
 ## Administration
 

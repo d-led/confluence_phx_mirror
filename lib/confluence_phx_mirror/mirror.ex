@@ -29,6 +29,7 @@ defmodule ConfluencePhxMirror.Mirror do
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Mirror.{PageRestriction, SpacePermission}
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync.SyncRun
 
@@ -2591,12 +2592,25 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
+  @doc """
+  The comments on a page, oldest first.
+
+  A deployment that does not publish comments (`CM_EXCLUDE_COMMENTS`) publishes
+  none of them: this is the read every surface goes through — the page view, the
+  Markdown and site exports, the API and the MCP tool — so the decision is made
+  once, here, rather than at each call site. Search reads comments through its
+  own statement and asks the same question itself (`Mirror.Search`).
+  """
   def comments(%Page{id: id}) do
-    from(c in Comment,
-      where: c.page_id == ^id and is_nil(c.deleted_at),
-      order_by: [asc: c.external_created_at]
-    )
-    |> Repo.all()
+    if Publishing.exclude_comments?() do
+      []
+    else
+      from(c in Comment,
+        where: c.page_id == ^id and is_nil(c.deleted_at),
+        order_by: [asc: c.external_created_at]
+      )
+      |> Repo.all()
+    end
   end
 
   def pages_for_label(name) do

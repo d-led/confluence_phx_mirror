@@ -12,6 +12,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.BuildInfo
   alias ConfluencePhxMirror.Confluence.Source
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirrorWeb.Skins
   alias ConfluencePhxMirrorWeb.Time
@@ -229,7 +230,15 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                 </ul>
               </details>
             <% else %>
-              <.link navigate={~p"/session"} class="btn btn-primary btn-sm">Sign in</.link>
+              <%!-- A public deployment has no door to point at: a visitor who
+              wants in is already in. --%>
+              <.link
+                :if={not Publishing.public_site?()}
+                navigate={~p"/session"}
+                class="btn btn-primary btn-sm"
+              >
+                Sign in
+              </.link>
             <% end %>
           </div>
         </div>

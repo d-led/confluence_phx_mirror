@@ -12,6 +12,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Discussion do
   alias ConfluencePhxMirror.Mcp.Tools.Pages
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, URLs}
+  alias ConfluencePhxMirror.Publishing
 
   @doc "`confluence_get_comments`: a page's comments and replies, oldest first."
   def comments(args, scope) do
@@ -75,7 +76,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Discussion do
   defp comments_text(page, comments, parents, markdown?) do
     "Comments on #{page.title} (id #{page.confluence_id}) — #{length(comments)}:\n\n" <>
       Enum.map_join(Enum.with_index(comments, 1), "\n\n", fn {comment, index} ->
-        "### #{index}. #{comment.author_name || "Unknown"} — " <>
+        "### #{index}. #{Publishing.byline(comment.author_name) || "Unknown"} — " <>
           "#{Pages.iso(comment.external_created_at) || "unknown"}" <>
           " (comment #{comment.confluence_id})\n" <>
           reply_to(comment, parents) <>
@@ -96,7 +97,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools.Discussion do
   defp comment_summary(comment, parents) do
     %{
       "id" => to_string(comment.confluence_id),
-      "author" => comment.author_name,
+      "author" => Publishing.byline(comment.author_name),
       "created" => Pages.iso(comment.external_created_at),
       "parent_id" => parents[comment.parent_id] && to_string(parents[comment.parent_id]),
       "url" => comment.external_url
