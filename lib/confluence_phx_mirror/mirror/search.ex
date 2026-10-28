@@ -254,6 +254,11 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   # preferred, so the comment branch skips pages the page branch already found,
   # and `band` keeps every page hit above every comment hit whatever the two
   # ranks happen to be. One row per page keeps paging honest.
+  #
+  # `band` has a second job: a page whose title answers the query sits above one
+  # that merely repeats the word. `ts_rank_cd` counts occurrences, so a page of
+  # listings — a macros gallery, an index, a table of contents — would otherwise
+  # outrank the page it names, which is the one thing a reader never meant.
   # sobelow_skip ["SQL.Query"]
   defp run_text(parameter, function, terms, limit, offset) do
     tsquery = "#{function}('#{@language}', $1)"
@@ -264,7 +269,10 @@ defmodule ConfluencePhxMirror.Mirror.Search do
       SELECT p.id AS page_id,
              ts_rank_cd(p.search_vector, #{tsquery}) AS rank,
              NULL::bigint AS comment_id,
-             1 AS band,
+             CASE
+               WHEN setweight(to_tsvector('#{@language}', coalesce(p.title, '')), 'A') @@ #{tsquery}
+               THEN 2 ELSE 1
+             END AS band,
              p.external_updated_at AS updated_at
       FROM pages p
       JOIN spaces s ON s.id = p.space_id

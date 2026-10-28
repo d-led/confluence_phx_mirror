@@ -186,6 +186,12 @@ typo-tolerant title matching. Comments are indexed too, through an expression
 index over their author and body text (see `Mirror.Search`), so `text ~` and the
 structured `q` find a page through what a comment says.
 
+Relevance is `ts_rank_cd` within a band, and the bands decide the order a reader
+sees: a page whose **title** answers the query comes first, then a page that only
+mentions the words, then a page found through a comment. Weighting alone is not
+enough — `ts_rank_cd` counts occurrences, so an index page or a macros gallery
+that repeats a title would otherwise rank above the page it names.
+
 There is deliberately no second, trigram index on comment text: two
 `CREATE INDEX CONCURRENTLY` builds on one table in a single migration deadlock
 against each other. A word *inside* a comment word is therefore not found; word

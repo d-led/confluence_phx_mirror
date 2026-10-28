@@ -89,4 +89,20 @@ defmodule ConfluencePhxMirror.Mirror.Search.TextTest do
     assert hd(results).page.title == "Architecture Overview"
     assert hd(results).rank > 0
   end
+
+  test "a title match outranks a page that only repeats the word in its body" do
+    space = space_fixture(%{key: "RANK", name: "Ranking"})
+    page_fixture(space, %{title: "Escalation policy", confluence_id: 97_010})
+
+    chatter = page_fixture(space, %{title: "Incident notes", confluence_id: 97_011})
+
+    {:ok, _} =
+      ConfluencePhxMirror.Mirror.update_rendered(chatter, %{
+        search_text: String.duplicate("escalation ", 20)
+      })
+
+    # Occurrence counting alone would put the page that says the word twenty
+    # times first, and it is never the page the reader meant.
+    assert hd(titles("escalation")) == "Escalation policy"
+  end
 end
