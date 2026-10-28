@@ -5,7 +5,7 @@ defmodule ConfluencePhxMirror.Confluence.SpaceDroppingSource do
   Answers like the demo source, minus the space keys the test names under this
   module:
 
-      Application.put_env(:confluence_phx_mirror, #{inspect(__MODULE__)}, drop: ["PROD"])
+      TestConfig.put(SpaceDroppingSource, drop: ["PROD"])
 
   Everything else — pages, comments, attachments — is the demo snapshot's.
   """

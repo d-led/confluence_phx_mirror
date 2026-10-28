@@ -45,4 +45,26 @@ defmodule ConfluencePhxMirror.TestConfigTest do
 
     assert Application.get_env(:confluence_phx_mirror, @seeded) == ["window@example.com"]
   end
+
+  # The rule this file exists for, checked rather than remembered: a test that
+  # writes the environment itself is one that can forget to put it back, and a
+  # leaked `:admins` once made four unrelated last-admin tests see a second
+  # administrator.
+  test "no test writes the environment except through here" do
+    # The helper writes it, and this test has to name the call it looks for.
+    allowed = ["test/support/test_config.ex", "test/confluence_phx_mirror/test_config_test.exs"]
+
+    offenders =
+      Path.wildcard("test/**/*.ex*")
+      |> Enum.reject(&(&1 in allowed))
+      |> Enum.filter(&(File.read!(&1) =~ "Application.put_env"))
+      |> Enum.sort()
+
+    assert offenders == [], """
+    These write the application environment directly; use TestConfig.put/2, which
+    puts the deployment back when the test ends:
+
+    #{Enum.join(offenders, "\n")}
+    """
+  end
 end
