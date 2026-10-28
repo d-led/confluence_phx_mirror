@@ -123,4 +123,32 @@ defmodule ConfluencePhxMirror.Sync.DynamicContentTest do
 
     assert html == "<p>Plain <strong>content</strong>.</p>"
   end
+
+  describe "toc" do
+    test "links the headings of the body it is expanding", %{host: host} do
+      html =
+        expand(
+          ~s(<h2 id="first">First</h2><div class="mirror-macro" data-macro="toc"></div>),
+          host
+        )
+
+      assert html =~ ~s(href="#first")
+      assert html =~ "First"
+    end
+  end
+
+  describe "children" do
+    test "lists the pages below, and leaves out one its readers may not open", %{host: host} do
+      {:ok, parent} = Mirror.find_page(Demo.open_page_parent_number())
+
+      html =
+        DynamicContent.expand(~s(<div class="mirror-macro" data-macro="children"></div>), %{
+          space: host.space,
+          page: parent
+        })
+
+      assert html =~ Demo.open_page_title()
+      refute html =~ Demo.restricted_page_title(), "a child list may not hand a restriction away"
+    end
+  end
 end

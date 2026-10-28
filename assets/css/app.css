@@ -507,6 +507,31 @@
 
 .confluence-content .mirror-dynamic-report { margin: 0.25rem 0 0; }
 
+.confluence-content .mirror-toc {
+  margin: 0;
+  padding-left: 1.1rem;
+  list-style: none;
+  font-size: 0.9rem;
+}
+
+.confluence-content .mirror-toc li { margin: 0.15rem 0; }
+
+.confluence-content .mirror-toc ul {
+  margin: 0.15rem 0 0;
+  padding-left: 1rem;
+  list-style: none;
+  border-left: 1px solid var(--color-base-300);
+}
+
+.confluence-content .mirror-toc a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 150ms ease;
+}
+
+.confluence-content .mirror-toc a:hover { border-bottom-color: currentColor; }
+
 /* Content only live Confluence can render (macros, app iframes) ---------- */
 
 .confluence-content .mirror-unavailable {

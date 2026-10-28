@@ -156,6 +156,32 @@ mix test --failed
 Tests start processes with `start_supervised!/1`; wait for a process with
 `Process.monitor/1` / `_ = :sys.get_state/1` rather than `Process.sleep/1`.
 
+### Adding a macro renderer
+
+A dynamic macro is one module behind one behaviour, and teaching the mirror a new
+one is three steps:
+
+1. `lib/confluence_phx_mirror/sync/dynamic_content/renderers/my_macro.ex` —
+implement `ConfluencePhxMirror.Sync.DynamicContent.Renderer`, that is
+`render(attrs, context)`, and answer with `Floki` nodes from
+`Sync.DynamicContent.Nodes`. `attrs` are the marker's `data-*` names without the
+prefix; `context` carries the page, its space, its headings and the content
+port.
+2. One line in `Sync.DynamicContent.Registry`.
+3. A spec in `test/confluence_phx_mirror/sync/dynamic_content/` that expands the
+marker through `DynamicContent.expand/2`, naming
+`ConfluencePhxMirror.Sync.DynamicContent.StubContent` as the port:
+
+```elixir
+StubContent.script(children: [page])
+html = DynamicContent.expand(marker, %{space: space, page: page, source: StubContent})
+```
+
+Do not query the database from a renderer: add a callback to
+`Sync.DynamicContent.Source` (and to `Source.Mirror`) instead. That is where the
+audience rule is applied — a macro is resolved once, for every reader of the
+page, so what it lists may only be what those readers may open.
+
 ### Who is reading, and which deployment
 
 Two pieces of global state decide what a test sees, and the suite keeps both

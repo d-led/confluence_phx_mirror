@@ -275,7 +275,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     doc("""
     #{panel(:info, "Welcome to the Engineering Handbook", "<p>Everything a new engineer needs: onboarding, architecture, how we search the mirror and how to reach the API.</p>" <> "<p>Start with #{page_link(1001, "Getting Started")} or jump to #{page_link(1002, "Architecture Overview")}.</p>")}
     <h2 id="handbook-map">Handbook map</h2>
-    #{children_macro([1001, 1004, 1005, 1006, 1007, 1008, 1009])}
+    <div class="mirror-macro" data-macro="children"></div>
     <h2 id="recently-updated">Recently updated</h2>
     <table class="confluenceTable">
       <tbody>
@@ -292,14 +292,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
   defp getting_started_body do
     doc("""
     <p>#{lozenge(:inprogress, "ONBOARDING")} #{lozenge(:success, "DOCUMENTED")}</p>
-    <div class="toc-macro client-side-toc-macro">
-      <ul class="toc-indentation">
-        <li><a href="#day-one">Day one</a></li>
-        <li><a href="#first-week">First week</a></li>
-        <li><a href="#contractors">Contractors</a></li>
-        <li><a href="#where-to-ask">Where to ask</a></li>
-      </ul>
-    </div>
+    <div class="mirror-macro" data-macro="toc"></div>
     <h2 id="day-one">Day one</h2>
     #{panel(:tip, "Before your first coffee", "<p>Install the toolchain, clone the workspace and run <code>mix setup</code>. The mirror should be available at <code>http://localhost:4000</code>.</p>")}
     #{code("bash", ~s|mix setup\nmix phx.server\n# then open http://localhost:4000|)}

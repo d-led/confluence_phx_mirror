@@ -95,16 +95,39 @@ labels), resolve-macros-in-the-browser needs a client, and write-back/re-caching
 pipelines need write access we deliberately do not have. Resolving from the
 mirrored data at sync time is the read-only equivalent.
 
-## Dynamic content: the next macros to resolve
+## Dynamic content: one renderer per macro
 
-Two families are already handled (resolved, or an honest notice). The rest fall
-into three buckets, and only the first is a mirroring problem:
+A macro is a marker in the body — `<div class="mirror-macro" data-macro="toc">`
+— and a module that answers it:
+
+| Piece | What it is |
+| --- | --- |
+| `Sync.DynamicContent` | finds the markers, reads the body's headings, dispatches, serialises |
+| `Sync.DynamicContent.Renderer` | the behaviour: `render(attrs, context)` returns HTML nodes |
+| `Sync.DynamicContent.Registry` | the one list mapping a `data-macro` name to its module |
+| `Sync.DynamicContent.Context` | the page, its space, its headings, and the content port |
+| `Sync.DynamicContent.Source` | the port through which a macro reads the mirror, already narrowed to what the host page's readers may open |
+| `Sync.DynamicContent.Nodes` | the HTML vocabulary the macros share |
+
+Macros are **in-tree, not a plugin host**: a renderer is an ordinary module with
+an ordinary test (`test/support/stub_content.ex` stands in for the database), and
+the registry is a compile-time map, so what the mirror can draw is readable in
+one place and dialyzer sees it.
+
+The audience rule lives in the port, not in each macro. Confluence resolves a
+macro per viewer; a mirror resolves it once at sync time and bakes one answer
+into the page for everybody, so everything a macro lists must be at least as
+wide as the page listing it. Applying that once in
+`Sync.DynamicContent.Source.Mirror` means a macro written next year inherits it.
+
+Resolved today: `content-by-label`, `page-properties-report`, `toc` and
+`children`. What is left falls into three buckets, and only the first is a
+mirroring problem:
 
 | Macro | Data it needs | Where it comes from |
 | --- | --- | --- |
-| `toc` | the page's own headings | the rendered body (ids already exist) |
-| `children`, `pagetree` | the page tree | `pages.parent_id`, `ancestors` |
-| `recently-updated`, `blog-posts` | page metadata | `external_updated_at`, `type` |
+| `pagetree` | the page tree, below one root | `pages.ancestors` (`Mirror.descendants/2`) |
+| `recently-updated`, `blog-posts` | page metadata, optionally filtered | `external_updated_at`, `type` — or a CQL query (see [configuration.md](configuration.md)) |
 | `attachments` | the page's files | `attachments` + blob store |
 | `excerpt`, `excerpt-include`, `include` | another page's body | `pages.body_export` |
 | `contributors` | authors and versions | `author_name` (one author today) |
@@ -113,11 +136,9 @@ into three buckets, and only the first is a mirroring problem:
 | `livesearch`, `gadget`, `widget` | a client, or a third-party app | impossible statically |
 | Forge/Connect app macros | the app | a placeholder is the honest answer |
 
-The order to implement them is by value per line: `toc` and `children` first (a
-page tree is what a reader navigates by), then `include`/`excerpt-include`
-(pages that build other pages), then `recently-updated`. Each is a resolver in
-`Sync.DynamicContent` keyed by `data-macro`, so they follow the same idempotent
-expansion the two existing ones use and need no new plumbing.
+The order to implement them is by value per line: `include`/`excerpt-include`
+(pages that build other pages), then `recently-updated`, then `attachments`.
+Each is one module and one line in the registry; nothing else changes.
 
 ## Space and site customisation
 
