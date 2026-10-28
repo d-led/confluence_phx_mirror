@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirror.Accounts.ModerationTest do
 
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.User
+  alias ConfluencePhxMirror.TestConfig
 
   test "a banned reader is refused with no other flag set" do
     user = user_fixture(%{email: "banned@example.com"})
@@ -159,7 +160,7 @@ defmodule ConfluencePhxMirror.Accounts.ModerationTest do
   end
 
   test "a deployment may admit the readers the site switched off, but not the ones it lost" do
-    with_env(:allow_site_disabled_readers, true)
+    TestConfig.put(:allow_site_disabled_readers, true)
     switched_off = user_fixture(%{email: "off@example.com"})
     gone = user_fixture(%{email: "gone@example.com"})
 
@@ -192,11 +193,5 @@ defmodule ConfluencePhxMirror.Accounts.ModerationTest do
       |> ConfluencePhxMirror.Repo.update()
 
     user
-  end
-
-  defp with_env(key, value) do
-    previous = Application.get_env(:confluence_phx_mirror, key)
-    Application.put_env(:confluence_phx_mirror, key, value)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, key, previous) end)
   end
 end

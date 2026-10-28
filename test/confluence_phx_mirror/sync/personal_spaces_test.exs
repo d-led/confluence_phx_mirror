@@ -7,12 +7,7 @@ defmodule ConfluencePhxMirror.Sync.PersonalSpacesTest do
   alias ConfluencePhxMirror.Confluence.PersonalSpaceSource
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Sync
-
-  setup do
-    previous = Application.get_env(:confluence_phx_mirror, :sync)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :sync, previous) end)
-    :ok
-  end
+  alias ConfluencePhxMirror.TestConfig
 
   test "a snapshot leaves the personal space out" do
     {:ok, run} = Sync.run(:snapshot, source: PersonalSpaceSource)
@@ -44,7 +39,7 @@ defmodule ConfluencePhxMirror.Sync.PersonalSpacesTest do
   end
 
   defp put_sync(opts) do
-    Application.put_env(:confluence_phx_mirror, :sync, Keyword.merge(existing(), opts))
+    TestConfig.put(:sync, Keyword.merge(existing(), opts))
   end
 
   defp existing, do: Application.get_env(:confluence_phx_mirror, :sync, [])

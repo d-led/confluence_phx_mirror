@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirror.SyncGateTest do
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.{Gate, SnapshotWorker, SyncRun}
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     owner = Ecto.Adapters.SQL.Sandbox.start_owner!(Repo, shared: true)
@@ -148,15 +149,14 @@ defmodule ConfluencePhxMirror.SyncGateTest do
   # abandonment guard is checked while the claim is fresh.
   describe "a run slower than its lease" do
     setup do
-      previous = Application.get_env(:confluence_phx_mirror, :sync)
-
-      Application.put_env(
-        :confluence_phx_mirror,
+      TestConfig.put(
         :sync,
-        Keyword.put(previous || [], :gate_lease_seconds, 1)
+        Keyword.put(
+          Application.get_env(:confluence_phx_mirror, :sync) || [],
+          :gate_lease_seconds,
+          1
+        )
       )
-
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :sync, previous) end)
     end
 
     test "keeps pushing its lease forward while it works" do

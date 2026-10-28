@@ -6,13 +6,14 @@ defmodule ConfluencePhxMirror.Accounts.AdminsTest do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.Admins
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.TestConfig
 
   test "the admin role is the first source" do
     assert Admins.source(user_fixture(%{role: "admin"})) == :role
   end
 
   test "an e-mail seeded through config administers the mirror" do
-    with_env(:admins, ["Ops@Example.com"])
+    TestConfig.put(:admins, ["Ops@Example.com"])
     user = user_fixture(%{email: "ops@example.com"})
 
     assert Admins.source(user) == :seed
@@ -20,7 +21,7 @@ defmodule ConfluencePhxMirror.Accounts.AdminsTest do
   end
 
   test "membership of an admin group administers the mirror" do
-    with_env(:admin_groups, ["confluence-admins"])
+    TestConfig.put(:admin_groups, ["confluence-admins"])
 
     {:ok, _} =
       Mirror.replace_group_members("confluence-admins", [
@@ -33,7 +34,7 @@ defmodule ConfluencePhxMirror.Accounts.AdminsTest do
   end
 
   test "losing the group in Confluence takes administration away" do
-    with_env(:admin_groups, ["confluence-admins"])
+    TestConfig.put(:admin_groups, ["confluence-admins"])
     user = user_fixture(%{email: "lead@example.com"})
 
     {:ok, _} =
@@ -61,7 +62,7 @@ defmodule ConfluencePhxMirror.Accounts.AdminsTest do
   end
 
   test "seeded and bootstrap administrators cannot be demoted" do
-    with_env(:admins, ["ops@example.com"])
+    TestConfig.put(:admins, ["ops@example.com"])
 
     seeded = user_fixture(%{email: "ops@example.com", role: "admin"})
     bootstrap = user_fixture(%{email: "admin@localhost", role: "admin"})
@@ -84,11 +85,5 @@ defmodule ConfluencePhxMirror.Accounts.AdminsTest do
 
     refute Admins.protected?(admin)
     assert {:ok, %{role: "member"}} = Accounts.change_role(admin, "member", {:system, "test"})
-  end
-
-  defp with_env(key, value) do
-    previous = Application.get_env(:confluence_phx_mirror, key)
-    Application.put_env(:confluence_phx_mirror, key, value)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, key, previous) end)
   end
 end

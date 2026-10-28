@@ -36,11 +36,7 @@ defmodule ConfluencePhxMirror.SyncTest do
     :ok
   end
 
-  defp configured_spaces(spaces) do
-    previous = Application.get_env(:confluence_phx_mirror, HttpSource)
-    Application.put_env(:confluence_phx_mirror, HttpSource, spaces: spaces)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, HttpSource, previous) end)
-  end
+  defp configured_spaces(spaces), do: TestConfig.put(HttpSource, spaces: spaces)
 
   defp live_space_keys do
     import Ecto.Query, only: [from: 2]

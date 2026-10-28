@@ -17,10 +17,11 @@ defmodule ConfluencePhxMirror.Accounts.ProtectedAccountsTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.TestConfig
 
   describe "an address the deployment seeds" do
     setup do
-      seeded(:admins, ["boss@example.com"])
+      TestConfig.put(:admins, ["boss@example.com"])
     end
 
     test "cannot be deleted, even while another administrator exists" do
@@ -44,7 +45,7 @@ defmodule ConfluencePhxMirror.Accounts.ProtectedAccountsTest do
 
   describe "the bootstrap account" do
     setup do
-      seeded(:auto_admin_email, "root@localhost")
+      TestConfig.put(:auto_admin_email, "root@localhost")
     end
 
     test "cannot be deleted either, and the reason is its protection" do
@@ -69,26 +70,12 @@ defmodule ConfluencePhxMirror.Accounts.ProtectedAccountsTest do
   end
 
   test "the rule a row shows and the rule the event applies are the same function" do
-    seeded(:admins, ["boss@example.com"])
+    TestConfig.put(:admins, ["boss@example.com"])
     boss = user_fixture(%{email: "boss@example.com", role: "admin"})
 
     # The screen draws its button from `deletion_blocked/1`; the event calls
     # `delete_user/2`. One answer, or a button promises what the server refuses.
     assert Accounts.deletion_blocked(boss) ==
              Accounts.delete_user(boss, {:system, "test"})
-  end
-
-  defp seeded(key, value) do
-    previous = Application.get_env(:confluence_phx_mirror, key)
-    Application.put_env(:confluence_phx_mirror, key, value)
-
-    on_exit(fn ->
-      # A key that was absent has to go back to absent: `put_env(key, nil)`
-      # leaves a nil behind, and the defaults the production code relies on are
-      # only applied to a missing key.
-      if is_nil(previous),
-        do: Application.delete_env(:confluence_phx_mirror, key),
-        else: Application.put_env(:confluence_phx_mirror, key, previous)
-    end)
   end
 end

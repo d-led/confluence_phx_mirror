@@ -7,6 +7,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.TestConfig
 
   # This screen is an administrator's: the suite's bootstrap account is signed
   # in rather than the deployment pretending everyone is one.
@@ -183,9 +184,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
 
   describe "moderation" do
     test "a seeded administrator's row offers no Delete, and no event deletes it", %{conn: conn} do
-      previously = Application.get_env(:confluence_phx_mirror, :admins)
-      Application.put_env(:confluence_phx_mirror, :admins, ["boss@example.com"])
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :admins, previously) end)
+      TestConfig.put(:admins, ["boss@example.com"])
 
       boss = user_fixture(%{email: "boss@example.com", role: "admin"})
       # A second administrator, so being "the last one" is not what protects it.

@@ -6,6 +6,8 @@ defmodule ConfluencePhxMirrorWeb.AdminNavTest do
 
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
+  alias ConfluencePhxMirror.TestConfig
+
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
 
@@ -42,10 +44,7 @@ defmodule ConfluencePhxMirrorWeb.AdminNavTest do
   end
 
   defp admin_user do
-    previous = Application.get_env(:confluence_phx_mirror, :admins)
-    Application.put_env(:confluence_phx_mirror, :admins, ["ops@example.com"])
-
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :admins, previous) end)
+    TestConfig.put(:admins, ["ops@example.com"])
 
     user_fixture(%{email: "ops@example.com", role: "member"})
   end

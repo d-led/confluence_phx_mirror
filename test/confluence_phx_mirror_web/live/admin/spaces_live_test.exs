@@ -12,6 +12,7 @@ defmodule ConfluencePhxMirrorWeb.AdminSpacesLiveTest do
   alias ConfluencePhxMirror.Confluence.HttpSource
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync.SpaceScope
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     demo_snapshot!()
@@ -129,16 +130,11 @@ defmodule ConfluencePhxMirrorWeb.AdminSpacesLiveTest do
   end
 
   defp configured_spaces(spaces) do
-    previous = Application.get_env(:confluence_phx_mirror, HttpSource)
-    Application.put_env(:confluence_phx_mirror, HttpSource, spaces: spaces)
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, HttpSource, previous) end)
+    TestConfig.put(HttpSource, spaces: spaces)
   end
 
   defp admin_user do
-    previous = Application.get_env(:confluence_phx_mirror, :admins)
-    Application.put_env(:confluence_phx_mirror, :admins, ["ops@example.com"])
-
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, :admins, previous) end)
+    TestConfig.put(:admins, ["ops@example.com"])
 
     user_fixture(%{email: "ops@example.com", role: "member"})
   end

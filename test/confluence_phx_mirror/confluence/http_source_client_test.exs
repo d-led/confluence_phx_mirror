@@ -9,13 +9,12 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
   use ExUnit.Case, async: false
 
   alias ConfluencePhxMirror.Confluence.HttpSource
+  alias ConfluencePhxMirror.TestConfig
 
   @base_url "https://acme.atlassian.net"
 
   setup do
-    previous = Application.get_env(:confluence_phx_mirror, HttpSource)
     put_config([])
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, HttpSource, previous) end)
     :ok
   end
 
@@ -29,7 +28,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
       req_options: [plug: {Req.Test, __MODULE__}]
     ]
 
-    Application.put_env(:confluence_phx_mirror, HttpSource, Keyword.merge(base, opts))
+    TestConfig.put(HttpSource, Keyword.merge(base, opts))
   end
 
   defp stub(fun), do: Req.Test.stub(__MODULE__, fun)

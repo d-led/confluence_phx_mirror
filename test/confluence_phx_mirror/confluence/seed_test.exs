@@ -7,14 +7,14 @@ defmodule ConfluencePhxMirror.Confluence.SeedTest do
   use ExUnit.Case, async: false
 
   alias ConfluencePhxMirror.Confluence.{DemoContent, HttpSource, Seed}
+  alias ConfluencePhxMirror.TestConfig
 
   @space_path "/wiki/rest/api/space/ENG"
   @content_path "/wiki/rest/api/content"
 
   setup do
-    previous = Application.get_env(:confluence_phx_mirror, HttpSource)
-
-    Application.put_env(:confluence_phx_mirror, HttpSource,
+    TestConfig.put(
+      HttpSource,
       base_url: "https://acme.atlassian.net",
       email: "mirror@acme.test",
       api_token: "secret-token",
@@ -25,7 +25,6 @@ defmodule ConfluencePhxMirror.Confluence.SeedTest do
       req_options: [plug: {Req.Test, __MODULE__}]
     )
 
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, HttpSource, previous) end)
     :ok
   end
 

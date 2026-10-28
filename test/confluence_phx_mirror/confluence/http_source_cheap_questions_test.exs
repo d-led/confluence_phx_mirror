@@ -12,11 +12,11 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceCheapQuestionsTest do
   use ExUnit.Case, async: false
 
   alias ConfluencePhxMirror.Confluence.HttpSource
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
-    previous = Application.get_env(:confluence_phx_mirror, HttpSource)
-
-    Application.put_env(:confluence_phx_mirror, HttpSource,
+    TestConfig.put(
+      HttpSource,
       base_url: "https://acme.atlassian.net",
       email: "mirror@acme.test",
       api_token: "secret-token",
@@ -26,7 +26,6 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceCheapQuestionsTest do
       req_options: [plug: {Req.Test, __MODULE__}]
     )
 
-    on_exit(fn -> Application.put_env(:confluence_phx_mirror, HttpSource, previous) end)
     :ok
   end
 

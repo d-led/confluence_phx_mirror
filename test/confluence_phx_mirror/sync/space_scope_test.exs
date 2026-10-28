@@ -11,20 +11,13 @@ defmodule ConfluencePhxMirror.Sync.SpaceScopeTest do
   alias ConfluencePhxMirror.Confluence.HttpSource
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync.SpaceScope
+  alias ConfluencePhxMirror.TestConfig
 
   @actor {:system, "test"}
 
   setup do
-    previous = Application.get_env(:confluence_phx_mirror, HttpSource)
     Settings.reload()
-
-    on_exit(fn ->
-      if previous,
-        do: Application.put_env(:confluence_phx_mirror, HttpSource, previous),
-        else: Application.delete_env(:confluence_phx_mirror, HttpSource)
-
-      Settings.reload()
-    end)
+    on_exit(fn -> Settings.reload() end)
 
     :ok
   end
@@ -99,6 +92,6 @@ defmodule ConfluencePhxMirror.Sync.SpaceScopeTest do
   end
 
   defp configured_spaces(spaces) do
-    Application.put_env(:confluence_phx_mirror, HttpSource, spaces: spaces)
+    TestConfig.put(HttpSource, spaces: spaces)
   end
 end

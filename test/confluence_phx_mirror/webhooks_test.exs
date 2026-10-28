@@ -7,6 +7,7 @@ defmodule ConfluencePhxMirror.WebhooksTest do
   alias ConfluencePhxMirror.Mirror.Page
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync.{PageWorker, SpaceWorker}
+  alias ConfluencePhxMirror.TestConfig
   alias ConfluencePhxMirror.Webhooks
   alias ConfluencePhxMirror.Webhooks.Delivery
 
@@ -178,14 +179,7 @@ defmodule ConfluencePhxMirror.WebhooksTest do
 
   describe "when signatures are required" do
     setup do
-      previous = Application.get_env(:confluence_phx_mirror, :webhooks)
-
-      Application.put_env(:confluence_phx_mirror, :webhooks,
-        secret: @secret,
-        require_signature: true
-      )
-
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :webhooks, previous) end)
+      TestConfig.put(:webhooks, secret: @secret, require_signature: true)
       :ok
     end
 
@@ -221,14 +215,7 @@ defmodule ConfluencePhxMirror.WebhooksTest do
 
   describe "when the intake is switched off" do
     setup do
-      previous = Application.get_env(:confluence_phx_mirror, :webhooks)
-
-      Application.put_env(:confluence_phx_mirror, :webhooks,
-        secret: @secret,
-        enabled: false
-      )
-
-      on_exit(fn -> Application.put_env(:confluence_phx_mirror, :webhooks, previous) end)
+      TestConfig.put(:webhooks, secret: @secret, enabled: false)
       :ok
     end
 

@@ -11,14 +11,12 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceCallsTest do
 
   alias ConfluencePhxMirror.Confluence.{HttpSource, Traffic}
   alias ConfluencePhxMirror.Sync.Log
+  alias ConfluencePhxMirror.TestConfig
 
   @base_url "https://acme.atlassian.net"
 
   setup do
-    previous = Application.get_env(:confluence_phx_mirror, HttpSource)
-
-    Application.put_env(
-      :confluence_phx_mirror,
+    TestConfig.put(
       HttpSource,
       base_url: @base_url,
       email: "mirror@acme.test",
@@ -31,10 +29,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceCallsTest do
     Log.clear()
     Traffic.reset()
 
-    on_exit(fn ->
-      Application.put_env(:confluence_phx_mirror, HttpSource, previous)
-      Traffic.reset()
-    end)
+    on_exit(fn -> Traffic.reset() end)
 
     :ok
   end
