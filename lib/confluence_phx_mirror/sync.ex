@@ -650,12 +650,17 @@ defmodule ConfluencePhxMirror.Sync do
 
         {space_dtos, skipped} = importable_spaces(space_dtos)
         {space_dtos, outside} = whitelisted_spaces(space_dtos)
-        skipped = skipped + outside
+        skipped = skipped + length(outside)
+
+        # Asked before the filters, so "not listed" means the site did not name
+        # it rather than "somebody narrowed CM_SPACES".
+        {unlisted, unlisted_errors} = unlisted_spaces(space_dtos)
+
         {spaces, icon_errors} = upsert_spaces(source, space_dtos)
-        {spaces_trashed, pages_trashed} = trash_missing_spaces(space_dtos)
+        {spaces_trashed, pages_trashed} = trash_outside_whitelist(outside)
         {spaces, permission_errors} = sync_space_permissions(source, spaces)
 
-        {entries, counts, errors, deleted} = sync_pages_of(spaces, source, opts)
+        {entries, counts, errors, absent} = sync_pages_of(spaces, source, opts)
         resolve_trees(spaces)
         index = Mirror.page_index()
 
@@ -673,7 +678,8 @@ defmodule ConfluencePhxMirror.Sync do
           Map.merge(stats, %{
             "spaces" => length(spaces),
             "skipped_spaces" => skipped,
-            "deleted" => deleted,
+            "absent" => absent,
+            "spaces_unlisted" => unlisted,
             "spaces_trashed" => spaces_trashed,
             "pages_trashed" => pages_trashed,
             "group_members" => people + new_people + group_rows
@@ -682,6 +688,7 @@ defmodule ConfluencePhxMirror.Sync do
 
         {stats,
          errors ++
+           unlisted_errors ++
            icon_errors ++
            permission_errors ++
            people_errors ++ newcomer_errors ++ detail_errors ++ group_errors}
@@ -699,7 +706,7 @@ defmodule ConfluencePhxMirror.Sync do
       {people, people_errors, refreshed} = sync_groups(source, opts)
       record_phase(opts, "spaces")
       {_spaces, permission_errors} = sync_space_permissions(source, [space])
-      {entries, counts, errors, deleted} = sync_pages_of([space], source, opts)
+      {entries, counts, errors, absent} = sync_pages_of([space], source, opts)
       resolve_trees([space])
       index = Mirror.page_index()
 
@@ -712,7 +719,7 @@ defmodule ConfluencePhxMirror.Sync do
       members = people + new_people + group_rows
 
       stats =
-        Map.merge(stats, %{"spaces" => 1, "deleted" => deleted, "group_members" => members})
+        Map.merge(stats, %{"spaces" => 1, "absent" => absent, "group_members" => members})
         |> Map.merge(page_counts(counts))
 
       {stats,
@@ -794,7 +801,7 @@ defmodule ConfluencePhxMirror.Sync do
         # whatever mode the run is: `changed_since` only reports pages that
         # moved inside its window, so such a space would otherwise wait for a
         # snapshot nobody knew to run.
-        {discovered, discovered_counts, discovered_errors, deleted, skipped_spaces} =
+        {discovered, discovered_counts, discovered_errors, absent, skipped_spaces} =
           discover_spaces(source, opts)
 
         spaces = Enum.uniq_by(spaces ++ discovered, & &1.id)
@@ -824,7 +831,7 @@ defmodule ConfluencePhxMirror.Sync do
           |> Map.merge(%{
             "spaces" => length(spaces),
             "spaces_discovered" => length(discovered),
-            "deleted" => deleted,
+            "absent" => absent,
             "skipped_spaces" => skipped_spaces,
             "skipped_personal" => skipped_personal,
             "details_relisted" => length(extra),
@@ -1000,20 +1007,18 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   # A snapshot is the only run that sees the whole site, so it is the only run
-  # that can tell a space was deleted. It trashes rather than deletes, and it
-  # trashes nothing from an empty listing: no spaces at all is a permission or
-  # configuration problem far more often than an empty site, which is the same
-  # guard the per-space page listing gets.
-  defp trash_missing_spaces([]), do: {0, 0}
+  # that can notice a space is no longer listed. It does not act on that: a space
+  # that disappears from the site's own listing is as likely to be a token that
+  # lost access as a space somebody deleted, and the two cannot be told apart
+  # from the answer. The run says which spaces it did not find and leaves every
+  # row where it is, for an operator — and an empty listing says nothing at all,
+  # which is the same guard the per-space page listing gets.
+  defp unlisted_spaces([]), do: {0, []}
 
-  defp trash_missing_spaces(space_dtos) do
-    trashed = Mirror.prune_missing_spaces(Enum.map(space_dtos, & &1.key))
+  defp unlisted_spaces(space_dtos) do
+    unlisted = Mirror.spaces_not_listed(Enum.map(space_dtos, & &1.key))
 
-    Enum.each(trashed, fn {space, pages} ->
-      Audit.log(Audit.system_actor(), Space.audit_event_space_deleted(space, pages))
-    end)
-
-    {length(trashed), trashed |> Enum.map(&elem(&1, 1)) |> Enum.sum()}
+    {length(unlisted), Enum.map(unlisted, &error("space", &1.key, :not_listed_by_the_source))}
   end
 
   # Everyone has a personal space, and mirroring the sync account's own drafts
@@ -1037,18 +1042,37 @@ defmodule ConfluencePhxMirror.Sync do
   defp importable_space?(%Space{type: "personal"}), do: personal_spaces?()
   defp importable_space?(%Space{}), do: true
 
-  # A space nobody asked for is not imported. Because the trash compares against
-  # this same list, a space that leaves the whitelist is trashed — softly: its
-  # rows stay, and naming it again brings it back on the next run.
+  # A space nobody asked for is not imported, and one that leaves the whitelist
+  # is trashed — softly: its rows stay, and naming it again brings it back on the
+  # next run. This is the one removal the sync still performs, because it is an
+  # operator's decision about configuration rather than an answer from the site
+  # (see `unlisted_spaces/1` for the case that only reports).
   defp whitelisted_spaces(space_dtos) do
     case SpaceScope.wanted() do
       :all ->
-        {space_dtos, 0}
+        {space_dtos, []}
 
       keys ->
-        {kept, outside} = Enum.split_with(space_dtos, &SpaceScope.import?(keys, &1.key))
-        {kept, length(outside)}
+        Enum.split_with(space_dtos, &SpaceScope.import?(keys, &1.key))
     end
+  end
+
+  defp trash_outside_whitelist([]), do: {0, 0}
+
+  defp trash_outside_whitelist(dtos) do
+    trashed =
+      Enum.flat_map(dtos, fn dto ->
+        case Mirror.get_space_by_key(dto.key) do
+          nil -> []
+          space -> [{space, Mirror.trash_space(space)}]
+        end
+      end)
+
+    Enum.each(trashed, fn {space, pages} ->
+      Audit.log(Audit.system_actor(), Space.audit_event_space_deleted(space, pages))
+    end)
+
+    {length(trashed), trashed |> Enum.map(&elem(&1, 1)) |> Enum.sum()}
   end
 
   # `changed_since` only names pages that moved inside the window, so a space the
@@ -1066,6 +1090,7 @@ defmodule ConfluencePhxMirror.Sync do
       {:ok, dtos} ->
         {dtos, personal} = importable_spaces(dtos)
         {dtos, outside} = whitelisted_spaces(dtos)
+        outside = length(outside)
         listed = Mirror.space_listing_state()
 
         {unknown, known} = Enum.split_with(dtos, &(not Map.has_key?(listed, &1.key)))
@@ -1087,11 +1112,11 @@ defmodule ConfluencePhxMirror.Sync do
           )
         end
 
-        {_entries, counts, listing_errors, deleted} = sync_pages_of(spaces, source, opts)
+        {_entries, counts, listing_errors, absent} = sync_pages_of(spaces, source, opts)
 
         # `_entries` is deliberate: their pages are readable from the listing
         # body, and rendering them here would make one run cost a snapshot.
-        {spaces, counts, icon_errors ++ listing_errors, deleted, personal + outside}
+        {spaces, counts, icon_errors ++ listing_errors, absent, personal + outside}
 
       {:error, reason} ->
         # Reported, not swallowed: a mirror that cannot list the site cannot
@@ -1408,23 +1433,16 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   defp sync_pages_of(spaces, source, opts) do
-    {entries, counts, errors, deleted} =
+    {entries, counts, errors, absent} =
       Enum.reduce(spaces, {[], %{changed: 0, unchanged: 0}, [], 0}, fn space,
                                                                        {entries, counts, errors,
-                                                                        deleted} ->
+                                                                        absent} ->
         check_cancelled!(opts)
 
         case source.pages(space.key, opts) do
           {:ok, dtos} ->
             {upserted, space_counts, page_errors} = upsert_entries(dtos, [space], opts)
-            {deleted_count, guard_errors} = reconcile_deletions(space, dtos)
-
-            if deleted_count > 0 do
-              Audit.log(
-                Audit.system_actor(),
-                Space.audit_event_pages_deleted(space, deleted_count)
-              )
-            end
+            {flagged, guard_errors} = reconcile_deletions(space, dtos)
 
             # The space is only marked as listed once the whole listing landed:
             # a run stopped halfway leaves it unlisted, and the next run reads it
@@ -1438,14 +1456,14 @@ defmodule ConfluencePhxMirror.Sync do
             # ++ upserted` copies every entry of every space before it, which is
             # quadratic in the size of the site (50k pages: 5.8 s of pure copy).
             {Enum.reverse(upserted, entries), counts, errors ++ page_errors ++ guard_errors,
-             deleted + deleted_count}
+             absent + flagged}
 
           {:error, reason} ->
-            {entries, counts, [error("space", space.key, reason) | errors], deleted}
+            {entries, counts, [error("space", space.key, reason) | errors], absent}
         end
       end)
 
-    {Enum.reverse(entries), counts, errors, deleted}
+    {Enum.reverse(entries), counts, errors, absent}
   end
 
   defp add_counts(left, right) do
@@ -1473,8 +1491,42 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
+  # A listing is evidence, not a verdict. It can leave a page out because the
+  # page is gone — and just as easily because the token lost access to it, since
+  # a page restriction added for the sync account looks exactly like a deletion
+  # from here. So the sync flags and a person decides: the page gets
+  # `absent_since` (cleared the moment a listing names it again, reviewed on
+  # `/admin/upstream`), and nothing is trashed.
   defp reconcile_deletions(space, dtos) do
-    {Mirror.mark_missing_deleted(space, Enum.map(dtos, & &1.id)), []}
+    {flagged, _cleared} = Mirror.mark_absent(space, Enum.map(dtos, & &1.id))
+
+    {flagged, suspicion(space, length(dtos), flagged)}
+  end
+
+  # A listing that names far fewer pages than the mirror holds has the shape of
+  # a permission change, not of a mass deletion: a site that really lost
+  # hundreds of pages at once is a catastrophe an operator hears about from
+  # people, while a token that lost a group looks exactly like this. Saying so in
+  # the run's errors is what turns a silent flag into something a person sees.
+  @listing_shrank_floor 0.5
+  @listing_shrank_minimum 5
+
+  defp suspicion(space, listed, flagged) do
+    held = Mirror.count_pages(space.id)
+
+    if held >= @listing_shrank_minimum and listed < held * @listing_shrank_floor do
+      [
+        error("space", space.key, {
+          :listing_shrank,
+          listed: listed,
+          held: held,
+          flagged: flagged,
+          hint: "a permission change looks like this; nothing was trashed"
+        })
+      ]
+    else
+      []
+    end
   end
 
   # A snapshot of a real site lists hundreds of thousands of pages, so the run

@@ -438,6 +438,28 @@ a site with hundreds of spaces, so it is worth knowing which one you are paying.
 
 ### Deleting what is not upstream
 
+A sync never moves anything to the trash on its own. What it does is *flag*: a
+page the site's listing did not name gets `absent_since`, the moment the run
+noticed — and that is all. The reason is the one question Confluence will not
+answer: a page missing from a listing is a page that was deleted **or** a page
+the token may no longer read (a page restriction added for the sync account, a
+group it lost), and both answers look identical from here. Deleting on that
+evidence would let a permission change wipe a mirror.
+
+Two shapes are called out in the run's errors, so an operator does not have to
+infer them from a count:
+
+| Run says | What happened |
+| --- | --- |
+| `listing_shrank` | the listing named far fewer pages than the mirror holds — the shape of lost access, not of a mass deletion |
+| `empty_listing_kept_existing_pages` | a space listed nothing at all, which is a filter or permission problem far more often than an empty space |
+| `not_listed_by_the_source` | a space this mirror holds was not in the site's space list — again as likely to be access lost as a space deleted |
+
+The same rule holds for spaces, and the one removal a sync still performs is the
+operator's own: removing a key from `CM_SPACES` trashes the spaces that are no
+longer wanted, because that is a decision about configuration rather than an
+answer from the site.
+
 The screen's per-space button moves a whole space's absent pages to the trash as
 a job (`TrashAbsentWorker`), and the one-page button moves a single page. Both are
 the reversible trash, not deletion: `/admin/trash` is where a retention policy

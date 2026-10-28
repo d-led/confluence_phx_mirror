@@ -1,13 +1,14 @@
 defmodule ConfluencePhxMirror.Trash do
   @moduledoc """
-  What a sync trashes, and what an administrator can purge.
+  What an administrator can purge, and what a sync only flags.
 
   Two kinds of removal, on purpose:
 
-    * a **sync** never deletes content. A page, blog post, comment or space that
-      disappears in Confluence is marked deleted (`deleted_at`), so an operator
-      mistake — wrong site, revoked permission, a source that listed nothing —
-      stays reversible and the audit trail stays readable;
+    * a **sync** never deletes what a listing stopped naming. A page, blog post
+      or space that disappears from the site is *flagged* (`absent_since`), so an
+      operator can see it and decide — a listing that leaves a page out can also
+      be a token that lost access to it, and the two answers are the same shape
+      (`ConfluencePhxMirror.Sync`);
     * an **administrator** empties the trash from `/admin/trash`, which removes
       the rows and the attachment blobs for good;
     * or the **nightly purge** does the same to whatever has been sitting there

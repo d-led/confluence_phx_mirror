@@ -1681,11 +1681,36 @@ defmodule ConfluencePhxMirror.Mirror do
   # ---------------------------------------------------------------------------
 
   @doc """
-  Trashes the mirrored spaces a snapshot no longer lists, with their pages and
+  Live spaces the site's own listing did not name — answered, never acted on.
+
+  A space missing from a listing is as likely to be a token that lost access to
+  it as a space somebody deleted: Confluence hides an unreadable space from the
+  listing exactly as it hides a deleted one. So `Sync` reports these and an
+  operator decides; nothing is trashed on the strength of an answer that cannot
+  tell the two apart.
+  """
+  @spec spaces_not_listed([String.t()]) :: [Space.t()]
+  def spaces_not_listed(seen_keys) do
+    keep = Enum.map(seen_keys, &Space.normalise_key/1)
+
+    from(s in Space,
+      where: is_nil(s.deleted_at) and s.key not in ^keep,
+      order_by: s.key
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Trashes the mirrored spaces a listing no longer names, with their pages and
   those pages' comments. Returns `{spaces, pages}`.
 
   The same rule as a deleted page: the space stops being readable here, but its
   rows stay until an administrator purges them (`ConfluencePhxMirror.Trash`).
+
+  This is the operator's hand, not the sync's: a listing cannot tell a deletion
+  from an access the token lost, so `Sync` reports an unlisted space and leaves
+  it alone (`spaces_not_listed/1`). Whoever knows the space really is gone calls
+  this — from `/admin/spaces` when a key is removed there.
   """
   def prune_missing_spaces(seen_keys) do
     keep = Enum.map(seen_keys, &Space.normalise_key/1)

@@ -13,12 +13,14 @@ defmodule ConfluencePhxMirror.SyncTest do
     EditedSource,
     EmptyListingSource,
     HttpSource,
+    RestrictedListingSource,
     SpaceDroppingSource,
     SpaceIconSource,
     TrafficSource
   }
 
   alias ConfluencePhxMirror.Confluence.Traffic
+  alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Link, Page, Space}
   alias ConfluencePhxMirror.Notifications
@@ -468,6 +470,26 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert run.status == "partial"
       assert run.error =~ "empty_listing_kept_existing_pages"
       assert Repo.aggregate(Page, :count) == pages_before
+    end
+
+    test "a token that stops seeing most of a space flags the pages and deletes nothing" do
+      demo_snapshot!()
+      held = Repo.aggregate(Page, :count)
+
+      TestConfig.put(RestrictedListingSource, restricted: ["ENG"])
+
+      assert {:ok, run} = Sync.run(:snapshot, source: RestrictedListingSource)
+
+      # Nothing is trashed, nothing is purged, and every page is still served:
+      # the pages exist upstream and only became invisible to the token, which
+      # a listing cannot tell apart from a deletion.
+      assert Repo.aggregate(Page, :count) == held
+      assert {:ok, _page} = Mirror.find_page(Demo.open_page_number())
+
+      # What changes is that a person is told, and the pages wait in review.
+      assert run.status == "partial"
+      assert run.error =~ "listing_shrank"
+      assert Mirror.count_absent() > 0
     end
 
     test "space mode re-reads one space and leaves the others alone" do

@@ -1,10 +1,11 @@
 defmodule ConfluencePhxMirror.TrashTest do
   @moduledoc """
-  Trashing is what a sync does; purging is what an administrator does.
+  Trashing is what an administrator does; purging is emptying the trash.
 
-  A page, a blog post, a comment or a space that disappears in Confluence stops
-  being readable here, but keeps its rows — and its comments with it — until
-  someone empties the trash, which is the only thing that deletes content.
+  A sync flags what a listing stopped naming and touches nothing: the answer it
+  gets cannot tell a deleted page from a page the token may no longer read. A
+  person moves flagged pages to the trash, which keeps their rows and comments
+  until someone empties it — the only thing that deletes content.
   """
   use ConfluencePhxMirror.DataCase, async: false
 
@@ -64,7 +65,7 @@ defmodule ConfluencePhxMirror.TrashTest do
       assert Mirror.get_space_by_key("KEEP").id == kept.id
     end
 
-    test "a snapshot trashes a space the source stopped listing" do
+    test "a snapshot reports a space the source stopped listing, and keeps it" do
       {:ok, _run} = Sync.run(:snapshot, source: SpaceDroppingSource)
       assert Mirror.get_space_by_key("PROD")
 
@@ -72,8 +73,15 @@ defmodule ConfluencePhxMirror.TrashTest do
 
       {:ok, run} = Sync.run(:snapshot, source: SpaceDroppingSource)
 
-      assert run.stats["spaces_trashed"] == 1
-      assert Mirror.get_space_by_key("PROD") == nil
+      # A space that vanishes from the listing is as likely to be a token that
+      # lost access as a space somebody deleted, so the run says so and leaves
+      # every row where it is.
+      assert run.status == "partial"
+      assert run.error =~ "not_listed_by_the_source"
+      assert run.stats["spaces_unlisted"] == 1
+      assert run.stats["spaces_trashed"] == 0
+
+      assert Mirror.get_space_by_key("PROD")
       assert Mirror.get_space_by_key("ENG")
     end
 
@@ -112,6 +120,7 @@ defmodule ConfluencePhxMirror.TrashTest do
       {:ok, run} = Sync.run(:snapshot, source: NoSpacesSource)
 
       assert run.stats["spaces_trashed"] == 0
+      assert run.stats["spaces_unlisted"] == 0
       assert Mirror.get_space_by_key("ENG")
       assert Mirror.get_space_by_key("PROD")
     end

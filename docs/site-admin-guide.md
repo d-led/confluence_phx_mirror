@@ -96,10 +96,13 @@ mix confluence.webhook --page 1002 --event page_updated
 
 A sync is recorded as a run (`running` → `succeeded` / `partial` / `failed`)
 with counters and errors. Failures are **per page**: one broken attachment or
-comment does not abort the run. Pages and blog posts missing from a snapshot are
-**trashed** (marked deleted, rows kept); attachments removed in Confluence are
-deleted from Postgres and the blob store. A space missing from a whole-site
-snapshot is trashed the same way, with its pages and their comments — and
+comment does not abort the run. Pages and blog posts missing from a listing are
+**flagged**, not trashed: they keep being served and wait for a person on
+`/admin/upstream`, because a listing that leaves a page out cannot tell a
+deleted page from one the token may no longer read — see
+[the trash](#the-trash). Attachments removed in Confluence are deleted from
+Postgres and the blob store. A space missing from a whole-site snapshot is
+reported the same way, with the run saying which space it could not find, and
 anything that reappears upstream is live again on the next sync.
 
 **Which spaces are imported** is decided by two lists that add up. `CM_SPACES`
@@ -112,9 +115,11 @@ next boot, so the screen would be lying about what is in force.
 A space that leaves the whitelist is **trashed**, not purged, with its pages and
 their comments: rows stay, and naming it again brings it back on the next sync.
 So the first key entered on a mirror that was holding everything narrows it to
-that key, and the next run trashes the rest — recoverable, but not free. A
-source that suddenly lists no spaces, or no pages for a space, never trashes
-anything: the run is flagged `partial` instead.
+that key, and the next run trashes the rest — recoverable, but not free. That is
+the one removal a sync performs, because it is a decision about configuration
+rather than an answer from the site. A source that suddenly lists no spaces, or
+no pages for a space, never trashes anything: the run is flagged `partial`
+instead.
 
 **Personal spaces are skipped** unless `CM_SYNC_PERSONAL_SPACES=true`. Everyone
 on a Confluence site has one (`~accountid`), it holds their drafts, and it is
@@ -259,7 +264,7 @@ page:
 * `/admin/audit` (**live**) – the audit log: decisions and changes (accounts,
   tokens, subscriptions, webhooks) and one entry per sync with its counters and
   what triggered it.
-* `/admin/trash` (**live**) – content a sync no longer finds in Confluence:
+* `/admin/trash` (**live**) – content an administrator moved out of the way:
   trashed spaces with their page counts, and trashed pages and blog posts, each
   with a purge button. "Empty the trash" asks for a second click. Purging is the
   only thing that deletes content by hand, and it takes the comments and
@@ -352,16 +357,34 @@ unreachable or rejected the credentials.
 
 ## The trash
 
-A sync never deletes. A page the site stopped listing is **trashed**: it stops
-being served, keeps its comments, its files and its audit trail, and appears on
-`/admin/trash` where an administrator can purge it. A later run that finds the
-page listed again brings it back as it was. That reversibility is the point — a
-wrong site, a revoked permission or a source that listed nothing for a minute is
-a mistake you can walk back from.
+A sync never deletes. A page the site's listing stopped naming is **flagged**:
+it keeps being served, keeps its comments and files, and waits on
+`/admin/upstream` for somebody to look. Only that person moves it to the trash,
+where it keeps its rows, its files and its audit trail until it is purged; a
+later run that finds the page listed again clears the flag and nothing was lost.
 
-Trashing alone would also mean the mirror grows by everything ever deleted: the
-rows *and the attachment bytes*. So a deleted space or page waits a while and is
-then purged for good, files included:
+That restraint is deliberate, and it is the answer to the question this mirror
+cannot ask Confluence: **is this page gone, or may my token no longer read it?**
+A page restriction added for the sync account, or a group it lost, removes pages
+from a listing exactly the way a deletion does. Deleting on that evidence would
+let a permission change — often a temporary one — wipe the mirror, so the sync
+reports what it saw and stops there. Two shapes get their own line in the run's
+errors, because they are what a permission change looks like:
+
+| The run says | What it means |
+| --- | --- |
+| `listing_shrank` | the listing named far fewer pages than the mirror holds |
+| `empty_listing_kept_existing_pages` | a space listed nothing at all |
+| `not_listed_by_the_source` | a space this mirror holds was absent from the site's space list |
+
+If you see one of those after a token was rotated or a group changed, fix the
+access and re-run: the flags clear themselves on the next listing that names the
+pages. If the pages really are gone, empty the review list on `/admin/upstream`
+and they move to the trash.
+
+Trashing would also mean the mirror grows by everything ever deleted: the rows
+*and the attachment bytes*. So a trashed space or page waits a while and is then
+purged for good, files included:
 
 * **`trash.retention_days`** (variable `CM_TRASH_RETENTION_DAYS`, default
   `30`) is how long the holding period is. It is on `/admin/settings` under
