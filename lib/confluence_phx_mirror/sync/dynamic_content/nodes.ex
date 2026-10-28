@@ -26,15 +26,67 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Nodes do
   def page_item(page) do
     {"li", [],
      [
-       {"a",
-        [{"href", URLs.content_path(page.space.key, page)}, {"class", "mirror-dynamic-link"}],
-        [page.title]},
-       {"span", [{"class", "mirror-dynamic-meta"}], [" · #{page.space.key} · #{updated(page)}"]}
+       link(page),
+       {"span", [{"class", "mirror-dynamic-meta"}],
+        [" · #{page.space.key} · updated #{updated(page)}"]}
      ]}
   end
 
-  defp updated(%{external_updated_at: nil}), do: "unknown date"
+  @doc "A page's title, linked through the reader route."
+  def link(page) do
+    {"a", [{"href", URLs.content_path(page.space.key, page)}, {"class", "mirror-dynamic-link"}],
+     [
+       page.title
+     ]}
+  end
 
-  defp updated(%{external_updated_at: at}),
-    do: "updated " <> Calendar.strftime(at, "%d %b %Y")
+  @doc """
+  A table: the header labels, then one row per list of cells.
+
+  Cells are node lists, so a table can hold a link or a plain word without the
+  caller knowing how a cell is spelled.
+  """
+  def table(columns, rows) do
+    {"table", [{"class", "confluenceTable mirror-dynamic-report"}],
+     [
+       {"thead", [], [{"tr", [], Enum.map(columns, &{"th", [], [&1]})}]},
+       {"tbody", [], Enum.map(rows, &{"tr", [], Enum.map(&1, fn cells -> {"td", [], cells} end)})}
+     ]}
+  end
+
+  @doc """
+  A page's files: name linked to the mirrored blob, type and size beside it.
+
+  The space key is given rather than read off the page: a run draws a page it has
+  not finished writing, and that page's space association is not loaded.
+  """
+  def file_list(space_key, page, files) do
+    {"ul", [{"class", "mirror-files"}], Enum.map(files, &file_item(space_key, page, &1))}
+  end
+
+  defp file_item(space_key, page, file) do
+    href = URLs.attachment_path(space_key, page.confluence_id, file.confluence_id, file.filename)
+
+    {"li", [],
+     [
+       {"a", [{"href", href}, {"class", "mirror-dynamic-link"}], [file.filename]},
+       {"span", [{"class", "mirror-dynamic-meta"}], [" · #{describe(file)}"]}
+     ]}
+  end
+
+  defp describe(file) do
+    [file.media_type, size(file.byte_size)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" · ")
+  end
+
+  defp size(nil), do: nil
+  defp size(bytes) when bytes < 1024, do: "#{bytes} B"
+  defp size(bytes) when bytes < 1024 * 1024, do: "#{round(bytes / 1024)} KB"
+  defp size(bytes), do: "#{Float.round(bytes / (1024 * 1024), 1)} MB"
+
+  @doc "When a page was last updated, as a listing says it: `01 Oct 2026`."
+  def updated(%{external_updated_at: nil}), do: "unknown date"
+
+  def updated(%{external_updated_at: at}), do: Calendar.strftime(at, "%d %b %Y")
 end

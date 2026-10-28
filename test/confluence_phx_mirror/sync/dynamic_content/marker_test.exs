@@ -51,6 +51,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.MarkerTest do
 
     assert {:ok, {"div", sized, []}} = Marker.build("detailssummary", [{"pageSize", "20"}])
     assert attribute(sized, "data-limit") == "20"
+
+    assert {:ok, {"div", capped_at, []}} = Marker.build("recently-updated", [{"max", "5"}])
+    assert attribute(capped_at, "data-limit") == "5"
+  end
+
+  test "a report's query is carried as the page wrote it" do
+    assert {:ok, {"div", attributes, []}} =
+             Marker.build("content-report-table", [{"cql", "label = runbook limit 5"}])
+
+    assert attribute(attributes, "data-cql") == "label = runbook limit 5"
   end
 
   test "the friendly name resolves to the macro Confluence stores" do
@@ -61,7 +71,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.MarkerTest do
 
   test "a macro the mirror cannot draw is left to the caller to explain" do
     assert Marker.build("jira", []) == :error
-    assert Marker.build("recently-updated", []) == :error
+    assert Marker.build("blog-posts", []) == :error
     assert Marker.drawable?("children")
   end
 

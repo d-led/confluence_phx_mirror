@@ -39,4 +39,46 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   may not open is not listed.
   """
   @callback children(host :: Page.t(), page :: Page.t(), keyword()) :: [Page.t()]
+
+  @doc """
+  Every page below `page`, transitively, in level order — the subtree a page tree
+  draws.
+
+  Options: `:limit`. Each returned page keeps its `parent_id`, which is what the
+  tree is built from, and a descendant the host's readers may not open is left
+  out.
+  """
+  @callback descendants(host :: Page.t(), page :: Page.t(), keyword()) :: [Page.t()]
+
+  @doc """
+  The page titled `title` in the host's space, when the host's readers may open
+  it.
+
+  One answer for two situations — there is no such page, or these readers may
+  not know it exists — because a macro baked into a public page must not tell a
+  stranger that a page of that name is there.
+  """
+  @callback page_by_title(host :: Page.t(), title :: String.t()) :: {:ok, Page.t()} | :error
+
+  @doc """
+  The pages that answer `cql`, in the order the query asks for — including its
+  own `LIMIT`, because the query is the page author's, not the mirror's.
+
+  A macro that lets a page author write a query asks this. An `{:error, reason}`
+  is a question the mirror cannot answer — an unsupported field, a user-specific
+  function, a typo — and the macro shows the reason instead of an empty list
+  that would look like "nothing matched".
+
+  Every page returned is one the host's readers may open.
+  """
+  @callback search(host :: Page.t(), cql :: String.t()) ::
+              {:ok, [Page.t()]} | {:error, String.t()}
+
+  @doc """
+  The files attached to `page`, by file name.
+
+  An attachment is exactly as readable as the page holding it, so a macro that
+  lists the host's own files needs no audience of its own.
+  """
+  @callback attachments(page :: Page.t()) :: [ConfluencePhxMirror.Mirror.Attachment.t()]
 end

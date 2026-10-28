@@ -507,6 +507,32 @@
 
 .confluence-content .mirror-dynamic-report { margin: 0.25rem 0 0; }
 
+/* A page tree is drawn by its nesting, so the levels get a rail rather than
+   bullets nobody counts. */
+.confluence-content .mirror-tree {
+  margin: 0;
+  padding-left: 1.1rem;
+  list-style: none;
+  font-size: 0.92rem;
+}
+
+.confluence-content .mirror-tree li { margin: 0.15rem 0; }
+
+.confluence-content .mirror-tree ul {
+  margin: 0.15rem 0 0;
+  padding-left: 1rem;
+  list-style: none;
+  border-left: 1px solid var(--color-base-300);
+}
+
+.confluence-content .mirror-files {
+  margin: 0;
+  padding-left: 1.1rem;
+  list-style: "▸  ";
+}
+
+.confluence-content .mirror-files li { margin: 0.2rem 0; }
+
 .confluence-content .mirror-toc {
   margin: 0;
   padding-left: 1.1rem;

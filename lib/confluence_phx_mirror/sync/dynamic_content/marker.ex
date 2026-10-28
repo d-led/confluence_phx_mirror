@@ -15,7 +15,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Marker do
   `DynamicContent` resolves; for one it does not, the caller keeps saying so.
 
   Parameter names stay Confluence's, in the attribute spelling the mirror uses:
-  `minLevel` becomes `data-min-level`. The three the mirror calls something else
+  `minLevel` becomes `data-min-level`. The few the mirror calls something else
   are in `@renamed`, because "the headings a report shows" is a column list and
   "maximum results" is a limit, and a renderer should read the word it means.
   """
@@ -24,6 +24,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Marker do
 
   @renamed %{
     "headings" => "columns",
+    "max" => "limit",
     "maxresults" => "limit",
     "pagesize" => "limit"
   }

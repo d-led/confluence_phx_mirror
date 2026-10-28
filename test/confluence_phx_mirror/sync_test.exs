@@ -446,6 +446,36 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert page.body_export =~ "Platform"
       assert page.body_text =~ "Page properties report"
     end
+
+    test "draws the tree, the recent list and the report a page asks for" do
+      demo_snapshot!()
+
+      document = Floki.parse_fragment!(Repo.get_by!(Page, confluence_id: 1003).body_export)
+
+      # The marker names another page as its root, so an empty tree would mean the
+      # root was never resolved; this page has no children of its own.
+      assert "Macros Gallery" in texts(document, "ul.mirror-tree li a")
+      assert "Recently updated" in texts(document, "p.mirror-dynamic-heading")
+      assert "Last modified" in texts(document, "thead th")
+    end
+
+    test "lists a page's own files, linked at their mirrored bytes" do
+      demo_snapshot!()
+
+      document = Floki.parse_fragment!(Repo.get_by!(Page, confluence_id: 1005).body_export)
+
+      assert "/attachments/ENG/1005/9007/diagram.svg" in hrefs(document, "ul.mirror-files a")
+    end
+
+    defp texts(document, selector),
+      do: document |> Floki.find(selector) |> Enum.map(&Floki.text/1)
+
+    defp hrefs(document, selector),
+      do:
+        document
+        |> Floki.find(selector)
+        |> Enum.map(&Floki.attribute(&1, "href"))
+        |> List.flatten()
   end
 
   describe "deletions" do

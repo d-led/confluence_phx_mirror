@@ -219,7 +219,7 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     end
 
     test "the placeholder links back to the original page" do
-      html = ~s(<ac:structured-macro ac:name="pagetree"></ac:structured-macro>)
+      html = ~s(<ac:structured-macro ac:name="blog-posts"></ac:structured-macro>)
 
       assert Renderer.render(html, context(%{page: page()})).html =~
                ~s(href="#{page().external_url}")

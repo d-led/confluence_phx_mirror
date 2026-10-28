@@ -121,14 +121,13 @@ wide as the page listing it. Applying that once in
 `Sync.DynamicContent.Source.Mirror` means a macro written next year inherits it.
 
 Resolved today: `content-by-label`, `page-properties-report` (Confluence's key is
-`detailssummary`), `toc` and `children`. What is left falls into three buckets,
+`detailssummary`), `toc`, `children`, `pagetree`, `recently-updated`,
+`attachments` and `content-report-table`. What is left falls into two buckets,
 and only the first is a mirroring problem:
 
 | Macro | Data it needs | Where it comes from |
 | --- | --- | --- |
-| `pagetree` | the page tree, below one root | `pages.ancestors` (`Mirror.descendants/2`) |
-| `recently-updated`, `blog-posts` | page metadata, optionally filtered | `external_updated_at`, `type` — or a CQL query (see [configuration.md](configuration.md)) |
-| `attachments` | the page's files | `attachments` + blob store |
+| `blog-posts` | page metadata, filtered | `external_updated_at`, `type` — the same query `recently-updated` runs |
 | `excerpt`, `excerpt-include`, `include` | another page's body | `pages.body_export` |
 | `contributors` | authors and versions | `author_name` (one author today) |
 | `tasks-report-macro` | inline tasks | inline tasks in `body_export` |
@@ -136,9 +135,17 @@ and only the first is a mirroring problem:
 | `livesearch`, `gadget`, `widget` | a client, or a third-party app | impossible statically |
 | Forge/Connect app macros | the app | a placeholder is the honest answer, and the body is kept |
 
-The order to implement them is by value per line: `include`/`excerpt-include`
-(pages that build other pages), then `recently-updated`, then `attachments`.
+The next one to write is `include`/`excerpt-include` — pages that build other
+pages, and the only remaining macro whose answer is a body rather than a list.
 Each is one module and one line in the registry; nothing else changes.
+
+`content-report-table` is the one that paid for the CQL parser twice over. The
+macro is a page asking a query, the mirror's search box asks the same grammar,
+so the renderer composes nothing: it hands the page's own CQL to the port, which
+runs `Mirror.Search` and narrows the answer to what the host page's readers may
+open. `recently-updated` is the same call with a query it writes from the
+macro's own parameters (`space in (ENG)`, `label in (runbook)`, a limit), which
+is why neither macro needed a query of its own.
 
 ### Vendor macros: extensions, one file per app
 

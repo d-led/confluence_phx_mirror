@@ -404,6 +404,9 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     </p>
     <div class="mirror-macro" data-macro="content-by-label" data-labels="architecture" data-limit="5"></div>
     <div class="mirror-macro" data-macro="detailssummary" data-columns="Owner,Status"></div>
+    <div class="mirror-macro" data-macro="recently-updated" data-limit="5"></div>
+    <div class="mirror-macro" data-macro="pagetree" data-root="Getting Started"></div>
+    <div class="mirror-macro" data-macro="content-report-table" data-cql="label = architecture order by lastmodified desc limit 10"></div>
     """)
   end
 
@@ -447,6 +450,9 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     <h2 id="cross-page">Cross-page attachment</h2>
     <p>This link points at an attachment of #{page_link(1002, "Architecture Overview")}, so the mirror resolves it like any other file it holds:</p>
     <p><a href="/wiki/download/attachments/1002/diagram.svg?version=1">diagram.svg (from Architecture Overview)</a></p>
+    <h2 id="macro">The Attachments macro</h2>
+    <p>The macro lists this page's files itself, from the mirror's own table:</p>
+    <div class="mirror-macro" data-macro="attachments"></div>
     #{panel(:note, "Blob layout", "<p>Files are stored by space, page and attachment id — no database blobs, no S3 dependency. The store is behind a behaviour, so S3 can be added later.</p>")}
     """)
   end

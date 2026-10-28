@@ -12,7 +12,6 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.PagePropertiesReport
 
   @behaviour ConfluencePhxMirror.Sync.DynamicContent.Renderer
 
-  alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Sync.DynamicContent.{Attributes, Context, Nodes}
 
   @impl true
@@ -33,25 +32,10 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.PagePropertiesReport
   defp space(attrs), do: Map.get(attrs, "space")
 
   defp table(columns, rows) do
-    {"table", [{"class", "confluenceTable mirror-dynamic-report"}],
-     [
-       {"thead", [], [{"tr", [], Enum.map(["Page" | columns], &{"th", [], [&1]})}]},
-       {"tbody", [], Enum.map(rows, &row(&1, columns))}
-     ]}
+    Nodes.table(["Page" | columns], Enum.map(rows, &cells(&1, columns)))
   end
 
-  defp row(%{page: page, values: values}, columns) do
-    cells = Enum.map(columns, fn column -> {"td", [], [Map.get(values, column) || "—"]} end)
-
-    {"tr", [],
-     [
-       {"td", [],
-        [
-          {"a",
-           [{"href", URLs.content_path(page.space.key, page)}, {"class", "mirror-dynamic-link"}],
-           [page.title]}
-        ]}
-       | cells
-     ]}
+  defp cells(%{page: page, values: values}, columns) do
+    [Nodes.link(page) | Enum.map(columns, &[Map.get(values, &1) || "—"])]
   end
 end

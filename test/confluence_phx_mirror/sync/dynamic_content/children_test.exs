@@ -42,13 +42,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.ChildrenTest do
   end
 
   test "asks the port only for what the marker allows" do
-    assert asks_for(a_limit_of("7")) == [limit: 7]
-    assert asks_for(@marker) == [limit: 50]
+    assert asks_for(a_limit_of("7")) == [{:children, [limit: 7]}]
+  end
+
+  test "asks for fifty children unless the marker says otherwise" do
+    assert asks_for(@marker) == [{:children, [limit: 50]}]
   end
 
   defp asks_for(marker) do
     expand(marker)
-    StubContent.asked()
+    StubContent.questions()
   end
 
   defp a_limit_of(limit),

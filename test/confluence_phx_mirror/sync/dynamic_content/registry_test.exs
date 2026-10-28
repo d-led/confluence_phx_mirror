@@ -23,7 +23,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
   end
 
   test "the names the mirror draws are Confluence's own ac:name keys" do
-    assert Registry.macros() == ["children", "content-by-label", "detailssummary", "toc"]
+    assert Registry.macros() == [
+             "attachments",
+             "children",
+             "content-by-label",
+             "content-report-table",
+             "detailssummary",
+             "pagetree",
+             "recently-updated",
+             "toc"
+           ]
   end
 
   test "the friendly spellings resolve to the macro Confluence stores" do

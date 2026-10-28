@@ -11,7 +11,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
 
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Mirror.Page
+  alias ConfluencePhxMirror.Mirror.{Page, Search}
 
   @impl true
   def pages_by_label(%Page{} = host, labels, opts) do
@@ -34,6 +34,31 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
     |> visible_to(host)
   end
 
+  @impl true
+  def descendants(%Page{} = host, %Page{} = page, opts) do
+    %{items: items} = Mirror.descendants(page, opts)
+
+    visible_to(items, host)
+  end
+
+  @impl true
+  def page_by_title(%Page{} = host, title) do
+    with {:ok, space} <- space_of(host),
+         {:ok, page} <- Mirror.find_page_by_title(space.key, title) do
+      if readable?(host, page), do: {:ok, page}, else: :error
+    end
+  end
+
+  @impl true
+  def search(%Page{} = host, cql) do
+    with {:ok, results} <- Search.search(cql) do
+      {:ok, results |> Enum.map(& &1.page) |> visible_to(host)}
+    end
+  end
+
+  @impl true
+  def attachments(%Page{} = page), do: Mirror.attachments(page)
+
   # A marker may name a space; one that does not lists every space, which is how
   # Confluence's own macro behaves. A key the mirror does not import is the
   # host's space, so the marker still renders something.
@@ -45,8 +70,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   end
 
   # The column, not the association: a page handed to a macro while a run is
-  # writing it carries no preloaded space, and its own `space_id` is exactly the
-  # fallback the marker wants.
+  # writing it carries no preloaded space, so the trail starts at `space_id` and
+  # walks to the row only when it needs the key.
   defp space_id(key, host) when key in [nil, ""], do: host.space_id
 
   defp space_id(key, host) do
@@ -56,7 +81,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
     end
   end
 
+  defp space_of(%Page{space: %{key: _} = space}), do: {:ok, space}
+  defp space_of(%Page{space_id: id}), do: Mirror.find_space_by_id(id)
+
   defp visible_to(pages, host), do: narrow(pages, & &1, host)
+
+  defp readable?(host, page), do: Authorization.readable_alongside(host, [page]) != []
 
   defp narrow(rows, page_of, host) do
     allowed =

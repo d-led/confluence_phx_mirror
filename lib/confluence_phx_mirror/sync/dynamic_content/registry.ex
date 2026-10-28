@@ -21,9 +21,13 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
   alias ConfluencePhxMirror.Sync.DynamicContent.Renderers
 
   @renderers %{
+    "attachments" => Renderers.Attachments,
     "children" => Renderers.Children,
     "content-by-label" => Renderers.ContentByLabel,
+    "content-report-table" => Renderers.ContentReportTable,
     "detailssummary" => Renderers.PagePropertiesReport,
+    "pagetree" => Renderers.PageTree,
+    "recently-updated" => Renderers.RecentlyUpdated,
     "toc" => Renderers.Toc
   }
 
