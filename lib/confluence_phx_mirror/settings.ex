@@ -90,9 +90,12 @@ defmodule ConfluencePhxMirror.Settings do
   The mail adapter's configuration, from the settings in force.
 
   What the deployment configured is the baseline — `config/runtime.exs` puts
-  the `SMTP_*` values there — and a stored value replaces its part of it. With
-  no relay anywhere, the result has no `:relay` key and Swoosh keeps whatever
-  adapter the deployment chose, which is Local's "write it to a file".
+  the `SMTP_*` values there — and a stored value replaces its part of it. The
+  password never is one of them: it is read from the deployment alone, so a
+  secret cannot end up in this database and in every backup of it.
+
+  With no relay anywhere, the result has no `:relay` key and Swoosh keeps
+  whatever adapter the deployment chose, which is Local's "write it to a file".
 
   Whichever relay answers, the connection verifies it: the certificate must
   chain to the system's roots and name the relay. OTP would otherwise refuse a
@@ -111,7 +114,6 @@ defmodule ConfluencePhxMirror.Settings do
       |> Keyword.put(:relay, relay)
       |> Keyword.put(:port, effective("mail.port") || 587)
       |> Keyword.put(:username, blank(stored_value("mail.username")))
-      |> Keyword.put(:password, blank(stored_value("mail.password")))
       |> Keyword.put(:tls, word(effective("mail.tls"), :always))
       |> Keyword.put(:auth, word(effective("mail.auth"), :always))
       |> Keyword.put(:tls_options, tls_options(relay))
@@ -133,8 +135,9 @@ defmodule ConfluencePhxMirror.Settings do
     ]
   end
 
-  # A secret is never inherited from the screen: an empty field means "keep what
-  # is in force", which is the deployment's value.
+  # A blank field means "no decision": the deployment's value is what is in
+  # force, which is also what a stored row of an older version cannot override
+  # any more (the password is read from nowhere but the deployment).
   defp stored_value(key) do
     case stored(key) do
       nil -> default(key)

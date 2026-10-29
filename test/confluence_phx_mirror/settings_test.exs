@@ -164,6 +164,24 @@ defmodule ConfluencePhxMirror.SettingsTest do
                "smtp.example.com"
     end
 
+    # A secret in this database would travel in every backup of it, so the
+    # password is the deployment's and nothing on the screen can reach it.
+    test "the password is the deployment's, and is not a setting" do
+      deployment = Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Mailer)
+
+      TestConfig.put(
+        ConfluencePhxMirror.Mailer,
+        Keyword.put(deployment, :password, "from-the-env")
+      )
+
+      {:ok, _applied} = Settings.update(%{"mail.relay" => "smtp.example.com"}, @actor)
+
+      assert Settings.mail_configuration()[:password] == "from-the-env"
+
+      assert {:error, {:unknown_key, "mail.password"}} =
+               Settings.update(%{"mail.password" => "typed-into-a-form"}, @actor)
+    end
+
     # A relay behind a cross-signed chain — Brevo's is one — is refused by OTP's
     # own defaults however good its certificate is, so the connection is told
     # what to verify.

@@ -265,12 +265,12 @@ adapter: exported relay credentials must not turn `mix test` into real mail.
 
 The relay is also a **live setting**: the *Mail server* group on
 `/admin/settings` stores it (`mail.relay`, `mail.port`, `mail.username`,
-`mail.password`, `mail.tls`, `mail.auth`, `mail.from`, `mail.from_name`) and a
-stored value wins over the variable — `Mailer.configure/0` rebuilds the adapter
-configuration at boot and after every save, so a corrected relay takes effect on
-the next message instead of the next deploy. The password is stored, never
-printed back: the field says whether one is set, and a blank field keeps the one
-in force.
+`mail.tls`, `mail.auth`, `mail.from`, `mail.from_name`) and a stored value wins
+over the variable — `Mailer.configure/0` rebuilds the adapter configuration at
+boot and after every save, so a corrected relay takes effect on the next message
+instead of the next deploy. **`SMTP_PASSWORD` is not one of them**: it is read
+from the deployment alone, so a secret never lands in this database and in every
+backup of it. A password row stored by an older version is ignored.
 
 `mail.paused` stops the queue without losing a message and is the same switch as
 the button on `/admin/mail` (see

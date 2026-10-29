@@ -358,7 +358,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
       env: spec.env,
       type: spec.type,
       value: value,
-      secret?: Map.get(spec, :secret?, false),
       default: Settings.default(key)
     }
     |> with_completion(spec.type, draft, value, suggestions)
@@ -403,39 +402,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   end
 
   attr :field, :map, required: true
-
-  # A secret is never printed back: the field says whether one is set, and a
-  # blank one leaves the value in force alone — the only shape that lets an
-  # administrator change a password without being handed the old one.
-  defp setting_field(%{field: %{secret?: true}} = assigns) do
-    ~H"""
-    <div
-      id={"setting-#{@field.key}"}
-      class={[
-        "flex flex-col gap-1 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6",
-        @field.hidden? && "hidden"
-      ]}
-    >
-      <label class="min-w-0" for={"setting-#{@field.key}-input"}>
-        <span class="block text-sm">{@field.label}</span>
-        <span class="block text-xs text-base-content/70">{@field.help}</span>
-        <span class="mt-0.5 block text-[11px] text-base-content/70">
-          {if @field.value, do: "a value is stored", else: "nothing stored"} ·
-          <code class="font-mono">{@field.env}</code>
-        </span>
-      </label>
-      <input
-        type="password"
-        id={"setting-#{@field.key}-input"}
-        name={"values[#{@field.key}]"}
-        value=""
-        autocomplete="new-password"
-        placeholder={if @field.value, do: "unchanged", else: "not set"}
-        class="input input-sm w-full max-w-xs"
-      />
-    </div>
-    """
-  end
 
   defp setting_field(%{field: %{type: :boolean}} = assigns) do
     ~H"""

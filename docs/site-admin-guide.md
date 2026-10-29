@@ -821,11 +821,13 @@ Nothing is mailed until there is a server to mail it through. With no
 mail is written to a file and never sent — which is what a fresh deployment does,
 and why "watchers get no e-mail" is usually this and not a bug in the watch.
 
-**Admin → Settings → Mail server** takes the relay, port, username, password, and
-whether TLS and authentication are used. A stored value wins over the
+**Admin → Settings → Mail server** takes the relay, port, username, the sender,
+and whether TLS and authentication are used. A stored value wins over the
 deployment's `SMTP_*` and takes effect on the next message — `Mailer.configure/0`
-rebuilds the adapter at boot and after every save. The password is write-only: the
-field says whether one is stored, and leaving it blank keeps the one in force.
+rebuilds the adapter at boot and after every save. **The password is not on that
+screen**: the mirror reads it from the deployment's `SMTP_PASSWORD` — a Fly
+secret, or a variable in the compose file — because a password in this database
+would travel in every backup of it.
 
 Readers can watch a page or a whole space from the page rail.
 

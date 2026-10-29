@@ -99,11 +99,11 @@ Notes that save a round trip:
 ### Without a restart: `/admin/settings` → *Mail server*
 
 An administrator can store the same values on the screen — relay, port,
-username, password, sender address and sender name. A stored value wins over the
+username, sender address and sender name. A stored value wins over the
 variable and takes effect on the next message, which is what makes a wrong relay
-fixable without a deploy. The password is stored and never printed back; a blank
-field keeps the one in force, and *Use the deployment's values* hands the group
-back to the variables.
+fixable without a deploy. The password is the one value that is not there: it
+stays in `SMTP_PASSWORD`, so a secret never travels in a database backup. *Use
+the preconfigured values* hands the group back to the variables.
 
 ## 4. Prove it arrives
 

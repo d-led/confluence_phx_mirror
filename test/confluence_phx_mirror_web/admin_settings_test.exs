@@ -269,6 +269,13 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     assert Settings.stored("reader.html_limit") == nil
   end
 
+  test "the mail group names the variable a password lives in, and offers no field", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    assert has_element?(view, "#settings-mail", "SMTP_PASSWORD")
+    refute has_element?(view, ~s|[id="setting-mail.password-input"]|)
+  end
+
   test "a member is sent home, not shown the page", %{conn: conn} do
     assert {:error, {:redirect, %{to: "/"}}} =
              live(

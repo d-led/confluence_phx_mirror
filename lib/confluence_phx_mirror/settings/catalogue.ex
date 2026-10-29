@@ -33,9 +33,6 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
           | {:choice, [{String.t(), String.t()}]}
 
   @type spec :: %{
-          # A value the screen must never print back: it says whether one is
-          # set, and a blank field leaves the stored one alone.
-          optional(:secret?) => true,
           type: type(),
           default: term(),
           group: atom(),
@@ -289,17 +286,6 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       env: "SMTP_USERNAME",
       ui: :settings
     },
-    "mail.password" => %{
-      type: :string,
-      default: {:mail, :password, nil},
-      group: :mail,
-      label: "Password",
-      help:
-        "The relay's password, which the mirror reads from the deployment — `SMTP_PASSWORD` — and never stores. The settings screen shows which variable to set rather than a field, because a password in this database travels in every backup of it.",
-      env: "SMTP_PASSWORD",
-      secret?: true,
-      ui: :settings
-    },
     "mail.tls" => %{
       type: {:choice, [{"always", "Always"}, {"never", "Never"}]},
       default: {:mail, :tls, "always"},
@@ -468,7 +454,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     mail: %{
       title: "Mail server",
       help:
-        "How the mirror sends mail, and who it is from. The deployment's `SMTP_*` and `MIRROR_MAIL_FROM*` variables are the defaults; a value stored here wins and takes effect without a restart — and every reader can send themselves a test e-mail to see it arrive."
+        "How the mirror sends mail, and who it is from. The deployment's `SMTP_*` and `MIRROR_MAIL_FROM*` variables are the defaults; a value stored here wins and takes effect without a restart — and every reader can send themselves a test e-mail to see it arrive. The password is the exception: set `SMTP_PASSWORD` for the deployment, because a secret in this database would travel in every backup of it."
     },
     operations: %{
       title: "Operations",
@@ -510,7 +496,6 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "mail.relay",
     "mail.port",
     "mail.username",
-    "mail.password",
     "mail.tls",
     "mail.auth",
     "mail.from",
