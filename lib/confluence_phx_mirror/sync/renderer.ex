@@ -124,6 +124,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       |> traverse_and_rewrite(context)
       |> replace_live_only_content(context)
       |> Floki.raw_html()
+      |> Emoticons.characters()
       |> restore_spaces()
 
     %{html: rewritten, links: links, text: plain_text(rewritten)}

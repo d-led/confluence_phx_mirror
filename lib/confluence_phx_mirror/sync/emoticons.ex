@@ -115,6 +115,10 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
   # tag, so an attribute is never rewritten.
   @verbatim ~r{(<pre\b[^>]*>.*?</pre>|<code\b[^>]*>.*?</code>|<[^>]*>)}is
 
+  # A character Confluence wrote as an escape: one or more `\uXXXX`, which is how
+  # a character outside the BMP is stored and then copied into the body.
+  @escaped_run ~r/(?:\\u[0-9a-fA-F]{4})+/u
+
   @image_name ~r/([^\/?#]+)\.(?:png|gif|svg|jpe?g)(?:[?#].*)?$/i
 
   @doc """
@@ -155,7 +159,8 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
   end
 
   @doc """
-  `html` with every emoticon it carries replaced by its character.
+  `html` with every emoticon it carries replaced by its character, and every
+  escaped character written back.
 
   A body mirrored before the renderer learned about emoticons still holds
   Confluence's emoticon images; running this on the way out gives the reader
@@ -169,6 +174,33 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
     text
     |> replace(~r{<ac:emoticon\b([^>]*)>(?:\s*</ac:emoticon>)?}i, &from_attributes/1, "")
     |> replace(~r{<img\b([^>]*?)>}i, &from_image/1, :keep)
+    |> characters()
+  end
+
+  @doc """
+  `html` with the characters Confluence wrote as escapes given back.
+
+  A character outside the BMP — an emoji somebody typed rather than picked — is
+  stored as `\\uD83E\\uDD14`, and an export view copies that text into the body,
+  where a reader sees the escape instead of the face. Every run of escapes that
+  decodes to a real character becomes that character, and only in the text
+  between tags: an attribute and anything inside `<pre>`/`<code>` keep what was
+  written, because there an escape is exactly what somebody meant.
+  """
+  @spec characters(String.t() | nil) :: String.t() | nil
+  def characters(nil), do: nil
+
+  def characters(html) when is_binary(html) do
+    @verbatim
+    |> Regex.split(html, include_captures: true, trim: false)
+    |> Enum.map(fn part ->
+      if String.starts_with?(part, "<"), do: part, else: decode_runs(part)
+    end)
+    |> IO.iodata_to_binary()
+  end
+
+  defp decode_runs(text) do
+    Regex.replace(@escaped_run, text, fn run -> decode(run) || run end)
   end
 
   defp replace(text, pattern, resolve, fallback) do
@@ -275,7 +307,6 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
   # no character is no fallback at all, and the caller's next rule decides.
   @escapes ~r/^(?:\\u[0-9a-fA-F]{4})+$/
   @escaped_codepoint ~r/\\u([0-9a-fA-F]{4})/
-
   defp unescape(value) do
     if Regex.match?(@escapes, value), do: decode(value), else: value
   end

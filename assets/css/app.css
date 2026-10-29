@@ -307,6 +307,74 @@
   font-weight: 600;
 }
 
+/* A cell Confluence coloured keeps its colour as `data-highlight-colour` and is
+   painted by Confluence's own stylesheet. Matching the attribute here does the
+   same, and does it for bodies mirrored before the rule existed: nothing has to
+   be re-read for a colour to appear. The palette is the picker's, and its ink
+   is fixed with it — the pastels are light, so the theme's text colour would be
+   unreadable on them in a dark theme. */
+.confluence-content td[data-highlight-colour="#deebff"],
+.confluence-content th[data-highlight-colour="#deebff"] {
+  background-color: #deebff;
+  color: #0747a6;
+}
+.confluence-content td[data-highlight-colour="#e3fcef"],
+.confluence-content th[data-highlight-colour="#e3fcef"] {
+  background-color: #e3fcef;
+  color: #006644;
+}
+.confluence-content td[data-highlight-colour="#fffae6"],
+.confluence-content th[data-highlight-colour="#fffae6"] {
+  background-color: #fffae6;
+  color: #974f0c;
+}
+.confluence-content td[data-highlight-colour="#ffebe6"],
+.confluence-content th[data-highlight-colour="#ffebe6"] {
+  background-color: #ffebe6;
+  color: #bf2600;
+}
+.confluence-content td[data-highlight-colour="#eae6ff"],
+.confluence-content th[data-highlight-colour="#eae6ff"] {
+  background-color: #eae6ff;
+  color: #403294;
+}
+.confluence-content td[data-highlight-colour="#f4f5f7"],
+.confluence-content th[data-highlight-colour="#f4f5f7"] {
+  background-color: #f4f5f7;
+  color: #42526e;
+}
+/* The current picker's shades. */
+.confluence-content td[data-highlight-colour="#e9f2ff"],
+.confluence-content th[data-highlight-colour="#e9f2ff"] {
+  background-color: #e9f2ff;
+  color: #0055cc;
+}
+.confluence-content td[data-highlight-colour="#dcfff1"],
+.confluence-content th[data-highlight-colour="#dcfff1"] {
+  background-color: #dcfff1;
+  color: #216e4e;
+}
+.confluence-content td[data-highlight-colour="#fff7d6"],
+.confluence-content th[data-highlight-colour="#fff7d6"] {
+  background-color: #fff7d6;
+  color: #7f5f01;
+}
+.confluence-content td[data-highlight-colour="#ffeceb"],
+.confluence-content th[data-highlight-colour="#ffeceb"] {
+  background-color: #ffeceb;
+  color: #ae2e24;
+}
+.confluence-content td[data-highlight-colour="#f3f0ff"],
+.confluence-content th[data-highlight-colour="#f3f0ff"] {
+  background-color: #f3f0ff;
+  color: #5e4db2;
+}
+.confluence-content td[data-highlight-colour="#f1f2f4"],
+.confluence-content th[data-highlight-colour="#f1f2f4"] {
+  background-color: #f1f2f4;
+  color: #44546f;
+}
+
 /* Panels --------------------------------------------------------------- */
 
 /* Info/note/warning panels keep Confluence's light backgrounds, so they keep its
@@ -724,11 +792,19 @@
 
 /* Status lozenges ------------------------------------------------------ */
 
-.confluence-content .aui-lozenge {
+/* Confluence has written a status three ways over the years: an AUI lozenge
+   class, the macro's own element, or both. All of them mean the same pill, and
+   a colour modifier may name a shade this file has never heard of — so the base
+   rule carries the shape and a grey default in `:where()`, which has no
+   specificity, and every modifier below still wins whatever its name. */
+.confluence-content
+  :where(.aui-lozenge, .status-macro, [data-macro-name="status"]) {
   display: inline-flex;
   align-items: center;
   border-radius: 3px;
   padding: 0.05rem 0.4rem;
+  background: #f4f5f7;
+  color: #42526e;
   font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -736,10 +812,86 @@
   line-height: 1.6;
 }
 
-.aui-lozenge-success { background: #e3fcef; color: #006644; }
-.aui-lozenge-inprogress { background: #deebff; color: #0747a6; }
-.aui-lozenge-moved { background: #fffae6; color: #974f0c; }
-.aui-lozenge-default { background: #f4f5f7; color: #42526e; }
+/* Atlassian's palette, plus the two names the demo snapshot uses. */
+.aui-lozenge-success,
+.aui-lozenge-complete {
+  background: #e3fcef;
+  color: #006644;
+}
+
+.aui-lozenge-current,
+.aui-lozenge-info,
+.aui-lozenge-inprogress {
+  background: #deebff;
+  color: #0747a6;
+}
+
+.aui-lozenge-moved,
+.aui-lozenge-warning {
+  background: #fffae6;
+  color: #974f0c;
+}
+
+.aui-lozenge-error,
+.aui-lozenge-removed {
+  background: #ffebe6;
+  color: #bf2600;
+}
+
+.aui-lozenge-new {
+  background: #eae6ff;
+  color: #403294;
+}
+
+.aui-lozenge-default {
+  background: #f4f5f7;
+  color: #42526e;
+}
+
+/* Confluence's current look: a subtle pill with a border, written as
+   `aui-lozenge-visual-refresh` next to the colour. Its shades differ from the
+   older palette above — "current" is the in-progress amber here, not blue — so
+   the compound selectors below come last and outrank both the older modifiers
+   and the default. */
+.aui-lozenge-visual-refresh {
+  border: 1px solid #dcdfe4;
+  background: #f1f2f4;
+  color: #44546f;
+}
+
+.aui-lozenge-visual-refresh.aui-lozenge-current {
+  border-color: #e2b203;
+  background: #fff7d6;
+  color: #7f5f01;
+}
+
+.aui-lozenge-visual-refresh.aui-lozenge-success,
+.aui-lozenge-visual-refresh.aui-lozenge-complete {
+  border-color: #7ee2b8;
+  background: #dcfff1;
+  color: #216e4e;
+}
+
+.aui-lozenge-visual-refresh.aui-lozenge-error,
+.aui-lozenge-visual-refresh.aui-lozenge-removed {
+  border-color: #f87168;
+  background: #ffeceb;
+  color: #ae2e24;
+}
+
+.aui-lozenge-visual-refresh.aui-lozenge-new,
+.aui-lozenge-visual-refresh.aui-lozenge-info {
+  border-color: #85b8ff;
+  background: #e9f2ff;
+  color: #0055cc;
+}
+
+.aui-lozenge-visual-refresh.aui-lozenge-moved,
+.aui-lozenge-visual-refresh.aui-lozenge-warning {
+  border-color: #b8acf6;
+  background: #f3f0ff;
+  color: #5e4db2;
+}
 
 /* TOC, children, excerpt, gallery, Jira -------------------------------- */
 

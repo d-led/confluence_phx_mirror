@@ -168,6 +168,22 @@ defmodule ConfluencePhxMirror.Sync.EmoticonsTest do
 
       assert Emoticons.html(html) == html
     end
+
+    test "a character Confluence stored as an escape is the character" do
+      html = "<h2>\\uD83E\\uDD14 Problem statement</h2>"
+
+      assert Emoticons.html(html) == "<h2>🤔 Problem statement</h2>"
+    end
+
+    test "an escape inside code, or in an attribute, is what somebody wrote" do
+      html = ~s(<pre><code>x = "\\uD83E\\uDD14"</code></pre><a title="\\uD83E\\uDD14">t</a>)
+
+      assert Emoticons.html(html) == html
+    end
+
+    test "an escape that names no character is left as it was written" do
+      assert Emoticons.html("<p>\\uD83E</p>") == "<p>\\uD83E</p>"
+    end
   end
 
   # The attribute list of a tag, the way the renderer sees it.

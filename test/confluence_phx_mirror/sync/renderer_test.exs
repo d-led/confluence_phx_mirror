@@ -391,5 +391,24 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       assert Renderer.render(html, context()).html =~ "<img"
     end
+
+    test "a character Confluence stored as an escape reaches the reader and the index" do
+      html = "<h2>\\uD83E\\uDD14 Problem statement</h2>"
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ "🤔 Problem statement"
+      assert result.text =~ "🤔"
+      refute result.html =~ "\\u"
+    end
+  end
+
+  describe "cell colours" do
+    test "a cell keeps the colour Confluence gave it, for the stylesheet to paint" do
+      html =
+        ~s(<table><tbody><tr><td data-highlight-colour="#e3fcef">Must have:</td></tr></tbody></table>)
+
+      assert Renderer.render(html, context()).html =~ ~s(data-highlight-colour="#e3fcef")
+    end
   end
 end

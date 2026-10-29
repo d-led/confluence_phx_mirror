@@ -322,6 +322,38 @@ nothing has to be re-read from Confluence for a comment to become findable. A
 hit remembers which comment matched, and the screen says so rather than quoting
 an unrelated paragraph of the page.
 
+## The markup we draw with Confluence's own classes
+
+`export_view` keeps the classes Confluence's client styles, and a mirror that
+serves the markup without the stylesheet shows the words and none of the shape.
+Three of them are worth the handful of rules they cost, and all three were read
+off a real page rather than guessed (`Template - Project plan`):
+
+```html
+<h2>\uD83E\uDD14 Problem statement</h2>
+<span class="status-macro aui-lozenge aui-lozenge-visual-refresh aui-lozenge-current">IN PROGRESS</span>
+<th data-highlight-colour="#e3fcef" class="confluenceTh">Must have:</th>
+```
+
+* **A character stored as an escape** is decoded (`Sync.Emoticons.characters/1`)
+  in the text between tags, at sync and again on the way out to a reader. A
+  character outside the BMP is stored as `\uD83E\uDD14` and copied into the body
+  as that text; attributes and `<pre>`/`<code>` keep what was written, because
+  there an escape is what somebody meant.
+* **A status lozenge** is a pill whatever Atlassian calls its colour: the base
+  rule is a `:where()` list (`aui-lozenge`, `status-macro`, the macro's own
+  data attribute) in the shape Confluence draws, and every modifier — including
+  the ones this file has never heard of — still wins. The `aui-lozenge-visual-
+  refresh` family, which is what Confluence writes today, has its own palette:
+  its "current" is the in-progress amber, not the older blue.
+* **A coloured table cell** keeps its colour as `data-highlight-colour`, and the
+  stylesheet matches that attribute. Doing it in CSS rather than rewriting the
+  body is what makes it retroactive: a page mirrored before the rule existed is
+  coloured the moment it is served, and no HTML has to be parsed per request.
+  The palette is the picker's and its ink is fixed with it, because those
+  pastels are light — in a dark theme that is the difference between a readable
+  cell and a bright rectangle.
+
 ## Live docs are pages that move
 
 Confluence Cloud's "live doc" is not a second content type: it is a page with
@@ -361,7 +393,8 @@ the badge is the only thing missing, and "Re-read everything" fills it.
   storage at render time. A few fallbacks are written as escapes rather than as
   a character (`ac:emoji-fallback="\uD83D\uDDD3"` is a calendar), and an export
   view copies that text into the body, so `Sync.Emoticons` decodes a fallback
-  that is nothing but escapes instead of leaving the reader the five letters.
+  that is nothing but escapes instead of leaving the reader the five letters —
+  and, the same way, a run of escapes standing in the prose itself.
 * Comments are read-only and rendered flat (one reply level styled).
 * Confluence Cloud does not expose *space* permissions for reading, so they are
   mirrored only when a source can supply them; page restrictions are synced.
