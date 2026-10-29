@@ -43,13 +43,14 @@ value covers sign-in links, watcher updates and the test.
 
 ## 3. Where to set them
 
-### On Fly.io (secrets)
+### On Fly.io (secrets) — the usual deployment
 
-Secrets belong on the **mirror** app — the one `fly.toml` names. The
-oauth2-proxy app never sends mail and needs none of this.
+Secrets belong on the **mirror** app, the one `fly.toml` names
+(`confluence-mirror-app`). The oauth2-proxy app in front of it never sends mail
+and needs none of this.
 
 ```sh
-fly secrets set -a <the app in fly.toml> \
+fly secrets set -a confluence-mirror-app \
   SMTP_RELAY=smtp-relay.brevo.com \
   SMTP_PORT=587 \
   SMTP_USERNAME=…@smtp-brevo.com \
@@ -61,13 +62,26 @@ fly secrets set -a <the app in fly.toml> \
 Notes that save a round trip:
 
 - `fly secrets set` restarts the machine, and the release reads these at boot —
-  no redeploy needed. `scripts/fly-deploy.sh live` afterwards is harmless:
-  secrets survive a deploy.
-- Nothing is echoed back: `fly secrets list` shows names and a digest only.
+  no redeploy needed. Running `scripts/fly-deploy.sh live` afterwards is
+  harmless, and secrets survive a deploy.
+- The deploy script's required-secret list (`DATABASE_URL`, `SECRET_KEY_BASE`,
+  `RELEASE_COOKIE`, `CM_CONFLUENCE_SITE`, `CM_ATL_EMAIL`, `CM_ATL_TOKEN`) does
+  **not** include mail, because mail is optional: a deployment whose mail
+  variables are unset goes up fine and simply sends nothing. Adding mail is the
+  one command above, at any time.
+- Whether they landed is one command — it prints the sender every message will
+  carry:
+
+  ```sh
+  fly ssh console -a confluence-mirror-app \
+    -C "/app/bin/confluence_phx_mirror rpc 'ConfluencePhxMirror.Mailer.sender()'"
+  ```
 - To hand the values over without restarting yet, add `--stage` and set them in
-  force later with `fly secrets deploy`.
-- A digest or sign-in link needs `CM_ADMINS` / the reader's account as well —
-  mail is the transport, not the identity.
+  force later with `fly secrets deploy`. `fly secrets list -a
+  confluence-mirror-app` shows the names and a digest, never the values.
+- A digest or a sign-in link also needs somebody to send it to — `CM_ADMINS` or
+  a reader's account. Mail is the transport, not the identity, and it cannot
+  give a stranger access to a mirror whose readers sign in through the proxy.
 
 ### In `docker compose`
 
