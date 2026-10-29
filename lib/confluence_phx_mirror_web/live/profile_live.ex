@@ -19,7 +19,7 @@ defmodule ConfluencePhxMirrorWeb.ProfileLive do
 
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.{Admins, User}
-  alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.{Mail, Mirror}
   alias ConfluencePhxMirrorWeb.Time
 
   @tabs ~w(profile tokens)
@@ -65,6 +65,31 @@ defmodule ConfluencePhxMirrorWeb.ProfileLive do
 
   def handle_event("dismiss_token", _params, socket) do
     {:noreply, assign(socket, :new_token, nil)}
+  end
+
+  # The one thing on this page that leaves the mirror, and the only way a reader
+  # can find out that mail from here does not reach them.
+  def handle_event("send_test_mail", _params, socket) do
+    case Mail.send_test(socket.assigns.current_user) do
+      :ok ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           "Test e-mail sent to #{socket.assigns.current_user.email} — it is from the same sender as your updates."
+         )}
+
+      {:error, :too_soon, retry_after_ms} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "You sent yourself one a moment ago. Try again in #{seconds(retry_after_ms)}."
+         )}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "The mail server refused it: #{inspect(reason)}")}
+    end
   end
 
   defp load(socket) do
@@ -177,6 +202,24 @@ defmodule ConfluencePhxMirrorWeb.ProfileLive do
               Pages and spaces you watch are listed in the e-mails you receive; stop watching
               from the page itself.
             </p>
+          </div>
+
+          <div class="rounded-2xl border border-base-300/70 bg-base-100 p-5">
+            <h2 class="text-sm font-semibold">E-mail</h2>
+            <p class="mt-1 text-[11px] text-base-content/70">
+              Sign-in links and watchers' updates are sent from this mirror. If they do not
+              arrive, nothing else on this page will tell you — so send yourself one message and
+              see. It goes to {@current_user.email} only.
+            </p>
+            <button
+              type="button"
+              id="send-test-mail"
+              phx-click="send_test_mail"
+              class="btn btn-sm mt-3 min-h-11 gap-1.5 rounded-lg sm:min-h-0"
+            >
+              <.icon name="hero-paper-airplane" class="h-4 w-4" /> Send me a test e-mail
+            </button>
+            <p class="mt-1 text-[11px] text-base-content/70">One a minute.</p>
           </div>
         </section>
 
@@ -316,5 +359,14 @@ defmodule ConfluencePhxMirrorWeb.ProfileLive do
       <.icon name={@icon} class="size-4" /> {@label}
     </.link>
     """
+  end
+
+  # Said the way a person would: whole seconds, and singular when it is one.
+  defp seconds(ms) do
+    case max(div(ms + 999, 1000), 1) do
+      1 -> "a second"
+      60 -> "a minute"
+      count -> "#{count} seconds"
+    end
   end
 end

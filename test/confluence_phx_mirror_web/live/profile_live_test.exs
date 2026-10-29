@@ -11,8 +11,10 @@ defmodule ConfluencePhxMirrorWeb.Live.ProfileLiveTest do
 
   import Phoenix.LiveViewTest
   import ConfluencePhxMirror.Fixtures
+  import Swoosh.TestAssertions
 
   alias ConfluencePhxMirror.Accounts
+  alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror
 
   setup do
@@ -38,6 +40,34 @@ defmodule ConfluencePhxMirrorWeb.Live.ProfileLiveTest do
 
     assert html =~ "Your API tokens"
     assert html =~ "No tokens yet."
+  end
+
+  describe "the test e-mail" do
+    test "a reader sends themselves one, and it says so", %{conn: conn} do
+      reader = user_fixture(%{email: "test.mail.reader@example.com"})
+      {:ok, view, _html} = live_as(conn, reader, ~p"/profile")
+
+      html = view |> element("#send-test-mail") |> render_click()
+
+      assert html =~ "Test e-mail sent to test.mail.reader@example.com"
+
+      assert_email_sent(fn email ->
+        assert email.to == [{User.display_name(reader), reader.email}]
+      end)
+    end
+
+    test "a second one inside the minute is refused, in words", %{conn: conn} do
+      reader = user_fixture(%{email: "once.reader@example.com"})
+      {:ok, view, _html} = live_as(conn, reader, ~p"/profile")
+
+      view |> element("#send-test-mail") |> render_click()
+      html = view |> element("#send-test-mail") |> render_click()
+
+      assert html =~ "You sent yourself one a moment ago"
+
+      assert_email_sent(fn email -> elem(hd(email.to), 1) == reader.email end)
+      refute_email_sent()
+    end
   end
 
   test "a reader creates a token and it authenticates the API as that reader", %{conn: conn} do

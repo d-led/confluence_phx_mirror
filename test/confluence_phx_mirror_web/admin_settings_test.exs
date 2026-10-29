@@ -10,8 +10,30 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
   setup do
     demo_snapshot!()
     Settings.reload()
+    # A saved sender is published into the notifications config, which is
+    # global; put the deployment's own back when the test is done.
+    TestConfig.put(:notifications, Application.get_env(:confluence_phx_mirror, :notifications))
     on_exit(fn -> Settings.reload() end)
     :ok
+  end
+
+  test "the mail server's sender is stored from the screen, and mail is from it", %{conn: conn} do
+    {:ok, view, html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    assert html =~ "Sender address"
+
+    html =
+      view
+      |> element("#settings-mail")
+      |> render_submit(%{
+        "values" => %{"mail.from" => "mirror@acme.example", "mail.from_name" => "Acme Mirror"}
+      })
+
+    assert html =~ "Mail server saved."
+    assert Settings.mail_sender() == {"Acme Mirror", "mirror@acme.example"}
+
+    assert Application.get_env(:confluence_phx_mirror, :notifications)[:from] ==
+             {"Acme Mirror", "mirror@acme.example"}
   end
 
   test "typing a space key offers the spaces the site lists", %{conn: conn} do

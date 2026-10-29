@@ -72,7 +72,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
 
   defp delivery do
     webhooks = config(:webhooks, [])
-    notifications = config(:notifications, [])
 
     %{
       title: "Delivery",
@@ -87,8 +86,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
           if(webhooks[:enabled] == false, do: "off (404, as if unrouted)", else: "accepting"),
           "CM_WEBHOOK_ENABLED"
         ),
-        row("Webhook tokens", receivers(config(:webhook_tokens, %{})), "CM_WEBHOOK_TOKENS"),
-        row("Mail from", mail_from(notifications[:from]), "MIRROR_MAIL_FROM")
+        row("Webhook tokens", receivers(config(:webhook_tokens, %{})), "CM_WEBHOOK_TOKENS")
       ]
     }
   end
@@ -154,8 +152,4 @@ defmodule ConfluencePhxMirrorWeb.Admin.Config do
     do: "#{map_size(tokens)} configured"
 
   defp receivers(_tokens), do: "none"
-
-  defp mail_from({name, address}), do: "#{name} <#{address}>"
-  defp mail_from(nil), do: "—"
-  defp mail_from(address), do: to_string(address)
 end

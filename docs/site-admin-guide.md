@@ -836,7 +836,10 @@ Readers can watch a page or a whole space from the page rail.
 
 Development uses smtp4dev: SMTP on `localhost:2525`, web UI on
 <http://localhost:3001>. `config/test.exs` uses Swoosh's test adapter.
-Set `MIRROR_MAIL_FROM` and the Swoosh mailer settings for production.
+In production, set `MIRROR_MAIL_FROM` and the relay — or store the same values on
+*Mail server* in `/admin/settings`, which needs no restart. Every reader can then
+press **Send me a test e-mail** on `/profile` to see that mail arrives
+([brevo-mail.md](brevo-mail.md) is the worked example).
 
 ## Signing in
 

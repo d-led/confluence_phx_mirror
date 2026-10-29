@@ -93,6 +93,12 @@ defmodule ConfluencePhxMirror.Settings do
   the `SMTP_*` values there — and a stored value replaces its part of it. With
   no relay anywhere, the result has no `:relay` key and Swoosh keeps whatever
   adapter the deployment chose, which is Local's "write it to a file".
+
+  Whichever relay answers, the connection verifies it: the certificate must
+  chain to the system's roots and name the relay. OTP would otherwise refuse a
+  relay behind a cross-signed chain — Brevo's, for instance — so `tls_options`
+  are built here rather than left to `gen_smtp`'s defaults, which are neither
+  the relay's name nor a chained root.
   """
   @spec mail_configuration() :: keyword()
   def mail_configuration do
@@ -108,9 +114,23 @@ defmodule ConfluencePhxMirror.Settings do
       |> Keyword.put(:password, blank(stored_value("mail.password")))
       |> Keyword.put(:tls, word(effective("mail.tls"), :always))
       |> Keyword.put(:auth, word(effective("mail.auth"), :always))
+      |> Keyword.put(:tls_options, tls_options(relay))
     else
       base
     end
+  end
+
+  # What a TLS connection to `relay` has to prove. `depth: 99` is not slack: a
+  # relay whose chain carries a cross-signed root does not fit OTP's default
+  # depth, and the handshake fails as if the certificate were wrong.
+  defp tls_options(relay) do
+    [
+      verify: :verify_peer,
+      cacerts: :public_key.cacerts_get(),
+      depth: 99,
+      server_name_indication: String.to_charlist(relay),
+      customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
+    ]
   end
 
   # A secret is never inherited from the screen: an empty field means "keep what

@@ -342,11 +342,16 @@ Two consequences worth knowing:
 
 A node that dies mid-job leaves its Oban row `executing`. The mirror clears the
 ones it can prove are dead: a job that should be holding the sync lock and is
-not (`Sync.abandon_abandoned_runs/0`, once the row is a minute old). The rest — a
-verify pass, a sweep, a trash pass, which take no lock because they are not a
-sync — wait for `Oban.Plugins.Lifeline`, which rescues a silent job after six
-hours and retries it. Six hours is past the longest listing this mirror has done,
-and a pass resumes rather than restarting, so waiting costs only the turn.
+not (`Sync.abandon_abandoned_runs/0`, once the row is a minute old). Only a job
+that should hold the lock is judged by it, and a verify pass is one of those — it
+asks the whole site what it lists, so a deploy's orphaned pass is cleared with
+the rest, and the `reconcile_runs` row it leaves open shows on `/admin/upstream`
+as a check that stopped early. A sweep and a trash pass take no lock, because
+they copy nothing and ask one question; they wait for `Oban.Plugins.Lifeline`,
+which rescues a silent job after six hours and retries it. Six hours is past the
+longest listing this mirror has done, and a sweep resumes where it stopped, so
+waiting costs only the turn.
+
 `Oban.Pruner` keeps a finished job for a day (`max_age: {1, :day}`) instead of
 the queue's default minute, because the job row is the only per-space evidence a
 sweep leaves behind — "space LOAD431: 935 pages, done".
@@ -671,4 +676,12 @@ the table never says "running" after the strip is gone.
 Delivery state is an outbox row per notification with its own status; Oban
 retries failed sends. `MIRROR_NOTIFICATIONS=false` turns notification creation
 off, `MIRROR_DIGEST_HOUR_UTC` moves the daily roll-up, `MIRROR_MAIL_FROM` and
-`MIRROR_MAIL_FROM_NAME` set the sender.
+`MIRROR_MAIL_FROM_NAME` set the sender — and so does the *Mail server* group on
+`/admin/settings`, which takes effect without a restart.
+
+The quickest question an operator has — "does mail from here reach anybody?" —
+is answered on the reader's own page: **Send me a test e-mail** on `/profile`
+sends one message to the signed-in address, at most once a minute, and reports
+the relay's refusal verbatim when there is one. A `550` is the sender the relay
+has not verified; a TLS error is the relay's certificate or its chain. See
+[brevo-mail.md](brevo-mail.md) for the values a Brevo account maps onto.

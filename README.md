@@ -257,6 +257,7 @@ offline. Each edge and its reason:
 | deploying and operating it: build, env contract, migrations, monitoring, backups | [operations.md](docs/operations.md) |
 | deploying to Fly.io or Kubernetes, behind an OAuth proxy | [deployment.md](docs/deployment.md) |
 | looking for a setting | [configuration.md](docs/configuration.md) |
+| making sign-in links and watcher e-mail actually arrive | [brevo-mail.md](docs/brevo-mail.md) |
 | asking who may reach which route, and what they may read | [routes-auth.md](docs/routes-auth.md) |
 | integrating: JSON API, Confluence-compatible REST, CQL | [api.md](docs/api.md) |
 | letting an AI assistant read the wiki (MCP) | [mcp.md](docs/mcp.md) |

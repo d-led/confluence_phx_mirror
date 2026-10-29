@@ -21,6 +21,7 @@
 # identity: set `CM_ADMINS` and an SMTP relay (MIRROR_MAIL_FROM, SMTP_RELAY,
 # SMTP_USERNAME, SMTP_PASSWORD) to sign in by magic link, or — for a trial run
 # on your own machine only — uncomment MIRROR_AUTO_ADMIN below.
+# docs/brevo-mail.md maps a Brevo account onto those four values.
 #
 # An empty mirror is filled by `CM_BOOTSTRAP_SYNC`: one snapshot on the first
 # start (see `ConfluencePhxMirror.Sync.StartupPull`). After that the mirror

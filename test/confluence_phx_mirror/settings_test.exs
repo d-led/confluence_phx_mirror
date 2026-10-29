@@ -123,6 +123,10 @@ defmodule ConfluencePhxMirror.SettingsTest do
         Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Mailer, [])
       )
 
+      # The sender is published into the notifications config as well, so that
+      # one is put back here too.
+      TestConfig.put(:notifications, Application.get_env(:confluence_phx_mirror, :notifications))
+
       on_exit(fn -> Settings.forget() end)
       :ok
     end
@@ -158,6 +162,45 @@ defmodule ConfluencePhxMirror.SettingsTest do
 
       assert Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Mailer)[:relay] ==
                "smtp.example.com"
+    end
+
+    # A relay behind a cross-signed chain — Brevo's is one — is refused by OTP's
+    # own defaults however good its certificate is, so the connection is told
+    # what to verify.
+    test "the connection verifies the relay's certificate, against the relay's name" do
+      {:ok, _applied} = Settings.update(%{"mail.relay" => "smtp-relay.brevo.com"}, @actor)
+
+      options = Settings.mail_configuration()[:tls_options]
+
+      assert options[:verify] == :verify_peer
+      assert options[:server_name_indication] == ~c"smtp-relay.brevo.com"
+      assert options[:cacerts] != []
+    end
+
+    test "is from the deployment's sender until an administrator stores one" do
+      assert Settings.mail_sender() == Application.get_env(:confluence_phx_mirror, :mail_from)
+    end
+
+    test "a stored sender is the one mail is from, and clearing hands it back" do
+      {:ok, _applied} =
+        Settings.update(
+          %{"mail.from" => "mirror@acme.example", "mail.from_name" => "Acme Mirror"},
+          @actor
+        )
+
+      assert Settings.mail_sender() == {"Acme Mirror", "mirror@acme.example"}
+
+      # The builders that read the notifications config get the same answer, so
+      # a message cannot disagree with this screen about who it is from.
+      assert Application.get_env(:confluence_phx_mirror, :notifications)[:from] ==
+               {"Acme Mirror", "mirror@acme.example"}
+
+      {:ok, _cleared} = Settings.clear(["mail.from", "mail.from_name"], @actor)
+
+      assert Settings.mail_sender() == Application.get_env(:confluence_phx_mirror, :mail_from)
+
+      assert Application.get_env(:confluence_phx_mirror, :notifications)[:from] ==
+               Application.get_env(:confluence_phx_mirror, :mail_from)
     end
   end
 

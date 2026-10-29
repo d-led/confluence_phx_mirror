@@ -256,14 +256,31 @@ delivery does, are in the [site admin guide](site-admin-guide.md#webhooks).
 | `SMTP_TLS` | `always` | `never` disables TLS |
 | `SMTP_AUTH` | `always` | `never` disables authentication |
 
-The last six are also **live settings**: the *Mail server* group on
-`/admin/settings` stores them (`mail.relay`, `mail.port`, `mail.username`,
-`mail.password`, `mail.tls`, `mail.auth`) and a stored value wins over the
-variable — `Mailer.configure/0` rebuilds the adapter configuration at boot and
-after every save, so a corrected relay takes effect on the next message instead
-of the next deploy. The password is stored, never printed back: the field says
-whether one is set, and a blank field keeps the one in force. `MIRROR_MAIL_FROM`
-stays environment-only; it is shown read-only on the same screen.
+The relay variables are ignored in the test suite, which keeps Swoosh's test
+adapter: exported relay credentials must not turn `mix test` into real mail.
+
+The relay is also a **live setting**: the *Mail server* group on
+`/admin/settings` stores it (`mail.relay`, `mail.port`, `mail.username`,
+`mail.password`, `mail.tls`, `mail.auth`, `mail.from`, `mail.from_name`) and a
+stored value wins over the variable — `Mailer.configure/0` rebuilds the adapter
+configuration at boot and after every save, so a corrected relay takes effect on
+the next message instead of the next deploy. The password is stored, never
+printed back: the field says whether one is set, and a blank field keeps the one
+in force.
+
+The sender is a decision of its own, not the SMTP login: a relay accepts only an
+address it hosts or has verified, and that is rarely the account that
+authenticates. It is stamped on every message — sign-in links, watchers' updates
+and the test message below.
+
+### Sending through Brevo
+
+[brevo-mail.md](brevo-mail.md) is the worked example: which four values Brevo
+gives you (server, port, login, SMTP key) plus the verified sender, how they map
+onto `SMTP_RELAY`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` and
+`MIRROR_MAIL_FROM`, how to set them as Fly secrets or in compose, and what the
+test message reports when something is wrong. Submission port `587`; `465`
+(implicit TLS) is not configured.
 
 ## Storage
 

@@ -505,27 +505,24 @@ config :confluence_phx_mirror,
          paused: System.get_env("CM_SYNC_PAUSED", "false") in ["true", "1", "yes"]
        )
 
-# The relay the mirror sends through. Brevo's variables are accepted as its own
-# setup spells them: `BREVO_SMTP_USERNAME` and `BREVO_SMTP_PASSWORD` are enough,
-# because the host and the submission port are Brevo's. Where both spellings are
-# set the `SMTP_*` one wins, so a mirrored deployment keeps its own choice.
-# "Sending through Brevo" in docs/configuration.md has the walk-through.
-brevo_smtp? =
-  System.get_env("BREVO_SMTP_USERNAME") != nil and System.get_env("BREVO_SMTP_PASSWORD") != nil
-
-mapping_env = fn name, brevo_name -> System.get_env(name) || System.get_env(brevo_name) end
-
-smtp_relay =
-  System.get_env("SMTP_RELAY") || System.get_env("BREVO_SMTP_HOST") ||
-    if(brevo_smtp?, do: "smtp-relay.brevo.com")
+# The relay the mirror sends through. The variables are the mirror's own,
+# whoever the relay belongs to: `docs/brevo-mail.md` maps a Brevo account onto
+# them (host → `SMTP_RELAY`, login → `SMTP_USERNAME`, SMTP key → `SMTP_PASSWORD`,
+# verified sender → `MIRROR_MAIL_FROM`), and any other submission relay is the
+# same five values.
+#
+# The suite is left alone: `config/test.exs` picks Swoosh's test adapter, and a
+# developer with relay credentials exported must not turn every `mix test` into
+# real mail.
+smtp_relay = if config_env() == :test, do: nil, else: System.get_env("SMTP_RELAY")
 
 if smtp_relay do
   config :confluence_phx_mirror, ConfluencePhxMirror.Mailer,
     adapter: Swoosh.Adapters.SMTP,
     relay: smtp_relay,
-    port: String.to_integer(mapping_env.("SMTP_PORT", "BREVO_SMTP_PORT") || "587"),
-    username: mapping_env.("SMTP_USERNAME", "BREVO_SMTP_USERNAME"),
-    password: mapping_env.("SMTP_PASSWORD", "BREVO_SMTP_PASSWORD"),
+    port: String.to_integer(System.get_env("SMTP_PORT", "587")),
+    username: System.get_env("SMTP_USERNAME"),
+    password: System.get_env("SMTP_PASSWORD"),
     tls: if(System.get_env("SMTP_TLS", "always") in ~w(never false 0), do: :never, else: :always),
     auth:
       if(System.get_env("SMTP_AUTH", "always") in ~w(never false 0), do: :never, else: :always)
