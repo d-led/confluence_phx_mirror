@@ -6,7 +6,8 @@ and serves readers, an administrator area, a JSON API and an MCP server. Nothing
 a reader does changes content: the only writer is the sync.
 
 This page is the **map** — what the pieces are, how they fit, which guide has
-the detail. Read it in five minutes; every section stands alone.
+the detail. Each section stands alone and fits on a screen: read the one you
+need.
 
 ## Pick a view
 
@@ -15,7 +16,7 @@ the detail. Read it in five minutes; every section stands alone.
 | what runs, and what a request passes | [Runtime](#runtime-one-release-five-faces) |
 | what is stored, and where | [Data](#data-what-the-mirror-knows) |
 | how content gets in | [Ingestion](#ingestion-the-only-writer) |
-| how a search finds a page | [Search and indexing](#search-and-indexing-how-a-query-becomes-a-list) |
+| how a search indexes and answers | [Search and indexing](#search-and-indexing-how-a-query-becomes-a-list) |
 | who may reach what, and read what | [Identity and authorization](#identity-and-authorization-three-questions) |
 | how it runs on Fly.io today | [Deployment A](#deployment-a--flyio-what-ships-today) |
 | how an *open* site would run | [Deployment B](#deployment-b--an-open-site-phoenix--postgres) |
@@ -38,8 +39,8 @@ flowchart TB
 Three sentences that carry most of the design:
 
 1. **One release, no second service.** Search is Postgres, jobs are Oban inside
-   the same VM, the UI is server-rendered. There is no search cluster, no cache
-   tier, no queue broker to run.
+   the same VM, the UI is server-rendered. There is no search cluster, no
+   external cache and no queue broker to run.
 2. **A read model, not a copy of the product.** The mirror keeps what a reader
    needs to *read*: current page bodies, their tree, labels, comments,
    attachments, and the permissions that decide visibility.
@@ -74,12 +75,14 @@ flowchart TB
   AZ --> DB[(Mirror query)]
 ```
 
-Inside the node, besides `Repo` and `Endpoint`: `Phoenix.PubSub` and `Presence`
-(LiveView widgets), Oban (`sync` 4, `notifications` 10), two `Sync.Scheduler`
-clocks, the reader/webhook/API rate limiter, and three in-memory caches —
-`Mirror.Counters` (totals, ETS), `Mcp.Markdown` (Cachex), and `Settings` /
-`SiteSettings` in `:persistent_term` so a page view never queries for its theme
-or its language.
+Beyond `Repo` and `Endpoint`, the node runs three kinds of thing:
+
+* **Work**: Oban (`sync` 4, `notifications` 10) and two `Sync.Scheduler` clocks.
+* **Coordination**: `Phoenix.PubSub` + `Presence` for the LiveView widgets, and
+  the reader, webhook and API rate limiters.
+* **Caches**, so a page view does not ask the database twice: `Mirror.Counters`
+  (totals, ETS), `Mcp.Markdown` (Cachex), and `Settings` / `SiteSettings` in
+  `:persistent_term` (the theme, and the site's language).
 
 ## Data: what the mirror knows
 
@@ -107,9 +110,9 @@ flowchart TB
 ```
 
 The grant and removal markers sit on those permission rows themselves
-(`granted_by_id`, `revoked_by_id`), so the overlay needs no table of its own;
-labels and ancestors are also arrays on the page (that is what the search
-filters use), with `page_labels` behind the label catalogue.
+(`granted_by_id`, `revoked_by_id`), so the overlay needs no table of its own.
+Labels and ancestors are arrays on the page — that is what the search filters
+use — with `page_labels` behind the label catalogue.
 
 Two properties worth remembering:
 
@@ -143,24 +146,27 @@ flowchart TB
   (`HttpSource`), the bundled snapshot (`DemoSource`) or generated content
   (`SyntheticSource`). Tests inject doubles the same way:
   `Sync.run(mode, source: Module)`.
-* **A run is one `sync_runs` row** with counters, and failures are recorded **per
-  page**: one broken attachment does not abort the run, and the run ends
-  `succeeded` or `partial`.
-* **Modes** are `snapshot`, `incremental`, `webhook`, `people`. A page or a space
-  is a *scope*: the same run narrowed to one space or one page, queued as a job.
+* **A run is one `sync_runs` row** with counters. Failures are recorded **per
+  page**, so one broken attachment does not abort the run: it ends `succeeded`
+  or `partial`. A run that cannot go on is recorded `failed` and re-raised, so
+  Oban retries it.
+* **Modes** are `snapshot`, `incremental`, `webhook`, `people`. A page or a
+  space is a *scope*: the same run narrowed, queued as a job.
 * **A snapshot upserts every page first, then renders**, so a link to a space
   that appears later in the same run still resolves.
-* **One run at a time, cluster-wide.** `Sync.Gate` is a Postgres advisory lock and
-  the Oban jobs are unique, so a tick during a run is dropped rather than
-  doubled. A deploy that kills a run leaves the queue honest:
-  `abandon_abandoned_runs/0` closes the row and the orphaned job at boot.
+* **One run at a time, cluster-wide.** `Sync.Gate` is a lease row in Postgres
+  (90 s, renewed while it works) and the Oban jobs are unique, so a tick during
+  a run is dropped, not doubled. A deploy that kills a run leaves the queue
+  honest: `abandon_abandoned_runs/0` closes the row and the orphaned job at
+  boot.
 * **Two clocks, one setting each**: the incremental pull
-  (`sync.interval_seconds`, hourly by default) and an optional reconcile pass
-  that looks for what the site no longer lists.
-* **Deletion is absence.** A snapshot trashes what the site no longer names;
-  rows are kept so content can come back.
+  (`sync.interval_seconds`, hourly by default), and an optional reconcile pass
+  that only *lists* what the site still names.
+* **Nothing is deleted behind your back.** A page the site stops listing is
+  flagged `absent_since`; an administrator reviews the list and moves it to the
+  trash. Trashed rows are kept, so content can come back.
 * **A webhook is a nudge, not a source of truth.** It queues the same run a
-  clock would; a missed delivery costs freshness, never correctness.
+  clock would. A missed delivery costs freshness, never correctness.
 
 What an operator sees while this happens — the run log, the HTTP traffic
 counters, the queue — is [site-admin-guide.md](site-admin-guide.md#pulling-content)
@@ -181,6 +187,41 @@ Confluence's own HTML instead of converting it: [design-notes.md](design-notes.m
 
 The `simple` configuration is deliberate: it keeps inner dots and hyphens, so
 `roadmap.csv` is one lexeme rather than three.
+
+### How fast is indexing?
+
+**There is nothing to wait for.** `search_vector` is a *stored generated
+column*: Postgres computes it inside the same write that stores the page, and
+the GIN index moves with that same statement. A page is searchable the moment
+it is committed — no queue, no reindex job, no "search is twenty minutes
+behind" state.
+
+So the only speed that matters is how fast the sync can write rows. Measured
+on a real site (123 000 pages, 151 spaces, one shared vCPU):
+
+| | measured | what sets it |
+| --- | --- | --- |
+| a full re-read | 14 621 pages in 86 min ≈ **2.8 pages/s** | the network, the site's rate limits, and one shared database core |
+| one space (~935 pages) | 5–6 min | the unit a sweep queues |
+| the whole site | ~12 h | 151 jobs, 60 s apart |
+| search, 50 readers on a dev server | 170 rps, p95 ~464 ms at 30 000 pages | `ts_rank_cd` scores every match — the read side |
+
+Three costs worth knowing:
+
+* **Every write pays for its indexes.** The vector, the title trigram and the
+  label and ancestor arrays are all GIN. That is why the sync writes two pages
+  at a time against a one-core database, not eight.
+* **A comment is indexed by expression** over `author_name || body_text`, so it
+  is searchable as soon as its row commits — and adding that index rewrote no
+  table.
+* **Changing the index is the expensive part**, not using it: adding the stored
+  column rewrote `pages` in that deploy, and new indexes are built
+  `CONCURRENTLY` so readers keep being answered.
+
+Re-measuring: [performance.md](performance.md#what-it-measured) and
+[operations.md](operations.md#a-re-read-sized).
+
+### How a query uses it
 
 A query travels one way, and the table is read once:
 
@@ -240,8 +281,9 @@ flowchart TB
 * **A path the proxy skips carries no identity at all** — that is the price of
   opening `/api`, `/webhooks` and the machine halves of `/oauth` to clients, and
   the reason the app's own credential is the only one there.
-* **A refusal is a `404`, not a `403`**: a restricted page and a page that was
-  never mirrored must be indistinguishable.
+* **A refusal about content is a `404`**: a restricted page and a page that was
+  never mirrored must be indistinguishable. Only admission, earlier, may say
+  `403`.
 * **One `Scope` per request.** `Scope.for_user/1` computes `admin?` once;
   LiveViews reuse it with `assign_new/3`.
 * **Administration has three sources** — a `role`, a mirrored group named in
@@ -277,9 +319,9 @@ flowchart TB
 | `confluence-mirror-db` | unmanaged Postgres 18, 1 GB volume | attached |
 
 * **Two scripts, split by question.** `scripts/fly-provision.sh live` creates
-  apps, database, volume and secrets once and never rewrites a secret;
-  `scripts/fly-deploy.sh live` builds and releases, creates nothing, needs no
-  credentials, and refuses before building if something is missing.
+  apps, database, volume and secrets once; `scripts/fly-deploy.sh live` builds
+  and releases, creates nothing, and refuses before building if a secret is
+  missing.
 * **Order matters**: the proxy's upstream is the mirror's Flycast address, so
   the mirror ships first (`--proxy` does both, in that order).
 * **Migrations are a deploy step**, not the boot:
@@ -290,11 +332,10 @@ flowchart TB
 * **Ports**: the proxy listens on 4180 and is the `http_service`; the mirror
   listens on 8080 internally with `force_https = false`, because Flycast is
   HTTP-only and TLS ends at the proxy.
-* **The webhook intake is off in this topology** and answers the endpoint's own
-  `404`: with the proxy authenticating everything and no skip-auth route for
-  `/webhooks`, a delivery would get a `302` to GitHub and be recorded as failed.
-  Opening it is a skip-auth route plus the app's own token, agreed but not
-  shipped.
+* **The webhook intake is off here**, and answers the endpoint's own `404`: the
+  proxy authenticates everything and has no skip-auth route for `/webhooks`, so
+  a delivery would get a `302` to GitHub and count as failed. Opening it is a
+  skip-auth route plus the app's own token — agreed, not shipped.
 
 Backups, pool sizing, the `POOL_TIMEOUT_MS` reasoning and what to watch:
 [operations.md](operations.md). The step-by-step, including Kubernetes and the
@@ -327,7 +368,7 @@ flowchart TB
 | administrator sign-in | proxy, then `CM_ADMINS` | magic link: `CM_ADMINS`, `MIRROR_SELF_SIGNUP=false`, a configured mailer |
 | API / MCP / webhooks | app credentials | unchanged — they never depended on the proxy |
 
-Deploying it is the mirror half of Deployment A, minus three things:
+Deploying it is the mirror half of Deployment A without the proxy:
 
 ```bash
 # one app with a public IP and TLS at Fly's edge
@@ -371,9 +412,9 @@ non-empty; what stays **per node** is the reader rate-limit bucket, the
 `Mirror.Counters` cache and the sync traffic tallies. The part that actually
 blocks multi-node today is the **blob store**: attachments are on a local volume,
 so a reader routed to another node gets a `404`. Clustering becomes useful once
-`Blobs.Store` has a shared implementation (S3 and friends fit the behaviour) —
-until then, one machine with a volume is the honest shape, and `RELEASE_COOKIE`
-plus `SECRET_KEY_BASE` have to be shared before two nodes can talk.
+`Blobs.Store` has a shared implementation (S3 and friends fit the behaviour).
+Until then, one machine with a volume is the honest shape, and `RELEASE_COOKIE`
+and `SECRET_KEY_BASE` must be shared, or two nodes cannot trust each other.
 
 ## Machine surfaces: API, MCP, webhooks
 
@@ -396,15 +437,16 @@ envelope alike.
 * **Upstream changes are source DTOs**, and a test double is just another
   `Confluence.Source`.
 * **Nothing may claim an identity it cannot prove**: a proxy header only behind
-  a network that guarantees the proxy; otherwise a signed token, a password or
-  an HMAC.
-* **A refusal is a `404`**, so no surface can be used to confirm that a
-  restricted page exists.
+  a network that guarantees the proxy; otherwise a bearer token, a request
+  signature or a magic link.
+* **A refusal about content is a `404`**, so no surface can confirm that a
+  restricted page exists. (The front door may answer `403` earlier, before any
+  content is chosen.)
 * **Instants are UTC** in storage, rendered in the reader's zone by the browser.
 * **Config is read at boot**; a change to `config/*.exs` needs a restart, while a
   change an administrator makes on `/admin/settings` does not.
-* **One writer per content row**: the sync. An admin may grant, remove or delete
-  accounts and permissions, never content.
+* **One author of content: the sync.** An administrator may grant, remove,
+  trash and purge — never write a page.
 
 ## Where to read next
 
