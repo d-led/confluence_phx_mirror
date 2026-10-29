@@ -104,23 +104,23 @@ defmodule ConfluencePhxMirrorWeb.SpaceSwitcherLiveTest do
   end
 
   test "somebody else's personal space is never offered" do
-    personal = space_fixture(%{key: "~557058ABCDEF", name: "Dmitry Ledentsov", type: "personal"})
+    personal = space_fixture(%{key: "~557058ABCDEF", name: "Dana Visitor", type: "personal"})
 
     {:ok, view, _html} = switcher(%{"user_id" => reader().id})
     open_menu(view)
 
     refute has_element?(view, "[role=option][data-value='#{personal.key}']")
-    refute render(view) =~ "Dmitry Ledentsov"
+    refute render(view) =~ "Dana Visitor"
   end
 
   test "an administrator still sees the personal spaces the mirror holds" do
-    personal = space_fixture(%{key: "~557058ABCDEF", name: "Dmitry Ledentsov", type: "personal"})
+    personal = space_fixture(%{key: "~557058ABCDEF", name: "Dana Visitor", type: "personal"})
 
     # The test session is an administrator when it carries no user of its own.
     {:ok, view, _html} = switcher()
     open_menu(view)
 
-    assert has_element?(view, "[role=option][data-value='#{personal.key}']", "Dmitry Ledentsov")
+    assert has_element?(view, "[role=option][data-value='#{personal.key}']", "Dana Visitor")
   end
 
   # The switcher offers the reader the spaces they may open, and the session is

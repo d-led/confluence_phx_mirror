@@ -69,17 +69,17 @@ defmodule ConfluencePhxMirror.Accounts.IdentityLinkTest do
   test "the identity list is searched by name and by account id" do
     {:ok, _} =
       Mirror.replace_group_members("confluence-users", [
-        %{account_id: @guest, display_name: "Guest Ledentsov"},
+        %{account_id: @guest, display_name: "Guest Visitor"},
         %{account_id: "557058:maria", display_name: "Maria Sanchez"}
       ])
 
     # Both identities are named by the content, which is what `people/1` lists.
     space = space_fixture()
 
-    page_fixture(space, %{author_name: "Guest Ledentsov", author_account_id: @guest})
+    page_fixture(space, %{author_name: "Guest Visitor", author_account_id: @guest})
     page_fixture(space, %{author_name: "Maria Sanchez", author_account_id: "557058:maria"})
 
-    assert [%{display_name: "Guest Ledentsov"}] = Mirror.people(query: "guest")
+    assert [%{display_name: "Guest Visitor"}] = Mirror.people(query: "guest")
     assert [%{account_id: "557058:maria"}] = Mirror.people(query: "557058:maria")
     assert Mirror.people(query: "nobody") == []
     assert Mirror.count_people(query: "guest") == 1

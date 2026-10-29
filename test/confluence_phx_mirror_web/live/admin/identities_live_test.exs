@@ -68,8 +68,8 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesLiveTest do
     } do
       second = "557058:12861f68-8857-4349-927d-e49dfb30bd52"
       account = user_fixture(%{email: "both.reader@example.com"})
-      a_person_named(@guest, "Guest Ledentsov")
-      a_person_named(second, "Dmitry Ledentsov")
+      a_person_named(@guest, "Guest Visitor")
+      a_person_named(second, "Dana Visitor")
 
       {:ok, view, _html} = live(conn, ~p"/admin/identities")
 
@@ -123,18 +123,18 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesLiveTest do
   end
 
   test "the list is searched by name or account id, not dumped", %{conn: conn} do
-    a_person_named(@guest, "Guest Ledentsov")
+    a_person_named(@guest, "Guest Visitor")
     a_person_named("557058:someone-else", "Other Person")
 
     {:ok, view, _html} = live(conn, ~p"/admin/identities")
 
     assert view |> element("#identity-filter") |> render_change(%{"q" => "guest"}) =~
-             "Guest Ledentsov"
+             "Guest Visitor"
 
     html = view |> element("#identity-filter") |> render_change(%{"q" => "someone-else"})
 
     assert html =~ "Other Person"
-    refute html =~ "Guest Ledentsov"
+    refute html =~ "Guest Visitor"
 
     html = view |> element("#identity-filter") |> render_change(%{"q" => "nobody-at-all"})
 
@@ -147,7 +147,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesLiveTest do
 
   # A person is somebody the content or a group names; the party line here is
   # "this identity exists and is linkable".
-  defp a_person_named(account_id, name \\ "Guest Ledentsov") do
+  defp a_person_named(account_id, name \\ "Guest Visitor") do
     space = space_fixture()
     page_fixture(space, %{author_name: name, author_account_id: account_id})
 
