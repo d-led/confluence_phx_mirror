@@ -52,6 +52,11 @@ primary_region = "ams"
   # provisions the account on first sight. Only safe behind the topology above.
   CM_PROXY_AUTH = "true"
 
+  # A release has no seeds, and this app stops when nobody is reading — so its
+  # hourly clock may never reach a first tick. Fill the empty database on the
+  # first start instead: one snapshot, then the ordinary schedule takes over.
+  CM_BOOTSTRAP_SYNC = "true"
+
   # Anonymous readers are rate-limited by X-Forwarded-For rather than by the
   # proxy's address; without this every reader shares one bucket.
   CM_TRUST_PROXY_HEADERS = "true"

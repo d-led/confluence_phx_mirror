@@ -163,6 +163,10 @@ flowchart TB
 * **Two clocks, one setting each**: the incremental pull
   (`sync.interval_seconds`, hourly by default), and an optional reconcile pass
   that only *lists* what the site still names.
+* **An empty mirror fills itself** when the deployment asks for it
+  (`CM_BOOTSTRAP_SYNC`): the first start against a database with no space asks
+  for one snapshot. A release has no seeds, so without this a fresh container
+  is an empty site waiting for a clock.
 * **Nothing is deleted behind your back.** A page the site stops listing is
   flagged `absent_since`; an administrator reviews the list and moves it to the
   trash. Trashed rows are kept, so content can come back.
@@ -481,7 +485,10 @@ fly deploy --build-arg VERSION="$(git describe --tags --always)"
 Anonymous reading is not a promise, it is a test:
 `test/confluence_phx_mirror_web/controllers/access_test.exs` walks catalogues,
 search, the sidebar branch, attachments and exports as `Scope.for_user(nil)`.
-The deployment reasoning is [routes-auth.md](routes-auth.md#public-documentation-sites).
+The runnable version of this section is `docker-compose.site.yml` — one command,
+no proxy — described in
+[deployment.md](deployment.md#the-image-against-a-real-site), with the deployment
+reasoning in [routes-auth.md](routes-auth.md#public-documentation-sites).
 
 ## Clustering (in one paragraph)
 

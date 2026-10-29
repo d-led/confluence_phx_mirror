@@ -84,6 +84,12 @@ defmodule ConfluencePhxMirror.Application do
         # first tick rather than leaving it to whoever opens `/admin` next.
         ConfluencePhxMirror.Sync.abandon_abandoned_runs()
 
+        # Nothing has ever filled this database: ask for one snapshot now, so a
+        # fresh container serves content instead of an empty mirror waiting for
+        # a clock (`CM_BOOTSTRAP_SYNC`).
+        ConfluencePhxMirror.Sync.StartupPull.pull()
+        |> log_startup_pull()
+
         {:ok, pid}
 
       error ->
@@ -115,6 +121,18 @@ defmodule ConfluencePhxMirror.Application do
   defp log_build do
     Logger.info("build: #{BuildInfo.description()}")
   end
+
+  defp log_startup_pull(:off), do: :ok
+  defp log_startup_pull(:not_empty), do: :ok
+
+  defp log_startup_pull(:paused),
+    do: Logger.info("bootstrap sync skipped: the mirror is paused")
+
+  defp log_startup_pull({:ok, _job}),
+    do: Logger.info("bootstrap sync queued: the mirror is empty")
+
+  defp log_startup_pull({:error, reason}),
+    do: Logger.warning("could not queue the bootstrap sync: #{inspect(reason)}")
 
   defp rate_limiter_spec do
     config = Application.get_env(:confluence_phx_mirror, HttpSource, [])

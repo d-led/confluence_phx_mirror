@@ -122,6 +122,7 @@ together or not at all, so a save that reports an error changed nothing.
 | `CM_HTTP_PAGE_SIZE` | `50` | content page size when paginating; `confluence.page_size` changes it at runtime |
 | `CM_HTTP_RETRY_BACKOFF_MS` | `250` | first retry delay (doubles per attempt) |
 | `CM_SYNC_PAUSED` | `false` | stop reading from the site entirely: runs are refused, queued jobs wait, and every screen says the mirror is paused. The button beside *Sync now* on `/admin` flips it at runtime (`sync.paused`) |
+| `CM_BOOTSTRAP_SYNC` | `false` | **read at boot**: the first start against an empty database (no space at all) asks for one snapshot, so a fresh container or a first deployment fills itself instead of waiting for a clock. A database that holds anything is left alone, and so is a paused mirror (`ConfluencePhxMirror.Sync.StartupPull`). Set by `docker-compose.demo.yml` and `docker-compose.site.yml` |
 | `CM_SYNC_INTERVAL_SECONDS` | `3600` | gap between scheduled pulls; `0` switches the timer off. `sync.interval_seconds` changes it at runtime, and a new cadence applies from the tick after the one in flight |
 | `CM_RECONCILE_INTERVAL_SECONDS` | `0` | scheduled missing-pages check — a verify pass over every space (`0` keeps it on demand, from `/admin/upstream`). `sync.reconcile_interval_seconds` changes it at runtime, and `0` is a number the screen accepts: that is how the pass is switched off |
 | `CM_SYNC_LOOKBACK_SECONDS` | `3600` | minimum window for an incremental pull |

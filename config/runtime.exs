@@ -368,6 +368,15 @@ api_docs =
 
 config :confluence_phx_mirror, api_docs: api_docs
 
+# A release has no seeds: `/app/bin/migrate` leaves an empty database, so a
+# fresh container would serve an empty mirror until somebody pressed *Sync now*
+# or a clock reached its first tick. With `CM_BOOTSTRAP_SYNC` on, the first
+# start against an empty mirror asks for one snapshot instead (see
+# `ConfluencePhxMirror.Sync.StartupPull`). A database that holds anything is
+# left alone, so this is safe to leave on.
+config :confluence_phx_mirror,
+  bootstrap_sync: System.get_env("CM_BOOTSTRAP_SYNC") in ~w(1 true yes on)
+
 # Publishing: three settings for a mirror put on the internet as a documentation
 # site, all off. A mirror behind its proxy publishes to the people it admitted,
 # and that is the default nobody has to choose.
