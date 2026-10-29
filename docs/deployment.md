@@ -100,6 +100,60 @@ What the image promises:
   way. What remains unfixed is the base distribution's backlog, which is why CI
   scans with `ignore-unfixed: true` and fails on anything a rebuild could fix.
 
+### The image with the demo snapshot
+
+No Confluence credentials and no proxy: the image can serve the bundled demo.
+Four commands, about four minutes, most of it the build:
+
+```bash
+# 1. a database — any Postgres will do; this is the one CI runs the suite on
+docker run -d --name mirror-db \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres \
+  -p 55432:5432 postgres:17
+
+export SECRET_KEY_BASE=$(openssl rand -hex 48)
+export DATABASE_URL=ecto://postgres:postgres@host.docker.internal:55432/postgres
+
+# 2. build, and migrate — the step a deploy runs, before any request is served
+docker build -t confluence-mirror .
+docker run --rm -e DATABASE_URL -e SECRET_KEY_BASE \
+  confluence-mirror /app/bin/migrate
+
+# 3. serve the demo, with no sign-in in the way
+docker run -d --name mirror -p 4000:4000 \
+  -e DATABASE_URL -e SECRET_KEY_BASE \
+  -e CM_SOURCE=demo -e MIRROR_AUTO_ADMIN=true -e PHX_HOST=localhost \
+  confluence-mirror
+
+# 4. fill it — once, on the running node
+docker exec mirror /app/bin/confluence_phx_mirror rpc \
+  'ConfluencePhxMirror.Sync.run(:snapshot)'
+```
+
+**Done when** <http://localhost:4000> says `40 pages` in two spaces, and
+`/api/v1/search?q=roadmap` finds the PROD roadmap.
+
+The details that make this work, and that are easy to be surprised by:
+
+* **A release has no seeds.** `mix setup` fills a *development* database by
+  running `priv/repo/seeds.exs`; `/app/bin/migrate` only migrates. Without step
+  4 the mirror is empty and says so — "no content has been copied from …", `0
+  pages`, `[]` from the API. Step 4 is the same call the *Sync now* button on
+  `/admin` makes, and it has to reach the running node, which is why it is
+  `docker exec` and not a second `docker run`.
+* **`MIRROR_AUTO_ADMIN=true` is allowed because the source is the demo.** A
+  release pointed at a real site refuses it without
+  `MIRROR_ALLOW_UNSAFE_IDENTITY=1`, which is the point of that guard.
+* **`host.docker.internal` is Docker Desktop's name for your machine** (macOS and
+  Windows). On Linux either add `--add-host=host.docker.internal:host-gateway`,
+  or put the database and the mirror on one compose network and use its service
+  name instead of a published port.
+* **Keep `SECRET_KEY_BASE` fixed across restarts.** Sessions, magic links and
+  MCP access tokens are signed with it; a new value signs everybody out.
+* **The demo writes attachments to `/app/var/mirror`**, which is inside the
+  container. Add `-v mirror-blobs:/app/var/mirror` to the run in step 3 if they
+  should outlive `docker rm`.
+
 ### What the build knows about itself
 
 The image carries one extra file, `priv/build_info.json`, written by

@@ -57,6 +57,11 @@ Then open:
 
 **Done when** the home page lists spaces and `/admin` shows one finished sync.
 
+Prefer containers to a checkout? The built image serves the same demo, and
+[deployment.md](docs/deployment.md#the-image-with-the-demo-snapshot) has the
+four commands — including the one-off sync a release needs, because a release
+has no seeds.
+
 Development and test assume an administrator (`MIRROR_AUTO_ADMIN`), so nothing
 asks you to sign in. Reader accounts use passwordless magic links.
 
