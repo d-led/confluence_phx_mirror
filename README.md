@@ -24,23 +24,22 @@ author and the original URL.*
 
 | I want to… | Time | Jump to |
 | --- | --- | --- |
-| **see it working** (bundled demo, no credentials) | ~3 min | [See it working](#1-see-it-working) |
-| **mirror a real Confluence site** | ~10 min, then a sync | [Mirror a real site](#2-mirror-a-real-site) |
+| **see it working** (bundled demo, no credentials) | ~4 min | [See it working](#1-see-it-working) |
+| **mirror a real site anyone can read** (no sign-in) | ~5 min, then the first pull | [Mirror a real site](#2-mirror-a-real-site) |
 | **deploy it** (Fly.io or Kubernetes) | ~20 min | [Deploy it](#3-deploy-it) |
 | run it in production | — | [operations.md](docs/operations.md) |
 | change the code | — | [developers.md](docs/developers.md) |
 
-You need **Elixir 1.20+**, **Node.js with npm**, and **Docker** (for the local
-Postgres). Mirroring a real site also needs an Atlassian API token.
+**Docker is the only prerequisite** for the first two: both run our image, and
+the database comes with it. Elixir 1.20+ and Node with npm are needed only to
+work on the code; mirroring a real site also needs an Atlassian API token.
 
 ## 1. See it working
 
 The bundled demo snapshot needs no Confluence account.
 
 ```bash
-docker compose up -d     # Postgres, Adminer, smtp4dev
-mix setup                # deps, database, migrations, assets, demo content
-mix phx.server
+docker compose -f docker-compose.demo.yml up
 ```
 
 Then open:
@@ -51,16 +50,33 @@ Then open:
 | admin dashboard | <http://localhost:4000/admin> |
 | live sync log | <http://localhost:4000/admin/sync-log> |
 | audit log | <http://localhost:4000/admin/audit> |
+
+**Done when** the home page says `40 pages` in two spaces and `/admin` shows one
+finished sync — that happens by itself, a second or two after the container
+starts: the first start against an empty database asks for one snapshot
+(`CM_BOOTSTRAP_SYNC`).
+
+`docker compose -f docker-compose.demo.yml down` stops it; add `-v` to drop the
+database and the files with it. What the container is made of, and the same
+image run by hand: [deployment.md](docs/deployment.md#the-image-with-the-demo-snapshot).
+
+### From a checkout instead
+
+For working on the code (this path needs Elixir and Node):
+
+```bash
+docker compose up -d     # only the services: Postgres, Adminer, smtp4dev
+mix setup                # deps, database, migrations, assets, demo content
+mix phx.server
+```
+
+Two more addresses come with those services:
+
+| What | Where |
+| --- | --- |
 | mail sink (smtp4dev) | <http://localhost:3001> |
 | database UI (Adminer) | <http://localhost:8092> |
 | LiveDashboard | <http://localhost:4000/dev/dashboard> |
-
-**Done when** the home page lists spaces and `/admin` shows one finished sync.
-
-Prefer containers to a checkout? The built image serves the same demo, and
-[deployment.md](docs/deployment.md#the-image-with-the-demo-snapshot) has the
-four commands — including the one-off sync a release needs, because a release
-has no seeds.
 
 Development and test assume an administrator (`MIRROR_AUTO_ADMIN`), so nothing
 asks you to sign in. Reader accounts use passwordless magic links.
@@ -78,21 +94,41 @@ Postgres has to be up before `mix setup`.
 
 ## 2. Mirror a real site
 
-Three variables are the whole contract:
+One command, for a mirror **anyone can read** — readers do not sign in:
 
 ```bash
 export CM_CONFLUENCE_SITE=https://acme.atlassian.net   # "/wiki" optional
-export CM_ATL_EMAIL=you@acme.com
-export CM_ATL_TOKEN=...          # API token, see below
-export CM_SPACES=ENG,PROD        # optional; default is every visible space
+export CM_ATL_EMAIL=you@acme.com            # the account the token belongs to
+export CM_ATL_TOKEN=...                    # see below
+export SECRET_KEY_BASE=$(openssl rand -hex 48)
+
+docker compose -f docker-compose.site.yml up
 ```
+
+Then open <http://localhost:4000>. The first pull starts by itself and the page
+fills as it reads.
+
+**Done when** the home page lists your spaces. A big site takes hours on the
+first pull; the measured pace is in [performance.md](docs/performance.md#what-it-measured).
+
+**What "anyone can read" means.** `CM_PUBLIC_SITE=true` in that file makes a
+reader with no account a reader: they see what the site marks
+`anonymousAccess`, and a space whose permissions the sync never stored is
+closed to them rather than open. That rule and the two switches beside it
+(`CM_ANONYMIZE_CONTRIBUTORS`, `CM_EXCLUDE_COMMENTS`) are spelled out in
+[routes-auth.md](docs/routes-auth.md#public-documentation-sites). **Prefer it
+private?** Drop `CM_PUBLIC_SITE` and put an OAuth proxy in front —
+[deployment.md](docs/deployment.md). Administration is a separate door and off
+by default; the comments in `docker-compose.site.yml` name the three ways to
+open it.
 
 Create the token at
 <https://id.atlassian.com/manage-profile/security/api-tokens> (*Create API
 token*). It is shown once, so copy it straight into the variable. The account
-needs **Confluence product access** on that site.
+needs **Confluence product access** on that site. `CM_SPACES=ENG,PROD` narrows
+the mirror to some spaces instead of everything the token can see.
 
-Then:
+### From a checkout instead
 
 ```bash
 mix confluence.probe        # optional: are the URL and the token good?

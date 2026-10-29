@@ -102,8 +102,23 @@ What the image promises:
 
 ### The image with the demo snapshot
 
-No Confluence credentials and no proxy: the image can serve the bundled demo.
-Four commands, about four minutes, most of it the build:
+No Confluence credentials and no proxy. One command, Docker only:
+
+```bash
+docker compose -f docker-compose.demo.yml up
+```
+
+Then <http://localhost:4000> says `40 pages` in two spaces, and
+`/api/v1/search?q=roadmap` finds the PROD roadmap. `down` stops it; `down -v`
+drops the database and the attachments with it.
+
+The file is the whole recipe: Postgres, one `migrate` service, then the mirror
+with `CM_SOURCE=demo`, `MIRROR_AUTO_ADMIN=true` and `CM_BOOTSTRAP_SYNC=true`.
+The secrets in it are demo values and are the same for everybody.
+
+#### The same image by hand
+
+For a machine without compose, or to see every knob:
 
 ```bash
 # 1. a database — any Postgres will do; this is the one CI runs the suite on
@@ -119,40 +134,88 @@ docker build -t confluence-mirror .
 docker run --rm -e DATABASE_URL -e SECRET_KEY_BASE \
   confluence-mirror /app/bin/migrate
 
-# 3. serve the demo, with no sign-in in the way
+# 3. serve the demo, with no sign-in in the way, and let it fill itself
 docker run -d --name mirror -p 4000:4000 \
   -e DATABASE_URL -e SECRET_KEY_BASE \
-  -e CM_SOURCE=demo -e MIRROR_AUTO_ADMIN=true -e PHX_HOST=localhost \
-  confluence-mirror
-
-# 4. fill it — once, on the running node
-docker exec mirror /app/bin/confluence_phx_mirror rpc \
-  'ConfluencePhxMirror.Sync.run(:snapshot)'
+  -e CM_SOURCE=demo -e MIRROR_AUTO_ADMIN=true -e CM_BOOTSTRAP_SYNC=true \
+  -e PHX_HOST=localhost confluence-mirror
 ```
 
-**Done when** <http://localhost:4000> says `40 pages` in two spaces, and
-`/api/v1/search?q=roadmap` finds the PROD roadmap.
-
-The details that make this work, and that are easy to be surprised by:
+What is easy to be surprised by:
 
 * **A release has no seeds.** `mix setup` fills a *development* database by
-  running `priv/repo/seeds.exs`; `/app/bin/migrate` only migrates. Without step
-  4 the mirror is empty and says so — "no content has been copied from …", `0
-  pages`, `[]` from the API. Step 4 is the same call the *Sync now* button on
-  `/admin` makes, and it has to reach the running node, which is why it is
-  `docker exec` and not a second `docker run`.
+  running `priv/repo/seeds.exs`; `/app/bin/migrate` only migrates, and the
+  image carries no Mix to run seeds with. `CM_BOOTSTRAP_SYNC=true` is what
+  closes that gap: the first start against an empty mirror asks for one
+  snapshot (`ConfluencePhxMirror.Sync.StartupPull`). Without it the mirror
+  stays empty and says so — "no content has been copied from …", `0 pages`,
+  `[]` from the API — until somebody presses *Sync now* or a clock reaches its
+  first tick. Those are the other two ways, and for a running container the
+  first one is one call:
+
+  ```bash
+  docker exec mirror /app/bin/confluence_phx_mirror rpc \
+    'ConfluencePhxMirror.Sync.run(:snapshot)'
+  ```
+
 * **`MIRROR_AUTO_ADMIN=true` is allowed because the source is the demo.** A
   release pointed at a real site refuses it without
   `MIRROR_ALLOW_UNSAFE_IDENTITY=1`, which is the point of that guard.
+* **`SECRET_KEY_BASE` must stay the same across restarts, and be 64 bytes or
+  more.** Sessions, magic links and MCP access tokens are signed with it, and
+  Phoenix's cookie store refuses a shorter key at the first *request*, not at
+  boot — a short demo key fails the home page while the health check stays
+  green.
 * **`host.docker.internal` is Docker Desktop's name for your machine** (macOS and
   Windows). On Linux either add `--add-host=host.docker.internal:host-gateway`,
   or put the database and the mirror on one compose network and use its service
   name instead of a published port.
-* **Keep `SECRET_KEY_BASE` fixed across restarts.** Sessions, magic links and
-  MCP access tokens are signed with it; a new value signs everybody out.
 * **The demo writes attachments to `/app/var/mirror`**, which is inside the
   container. Add `-v mirror-blobs:/app/var/mirror` to the run in step 3 if they
   should outlive `docker rm`.
+
+### The image against a real site
+
+The same image, pointed at a site instead of the snapshot, published **without
+sign-in** — the shape to hand a colleague who wants a read-only copy:
+
+```bash
+export CM_CONFLUENCE_SITE=https://acme.atlassian.net
+export CM_ATL_EMAIL=you@acme.com
+export CM_ATL_TOKEN=...
+export SECRET_KEY_BASE=$(openssl rand -hex 48)
+
+docker compose -f docker-compose.site.yml up
+```
+
+What that file decides, and why:
+
+* **`CM_PUBLIC_SITE=true` is the "no sign-in" switch.** A reader with no account
+  is a reader: they see the spaces and pages the site marks `anonymousAccess`,
+  and a space whose permissions the sync never stored is **closed** to them
+  rather than open. The rule, and what it deliberately does not answer: see
+  [routes-auth.md](routes-auth.md#public-documentation-sites).
+  `CM_ANONYMIZE_CONTRIBUTORS` and `CM_EXCLUDE_COMMENTS` decide whether names
+  and comments appear at all.
+* **`CM_SOURCE=http` plus the three credentials is the whole upstream
+  contract** — the account needs Confluence product access, and the token comes
+  from <https://id.atlassian.com/manage-profile/security/api-tokens>.
+  `CM_SPACES=ENG,PROD` narrows the mirror to some spaces.
+* **`CM_BOOTSTRAP_SYNC=true` starts the first pull by itself**, so a fresh
+  container is not an empty site with a clock an hour away. Later pulls follow
+  `CM_SYNC_INTERVAL_SECONDS` (hourly by default), a webhook, or *Sync now*.
+* **Administration is a separate door, and off in that file.** `/admin` needs an
+  identity: `CM_ADMINS` plus an SMTP relay for magic links, a proxy in front as
+  in the sections above, or — for a trial on a machine nobody else can reach —
+  `MIRROR_AUTO_ADMIN=true`. `docker exec <container> /app/bin/confluence_phx_mirror
+  rpc 'ConfluencePhxMirror.Sync.run(:snapshot)'` reads the site once without
+  anybody signing in at all.
+
+The first pull of a real site is the slow part — minutes to hours, and a
+hundred-thousand-page site is about twelve hours at the measured pace, with no
+reader waiting on it. [performance.md](performance.md#what-it-measured) has the
+numbers; [site-admin-guide.md](site-admin-guide.md#pulling-content) has the log to
+watch.
 
 ### What the build knows about itself
 
@@ -283,9 +346,9 @@ address, so a proxy released first answers 502.
 
 The demo pair is the same two commands with `demo`, and its `DATABASE_URL` is
 one you bring (`./scripts/fly-provision.sh demo` reads it from the
-environment). The GitHub OAuth app's callback URLs are
-`https://confluence-mirror.fly.dev/oauth2/callback` and
-`https://confluence-mirror-demo.fly.dev/oauth2/callback`.
+environment). Each proxy app registers one callback with its identity provider:
+`https://<the proxy's host>/oauth2/callback`, using the hostname you deploy it
+under.
 
 Details that are easy to get wrong:
 
