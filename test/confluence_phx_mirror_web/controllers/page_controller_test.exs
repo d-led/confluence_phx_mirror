@@ -3,6 +3,8 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
 
   import ConfluencePhxMirror.Fixtures
 
+  alias ConfluencePhxMirror.Settings
+
   setup %{conn: conn} do
     demo_snapshot!()
     # The home rail and the feeds list what a reader may open; these cases are
@@ -62,6 +64,12 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     html = conn |> get(~p"/") |> html_response(200)
 
     assert html =~ ~s(lang="en-GB")
+  end
+
+  test "a mirror that lands on the space directory sends / there", %{conn: conn} do
+    {:ok, _applied} = Settings.update(%{"site.landing_page" => "spaces"}, {:system, "test"})
+
+    assert conn |> get(~p"/") |> redirected_to() == ~p"/spaces"
   end
 
   test "a page mirrored before emoticons were converted still shows them", %{conn: conn} do

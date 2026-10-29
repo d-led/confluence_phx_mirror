@@ -45,6 +45,7 @@ and rolling back never touch stored decisions.
 | Setting | Variable | Default |
 | --- | --- | --- |
 | `theme` | `CM_THEME` | `fresh-blue` |
+| `site.landing_page` | `CM_LANDING_PAGE` | `home` |
 | `reader.html_limit` | `CM_READER_RATE_LIMIT_PER_MINUTE` / `CM_RATE_LIMIT_HTML_PER_MINUTE` | `240` |
 | `reader.api_limit` | `CM_RATE_LIMIT_API_PER_MINUTE` | `120` |
 | `reader.attachments_limit` | `CM_RATE_LIMIT_ATTACHMENTS_PER_MINUTE` | `300` |
@@ -296,6 +297,16 @@ a theme, with the config keys a site may set, is
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `CM_THEME` | `fresh-blue` | seeds the theme the whole site wears. An administrator changes it on **Admin → Settings**; readers only ever choose `system`, `light` or `dark`. A seeded name the site does not offer stops the release at boot |
+
+## Landing page
+
+Confluence's own *site landing page* is not readable over REST (the admin page
+reads that screen over GraphQL with a browser session), so the mirror does not
+copy it: `/` is the mirror's own choice.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CM_LANDING_PAGE` | `home` | what a reader sees at `/`: `home` (what changed, the spaces, the labels) or `spaces` (the space directory). An administrator changes it on **Admin → Settings → Site**; a value the mirror does not know is refused when it is saved |
 
 ## Development defaults
 

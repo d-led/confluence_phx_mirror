@@ -42,6 +42,19 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     assert Settings.stored("sync.spaces") == ["PROD", "ENG"]
   end
 
+  test "a choice is a menu of the values the mirror knows", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    assert has_element?(view, ~s(select#setting-site\\.landing_page-input))
+    assert has_element?(view, ~s(option[value="spaces"]))
+
+    view
+    |> element("#settings-site")
+    |> render_submit(%{"values" => %{"site.landing_page" => "spaces"}})
+
+    assert Settings.landing_page() == "spaces"
+  end
+
   test "a boolean is one click, not two", %{conn: conn} do
     {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
 

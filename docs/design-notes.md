@@ -398,7 +398,10 @@ reads most of it over GraphQL with a browser session; the REST surface exposes
 `/settings/global`. So the mirror syncs the corner that is reachable and is
 honest about the rest: the landing page, the default page width, the date and
 number formats, the attachment size cap and the presence switch belong to the
-mirror's own settings, and the admin guide lists them as such.
+mirror's own settings, and the admin guide lists them as such. The landing page
+is the one of those the mirror offers today (`site.landing_page`: its own home
+screen, or the space directory): a mirror that copied a page id from a site it
+cannot read it from would be guessing.
 
 What the three fields buy:
 

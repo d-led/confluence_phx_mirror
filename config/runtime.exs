@@ -348,6 +348,14 @@ if theme = System.get_env("CM_THEME") do
   config :confluence_phx_mirror, theme: theme
 end
 
+# CM_LANDING_PAGE seeds where a reader lands: "home" (the mirror's own screen,
+# the default) or "spaces" (the directory). An administrator changes it on the
+# settings page; Confluence's own landing page is not readable over REST, so it
+# cannot be synced.
+if landing = System.get_env("CM_LANDING_PAGE") do
+  config :confluence_phx_mirror, landing_page: landing
+end
+
 # The API description and its page: `/api/openapi.json` and `/api/docs`. Served
 # in development and test because they cost nothing and help while building
 # against the mirror; a release has to ask for them, so a deployment never grows

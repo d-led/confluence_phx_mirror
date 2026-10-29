@@ -82,6 +82,15 @@ defmodule ConfluencePhxMirror.Settings do
   @spec theme() :: String.t() | nil
   def theme, do: effective("theme")
 
+  @doc """
+  Where a reader lands: the mirror's home screen, or the space directory.
+
+  Confluence's own *site home page* is not readable over REST, so this one is
+  the mirror's decision rather than a copy of the site's.
+  """
+  @spec landing_page() :: String.t()
+  def landing_page, do: effective("site.landing_page")
+
   @doc "Requests a reader may make per minute in `scope` (`:html`, `:api`, `:attachments`)."
   @spec reader_limit(atom() | String.t()) :: pos_integer()
   def reader_limit(scope), do: effective("reader.#{scope}_limit")
@@ -378,6 +387,7 @@ defmodule ConfluencePhxMirror.Settings do
   defp coerce(:non_negative, value), do: as_non_negative(value)
   defp coerce(:hour, value), do: as_hour(value)
   defp coerce(:csv, value), do: as_keys(value)
+  defp coerce({:choice, choices}, value), do: as_choice(value, choices)
 
   defp as_string(nil), do: {:ok, nil}
 
@@ -389,6 +399,18 @@ defmodule ConfluencePhxMirror.Settings do
   end
 
   defp as_string(_value), do: :error
+
+  # One of the values the catalogue lists, and nothing else: a stored landing
+  # page the router does not know would be a broken home page, not a typo.
+  defp as_choice(nil, _choices), do: {:ok, nil}
+
+  defp as_choice(value, choices) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    if List.keymember?(choices, trimmed, 0), do: {:ok, trimmed}, else: :error
+  end
+
+  defp as_choice(_value, _choices), do: :error
 
   defp as_boolean(value) when is_boolean(value), do: {:ok, value}
   defp as_boolean(nil), do: {:ok, nil}
@@ -502,6 +524,13 @@ defmodule ConfluencePhxMirror.Settings do
   # Where each default comes from: the same keys the environment sets, so a
   # setting and its variable can never drift apart.
   defp resolve(:theme), do: configured(:theme)
+
+  # What the mirror does when an administrator has not chosen: its own home
+  # screen, which is what every mirror did before this setting existed.
+  defp resolve(:landing_page) do
+    Application.get_env(:confluence_phx_mirror, :landing_page, "home")
+  end
+
   defp resolve({:reader_limit, scope, floor}), do: reader_default(scope, floor)
   defp resolve({:notification, key, floor}), do: notification_default(key, floor)
 

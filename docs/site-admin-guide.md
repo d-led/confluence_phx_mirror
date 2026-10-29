@@ -801,7 +801,7 @@ mirror's own setting and you set it here:
 | Site title | **synced** — kept for the admin screens and the audit trail; the shell's own name stays `CM_MIRROR_NAME` / the `sites` row |
 | Default language | **synced** — the document's `<html lang>` |
 | Time zone | **synced** — used by the export and the mail the mirror sends; dates inside a page arrive already formatted by Confluence |
-| Site landing page | mirror setting — the mirror's home is its space directory |
+| Site landing page | **mirror setting** — `/` is the mirror's own home or its space directory: **Admin → Settings → Site** (`CM_LANDING_PAGE`) |
 | Default page width | mirror setting — the page view is the mirror's layout, not the site's |
 | Date, time and number formats | mirror setting — a body is stored as Confluence rendered it |
 | Maximum attachment size, attachments per upload | mirror setting — `Storage` caps what this mirror accepts from a reader |

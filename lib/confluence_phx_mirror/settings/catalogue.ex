@@ -21,7 +21,16 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
   longer knows is ignored by `Settings.load/0`.
   """
 
-  @type type :: :string | :boolean | :pos_integer | :non_negative | :hour | :csv
+  @type type ::
+          :string
+          | :boolean
+          | :pos_integer
+          | :non_negative
+          | :hour
+          | :csv
+          # One of a list, with the label the screen shows beside each value:
+          # the set a value must belong to is the catalogue's, not the type's.
+          | {:choice, [{String.t(), String.t()}]}
 
   @type spec :: %{
           type: type(),
@@ -40,6 +49,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
   # terms the environment writes it, so a setting and its variable cannot drift:
   #
   #   :theme                          Application.get_env(:theme)
+  #   :landing_page                   Application.get_env(:landing_page)
   #   {:reader_limit, scope, floor}   :reader_rate_limit[scope][:limit]
   #   {:search, key, floor}           :search[key]
   #   {:sync, key, floor}             :sync[key]
@@ -58,6 +68,21 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       help: "The palette every reader wears. Readers still choose light, dark or system.",
       env: "CM_THEME",
       ui: :theme
+    },
+    "site.landing_page" => %{
+      type:
+        {:choice,
+         [
+           {"home", "The mirror's home: what changed, its spaces, its labels"},
+           {"spaces", "The space directory"}
+         ]},
+      default: :landing_page,
+      group: :site,
+      label: "Landing page",
+      help:
+        "What a reader sees at /. Confluence's own site landing page is not readable over REST, so this is the mirror's choice.",
+      env: "CM_LANDING_PAGE",
+      ui: :settings
     },
     "reader.html_limit" => %{
       type: :pos_integer,
@@ -287,12 +312,16 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
   }
 
   # Display order matters: it is the order an operator usually needs things in.
-  @group_order [:appearance, :reading, :sync, :notifications, :operations, :webhooks]
+  @group_order [:appearance, :site, :reading, :sync, :notifications, :operations, :webhooks]
 
   @groups %{
     appearance: %{
       title: "Theme",
       help: "One palette for the whole site. Readers pick light, dark or system themselves."
+    },
+    site: %{
+      title: "Site",
+      help: "What this mirror says it is, and where a reader lands when they arrive."
     },
     reading: %{
       title: "Reading",
@@ -325,6 +354,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
   # `@specs` and forgetting it here fails `Settings.CatalogueTest`.
   @order [
     "theme",
+    "site.landing_page",
     "reader.html_limit",
     "reader.api_limit",
     "reader.attachments_limit",

@@ -17,6 +17,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Publishing
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.Emoticons
   alias ConfluencePhxMirror.Sync.PageWorker
@@ -35,6 +36,14 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   @recent_changes 8
 
   def home(conn, _params) do
+    if Settings.landing_page() == "spaces" do
+      redirect(conn, to: ~p"/spaces")
+    else
+      render_home(conn)
+    end
+  end
+
+  defp render_home(conn) do
     spaces = readable_spaces(conn)
     %{items: changes} = Catalog.recent(scope(conn), limit: @recent_changes)
 

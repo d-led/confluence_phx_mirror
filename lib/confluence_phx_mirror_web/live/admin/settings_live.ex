@@ -437,6 +437,52 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
     """
   end
 
+  defp setting_field(%{field: %{type: {:choice, choices}} = field} = assigns) do
+    assigns = assign(assigns, :field, field) |> assign(:choices, choices)
+
+    ~H"""
+    <div
+      id={"setting-#{@field.key}"}
+      class={[
+        "flex flex-col gap-1 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6",
+        @field.hidden? && "hidden"
+      ]}
+    >
+      <label class="min-w-0" for={"setting-#{@field.key}-input"}>
+        <span class="block text-sm">
+          {@field.label}
+          <span
+            :if={@field.value != nil}
+            class="ml-1 text-[10px] uppercase tracking-wide text-primary"
+          >
+            changed
+          </span>
+        </span>
+        <span class="block text-xs text-base-content/70">{@field.help}</span>
+        <span class="mt-0.5 block text-[11px] text-base-content/70">
+          Deployment: {@field.default} · <code class="font-mono">{@field.env}</code>
+        </span>
+      </label>
+      <select
+        id={"setting-#{@field.key}-input"}
+        name={"values[#{@field.key}]"}
+        class="select select-sm w-full max-w-xs"
+      >
+        <option value="" selected={@field.value == nil}>
+          Use the deployment's
+        </option>
+        <option
+          :for={{value, text} <- @choices}
+          value={value}
+          selected={@field.value == value}
+        >
+          {text}
+        </option>
+      </select>
+    </div>
+    """
+  end
+
   defp setting_field(%{field: %{type: type}} = assigns)
        when type in [:pos_integer, :non_negative, :hour] do
     ~H"""

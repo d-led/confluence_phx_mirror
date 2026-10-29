@@ -42,6 +42,25 @@ defmodule ConfluencePhxMirror.SettingsTest do
     end
   end
 
+  describe "the page a reader lands on" do
+    test "is the mirror's own home until an administrator chooses" do
+      assert Settings.landing_page() == "home"
+    end
+
+    test "can be the space directory" do
+      assert {:ok, _applied} = Settings.update(%{"site.landing_page" => "spaces"}, @actor)
+
+      assert Settings.landing_page() == "spaces"
+    end
+
+    test "refuses a page this mirror does not have" do
+      assert {:error, {:invalid_value, "site.landing_page", "nowhere"}} =
+               Settings.update(%{"site.landing_page" => "nowhere"}, @actor)
+
+      assert Settings.landing_page() == "home"
+    end
+  end
+
   describe "a decision" do
     test "outlives the cache and reads back" do
       assert {:ok, _applied} = Settings.update(%{"reader.html_limit" => "300"}, @actor)
