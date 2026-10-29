@@ -94,15 +94,16 @@ or its language.
 | bytes | the blob volume: `attachments/…`, `spaces/KEY/icon.<ext>` | the sync |
 
 ```mermaid
-erDiagram
-  SPACES ||--o{ PAGES : contains
-  PAGES ||--o{ PAGES : "parent of"
-  PAGES ||--o{ COMMENTS : has
-  PAGES ||--o{ ATTACHMENTS : has
-  PAGES }o--o{ LABELS : labelled
-  PAGES ||--o{ LINKS : "links out"
-  SPACES ||--o{ SPACE_PERMISSIONS : "narrowed by"
-  PAGES ||--o{ PAGE_RESTRICTIONS : "narrowed by"
+---
+config:
+  layout: elk
+---
+flowchart TB
+  S[spaces] --> P[pages]
+  P --> K[comments · attachments · links]
+  P --> L[labels]
+  S --> SP[space permissions]
+  P --> PR[page restrictions]
 ```
 
 The grant and removal markers sit on those permission rows themselves
