@@ -28,7 +28,8 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.SyncRunControllerTest do
 
     assert [run] = body["results"]
     assert run["id"] == newer.id
-    assert run["mode"] == "webhook"
+    assert run["mode"] == "page"
+    assert run["trigger"] == "the admin dashboard, by admin@example.com"
     assert run["status"] == "succeeded"
     assert run["startedAt"] == "2026-10-02T10:00:00Z"
     assert body["start"] == 0
@@ -83,8 +84,9 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.SyncRunControllerTest do
     %SyncRun{}
     |> SyncRun.changeset(%{
       source: "confluence-http",
-      mode: "webhook",
+      mode: "page",
       scope: "page 1002",
+      trigger: "the admin dashboard, by admin@example.com",
       status: "succeeded",
       started_at: started_at,
       finished_at: DateTime.add(started_at, 60, :second),

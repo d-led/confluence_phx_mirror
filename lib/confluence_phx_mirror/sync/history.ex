@@ -30,7 +30,7 @@ defmodule ConfluencePhxMirror.Sync.History do
   @default_limit 50
   @max_limit 500
 
-  @columns ~w(id source mode scope status started_at finished_at duration_ms
+  @columns ~w(id source mode scope trigger status started_at finished_at duration_ms
               cancel_requested_at stats error)
 
   @doc """
@@ -118,6 +118,7 @@ defmodule ConfluencePhxMirror.Sync.History do
       "source" => run.source,
       "mode" => run.mode,
       "scope" => run.scope,
+      "trigger" => SyncRun.trigger(run),
       "status" => run.status,
       "startedAt" => iso(run.started_at),
       "finishedAt" => iso(run.finished_at),
@@ -136,6 +137,7 @@ defmodule ConfluencePhxMirror.Sync.History do
       run.source,
       run.mode,
       run.scope,
+      SyncRun.trigger(run),
       run.status,
       iso(run.started_at),
       iso(run.finished_at),

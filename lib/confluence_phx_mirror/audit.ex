@@ -181,11 +181,9 @@ defmodule ConfluencePhxMirror.Audit do
   defp article("incremental"), do: "an"
   defp article(_mode), do: "a"
 
-  # A one-page run is stored as the `webhook` mode, because that is how such a
-  # run usually arrives — but the mode says *what* a run is, and the trigger says
-  # who asked for it. A `mix confluence.sync --mode page` run recorded as "a
-  # webhook sync, triggered by mix confluence.sync" reads as a contradiction the
-  # log does not need to tell: it was a page sync, asked for on the command line.
+  # Rows written before a page run had a mode of its own called it a webhook
+  # *and* recorded the page in `scope`, so the log of an older mirror still
+  # reads as what happened. New rows say `page` and need no help.
   defp mode_name(%{"mode" => "webhook", "scope" => scope})
        when is_binary(scope),
        do: "page"

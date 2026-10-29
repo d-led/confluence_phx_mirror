@@ -204,17 +204,22 @@ round instead: *which groups is this person in*.
 | --- | --- | --- | --- |
 | `snapshot` | every page of every listed space, in one run | `snapshot` | `mix confluence.sync` (its default) — heavy: it holds a whole site in memory |
 | `incremental` | spaces never listed before, plus pages changed in the last interval | `incremental` | the hourly clock |
-| `space` | one space's page listing, then its details | `incremental`, scope `space KEY` | a space webhook, the dashboard, a sweep |
-| `page` | one page and its details | `webhook`, scope `page ID` | a page webhook, "resync" on a page |
+| `space` | one space's page listing, then its details | `space`, scope `space KEY` | a space webhook, the dashboard, a sweep |
+| `page` | one page and its details | `page`, scope `page ID` | a page webhook, "resync" on a page |
 | `people` | groups and account status, no content | `people` | the identities screen |
-| *sweep* | one `space` run per space, 60 s apart | `incremental`, per space | "re-read everything" on the dashboard |
+| *sweep* | one `space` run per space, 60 s apart | `space`, per space | "re-read everything" on the dashboard |
 | *reconcile* | names and counts, no bodies | `reconcile_runs` | its own clock, or the button on `/admin/upstream` |
 
-Four things to know about that table:
+Five things to know about that table:
 
-* **Two rows are stored under older names.** `space` and `page` runs were added
-  after the runs table existed, so they read back as `incremental` and
-  `webhook`; the scope column is what names the space or the page.
+* **A run row carries three separate facts**: `mode` is what a run covers,
+  `scope` narrows it to one space or page, and `trigger` says who asked and why
+  ("the hourly schedule", "the admin dashboard, by jane@acme.com"). The trigger
+  is a column rather than one key of `stats`, so the counters that replace a
+  run's stats on finish cannot take it with them.
+* **Rows written by an older mirror still wear the old names.** `space` runs
+  read back as `incremental` and `page` runs as `webhook`; the audit's sentence
+  still reads such a row with a scope as a page sync.
 * **Paused** (`sync.paused`, `CM_SYNC_PAUSED`) refuses every run before it
   starts: queued jobs snooze five minutes and every screen says so. Reading
   what is already mirrored carries on.

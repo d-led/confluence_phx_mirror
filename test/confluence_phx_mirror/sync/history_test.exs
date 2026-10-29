@@ -59,9 +59,12 @@ defmodule ConfluencePhxMirror.Sync.HistoryTest do
       [header, row] = csv(run)
 
       assert header ==
-               "id,source,mode,scope,status,started_at,finished_at,duration_ms,cancel_requested_at,stats,error"
+               "id,source,mode,scope,trigger,status,started_at,finished_at,duration_ms,cancel_requested_at,stats,error"
 
-      assert String.starts_with?(row, "#{run.id},confluence-http,webhook,page 1002,succeeded,")
+      assert String.starts_with?(
+               row,
+               "#{run.id},confluence-http,page,page 1002,the hourly schedule,succeeded,"
+             )
     end
 
     test "a message with a comma stays one cell" do
@@ -99,8 +102,9 @@ defmodule ConfluencePhxMirror.Sync.HistoryTest do
   defp run_fixture(attrs) do
     defaults = [
       source: "confluence-http",
-      mode: "webhook",
+      mode: "page",
       scope: "page 1002",
+      trigger: "the hourly schedule",
       status: "succeeded",
       started_at: ~U[2026-10-01 10:00:00Z],
       finished_at: ~U[2026-10-01 10:01:00Z]

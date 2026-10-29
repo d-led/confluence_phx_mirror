@@ -46,7 +46,7 @@ defmodule ConfluencePhxMirror.Sync.SpaceWorkerTest do
   end
 
   test "waits its turn when a single space is being read" do
-    running_snapshot(mode: "webhook", scope: "space ENG")
+    running_snapshot(mode: "space", scope: "space ENG")
 
     refute Sync.whole_site_running?()
     assert Sync.wait_or_stand_down() == {:snooze, 30}

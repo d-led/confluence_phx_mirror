@@ -936,12 +936,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       run_id: run.id,
       at: run.started_at,
       mode: run.mode,
-      # Who asked, when the run was asked for by someone: written at the start
-      # and kept through the numbers that replace the run's stats.
-      trigger: Map.get(run.stats || %{}, "trigger"),
-      # Runs recorded before the scope column existed only have their mode; a
-      # snapshot or an incremental pull of that age was always the whole site.
-      scope: run.scope || scope_from_mode(run.mode),
+      # Who asked for the run, and why: the schedule, a delivery, a person.
+      trigger: SyncRun.trigger(run),
+      # A run from before the scope column was always a whole-site pull.
+      scope: run.scope || "whole site",
       status: run.status,
       duration: Time.duration(run.started_at, run.finished_at),
       # What the site listed for this run's window, and of those, what had to be
@@ -967,10 +965,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
         if args["mode"] == "snapshot", do: "snapshot", else: "incremental"
 
       worker == inspect(SpaceWorker) ->
-        "incremental"
+        "space"
 
       worker == inspect(PageWorker) ->
-        "webhook"
+        "page"
 
       true ->
         "sync"
@@ -984,9 +982,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       true -> "whole site"
     end
   end
-
-  defp scope_from_mode("webhook"), do: "one page"
-  defp scope_from_mode(_whole_site_or_incremental), do: "whole site"
 
   # Oban's own states are scheduling vocabulary ("available" means "waiting for
   # a free slot", "retryable" means "waiting for the next attempt"); the table

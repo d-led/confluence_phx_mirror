@@ -10,13 +10,19 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
 
   @type t :: %__MODULE__{}
 
-  @modes ~w(snapshot incremental webhook people)
+  # What a run covers. `webhook` stays for deliveries that a site pushed here;
+  # a run of one page or one space is asked for, and says so.
+  @modes ~w(snapshot incremental webhook page space people)
   @statuses ~w(running succeeded partial failed cancelled)
 
   schema "sync_runs" do
     field :source, :string
     field :mode, :string
     field :scope, :string
+    # Why this run happened: the schedule, a webhook, the dashboard and who was
+    # signed in. A run's own property, so it is a column rather than one key of
+    # the counters the run collects.
+    field :trigger, :string
     field :status, :string, default: "running"
     field :started_at, :utc_datetime
     field :finished_at, :utc_datetime
@@ -36,6 +42,7 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
       :source,
       :mode,
       :scope,
+      :trigger,
       :status,
       :started_at,
       :finished_at,
@@ -56,6 +63,20 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
   def duration(%__MODULE__{started_at: started_at, finished_at: finished_at}) do
     DateTime.diff(finished_at, started_at, :millisecond)
   end
+
+  @doc """
+  Why this run happened, or `nil` for one nobody asked for.
+
+  The column holds it. A row written before the column existed kept the same
+  words as one key of `stats`, which is where the screens found them until the
+  trigger moved out; reading that copy here is what keeps the old rows legible
+  until an operator runs the manual migration that moves them across.
+  """
+  @spec trigger(t()) :: String.t() | nil
+  def trigger(%__MODULE__{trigger: nil, stats: stats}) when is_map(stats),
+    do: Map.get(stats, "trigger")
+
+  def trigger(%__MODULE__{trigger: trigger}), do: trigger
 
   @doc """
   Audit entry for a run that just started.

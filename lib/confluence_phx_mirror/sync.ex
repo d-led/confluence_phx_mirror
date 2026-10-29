@@ -2434,11 +2434,8 @@ defmodule ConfluencePhxMirror.Sync do
   # Sync run bookkeeping
   # ---------------------------------------------------------------------------
 
-  # A trigger is not a counter, but the run keeps it beside them: it is what a
+  # A run says why it happened as well as what it did: the trigger is what a
   # reader asks a sync first, and a run nobody asked for has none to show.
-  defp trigger_stats(nil), do: %{}
-  defp trigger_stats(trigger), do: %{"trigger" => trigger}
-
   defp start_run(source, mode, actor, trigger, opts) do
     # The traffic account covers one run: every call this run makes is counted
     # here and reported when it ends, so a reader never sees yesterday's totals.
@@ -2450,10 +2447,10 @@ defmodule ConfluencePhxMirror.Sync do
         source: source.name(),
         mode: mode_to_string(mode),
         scope: scope_of(mode, opts),
+        trigger: trigger,
         job_id: opts[:job_id],
         status: "running",
-        started_at: now(),
-        stats: trigger_stats(trigger)
+        started_at: now()
       })
       |> Repo.insert()
 
@@ -2473,14 +2470,10 @@ defmodule ConfluencePhxMirror.Sync do
 
     # The run's own numbers are its window; this is the mirror those numbers
     # were compared against, so "1 listed" can be read next to its real size.
-    # These numbers replace `stats` wholesale, which would take the trigger
-    # written at the start with them, so it is put back: the table says who
-    # asked for a run after it has finished, not only while it runs.
     stats =
       stats
       |> Map.put("total", Mirror.count_pages())
       |> Map.put("errors", normalize_errors(errors))
-      |> Map.merge(trigger_stats(trigger))
 
     {:ok, run} =
       run
@@ -2590,13 +2583,13 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp mode_to_string(:snapshot), do: "snapshot"
   defp mode_to_string(:incremental), do: "incremental"
-  defp mode_to_string(:space), do: "incremental"
+  defp mode_to_string(:space), do: "space"
   defp mode_to_string(:people), do: "people"
-  defp mode_to_string(:page), do: "webhook"
+  defp mode_to_string(:page), do: "page"
 
-  # What a run covers. `mode` is how it was asked for, and it cannot tell a space
-  # pull from a site pull — both are incremental — so the dashboard needs this to
-  # say which space a run touched.
+  # What a run covers. The mode says how it was asked for and the scope says
+  # what that amounts to — one space's key, one page's id — so a run of a space
+  # can be read without opening the job that asked for it.
   defp scope_of(:space, opts), do: "space #{Keyword.fetch!(opts, :space_key)}"
   defp scope_of(:page, opts), do: "page #{Keyword.fetch!(opts, :confluence_id)}"
   defp scope_of(:people, _opts), do: "people and groups"

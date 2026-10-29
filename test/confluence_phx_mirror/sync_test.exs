@@ -208,6 +208,19 @@ defmodule ConfluencePhxMirror.SyncTest do
 
       assert entry.metadata["scope"] == "space ENG"
     end
+
+    # A run is what it is, whoever asked for it: the mode used to say "webhook"
+    # for a page and "incremental" for a space, and the trigger had to be dug
+    # out of the counters to tell the two apart from a delivery.
+    test "a scoped run is stored as what it covers, with who asked for it beside it" do
+      {:ok, run} =
+        Sync.run(:page, confluence_id: 1002, trigger: "the admin dashboard, by ops@acme.com")
+
+      assert run.mode == "page"
+      assert run.scope == "page 1002"
+      assert run.trigger == "the admin dashboard, by ops@acme.com"
+      refute Map.has_key?(run.stats, "trigger"), "the trigger is a column, not a counter"
+    end
   end
 
   describe "space icons" do
