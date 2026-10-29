@@ -15,10 +15,11 @@ need.
 | --- | --- |
 | what runs, and what a request passes | [Runtime](#runtime-one-release-five-faces) |
 | what is stored, and where | [Data](#data-what-the-mirror-knows) |
-| how content gets in | [Ingestion](#ingestion-the-only-writer) |
+| how content gets in, and the ways a run is asked for | [Ingestion](#ingestion-the-only-writer) |
 | how a search indexes and answers | [Search and indexing](#search-and-indexing-how-a-query-becomes-a-list) |
+| taking content out: Markdown, ZIP, static site | [Exports](#exports-how-content-leaves) |
 | who may reach what, and read what | [Identity and authorization](#identity-and-authorization-three-questions) |
-| how it runs on Fly.io today | [Deployment A](#deployment-a--flyio-what-ships-today) |
+| how it runs on Fly.io today | [Deployment A](#deployment-a--flyio-what-you-can-easily-deploy-today) |
 | how an *open* site would run | [Deployment B](#deployment-b--an-open-site-phoenix--postgres) |
 | what changes with more than one node | [Clustering](#clustering-in-one-paragraph) |
 | how an assistant reads the wiki | [Machine surfaces](#machine-surfaces-api-mcp-webhooks) |
@@ -168,6 +169,58 @@ flowchart TB
 * **A webhook is a nudge, not a source of truth.** It queues the same run a
   clock would. A missed delivery costs freshness, never correctness.
 
+### What it reads, and where it lands
+
+One row per thing the source can answer, because those are exactly the
+`Confluence.Source` callbacks:
+
+| from Confluence | becomes |
+| --- | --- |
+| the space list, and each space's name, description, home page, icon and `team` categories | a `spaces` row, and the icon as a file |
+| pages and blog posts of a space — body in storage and `export_view` form, version, labels, ancestors, author, timestamps, live-doc marker | a `pages` row with three body columns (storage, rendered, plain text) |
+| pages changed since the last pull | the same, for that subset only |
+| comments, replies included | `comments` rows |
+| attachment metadata, then the bytes | `attachments` rows, and files under `attachments/` |
+| page restrictions | `page_restrictions` |
+| space permissions | `space_permissions` — Cloud answers `404` here, so a space usually has none |
+| the groups of each account the content names | `group_member` |
+| account status: active, inactive, gone | the `users` columns that switch reading off |
+| `systemInfo`: site title, default locale, time zone | the `site_settings` singleton |
+| the `pageproperties` tables inside pages | `page_properties`, so a property report renders without a browser |
+| names and counts only (the reconcile pass) | `pages.absent_since` |
+
+What it never reads: a user list (Cloud has no endpoint), page history,
+watchers, favourites, analytics, and "who is in this group" —
+`/group/{name}/member` is gone on Cloud. Membership is asked the other way
+round instead: *which groups is this person in*.
+
+### The ways a run is asked for
+
+| asked as | covers | stored as | who asks |
+| --- | --- | --- | --- |
+| `snapshot` | every page of every listed space, in one run | `snapshot` | `mix confluence.sync` (its default) — heavy: it holds a whole site in memory |
+| `incremental` | spaces never listed before, plus pages changed in the last interval | `incremental` | the hourly clock |
+| `space` | one space's page listing, then its details | `incremental`, scope `space KEY` | a space webhook, the dashboard, a sweep |
+| `page` | one page and its details | `webhook`, scope `page ID` | a page webhook, "resync" on a page |
+| `people` | groups and account status, no content | `people` | the identities screen |
+| *sweep* | one `space` run per space, 60 s apart | `incremental`, per space | "re-read everything" on the dashboard |
+| *reconcile* | names and counts, no bodies | `reconcile_runs` | its own clock, or the button on `/admin/upstream` |
+
+Four things to know about that table:
+
+* **Two rows are stored under older names.** `space` and `page` runs were added
+  after the runs table existed, so they read back as `incremental` and
+  `webhook`; the scope column is what names the space or the page.
+* **Paused** (`sync.paused`, `CM_SYNC_PAUSED`) refuses every run before it
+  starts: queued jobs snooze five minutes and every screen says so. Reading
+  what is already mirrored carries on.
+* **A full re-read is a queue of spaces**, not one giant run, because a
+  site-sized snapshot holds every page in memory. A single `snapshot` is for a
+  machine that can take it, or for `mix confluence.sync` over a small site.
+* **A source that cannot report changes** — the demo snapshot, a test double —
+  falls back to a full read, so `incremental` still works; it is just not
+  cheaper.
+
 What an operator sees while this happens — the run log, the HTTP traffic
 counters, the queue — is [site-admin-guide.md](site-admin-guide.md#pulling-content)
 and [operations.md](operations.md#watching-it). *Why* the renderer keeps
@@ -252,6 +305,35 @@ flowchart TB
   field a read-only sync never stored (`mention`, `watcher`, `favourite`, …).
 
 Grammar, supported fields and the exact ranking behaviour: [api.md](api.md#search-cql-on-postgres).
+
+## Exports: how content leaves
+
+Reads only — nothing here writes into the mirror.
+
+| you want | route | what you get |
+| --- | --- | --- |
+| one page as Markdown | `/spaces/:key/pages/:id/export.md` | the page, Confluence metadata as front matter |
+| one page with its files | `/spaces/:key/pages/:id/export.zip` | that `.md` plus `attachments/`, for the files the body links to |
+| a space as Markdown | `/spaces/:key/export.zip` | a folder tree matching the page hierarchy, one `.md` per page, each page's files beside it |
+| a space as a website | `/spaces/:key/site.zip` | HTML pages, the same pages as Markdown, offline search, labels, the space icon, attachments, the theme |
+| the whole mirror as a website | `/admin/export/site.zip` | every space in one archive — administrators only |
+
+Three rules make those safe to offer:
+
+* **Streamed, never assembled.** Pages are converted one at a time and each file
+  is read from the blob store while it is written, so a 10 000-page space never
+  has to fit in memory.
+* **Narrowed by the reader, then by the archive.** An export starts from a page
+  or a space the reader may open; a space or site archive carries only what
+  they may read, and a link whose target the archive does not hold goes back to
+  Confluence instead of dangling.
+* **Paths carry the id**, not the title (`spaces/KEY/pages/<id>.html`), so two
+  pages with the same title cannot overwrite each other.
+
+Whatever a renderer emits has to survive this trip as well as the reader's
+screen — a heading, a list, a table, a `pre`, `details`/`summary` — because a
+macro that renders as an exotic widget is flattened here. The rule and its
+reason: [developers.md](developers.md#mind-the-markdown-export).
 
 ## Identity and authorization: three questions
 
