@@ -85,11 +85,10 @@ Notes that save a round trip:
 
 ### In `docker compose`
 
-`docker-compose.site.yml` takes the same variables in its `environment:` block
-(next to `CM_ATL_EMAIL` and friends):
+`docker-compose.site.yml` carries the same variables, commented, in the mirror's
+`environment:` block next to `CM_ATL_EMAIL`. Uncomment them and fill:
 
 ```yaml
-    environment:
       SMTP_RELAY: smtp-relay.brevo.com
       SMTP_PORT: "587"
       SMTP_USERNAME: ${SMTP_USERNAME:?set SMTP_USERNAME}

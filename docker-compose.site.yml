@@ -68,6 +68,15 @@ services:
       CM_CONFLUENCE_SITE: ${CM_CONFLUENCE_SITE:?set CM_CONFLUENCE_SITE}
       CM_ATL_EMAIL: ${CM_ATL_EMAIL:?set CM_ATL_EMAIL}
       CM_ATL_TOKEN: ${CM_ATL_TOKEN:?set CM_ATL_TOKEN}
+      # Mail is optional: with a relay and a verified sender, sign-in links and
+      # watchers' updates go out; without one, mail is written to a file and
+      # nothing else changes. docs/brevo-mail.md maps a Brevo account onto these
+      # five values (and the Fly secrets that set the same thing).
+      # SMTP_RELAY: smtp-relay.brevo.com
+      # SMTP_PORT: "587"
+      # SMTP_USERNAME: ${SMTP_USERNAME:?set SMTP_USERNAME}
+      # SMTP_PASSWORD: ${SMTP_PASSWORD:?set SMTP_PASSWORD}
+      # MIRROR_MAIL_FROM: ${MIRROR_MAIL_FROM:?set MIRROR_MAIL_FROM}
       # Optional: only these spaces, comma-separated keys. Narrowing this on a
       # mirror that already holds other spaces marks them missing — the check
       # asks before anything moves.
