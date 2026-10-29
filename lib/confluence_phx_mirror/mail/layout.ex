@@ -33,11 +33,13 @@ defmodule ConfluencePhxMirror.Mail.Layout do
   def message(site, title, inner, opts \\ []) do
     footer = Keyword.get(opts, :footer, "")
 
+    # The card is 100% wide with a 600px ceiling, so a phone gets the whole
+    # width rather than a table that only fits a desktop.
     """
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#{@page};margin:0;padding:24px 12px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background:#{@card};border:1px solid #{@line};border-radius:14px;overflow:hidden;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#{@card};border:1px solid #{@line};border-radius:14px;overflow:hidden;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;">
             <tr><td style="background:#{@accent};height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
             <tr>
               <td style="padding:20px 24px 4px;">
@@ -97,7 +99,47 @@ defmodule ConfluencePhxMirror.Mail.Layout do
     ~s(<p style="margin:10px 0 0;font-size:12px;line-height:1.5;color:#{@muted};">#{text}</p>)
   end
 
+  @doc """
+  One page in a list: what it is, the way in, and where it lives.
+
+  `title` is what a reader presses, `meta` the quiet line under it — the space
+  and the version it is now. `detail` is what changed, for a message that is
+  meant to be read rather than skimmed; a burst leaves it out, because a
+  hundred of them is a hundred paragraphs nobody asked for.
+  """
+  @spec card(String.t(), String.t(), String.t(), String.t()) :: String.t()
+  def card(title, url, meta, detail \\ "") do
+    """
+    <div style="margin:0 0 10px;padding:10px 12px;background:#{@wash};border:1px solid #{@line};border-radius:10px;">
+      <p style="margin:0 0 2px;font-size:13px;font-weight:600;">
+        <a href="#{url}" style="color:#{@accent};text-decoration:none;">#{title}</a>
+      </p>
+      <p style="margin:0;font-size:12px;color:#{@muted};">#{meta}</p>
+      #{detail_line(detail)}
+    </div>
+    """
+  end
+
+  defp detail_line(""), do: ""
+
+  defp detail_line(detail) do
+    "<p style=\"margin:6px 0 0;font-size:13px;line-height:1.5;color:#{@body};\">#{detail}</p>"
+  end
+
   @doc "The colours, for a test that asks whether a message wears the site's frame."
-  @spec colours() :: %{page: String.t(), accent: String.t()}
-  def colours, do: %{page: @page, accent: @accent}
+  @spec palette() :: %{atom() => String.t()}
+  def palette do
+    %{
+      page: @page,
+      card: @card,
+      line: @line,
+      wash: @wash,
+      ink: @ink,
+      body: @body,
+      muted: @muted,
+      accent: @accent,
+      quote: @quote,
+      quote_rule: @quote_rule
+    }
+  end
 end

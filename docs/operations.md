@@ -679,6 +679,18 @@ off, `MIRROR_DIGEST_HOUR_UTC` moves the daily roll-up, `MIRROR_MAIL_FROM` and
 `MIRROR_MAIL_FROM_NAME` set the sender — and so does the *Mail server* group on
 `/admin/settings`, which takes effect without a restart.
 
+**One burst, one message.** A sync that changes a hundred pages writes a hundred
+outbox rows and sends each reader one message: the sender waits
+`notifications.window_seconds` (`MIRROR_NOTIFICATION_WINDOW_SECONDS`, 120 by
+default) for the burst to settle, then names every page in it, with the space
+and version each one is now. The rows are still the record — the mail screen
+lists them, and a purge drops what has not gone.
+
+Every message the mirror can send is rendered by
+`MIX_ENV=test mix run scripts/dev/render-mails.exs`, which writes them to
+`tmp/mails/` to be opened in a browser. A colour scheme is not something to sign
+off by reading source.
+
 The quickest question an operator has — "does mail from here reach anybody?" —
 is answered on the reader's own page: **Send me a test e-mail** on `/profile`
 sends one message to the signed-in address, at most once a minute, and reports
@@ -690,15 +702,16 @@ has not verified; a TLS error is the relay's certificate or its chain. See
 
 `/admin/mail` is the outbox rather than Oban's rows: one line per message nobody
 has sent yet, oldest first, with the relay's refusal beside it when there is one,
-and the counts an operator asks for first — waiting, refused, delivered.
+and the counts an operator asks for first — waiting, refused by the relay, sent
+today and sent ever.
 
 Below it is the **day's ledger**: every message handed to the relay today, with
-what became of it, and the count against the provider's allowance
-(`mail.per_day`, 300 by default — Brevo's free plan). A test message and a
-sign-in link are never queued, because somebody is waiting for them: they are
-sent at once, they appear in the ledger rather than the queue, and they spend
-the allowance like everything else. A refused message keeps its place in the
-count — the relay was asked either way.
+what became of it, and the count against the relay's allowance
+(`mail.per_day`). A test message and a sign-in link are never queued, because
+somebody is waiting for them: they are sent at once, they appear in the ledger
+rather than the queue, and they spend the allowance like everything else — which
+is why *sent today* and *sent ever* can both be one while the queue is empty. A
+refused message keeps its place in the count — the relay was asked either way.
 
 Two decisions live there, next to the queue they act on:
 
@@ -712,7 +725,7 @@ Two decisions live there, next to the queue they act on:
 - **Purge queue** drops everything that has not been delivered and cancels the
   Oban jobs that would have sent it, so a queue built while the relay was wrong
   does not spray its backlog afterwards. Delivered rows are the history and stay;
-  the screen keeps counting them. The purge is audited (`mail.queue_purged`, with
+  the screen keeps listing them. The purge is audited (`mail.queue_purged`, with
   how many rows went).
 
 Both are live: no redeploy, and the same switch is a field in the *Mail server*

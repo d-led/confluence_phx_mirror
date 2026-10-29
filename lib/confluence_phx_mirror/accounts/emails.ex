@@ -83,8 +83,12 @@ defmodule ConfluencePhxMirror.Accounts.Emails do
   defp sign_in_html(nil, "the mirror"),
     do: "<p style=\"margin:12px 0 0;\">Sign in the way you sign in to Confluence.</p>"
 
-  defp sign_in_html(nil, url),
-    do: ConfluencePhxMirror.Mail.Layout.button("Open #{escape(url)}", escape(url))
+  # A button says what pressing it does; the address is a line under it, for a
+  # reader who would rather copy it than trust a link.
+  defp sign_in_html(nil, url) do
+    ConfluencePhxMirror.Mail.Layout.button("Open the mirror", escape(url)) <>
+      ConfluencePhxMirror.Mail.Layout.muted(escape(url))
+  end
 
   defp sign_in_html(url, _site) when is_binary(url) do
     ConfluencePhxMirror.Mail.Layout.button("Sign in", escape(url)) <>

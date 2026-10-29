@@ -17,7 +17,7 @@ defmodule ConfluencePhxMirror.Mail.LayoutTest do
   alias ConfluencePhxMirror.Notifications.Notification
 
   test "every message the mirror sends wears the site's frame" do
-    %{page: page, accent: accent} = Layout.colours()
+    %{page: page, accent: accent} = Layout.palette()
 
     for {what, email} <- messages() do
       assert email.html_body =~ page, "#{what}: the light-blue page"
@@ -32,6 +32,18 @@ defmodule ConfluencePhxMirror.Mail.LayoutTest do
     assert html =~ "A title"
     assert html =~ "<p>Body</p>"
     assert html =~ "Because you subscribed."
+  end
+
+  test "a page in a list is a card: what it is, where it lives, and the way in" do
+    html = Layout.card("Release checklist", "https://mirror.test/p/1", "PLAT · version 31")
+
+    assert html =~ ~s(<a href="https://mirror.test/p/1")
+    assert html =~ "Release checklist"
+    assert html =~ "PLAT · version 31"
+
+    assert Layout.card("T", "/p/2", "M", "Two boxes were added.") =~
+             "Two boxes were added.",
+           "a digest says what changed; a burst leaves it to the link"
   end
 
   defp messages do

@@ -6,33 +6,53 @@ defmodule ConfluencePhxMirror.Notifications.Email do
   import Swoosh.Email
 
   alias ConfluencePhxMirror.Accounts.User
+  alias ConfluencePhxMirror.Mail.Layout
   alias ConfluencePhxMirror.Notifications.Notification
 
   @doc """
   Everything that changed for one reader, in one message.
 
   One page or a hundred: a sync is one morning's work to the site and one
-  message to the reader, which is the whole of what batching is for. Each page
-  is a line with its space, its version and a link, so a reader can see what
-  moved without opening fifty tabs.
+  message to the reader, which is the whole of what batching is for. One page
+  is shown in full, because it is the change and not a mention of one; a list
+  is an entry per page with its space, its version and a link, so a reader can
+  see what moved without opening fifty tabs.
   """
   def updates(%User{} = user, [%Notification{} | _] = notifications) do
-    Swoosh.Email.new()
-    |> from(from_address())
-    |> to({User.display_name(user), user.email})
-    |> subject(subject(notifications))
-    |> text_body(Enum.map_join(notifications, "\n\n", & &1.body))
-    |> html_body(updates_html(notifications))
+    message(user, notifications,
+      subject: subject(notifications),
+      title: title(notifications),
+      inner: updates_body(notifications),
+      footer: "You are receiving this because you subscribed to updates in the mirror."
+    )
   end
 
   @doc "Daily digest for one user."
   def digest(%User{} = user, [%Notification{} | _] = notifications) do
+    message(user, notifications,
+      subject: "[Mirror] #{length(notifications)} page updates",
+      title: "Your daily digest",
+      inner:
+        "<p style=\"margin:0 0 10px;\">#{length(notifications)} pages you watch changed.</p>" <>
+          Enum.map_join(notifications, "", &digest_entry/1),
+      footer: "One message a day, at the hour the mirror is set to send it."
+    )
+  end
+
+  defp message(user, notifications, opts) do
     Swoosh.Email.new()
     |> from(from_address())
     |> to({User.display_name(user), user.email})
-    |> subject("[Mirror] #{length(notifications)} page updates")
+    |> subject(Keyword.fetch!(opts, :subject))
     |> text_body(Enum.map_join(notifications, "\n\n", & &1.body))
-    |> html_body(digest_html(notifications))
+    |> html_body(
+      Layout.message(
+        "Confluence Mirror",
+        Keyword.fetch!(opts, :title),
+        Keyword.fetch!(opts, :inner),
+        footer: Keyword.fetch!(opts, :footer)
+      )
+    )
   end
 
   # One page keeps its own subject, because a reader watching two pages should
@@ -43,40 +63,46 @@ defmodule ConfluencePhxMirror.Notifications.Email do
     "[Mirror] #{length(notifications)} pages you watch changed"
   end
 
-  defp updates_html(notifications) do
-    ConfluencePhxMirror.Mail.Layout.message(
-      "Confluence Mirror",
-      title(notifications),
-      summary(notifications) <> Enum.map_join(notifications, "", &line/1),
-      footer: "You are receiving this because you subscribed to updates in the mirror."
-    )
-  end
-
   defp title([one]), do: escape(one.subject)
   defp title(notifications), do: "#{length(notifications)} pages you watch changed"
 
-  defp summary([one]) do
-    "<p style=\"margin:0 0 6px;\">This page changed. Here is what changed.</p>" <>
-      ConfluencePhxMirror.Mail.Layout.quote(escape(one.body))
+  # One page is not a list: where it lives, what changed in it, and the way in.
+  defp updates_body([one]) do
+    Layout.muted(meta(one)) <>
+      Layout.quote(escape(one.body)) <>
+      Layout.button("Open the page", href(one))
   end
 
-  defp summary(_many), do: "<p style=\"margin:0 0 10px;\">These changed while you were away.</p>"
+  defp updates_body(notifications) do
+    "<p style=\"margin:0 0 10px;\">These changed while you were away.</p>" <>
+      Enum.map_join(notifications, "", &line/1)
+  end
 
-  # A line per page: where it is, what version it is now, and the way in.
+  # A line per page: what it is, where it is, which version it is now, and the
+  # way in.
   defp line(notification) do
+    Layout.card(escape(notification.subject), href(notification), meta(notification))
+  end
+
+  # The digest is read in one pass, so the change itself comes with the link
+  # rather than behind it.
+  defp digest_entry(notification) do
+    Layout.card(
+      escape(notification.subject),
+      href(notification),
+      meta(notification),
+      escape(notification.body)
+    )
+  end
+
+  # Where the page lives and which version it is now: the quiet line that makes
+  # a list of titles answerable at a glance.
+  defp meta(notification) do
     page = page_of(notification)
     space = page && page.space
     where = (space && space.key) || "the mirror"
-    version = page && page.version_number
 
-    """
-    <div style="margin:0 0 10px;padding:10px 12px;background:#f6fafe;border:1px solid #d7e6f7;border-radius:10px;">
-      <p style="margin:0 0 2px;font-size:13px;font-weight:600;">
-        <a href="#{href(notification)}" style="color:#0052cc;text-decoration:none;">#{escape(notification.subject)}</a>
-      </p>
-      <p style="margin:0;font-size:12px;color:#5a6b7d;">#{escape(where)}#{version_line(version)}</p>
-    </div>
-    """
+    escape(where) <> version_line(page && page.version_number)
   end
 
   defp version_line(nil), do: ""
@@ -112,22 +138,6 @@ defmodule ConfluencePhxMirror.Notifications.Email do
       url when is_binary(url) -> String.trim_trailing(url, "/")
       _unknown -> ""
     end
-  end
-
-  defp digest_html(notifications) do
-    items =
-      Enum.map_join(notifications, "\n", fn notification ->
-        "<p style=\"margin:0 0 4px;font-weight:600;\">#{escape(notification.subject)}</p>" <>
-          ConfluencePhxMirror.Mail.Layout.quote(escape(notification.body))
-      end)
-
-    ConfluencePhxMirror.Mail.Layout.message(
-      "Confluence Mirror",
-      "Your daily digest",
-      "<p style=\"margin:0 0 6px;\">#{length(notifications)} pages you watch changed.</p>" <>
-        items,
-      footer: "One message a day, at the hour the mirror is set to send it."
-    )
   end
 
   defp escape(text) do
