@@ -17,6 +17,7 @@ defmodule ConfluencePhxMirror.Export.Site do
       assets/site.css                     the mirror's own stylesheet
       assets/search.json                  the search index, for other tools
       assets/search.js                    the matcher search.html runs
+      assets/favicon.ico                  the mark in the browser tab
 
   Page paths carry Confluence's id, not the title, so two pages whose titles
   collide cannot overwrite each other; the title is on the page itself.
@@ -47,6 +48,7 @@ defmodule ConfluencePhxMirror.Export.Site do
   alias ConfluencePhxMirrorWeb.Skins
 
   @stylesheet_path "priv/static/assets/css/app.css"
+  @favicon_path "priv/static/images/archive-favicon.ico"
   @description_chars 200
   # What a search document carries of a page's text: enough to find it by a
   # phrase and to show why it matched, not a second copy of the wiki. The
@@ -114,6 +116,9 @@ defmodule ConfluencePhxMirror.Export.Site do
   @doc "The search page's matcher."
   def search_script_path, do: "assets/search.js"
 
+  @doc "The mark a browser tab shows the archive by."
+  def favicon_path, do: "assets/favicon.ico"
+
   @doc "Folding the page tree and switching the theme."
   def site_script_path, do: "assets/site.js"
 
@@ -175,6 +180,21 @@ defmodule ConfluencePhxMirror.Export.Site do
   end
 
   @doc """
+  The archive's mark: one ICO that a browser tab, a bookmark and a desktop
+  shortcut can each draw from, written by `scripts/favicon.sh`.
+
+  It travels inside the folder rather than under a URL, so a copy opened from
+  `file://` is filed under the same picture as the one on the site.
+  """
+  @spec favicon() :: String.t()
+  def favicon do
+    case File.read(Application.app_dir(:confluence_phx_mirror, @favicon_path)) do
+      {:ok, ico} -> ico
+      {:error, _not_generated} -> ""
+    end
+  end
+
+  @doc """
   The attributes `<html>` needs to paint the site's theme, following the OS.
 
   `data-theme-name` names the theme for the scripts: a compiled theme is
@@ -203,7 +223,8 @@ defmodule ConfluencePhxMirror.Export.Site do
 
     chrome = [
       {site_script_path(), Chrome.script()},
-      {theme_script_path(), Chrome.theme_script()}
+      {theme_script_path(), Chrome.theme_script()},
+      {favicon_path(), &favicon/0}
     ]
 
     case Keyword.get_lazy(opts, :stylesheet, &stylesheet/0) do

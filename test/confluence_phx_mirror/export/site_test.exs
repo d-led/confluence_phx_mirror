@@ -40,6 +40,18 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       assert page =~ ~s(<html )
     end
 
+    test "files every page under the site's own mark", %{files: files} do
+      # An ICO a browser can read: reserved zero, type 1, then its frames.
+      assert <<0, 0, 1, 0, _frames::binary>> = files["assets/favicon.ico"]
+
+      for {name, page} <- files, String.ends_with?(name, ".html") do
+        assert [href] = icon_links(page), "#{name} names no mark for its tab"
+
+        assert Map.has_key?(files, inside_archive(name, href)),
+               "#{name} asks for #{href}, which the archive does not carry"
+      end
+    end
+
     test "lists the spaces it holds", %{files: files} do
       index = files["index.html"]
 
@@ -316,6 +328,20 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
   end
 
   defp admin, do: Scope.for_user(Accounts.ensure_admin!())
+
+  defp icon_links(page) do
+    page
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(~s(link[rel="icon"]))
+    |> LazyHTML.attribute("href")
+  end
+
+  # A link written from the page's own folder, read from the archive's root.
+  defp inside_archive(name, href) do
+    href
+    |> Path.expand(Path.dirname("/" <> name))
+    |> String.trim_leading("/")
+  end
 
   defp archive(scope) do
     Export.site_archive(scope, stylesheet: @stylesheet)

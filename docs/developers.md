@@ -62,6 +62,14 @@ ones specific to the mirror.
   `stored/1` when it needs "did an administrator decide this?" and
   `effective/1` when it needs the value in force — never compare the value in
   force against `nil` for provenance.
+* **The tab's mark is generated, not cut by hand.** `scripts/favicon.sh` turns
+  one square image into the ICO this site serves at `/favicon.ico`, and, with
+  `--out priv/static/images/archive-favicon.ico`, the one every static export
+  carries as `assets/favicon.ico`. Both are one ICO holding 16, 32 and 48 pixel
+  frames — the format every browser reads with no `<link type=…>` negotiation —
+  so the same bytes work served, opened from `file://`, or dropped on a static
+  host. Point it at a new mark in `img/logo/` and run it again; no template
+  names a pixel size.
 * **JS dependencies are real dependencies**: `assets/package.json`, `npm ci`
   wired into `assets.build` / `assets.deploy`. Syntax highlighting uses the
   highlight.js grammar chosen from Confluence's `brush:` attribute.

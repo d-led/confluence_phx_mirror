@@ -626,6 +626,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
         <meta name="color-scheme" content="light dark" />
         <meta name="generator" content="Confluence mirror static export" />
         <title>{@title}</title>
+        <link rel="icon" href={@prefix <> "assets/favicon.ico"} />
         <link rel="stylesheet" href={@prefix <> "assets/site.css"} />
         <script src={@prefix <> "assets/theme.js"}>
         </script>
