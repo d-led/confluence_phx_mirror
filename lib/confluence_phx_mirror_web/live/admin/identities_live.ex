@@ -40,6 +40,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
        account_query: "",
        account_results: nil,
        identity_pick: nil,
+       pick_linked: [],
        pick_query: "",
        pick_results: nil,
        identity_query: "",
@@ -54,7 +55,33 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
     {:noreply,
      socket
      |> assign(people_page: Paging.page_number(params["page"]), people_query: params["q"] || "")
-     |> load()}
+     |> load()
+     |> link_to(params["user_id"])}
+  end
+
+  # Arriving from a person's page: the link panel is open on that account
+  # already, because "link an identity" is something an administrator does
+  # *about somebody* — not a form to land on and then search their way back to.
+  defp link_to(socket, nil), do: socket
+
+  defp link_to(socket, user_id) when is_binary(user_id) do
+    case Integer.parse(user_id) do
+      {id, ""} -> link_to(socket, id)
+      _not_an_id -> socket
+    end
+  end
+
+  defp link_to(socket, user_id) do
+    case Accounts.get_user(user_id) do
+      nil ->
+        put_flash(socket, :error, "That account is gone already.")
+
+      user ->
+        socket
+        |> assign(identity_pick: user)
+        |> assign(identity_query: "", identity_results: identity_candidates("", user))
+        |> assign(pick_linked: linked_identities(user))
+    end
   end
 
   # Every event is a name and a handler, so this function reads as the table of
@@ -118,6 +145,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
      |> assign(account_pick: nil)
      |> assign(account_query: "", account_results: nil)
      |> assign(identity_pick: nil)
+     |> assign(pick_linked: [])
      |> assign(identity_query: "", identity_results: nil)}
   end
 
@@ -136,8 +164,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
       user ->
         {:noreply,
          socket
-         |> assign(identity_pick: user, account_pick: nil)
-         |> assign(identity_query: "", identity_results: identity_candidates("", user))}
+         |> assign(identity_pick: user)
+         |> assign(account_pick: nil)
+         |> assign(identity_query: "", identity_results: identity_candidates("", user))
+         |> assign(pick_linked: linked_identities(user))}
     end
   end
 
@@ -161,8 +191,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
              socket
              |> assign(account_pick: nil)
              |> assign(account_query: "", account_results: nil)
-             |> assign(identity_pick: nil)
-             |> assign(identity_query: "", identity_results: nil)
+             |> keep_linking(user)
              |> put_flash(
                :info,
                "#{account_id} is now #{user.email} — #{length(user.identity_account_ids)} linked."
@@ -175,6 +204,22 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
     end
   end
 
+  # The panel stays on the account it was opened on, with the identities it now
+  # holds: adding a second one is the reason an administrator came here, and
+  # closing the panel would make them find the person again for each one.
+  defp keep_linking(socket, user) do
+    case socket.assigns.identity_pick do
+      %User{} ->
+        socket
+        |> assign(identity_pick: user)
+        |> assign(identity_query: "", identity_results: identity_candidates("", user))
+        |> assign(pick_linked: linked_identities(user))
+
+      nil ->
+        assign(socket, identity_pick: nil, pick_linked: [])
+    end
+  end
+
   defp unlink_identity(%{"account_id" => account_id}, socket) do
     case Accounts.accounts_linked_to(account_id) do
       [user | _] ->
@@ -182,6 +227,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
           {:ok, user} ->
             {:noreply,
              socket
+             |> refresh_pick(user)
              |> put_flash(:info, "#{account_id} is no longer #{user.email}'s.")
              |> load()}
 
@@ -192,6 +238,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
       [] ->
         {:noreply, put_flash(socket, :error, "No account stands for that identity.")}
     end
+  end
+
+  # The same account may be the one the panel is open on.
+  defp refresh_pick(socket, user) do
+    if match?(%User{id: id} when id == user.id, socket.assigns.identity_pick),
+      do: assign(socket, identity_pick: user, pick_linked: linked_identities(user)),
+      else: socket
   end
 
   defp actor(socket), do: {:user, socket.assigns.current_user}
@@ -268,11 +321,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
   # The people Confluence's content names, marked when they have an account here
   # and which account stands for them. The site lists no users: the content says
   # who wrote it, and the sync asks the site which groups each of them is in.
+  #
+  # A linked row also carries the account's *other* identities, by name: "what is
+  # linked to what" is the question this screen exists to answer, and an id the
+  # reader has to look up does not answer it.
   defp people(page_number, query) do
     offset = (page_number - 1) * @page_size
 
     page = Mirror.people(limit: @page_size, offset: offset, query: query)
     accounts = Accounts.users_by_identity(Enum.map(page, & &1.account_id))
+    names = accounts |> Map.values() |> Enum.flat_map(&identities_of/1) |> Mirror.identity_names()
 
     page
     |> Enum.map(fn person ->
@@ -281,8 +339,35 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
       person
       |> Map.put(:account_email, holder && holder.email)
       |> Map.put(:account_id_here, holder && holder.id)
+      |> Map.put(:siblings, siblings(person, holder, names))
       |> Map.put(:dom_key, dom_key(person.account_id))
     end)
+  end
+
+  # The identity an account signs in with, plus the ones an administrator linked
+  # to it — one list, because to a reader they are the same person's accounts.
+  defp identities_of(%User{} = user) do
+    [user.confluence_account_id | user.identity_account_ids || []]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  defp siblings(_person, nil, _names), do: []
+
+  defp siblings(person, %User{} = holder, names) do
+    holder
+    |> identities_of()
+    |> Enum.reject(&(&1 == person.account_id))
+    |> Enum.map(&%{account_id: &1, name: Map.get(names, &1)})
+  end
+
+  # What the panel says the account already holds: the same list, named, for the
+  # person an administrator arrived with.
+  defp linked_identities(%User{} = user) do
+    ids = identities_of(user)
+    names = Mirror.identity_names(ids)
+
+    Enum.map(ids, &%{account_id: &1, name: Map.get(names, &1)})
   end
 
   # A row is named after the identity it shows, not after its place in the list:
@@ -517,10 +602,24 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
               </span>
             </div>
 
-            <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <span :if={person.account_email} class="text-[11px] text-base-content/70">
-                linked to <span class="font-medium">{person.account_email}</span>
+            <%!-- The other half of "what is linked to what": this identity is
+            one of several the account holds, and each of them is named. --%>
+            <p
+              :if={person.siblings != []}
+              id={"siblings-#{person.dom_key}"}
+              class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-base-content/70"
+            >
+              <span>also this account's:</span>
+              <span
+                :for={sibling <- person.siblings}
+                class="badge badge-outline badge-xs"
+                title={sibling.account_id}
+              >
+                {sibling.name || sibling.account_id}
               </span>
+            </p>
+
+            <div class="mt-2 flex flex-wrap items-center gap-2 border-t border-base-300/40 pt-2">
               <form
                 :if={person.account_email}
                 phx-submit="unlink_identity"
@@ -534,7 +633,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
                     "Unlink #{person.account_id} from #{person.account_email}? What this identity may read stops being theirs."
                   }
                 >
-                  Unlink
+                  Unlink this identity
                 </button>
               </form>
 
@@ -545,7 +644,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
                 phx-value-account_id={person.account_id}
                 phx-value-name={person.display_name || ""}
                 id={"link-#{person.dom_key}"}
-                class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
+                class="btn btn-outline btn-xs min-h-11 sm:min-h-0"
               >
                 Link to an account…
               </button>
@@ -628,6 +727,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
         <div :if={@identity_pick} id="identity-picker" class="px-5 py-4">
           <p class="text-xs font-semibold">
             Add an identity to <span class="font-medium">{@identity_pick.email}</span>
+          </p>
+          <p :if={@pick_linked != []} class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span class="text-base-content/70">already this account's:</span>
+            <span
+              :for={identity <- @pick_linked}
+              class="badge badge-outline badge-xs"
+              title={identity.account_id}
+            >
+              {identity.name || identity.account_id}
+            </span>
           </p>
           <p class="mt-0.5 text-[11px] text-base-content/70">
             Search what the content names, then click the one that is this person. A link makes

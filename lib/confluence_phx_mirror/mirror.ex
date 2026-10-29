@@ -1158,6 +1158,46 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
+  The names the content and the last membership read have for these account ids.
+
+  For a screen that already holds ids and needs words. An identity an account is
+  linked to is often one the content never names as an author — a guest account
+  from a permission — and the group list is the only place its name appears at
+  all, which is why both are read.
+  """
+  @spec identity_names([String.t()]) :: %{String.t() => String.t()}
+  def identity_names(account_ids) do
+    ids = account_ids |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    if ids == [] do
+      %{}
+    else
+      from(p in Page,
+        where: p.author_account_id in ^ids and not is_nil(p.author_name),
+        distinct: true,
+        select: {p.author_account_id, p.author_name}
+      )
+      |> union_all(
+        ^from(c in Comment,
+          where: c.author_account_id in ^ids and not is_nil(c.author_name),
+          distinct: true,
+          select: {c.author_account_id, c.author_name}
+        )
+      )
+      |> union_all(
+        ^from(m in GroupMember,
+          where: m.account_id in ^ids and not is_nil(m.display_name),
+          distinct: true,
+          select: {m.account_id, m.display_name}
+        )
+      )
+      |> Repo.all()
+      |> Enum.reject(fn {_account_id, name} -> String.trim(name) == "" end)
+      |> Map.new()
+    end
+  end
+
+  @doc """
   The people Confluence's content names, each with the groups the last sync read
   — what the admin screen shows as the site's side of the story.
 

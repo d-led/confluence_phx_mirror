@@ -8,7 +8,10 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesLiveTest do
   at the identity and find its account, or start at the account and find what
   else the content names for that person.
   """
-  use ConfluencePhxMirrorWeb.ConnCase, async: true
+  # Not async: every test here writes the same group's membership ("who is in
+  # confluence-users"), and two of them replacing it from different connections
+  # deadlock on the rows they both hold.
+  use ConfluencePhxMirrorWeb.ConnCase, async: false
 
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
@@ -82,15 +85,53 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesLiveTest do
       assert has_element?(view, identity_row(@guest))
       assert has_element?(view, identity_row(second))
 
-      view |> element(identity_row(@guest)) |> render_click()
-      view |> element("#account-pick-form") |> render_change(%{"q" => "both.reader"})
-      view |> element("#link-identity-#{account.id}") |> render_click()
+      html = view |> element(identity_row(@guest)) |> render_click()
+
+      assert html =~ "1 linked"
+
+      # The panel stays on the account it was opened on: adding the second
+      # identity is why an administrator is here at all.
+      assert has_element?(view, "#identity-picker")
+      refute has_element?(view, "#account-pick-form")
+
       html = view |> element(identity_row(second)) |> render_click()
 
       assert html =~ "2 linked"
 
       assert Enum.sort(Accounts.get_user(account.id).identity_account_ids) ==
                Enum.sort([@guest, second])
+    end
+
+    test "arriving from a person's page opens the panel on that person", %{conn: conn} do
+      account = user_fixture(%{email: "visited.reader@example.com"})
+      a_person_named(@guest, "Guest Visitor")
+
+      {:ok, view, html} = live(conn, ~p"/admin/identities?user_id=#{account.id}")
+
+      assert has_element?(view, "#identity-picker")
+      assert html =~ "Add an identity to"
+      assert html =~ "visited.reader@example.com"
+      refute has_element?(view, "#account-pick-form"), "the account is already chosen"
+      assert has_element?(view, identity_row(@guest))
+    end
+
+    test "a linked identity names the account's other identities", %{conn: conn} do
+      second = "557058:12861f68-8857-4349-927d-e49dfb30bd52"
+      account = user_fixture(%{email: "named.reader@example.com"})
+      a_person_named(@guest, "Guest Visitor")
+      a_person_named(second, "Dana Visitor")
+      {:ok, account} = Accounts.link_identity(account, @guest, {:user, an_admin()})
+      {:ok, _} = Accounts.link_identity(account, second, {:user, an_admin()})
+
+      {:ok, view, _html} = live(conn, ~p"/admin/identities")
+
+      assert has_element?(view, "#person-#{@guest}"), "the linked identity is on the page"
+      assert has_element?(view, "#unlink-#{@guest}"), "and the page knows it is linked"
+
+      html = view |> element("#siblings-#{@guest}") |> render()
+
+      assert html =~ "Dana Visitor", "the other identity is shown by name, not by id alone"
+      refute html =~ "Guest Visitor", "a row does not list itself"
     end
 
     test "the picker does not offer an identity another account already holds", %{conn: conn} do

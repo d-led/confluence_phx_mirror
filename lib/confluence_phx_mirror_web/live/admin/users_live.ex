@@ -307,6 +307,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   defp welcome_note({:ok, :not_configured}),
     do: "No welcome was sent: mail is switched off or has no server."
 
+  # Not a failure and not a send: the provider's day is spent, and the account
+  # is real regardless — saying so is the only thing the administrator can act
+  # on.
+  defp welcome_note({:ok, :over_budget}),
+    do: "No welcome was sent: today's mail allowance is spent."
+
   defp welcome_note({:error, _reason}), do: "The welcome could not be sent."
 
   # A changeset says which field and why; a screen says it in one sentence.
@@ -841,9 +847,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
               <span :if={identities == []} class="text-[11px] text-base-content/70">
                 only the identity it signed in with
               </span>
-              <%!-- Linking lives on the identities page, where both sides are
-              searchable: this row only says what the account already holds. --%>
-              <.link navigate={~p"/admin/identities"} class="link link-primary text-[11px]">
+              <%!-- Linking lives on the identities page, opened on *this*
+              account: the administrator is looking at a person, and the search
+              for which identity is theirs belongs beside them. --%>
+              <.link
+                navigate={~p"/admin/identities?#{[user_id: user.id]}"}
+                class="link link-primary text-[11px]"
+              >
                 Link an identity →
               </.link>
             </div>
