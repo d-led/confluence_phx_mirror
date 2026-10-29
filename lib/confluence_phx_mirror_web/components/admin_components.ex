@@ -18,6 +18,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
      [
        {:overview, "Overview", "hero-squares-2x2"},
        {:jobs, "Jobs", "hero-queue-list"},
+       {:mail, "Mail", "hero-envelope"},
        {:sync_log, "Sync log", "hero-bars-arrow-down"}
      ]},
     {"Content",
@@ -607,6 +608,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
   # without a path fails to compile rather than rendering a dead link.
   defp page_path(:overview), do: ~p"/admin"
   defp page_path(:jobs), do: ~p"/admin/jobs"
+  defp page_path(:mail), do: ~p"/admin/mail"
   defp page_path(:sync_log), do: ~p"/admin/sync-log"
   defp page_path(:webhooks), do: ~p"/admin/webhooks"
   defp page_path(:audit), do: ~p"/admin/audit"

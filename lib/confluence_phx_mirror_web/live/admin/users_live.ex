@@ -290,7 +290,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
          socket
          |> put_flash(
            :info,
-           "#{user.email} was added — their first sign-in claims it. #{welcome_note(Accounts.welcome(user))}"
+           "#{user.email} was added — their first sign-in claims it. #{welcome_note(Accounts.welcome(user, actor(socket)))}"
          )
          |> load()}
 

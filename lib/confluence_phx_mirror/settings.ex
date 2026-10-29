@@ -271,6 +271,27 @@ defmodule ConfluencePhxMirror.Settings do
   def sync_paused?, do: effective("sync.paused") == true
 
   @doc """
+  Whether the mail queue is paused.
+
+  A paused queue keeps filling and nothing leaves the mirror: instant
+  notifications and the digest wait where they are and go out after the resume,
+  and a reader's test message is refused. Sign-in links are not queued and are
+  not affected — a pause that locked readers out would be a foot-gun, not a
+  switch.
+  """
+  @spec mail_paused?() :: boolean()
+  def mail_paused?, do: effective("mail.paused") == true
+
+  @doc """
+  How many messages the provider allows the mirror in one day.
+
+  `Mail.Budget` counts against this before handing a message over, because a
+  relay that refuses one has already cost the reader it was for.
+  """
+  @spec mail_per_day() :: pos_integer()
+  def mail_per_day, do: effective("mail.per_day")
+
+  @doc """
   Space keys an administrator added on top of the deployment's own list.
 
   Empty means "none added", never "no spaces": the deployment's `CM_SPACES` is
@@ -611,6 +632,9 @@ defmodule ConfluencePhxMirror.Settings do
   # setting and its variable can never drift apart.
   defp resolve(:theme), do: configured(:theme)
 
+  # What a deployment says about the mail queue: `MIRROR_MAIL_PAUSED`.
+  defp resolve(:mail_paused), do: Application.get_env(:confluence_phx_mirror, :mail_paused, false)
+
   # What the mirror does when an administrator has not chosen: its own home
   # screen, which is what every mirror did before this setting existed.
   defp resolve(:landing_page) do
@@ -662,6 +686,10 @@ defmodule ConfluencePhxMirror.Settings do
 
   defp resolve({:search, key, floor}) do
     :confluence_phx_mirror |> Application.get_env(:search, []) |> Keyword.get(key, floor)
+  end
+
+  defp resolve({:mail_daily, key, floor}) do
+    :confluence_phx_mirror |> Application.get_env(:mail_daily, []) |> Keyword.get(key, floor)
   end
 
   defp resolve({:sync, key, floor}) do

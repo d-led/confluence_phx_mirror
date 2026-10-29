@@ -87,6 +87,14 @@ defmodule ConfluencePhxMirrorWeb.ProfileLive do
            "You sent yourself one a moment ago. Try again in #{seconds(retry_after_ms)}."
          )}
 
+      {:error, :paused} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Mail is paused on this mirror, so nothing can be sent right now."
+         )}
+
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "The mail server refused it: #{inspect(reason)}")}
     end

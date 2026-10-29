@@ -685,3 +685,27 @@ sends one message to the signed-in address, at most once a minute, and reports
 the relay's refusal verbatim when there is one. A `550` is the sender the relay
 has not verified; a TLS error is the relay's certificate or its chain. See
 [brevo-mail.md](brevo-mail.md) for the values a Brevo account maps onto.
+
+### The mail queue
+
+`/admin/mail` is the outbox rather than Oban's rows: one line per message nobody
+has sent yet, oldest first, with the relay's refusal beside it when there is one,
+and the counts an operator asks for first — waiting, refused, delivered.
+
+Two decisions live there, next to the queue they act on:
+
+- **Pause mail** (`mail.paused`, `MIRROR_MAIL_PAUSED`) stops the drain without
+  losing a message: both workers snooze, the rows stay where they are, and a
+  resume sends what was waiting. A digest that was due during the pause goes out
+  at the next digest hour. **Sign-in links are not queued and keep working** — a
+  pause that locked readers out would be a foot-gun, not a switch. A reader's
+  test message is refused while it is on, because the point of the switch is
+  that nothing leaves.
+- **Purge queue** drops everything that has not been delivered and cancels the
+  Oban jobs that would have sent it, so a queue built while the relay was wrong
+  does not spray its backlog afterwards. Delivered rows are the history and stay;
+  the screen keeps counting them. The purge is audited (`mail.queue_purged`, with
+  how many rows went).
+
+Both are live: no redeploy, and the same switch is a field in the *Mail server*
+group on `/admin/settings`.

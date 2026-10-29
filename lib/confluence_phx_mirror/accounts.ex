@@ -326,24 +326,31 @@ defmodule ConfluencePhxMirror.Accounts do
   `{:ok, :not_configured}` when nothing would actually leave the node: mail
   switched off, or no relay and Swoosh's Local adapter, which writes a file. A
   screen that said "a welcome was sent" in that state would be lying about the
-  one thing the administrator cannot see.
+  one thing the administrator cannot see. `{:ok, :over_budget}` is the same kind
+  of honesty: the provider's day is spent (`Mail.Budget`), so this message waits
+  rather than being refused by the relay.
 
   No sign-in link is included on purpose: whether a link or a company account
   signs a reader in is the deployment's business (proxy, magic link), and a
   link minted here would be the wrong one for half of them. The mail points at
   the mirror; the reader signs in the way they already do.
   """
-  @spec welcome(User.t()) :: {:ok, :sent} | {:ok, :not_configured} | {:error, term()}
-  def welcome(%User{} = user) do
+  @spec welcome(User.t(), ConfluencePhxMirror.Audit.actor()) ::
+          {:ok, :sent} | {:ok, :not_configured} | {:ok, :over_budget} | {:error, term()}
+  def welcome(%User{} = user, actor \\ ConfluencePhxMirror.Audit.system_actor()) do
     if mail_configured?() do
       user
       |> ConfluencePhxMirror.Accounts.Emails.welcome(
         site: ConfluencePhxMirror.Sites.name(),
         url: ConfluencePhxMirror.Sites.url()
       )
-      |> Mailer.deliver()
+      |> ConfluencePhxMirror.Mailer.send(
+        ConfluencePhxMirror.Mail.Budget.key(:welcome, user),
+        actor
+      )
       |> case do
         {:ok, _} -> {:ok, :sent}
+        {:error, :spent, _seconds} -> {:ok, :over_budget}
         {:error, reason} -> {:error, reason}
       end
     else

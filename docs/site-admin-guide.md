@@ -834,6 +834,18 @@ Readers can watch a page or a whole space from the page rail.
 * `daily` – rolled up by `Notifications.DigestWorker` at
   `MIRROR_DIGEST_HOUR_UTC`.
 
+**Messages a day** (`CM_MAIL_PER_DAY`, 300 by default) is what the relay allows
+in one day — Brevo's free plan sells exactly that, and a hosted relay refuses the
+rest. The mirror counts before it sends, because a refused digest is a digest the
+reader never gets: every message takes a row in `mail_sends`, and once the day's
+rows reach the figure the queue waits for midnight UTC instead of failing. The
+same rows are what stop a message being sent twice — a job Oban retries after the
+relay took the mail finds the attempt it already made and stays quiet. A reader's
+test message and a pre-created account's welcome draw on the same allowance, so
+tomorrow's digest is never spent on someone checking their own address; a welcome
+that finds the day spent says so on `/admin/users` and in `POST /api/v1/users`
+(`"welcome": "over_budget"`).
+
 Development uses smtp4dev: SMTP on `localhost:2525`, web UI on
 <http://localhost:3001>. `config/test.exs` uses Swoosh's test adapter.
 In production, set `MIRROR_MAIL_FROM` and the relay — or store the same values on

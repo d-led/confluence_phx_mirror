@@ -49,6 +49,10 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesLiveTest do
 
       assert view |> element("#link-#{@guest}") |> render_click() =~ "to an account"
 
+      # Under the row that was clicked, not at the top of the section: the
+      # field appears where the eye already is.
+      assert has_element?(view, "#person-#{@guest} #account-picker")
+
       view |> element("#account-search-form") |> render_change(%{"q" => "linked.reader"})
 
       assert has_element?(view, "#link-account-#{reader.id}")

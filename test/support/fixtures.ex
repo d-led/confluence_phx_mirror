@@ -7,8 +7,30 @@ defmodule ConfluencePhxMirror.Fixtures do
   alias ConfluencePhxMirror.Blobs.Store
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
+  alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
+
+  @doc """
+  One undelivered notification in the outbox.
+
+  A fresh reader watches a page of its own, the page changes, and
+  `ConfluencePhxMirror.Notifications` writes the row and queues its delivery —
+  the road a real change takes, rather than a hand-built struct.
+
+  The page is made here so two calls in one test cannot notify each other's
+  subscriber: the outbox counts rows, and a shared page would quietly write two.
+  """
+  @spec queued_notification_fixture() :: ConfluencePhxMirror.Notifications.Notification.t()
+  def queued_notification_fixture do
+    page = space_fixture() |> page_fixture() |> Repo.preload(:space)
+    subscriber = user_fixture()
+
+    {:ok, _subscription} = Notifications.subscribe(subscriber, "page", page.id)
+
+    [{:ok, notification}] = Notifications.page_changed(page, :updated)
+    notification
+  end
 
   @doc """
   Starts this test from an empty mirror.

@@ -63,6 +63,20 @@ defmodule ConfluencePhxMirror.MailTest do
     refute_email_sent()
   end
 
+  test "is in the audit trail, with the reader as the one who asked for it" do
+    reader = user_fixture(%{email: "audited.test@example.com"})
+
+    assert :ok = Mail.send_test(reader)
+
+    entry = ConfluencePhxMirror.Audit.recent(1) |> hd()
+
+    assert entry.action == "mail.sent"
+    assert entry.entity_type == "message"
+    assert entry.actor_type == "user"
+    assert entry.metadata["to"] == reader.email
+    assert entry.metadata["kind"] == "test", "the kind is read from the message's own name"
+  end
+
   test "a relay that refuses it answers with what it said" do
     reader = user_fixture(%{email: "refused@example.com"})
 
@@ -76,5 +90,13 @@ defmodule ConfluencePhxMirror.MailTest do
     )
 
     assert {:error, :smtp_down} = Mail.send_test(reader)
+  end
+
+  test "a paused queue refuses the test message instead of queueing it" do
+    reader = user_fixture(%{email: "paused@example.com"})
+    {:ok, _paused} = Settings.update(%{"mail.paused" => true}, @actor)
+
+    assert {:error, :paused} = Mail.send_test(reader)
+    refute_email_sent()
   end
 end

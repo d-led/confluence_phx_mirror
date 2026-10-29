@@ -10,16 +10,20 @@ defmodule ConfluencePhxMirror.Notifications.DigestWorker do
 
   require Logger
 
-  alias ConfluencePhxMirror.Mailer
+  alias ConfluencePhxMirror.{Mail, Mailer}
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Notifications.Email
 
+  # A paused queue is not this job's failure: it comes back and looks again.
+  # Nothing is lost — the rows it would have sent are still pending.
+  @snooze_seconds 600
+
   @impl true
   def perform(_job) do
-    if due_now?() do
-      send_digests()
-    else
-      :ok
+    cond do
+      ConfluencePhxMirror.Settings.mail_paused?() -> {:snooze, @snooze_seconds}
+      due_now?() -> send_digests()
+      true -> :ok
     end
   end
 
@@ -30,10 +34,21 @@ defmodule ConfluencePhxMirror.Notifications.DigestWorker do
   defp send_digests do
     Notifications.pending_digest()
     |> Enum.reduce_while(:ok, fn {user, notifications}, :ok ->
-      case Mailer.deliver(Email.digest(user, notifications)) do
+      case Mailer.send(Email.digest(user, notifications), Mail.Budget.key(:digest, user)) do
         {:ok, _} ->
           Enum.each(notifications, &Notifications.mark_delivered/1)
           {:cont, :ok}
+
+        # One digest has identity — this reader, this day — so a retry after the
+        # relay took it changes nothing.
+        {:error, :already_sent} ->
+          Enum.each(notifications, &Notifications.mark_delivered/1)
+          {:cont, :ok}
+
+        # Out of allowance: the rest of the day's digests are not this job's to
+        # force, and nothing is lost — the rows stay pending for tomorrow.
+        {:error, :spent, seconds} ->
+          {:halt, {:snooze, seconds}}
 
         {:error, reason} ->
           Logger.warning("digest delivery failed", user: user.email, reason: inspect(reason))

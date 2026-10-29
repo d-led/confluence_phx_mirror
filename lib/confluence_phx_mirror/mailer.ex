@@ -22,6 +22,8 @@ defmodule ConfluencePhxMirror.Mailer do
 
   use Swoosh.Mailer, otp_app: :confluence_phx_mirror
 
+  alias ConfluencePhxMirror.Audit
+
   @doc """
   Rebuilds the adapter configuration from what the settings say.
 
@@ -49,6 +51,97 @@ defmodule ConfluencePhxMirror.Mailer do
   """
   @spec sender() :: {String.t(), String.t()}
   def sender, do: ConfluencePhxMirror.Settings.mail_sender()
+
+  @doc """
+  Hands one message to the relay, if the day has room for it.
+
+  Every sender goes through here rather than `deliver/1`, so that the provider's
+  allowance is spent by counting rather than by being refused (see
+  `ConfluencePhxMirror.Mail.Budget`). `dedup_key` names the message: a retry
+  that carries the key of a message already sent is refused as `:already_sent`,
+  and a message with no identity passes `nil`.
+
+  Answers `{:error, :spent, seconds}` when the allowance is gone — a caller with
+  a queue behind it snoozes for that long instead of failing, and a message
+  somebody is waiting on says so.
+
+  `actor` is who asked for it, and every attempt is in the audit trail — sent,
+  refused, or taken by the relay and refused by it. A mirror's mail is the one
+  thing it does that leaves the building, and "who wrote to whom" is a question
+  an audit has to answer without asking a provider.
+  """
+  @spec send(Swoosh.Email.t(), String.t() | nil, Audit.actor()) ::
+          {:ok, term()}
+          | ConfluencePhxMirror.Mail.Budget.refusal()
+          | {:error, term()}
+  def send(email, dedup_key, actor \\ Audit.system_actor()) do
+    case ConfluencePhxMirror.Mail.Budget.claim(dedup_key) do
+      {:ok, send} -> send_now(email, send, dedup_key, actor)
+      {:error, :spent, seconds} -> refuse_spent(dedup_key, seconds, actor)
+      {:error, reason} -> refuse(reason, dedup_key, actor)
+    end
+  end
+
+  defp send_now(email, send, dedup_key, actor) do
+    case deliver(email) do
+      {:ok, receipt} ->
+        ConfluencePhxMirror.Mail.Budget.mark_sent(send)
+        Audit.log(actor, message_entry("mail.sent", email, dedup_key))
+        {:ok, receipt}
+
+      {:error, reason} ->
+        ConfluencePhxMirror.Mail.Budget.mark_failed(send, reason)
+
+        Audit.log(
+          actor,
+          message_entry("mail.failed", email, dedup_key, %{"error" => inspect(reason)})
+        )
+
+        {:error, reason}
+    end
+  end
+
+  # Nothing left the node, and that is worth a line too: a queue that silently
+  # stopped is indistinguishable from a quiet week.
+  defp refuse_spent(dedup_key, seconds, actor) do
+    Audit.log(actor, message_entry("mail.not_sent", nil, dedup_key, %{"reason" => "spent"}))
+
+    {:error, :spent, seconds}
+  end
+
+  defp refuse(reason, dedup_key, actor) do
+    Audit.log(
+      actor,
+      message_entry("mail.not_sent", nil, dedup_key, %{"reason" => to_string(reason)})
+    )
+
+    {:error, reason}
+  end
+
+  defp message_entry(action, email, dedup_key, extra \\ %{}) do
+    Audit.Entry.new(
+      action,
+      "message",
+      dedup_key || "one-off",
+      Map.merge(
+        %{"kind" => kind(dedup_key), "to" => recipient(email), "subject" => subject(email)},
+        extra
+      )
+    )
+  end
+
+  # The key's own word is what the message is: a notification, a digest, a
+  # welcome, a test. Without a key there is no identity to read, and the audit
+  # says so.
+  defp kind(nil), do: "one-off"
+  defp kind(dedup_key), do: dedup_key |> String.split(":") |> List.first()
+
+  defp recipient(%Swoosh.Email{to: [{_name, address} | _]}), do: address
+  defp recipient(%Swoosh.Email{to: [address | _]}), do: to_string(address)
+  defp recipient(_email), do: nil
+
+  defp subject(%Swoosh.Email{subject: subject}), do: subject
+  defp subject(_email), do: nil
 
   defp publish_sender do
     notifications = Application.get_env(:confluence_phx_mirror, :notifications, [])

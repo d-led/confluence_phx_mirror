@@ -162,6 +162,10 @@ config :confluence_phx_mirror,
   # setting falls back to. `MIRROR_MAIL_FROM` and `MIRROR_MAIL_FROM_NAME` set it
   # in `config/runtime.exs`.
   mail_from: {"Confluence Mirror", "mirror@localhost"},
+  # Whether the mail queue drains. A deployment can start paused — an operator
+  # who knows the relay is wrong can boot it that way — and the Mail screen
+  # toggles the same switch.
+  mail_paused: false,
   # The intake accepts unsigned deliveries unless a deployment requires
   # signatures: a mirror that was just pointed at a Confluence site should
   # work, and /admin/webhooks says loudly what that costs. `CM_WEBHOOK_SECRET`

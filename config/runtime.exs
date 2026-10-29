@@ -408,6 +408,18 @@ config :confluence_phx_mirror,
     {System.get_env("MIRROR_MAIL_FROM_NAME", "Confluence Mirror"),
      System.get_env("MIRROR_MAIL_FROM", "mirror@localhost")}
 
+# A deployment that knows its relay is wrong can boot with the queue stopped.
+# `/admin/mail` toggles the same switch while the node runs.
+config :confluence_phx_mirror,
+  mail_paused: System.get_env("MIRROR_MAIL_PAUSED", "false") in ~w(1 true yes)
+
+# What the provider sells, in messages a day: Brevo's free plan is 300, and a
+# figure below it is a decision (a busy day spent on watchers leaves none for
+# digests). `Mail.Budget` counts before it sends, so this is the number a busy
+# mirror must not cross rather than one it discovers by being refused.
+config :confluence_phx_mirror,
+  mail_daily: [limit: String.to_integer(System.get_env("CM_MAIL_PER_DAY", "300"))]
+
 if rate_limit =
      System.get_env("CM_READER_RATE_LIMIT_PER_MINUTE") ||
        System.get_env("MIRROR_READER_RATE_LIMIT_PER_MINUTE") do

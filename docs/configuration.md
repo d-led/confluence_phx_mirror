@@ -249,7 +249,10 @@ delivery does, are in the [site admin guide](site-admin-guide.md#webhooks).
 | --- | --- | --- |
 | `MIRROR_NOTIFICATIONS` | `true` | enable e-mail notifications |
 | `MIRROR_MAIL_FROM` / `MIRROR_MAIL_FROM_NAME` | `mirror@localhost` / `Confluence Mirror` | sender |
+| `MIRROR_MAIL_PAUSED` | `false` | start with the mail queue stopped (editable as `mail.paused`) |
 | `MIRROR_DIGEST_HOUR_UTC` | `8` | daily digest hour |
+| `CM_MAIL_PER_DAY` | `300` | messages the relay allows in one day — Brevo's free plan is 300. The mirror counts before it sends: a queue that reaches this stops until midnight UTC rather than being refused |
+| `MIRROR_MAIL_PAUSED` | `false` | stop the queue without stopping sign-in links |
 | `SMTP_RELAY` | – | enables SMTP delivery |
 | `SMTP_PORT` | `587` (`2525` in dev) | SMTP port |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | – | SMTP credentials |
@@ -267,6 +270,11 @@ configuration at boot and after every save, so a corrected relay takes effect on
 the next message instead of the next deploy. The password is stored, never
 printed back: the field says whether one is set, and a blank field keeps the one
 in force.
+
+`mail.paused` stops the queue without losing a message and is the same switch as
+the button on `/admin/mail` (see
+[operations.md](operations.md#the-mail-queue)). Sign-in links are not queued and
+keep working.
 
 The sender is a decision of its own, not the SMTP login: a relay accepts only an
 address it hosts or has verified, and that is rarely the account that

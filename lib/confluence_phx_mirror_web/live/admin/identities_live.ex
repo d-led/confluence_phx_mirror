@@ -501,72 +501,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
           />
         </form>
 
-        <div
-          :if={@account_pick}
-          id="account-picker"
-          class="border-b border-base-300/70 bg-primary/5 px-5 py-4"
-        >
-          <div class="flex items-start justify-between gap-2">
-            <p class="text-xs font-semibold">
-              Link <span class="font-mono">{@account_pick.account_id}</span>
-              <span :if={@account_pick.display_name} class="font-medium">
-                ({@account_pick.display_name})
-              </span>
-              to an account
-            </p>
-            <button
-              type="button"
-              phx-click="cancel_pick"
-              id="cancel-account-pick"
-              class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
-            >
-              Close
-            </button>
-          </div>
-
-          <form
-            id="account-search-form"
-            phx-change="search_accounts"
-            phx-submit="search_accounts"
-            class="mt-2"
-          >
-            <input
-              type="search"
-              name="q"
-              value={@account_query}
-              phx-debounce="200"
-              placeholder="Search accounts by e-mail or name"
-              aria-label="Search accounts"
-              class="input input-sm min-h-11 w-full rounded-lg sm:min-h-0"
-            />
-          </form>
-
-          <ul :if={@account_results not in [nil, []]} class="mt-2 space-y-1.5">
-            <li :for={%{user: candidate, identities: linked} <- @account_results}>
-              <button
-                type="button"
-                phx-click="confirm_link"
-                phx-value-account_id={@account_pick.account_id}
-                phx-value-user_id={candidate.id}
-                id={"link-account-#{candidate.id}"}
-                class="flex w-full items-center justify-between gap-2 rounded-lg border border-base-300/60 bg-base-100 px-3 py-2 text-left text-xs transition hover:border-primary/40 hover:text-primary"
-              >
-                <span class="truncate">{candidate.email}</span>
-                <span class="shrink-0 text-[11px] text-base-content/70">
-                  {candidate.role} · {linked} linked
-                </span>
-              </button>
-            </li>
-          </ul>
-          <p
-            :if={@account_results == []}
-            id="no-account-candidates"
-            class="mt-2 text-[11px] text-base-content/70"
-          >
-            No account matches “{@account_query}” — refine the search.
-          </p>
-        </div>
-
         <ul :if={@people != []} class="divide-y divide-base-300/60">
           <li :for={person <- @people} id={"person-#{person.dom_key}"} class="px-5 py-3 text-xs">
             <div class="flex flex-wrap items-center gap-1.5">
@@ -648,6 +582,71 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
               >
                 Link to an account…
               </button>
+            </div>
+            <div
+              :if={@account_pick && @account_pick.account_id == person.account_id}
+              id="account-picker"
+              class="mt-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-3"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <p class="text-xs font-semibold">
+                  Link <span class="font-mono">{@account_pick.account_id}</span>
+                  <span :if={@account_pick.display_name} class="font-medium">
+                    ({@account_pick.display_name})
+                  </span>
+                  to an account
+                </p>
+                <button
+                  type="button"
+                  phx-click="cancel_pick"
+                  id="cancel-account-pick"
+                  class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
+                >
+                  Close
+                </button>
+              </div>
+
+              <form
+                id="account-search-form"
+                phx-change="search_accounts"
+                phx-submit="search_accounts"
+                class="mt-2"
+              >
+                <input
+                  type="search"
+                  name="q"
+                  value={@account_query}
+                  phx-debounce="200"
+                  placeholder="Search accounts by e-mail or name"
+                  aria-label="Search accounts"
+                  class="input input-sm min-h-11 w-full rounded-lg sm:min-h-0"
+                />
+              </form>
+
+              <ul :if={@account_results not in [nil, []]} class="mt-2 space-y-1.5">
+                <li :for={%{user: candidate, identities: linked} <- @account_results}>
+                  <button
+                    type="button"
+                    phx-click="confirm_link"
+                    phx-value-account_id={@account_pick.account_id}
+                    phx-value-user_id={candidate.id}
+                    id={"link-account-#{candidate.id}"}
+                    class="flex w-full items-center justify-between gap-2 rounded-lg border border-base-300/60 bg-base-100 px-3 py-2 text-left text-xs transition hover:border-primary/40 hover:text-primary"
+                  >
+                    <span class="truncate">{candidate.email}</span>
+                    <span class="shrink-0 text-[11px] text-base-content/70">
+                      {candidate.role} · {linked} linked
+                    </span>
+                  </button>
+                </li>
+              </ul>
+              <p
+                :if={@account_results == []}
+                id="no-account-candidates"
+                class="mt-2 text-[11px] text-base-content/70"
+              >
+                No account matches “{@account_query}” — refine the search.
+              </p>
             </div>
           </li>
         </ul>

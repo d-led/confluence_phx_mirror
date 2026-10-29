@@ -15,7 +15,8 @@ defmodule ConfluencePhxMirror.Mail do
   import Swoosh.Email
 
   alias ConfluencePhxMirror.Accounts.User
-  alias ConfluencePhxMirror.{Mailer, RateLimit}
+  alias ConfluencePhxMirror.Mail.Budget
+  alias ConfluencePhxMirror.{Mailer, RateLimit, Settings}
 
   @window_ms 60_000
   @per_window 1
@@ -25,21 +26,51 @@ defmodule ConfluencePhxMirror.Mail do
 
     * `:ok` — the relay took it (or, without a relay, it was written to the
       development mailbox, which is the answer the caller needed too);
+    * `{:error, :paused}` — an administrator stopped the mail queue, so nothing
+      was sent;
     * `{:error, :too_soon, retry_after_ms}` — nothing was sent;
+    * `{:error, :spent, seconds}` — the provider's day is spent, and the number
+      is the seconds until there is room for another message;
     * `{:error, reason}` — the relay refused it, and `reason` is what it said.
   """
-  @spec send_test(User.t()) :: :ok | {:error, :too_soon, pos_integer()} | {:error, term()}
+  @spec send_test(User.t()) ::
+          :ok
+          | {:error, :paused}
+          | {:error, :too_soon, pos_integer()}
+          | {:error, :spent, pos_integer()}
+          | {:error, term()}
   def send_test(%User{} = user) do
-    case RateLimit.hit(key(user), @window_ms, @per_window) do
-      {:allow, _count} -> deliver(user)
-      {:deny, retry_after_ms} -> {:error, :too_soon, retry_after_ms}
+    with :ok <- queue_draining?() do
+      case RateLimit.hit(key(user), @window_ms, @per_window) do
+        {:allow, _count} -> deliver(user)
+        {:deny, retry_after_ms} -> {:error, :too_soon, retry_after_ms}
+      end
     end
   end
 
+  # A test message is a message: an operator who stopped the queue stopped this
+  # too, or the switch means nothing.
+  defp queue_draining? do
+    if Settings.mail_paused?(), do: {:error, :paused}, else: :ok
+  end
+
   defp deliver(user) do
-    case Mailer.deliver(message(user)) do
-      {:ok, _receipt} -> :ok
-      {:error, reason} -> {:error, reason}
+    case Mailer.send(message(user), Budget.key(:test, user), {:user, user}) do
+      {:ok, _receipt} ->
+        :ok
+
+      # A test message is a message like any other: it takes one of the day's
+      # allowance, and the screen can say why nothing arrived.
+      {:error, :spent, seconds} ->
+        {:error, :spent, seconds}
+
+      # The same reader asking twice within the same minute: the key carries the
+      # minute, so the relay is asked once.
+      {:error, :already_sent} ->
+        {:error, :too_soon, @window_ms}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

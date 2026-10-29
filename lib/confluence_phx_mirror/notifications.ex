@@ -11,7 +11,7 @@ defmodule ConfluencePhxMirror.Notifications do
   import Ecto.Query
 
   alias ConfluencePhxMirror.Accounts.{Scope, User}
-  alias ConfluencePhxMirror.Authorization
+  alias ConfluencePhxMirror.{Audit, Authorization}
   alias ConfluencePhxMirror.Mirror.Page
   alias ConfluencePhxMirror.Notifications.{Notification, Subscription}
   alias ConfluencePhxMirror.Repo
@@ -202,6 +202,104 @@ defmodule ConfluencePhxMirror.Notifications do
       limit: ^limit
     )
     |> Repo.all()
+  end
+
+  @doc """
+  What is still to go out: every notification without a delivery, oldest first.
+
+  A row is in this list because nobody has sent it yet — waiting for its turn,
+  waiting for a paused queue to resume, or waiting for its next attempt after
+  the relay refused it. `error` says which of those it is.
+  """
+  @spec queue(keyword()) :: [Notification.t()]
+  def queue(opts \\ []) do
+    from(n in Notification,
+      where: is_nil(n.delivered_at),
+      join: u in assoc(n, :user),
+      preload: [user: u],
+      order_by: [asc: n.inserted_at],
+      limit: ^Keyword.get(opts, :limit, 100)
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  How the outbox stands: waiting, refused, delivered.
+
+  `delivered` is what the mirror has ever sent, which is the number an operator
+  wants after a purge — "the history is still there, the queue is not".
+  """
+  @spec counts() :: %{
+          queued: non_neg_integer(),
+          failed: non_neg_integer(),
+          delivered: non_neg_integer()
+        }
+  def counts do
+    waiting = from(n in Notification, where: is_nil(n.delivered_at))
+
+    %{
+      queued: waiting |> where([n], is_nil(n.error)) |> Repo.aggregate(:count),
+      failed: waiting |> where([n], not is_nil(n.error)) |> Repo.aggregate(:count),
+      delivered:
+        from(n in Notification, where: not is_nil(n.delivered_at))
+        |> Repo.aggregate(:count)
+    }
+  end
+
+  @doc """
+  Recently delivered notifications, newest first.
+
+  The history a purge leaves alone: what was sent, and when. One screen reads it
+  to keep "the queue is empty" from looking like "mail never ran".
+  """
+  @spec delivered(pos_integer()) :: [Notification.t()]
+  def delivered(limit \\ 10) do
+    from(n in Notification,
+      where: not is_nil(n.delivered_at),
+      join: u in assoc(n, :user),
+      preload: [user: u],
+      order_by: [desc: n.delivered_at],
+      limit: ^limit
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Drops everything that has not been delivered, and the jobs that would send it.
+
+  The queue is what an operator purges when it was built while something was
+  wrong — a relay that sent to the wrong people, a sync that announced pages
+  nobody wanted. Delivered rows are the history and stay. So do the jobs:
+  cancelling them first is what keeps a purged row from failing a delivery, and
+  a worker that finds its row gone treats that as done.
+  """
+  @spec purge_queue(Audit.actor()) :: {:ok, non_neg_integer()}
+  def purge_queue(actor) do
+    {:ok, cancelled} = cancel_queued_deliveries()
+
+    {deleted, _} =
+      from(n in Notification, where: is_nil(n.delivered_at))
+      |> Repo.delete_all()
+
+    Audit.log(
+      actor,
+      Audit.Entry.new("mail.queue_purged", "notification", "queue", %{
+        "deleted" => deleted,
+        "cancelled_jobs" => cancelled
+      })
+    )
+
+    {:ok, deleted}
+  end
+
+  # Oban holds a delivery per instant notification. One that is `executing` is
+  # left alone: its worker is running right now and the purge may still find an
+  # undelivered row, which is the row the worker has open.
+  defp cancel_queued_deliveries do
+    from(j in Oban.Job,
+      where: j.queue == "notifications" and j.state in ~w(available scheduled retryable)
+    )
+    |> Oban.cancel_all_jobs()
   end
 
   defp enabled?, do: ConfluencePhxMirror.Settings.notifications_enabled?()

@@ -122,13 +122,18 @@ answer. A refusal is shown verbatim — that message is the diagnosis.
 In development the same button is the way to see a mail in smtp4dev
 (`docker compose up -d`, then <http://localhost:3001>).
 
-## 5. Two switches that are not the same thing
+## 5. Three switches that are not the same thing
 
 - `SMTP_RELAY` (and the rest) — *how* mail leaves the mirror. Without it,
   nothing is sent.
 - `MIRROR_NOTIFICATIONS` / `notifications.enabled` on `/admin/settings` —
   *whether watchers' e-mail is created at all*. Sign-in links and the test
   message ignore it: turning notifications off must never lock anyone out.
+- `MIRROR_MAIL_PAUSED` / **Pause mail** on `/admin/mail` — *whether the queue may
+  drain*. A paused queue keeps its messages, refuses nothing that was already
+  accepted, and goes out after the resume; `/admin/mail` also shows what is
+  waiting, what the relay refused, and can purge the backlog. Sign-in links are
+  not queued and keep working.
 
 ## How the connection is checked
 

@@ -330,6 +330,31 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       env: "MIRROR_MAIL_FROM_NAME",
       ui: :settings
     },
+    # The queue's own switch, beside the server it drains through: a relay that
+    # is wrong is worth stopping, and so is one that sends to the wrong people.
+    "mail.paused" => %{
+      type: :boolean,
+      default: :mail_paused,
+      group: :mail,
+      label: "Pause mail",
+      help:
+        "Nothing leaves the mirror while this is on: notifications and digests wait in the queue and go out after the resume, and a reader's test message is refused. Sign-in links are not queued and keep working — a pause must never lock anybody out.",
+      env: "MIRROR_MAIL_PAUSED",
+      ui: :settings
+    },
+    # What the provider sells, in messages a day. The mirror counts before it
+    # sends, because the alternative is learning the limit by being refused —
+    # and a refused digest is a digest the reader never gets.
+    "mail.per_day" => %{
+      type: :pos_integer,
+      default: {:mail_daily, :limit, 300},
+      group: :mail,
+      label: "Messages a day",
+      help:
+        "What the relay allows in one day: 300 on Brevo's free plan, and the figure your plan names if it is bigger. A day's queue stops when this is reached and carries on after midnight UTC.",
+      env: "CM_MAIL_PER_DAY",
+      ui: :settings
+    },
     "webhook.enabled" => %{
       type: :boolean,
       default: {:webhook, :enabled, true},
@@ -479,6 +504,8 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "mail.auth",
     "mail.from",
     "mail.from_name",
+    "mail.paused",
+    "mail.per_day",
     "webhook.enabled",
     "webhook.require_signature",
     "webhook.rate_limit",

@@ -41,7 +41,20 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.SyncRunController do
   end
 
   def export(conn, params) do
-    with :ok <- authorize(conn), do: SyncRunExport.download(conn, params)
+    with :ok <- authorize(conn) do
+      # A stream of a site's whole history is a copy leaving the building, so it
+      # is in the audit trail as an operation of its own rather than as a
+      # hundred thousand reads.
+      ConfluencePhxMirror.Audit.log(
+        {:user, conn.assigns.current_user},
+        ConfluencePhxMirror.Audit.Entry.new("api.export", "sync_run", "history", %{
+          "start" => params["start"],
+          "limit" => params["limit"]
+        })
+      )
+
+      SyncRunExport.download(conn, params)
+    end
   end
 
   defp authorize(conn) do

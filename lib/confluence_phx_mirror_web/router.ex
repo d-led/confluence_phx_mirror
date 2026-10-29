@@ -180,6 +180,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
 
       live "/", DashboardLive, :index
       live "/jobs", JobsLive, :index
+      # The outbox, not Oban's rows: which message is waiting, why the relay
+      # refused it, and the two switches an operator has over the drain.
+      live "/mail", MailLive, :index
       live "/webhooks", WebhooksLive, :index
       live "/users", UsersLive, :index
       live "/identities", IdentitiesLive, :index

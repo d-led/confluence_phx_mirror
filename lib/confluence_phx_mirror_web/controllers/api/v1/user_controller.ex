@@ -31,7 +31,13 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.UserController do
         {:ok, user} ->
           conn
           |> put_status(201)
-          |> json(Map.put(user_json(user), "welcome", welcome(Accounts.welcome(user))))
+          |> json(
+            Map.put(
+              user_json(user),
+              "welcome",
+              welcome(Accounts.welcome(user, {:user, conn.assigns.current_user}))
+            )
+          )
 
         {:error, changeset} ->
           refusal(conn, changeset)
@@ -44,6 +50,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.UserController do
   # does not know.
   defp welcome({:ok, :sent}), do: "sent"
   defp welcome({:ok, :not_configured}), do: "not_configured"
+  defp welcome({:ok, :over_budget}), do: "over_budget"
   defp welcome({:error, _reason}), do: "failed"
 
   defp authorize(conn) do
