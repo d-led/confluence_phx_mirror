@@ -63,6 +63,26 @@ defmodule ConfluencePhxMirror.MailTest do
     refute_email_sent()
   end
 
+  # The minute runs from the last message, not from the clock: a bucket that
+  # turns over would let two through a second apart.
+  test "a minute after the last one, the next is allowed again" do
+    reader = user_fixture()
+
+    assert :ok = Mail.send_test(reader)
+
+    {moved, _rows} =
+      Repo.update_all(
+        from(s in ConfluencePhxMirror.Mail.Send,
+          where: like(s.dedup_key, ^"test:#{reader.id}:%")
+        ),
+        set: [inserted_at: DateTime.add(DateTime.utc_now(), -61, :second)]
+      )
+
+    assert moved == 1, "the ledger row for this reader is what holds the next message back"
+
+    assert :ok = Mail.send_test(reader)
+  end
+
   test "is in the audit trail, with the reader as the one who asked for it" do
     reader = user_fixture(%{email: "audited.test@example.com"})
 

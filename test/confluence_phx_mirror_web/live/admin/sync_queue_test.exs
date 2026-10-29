@@ -3,6 +3,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncQueueTest do
   The syncs still waiting are lines in the same list as the runs that already
   happened, and each one can be dropped before anything picks it up.
   """
+  # Sequential: it drives a real sync run, and a mirror has one gate row — two
+  # runs beside each other would take it from one another.
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
   import Ecto.Query

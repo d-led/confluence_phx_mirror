@@ -8,7 +8,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLiveStreamTest do
 
   # The log is one global broadcast, so these tests must not run beside another
   # page that is listening to it.
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
@@ -16,8 +16,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLiveStreamTest do
   alias ConfluencePhxMirror.Accounts
 
   setup %{conn: conn} do
-    ops = user_fixture(%{email: "ops@example.com", role: "admin"})
-    jane = user_fixture(%{email: "jane@example.com"})
+    ops = user_fixture(%{role: "admin"})
+    jane = user_fixture()
 
     conn = Plug.Test.init_test_session(conn, %{"user_id" => ops.id})
 
@@ -30,11 +30,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLiveStreamTest do
     jane: jane
   } do
     {:ok, view, html} = live(conn, ~p"/admin/audit")
-    refute html =~ "Changed jane@example.com from member to admin"
+    refute html =~ "Changed #{jane.email} from member to admin"
 
     promote_to_admin(jane, ops)
 
-    assert render(view) =~ "Changed jane@example.com from member to admin"
+    assert render(view) =~ "Changed #{jane.email} from member to admin"
   end
 
   test "a log the reader has narrowed does not grow behind their back", %{
@@ -46,7 +46,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.AuditLiveStreamTest do
 
     promote_to_admin(jane, ops)
 
-    refute render(view) =~ "Changed jane@example.com from member to admin"
+    refute render(view) =~ "Changed #{jane.email} from member to admin"
   end
 
   defp promote_to_admin(jane, ops) do

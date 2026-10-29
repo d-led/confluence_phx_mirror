@@ -4,7 +4,7 @@ defmodule ConfluencePhxMirror.Sync.SpaceWorkerTest do
   here: one space re-read, and an audit trail that says which of them asked.
   """
 
-  use ConfluencePhxMirror.DataCase, async: false
+  use ConfluencePhxMirror.DataCase, async: true
 
   alias ConfluencePhxMirror.Audit.Event
   alias ConfluencePhxMirror.Mirror

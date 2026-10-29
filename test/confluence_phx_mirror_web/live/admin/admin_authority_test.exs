@@ -5,7 +5,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminAuthorityTest do
   opened with.
   """
 
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
@@ -15,11 +15,11 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminAuthorityTest do
   alias ConfluencePhxMirror.Mirror.Page
 
   setup %{conn: conn} do
-    keeper = user_fixture(%{email: "keeper@example.com", role: "admin"})
+    keeper = user_fixture(%{role: "admin"})
     # A second administrator, so the keeper may step down — the mirror always
     # keeps one, which is a rule of its own.
-    user_fixture(%{email: "deputy@example.com", role: "admin"})
-    reader = user_fixture(%{email: "reader@example.com"})
+    user_fixture(%{role: "admin"})
+    reader = user_fixture()
 
     {:ok,
      conn: Plug.Test.init_test_session(conn, %{"user_id" => keeper.id}),

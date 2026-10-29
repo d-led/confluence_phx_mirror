@@ -4,13 +4,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.ResourcesTest do
   fills: how big is this thing, and how much room is left beside it.
   """
 
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
 
   setup %{conn: conn} do
-    ops = user_fixture(%{email: "ops@example.com", role: "admin"})
+    ops = user_fixture(%{role: "admin"})
 
     {:ok, conn: Plug.Test.init_test_session(conn, %{"user_id" => ops.id})}
   end

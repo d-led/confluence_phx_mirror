@@ -7,7 +7,7 @@ defmodule ConfluencePhxMirror.Sync.PageWorkerTest do
   knows; `SyncTest` covers what a page sync does to content.
   """
 
-  use ConfluencePhxMirror.DataCase, async: false
+  use ConfluencePhxMirror.DataCase, async: true
 
   alias ConfluencePhxMirror.Audit.Event
   alias ConfluencePhxMirror.Mirror

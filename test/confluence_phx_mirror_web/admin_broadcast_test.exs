@@ -15,7 +15,7 @@ defmodule ConfluencePhxMirrorWeb.AdminBroadcastTest do
   opens names an administrator's topic at all.
   """
 
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
@@ -45,7 +45,7 @@ defmodule ConfluencePhxMirrorWeb.AdminBroadcastTest do
     end
 
     test "is closed to a member", %{conn: conn} do
-      conn = log_in(conn, user_fixture(%{email: "member@example.com"}))
+      conn = log_in(conn, user_fixture())
 
       for path <- admin_screens() do
         assert {:error, {:redirect, %{to: "/"}}} = live(conn, path),

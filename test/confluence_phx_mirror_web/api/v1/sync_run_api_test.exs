@@ -7,7 +7,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.SyncRunControllerTest do
   Administrator-only, and the refusal is tested as carefully as the list: a
   run's error is what the node said when the sync broke.
   """
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import ConfluencePhxMirror.Fixtures
 
@@ -74,7 +74,7 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.SyncRunControllerTest do
   end
 
   defp reader_token do
-    user = user_fixture(%{email: "reader@example.com", role: "member"})
+    user = user_fixture(%{role: "member"})
     Accounts.create_api_token(user, "a test", {:system, "test"})
   end
 

@@ -12,7 +12,7 @@ defmodule ConfluencePhxMirrorWeb.SpaceSwitcherTest do
   What is pinned here is that the box is there, and the sidebar's list of
   mirrored spaces still names each space the same way.
   """
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import ConfluencePhxMirror.Fixtures
 

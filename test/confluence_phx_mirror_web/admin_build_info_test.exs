@@ -4,7 +4,7 @@ defmodule ConfluencePhxMirrorWeb.AdminBuildInfoTest do
   pages do not.
   """
 
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
@@ -12,7 +12,7 @@ defmodule ConfluencePhxMirrorWeb.AdminBuildInfoTest do
   alias ConfluencePhxMirror.BuildInfo
 
   test "an administrator's footer names the build", %{conn: conn} do
-    administrator = user_fixture(%{email: "ops@example.com", role: "admin"})
+    administrator = user_fixture(%{role: "admin"})
 
     conn = Plug.Test.init_test_session(conn, %{"user_id" => administrator.id})
 

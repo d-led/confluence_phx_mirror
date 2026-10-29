@@ -8,7 +8,7 @@ defmodule ConfluencePhxMirrorWeb.AdminSyncRunsExportTest do
   batches the controller writes to the socket are read back in
   `ConfluencePhxMirror.Sync.HistoryTest`.
   """
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import ConfluencePhxMirror.Fixtures
 
@@ -18,7 +18,7 @@ defmodule ConfluencePhxMirrorWeb.AdminSyncRunsExportTest do
 
   describe "who may download it" do
     test "a member is refused", %{conn: conn} do
-      member = user_fixture(%{email: "member@example.com"})
+      member = user_fixture()
 
       assert conn |> sign_in(member) |> get(~p"/admin/sync-runs/export") |> response(403)
     end
@@ -28,7 +28,7 @@ defmodule ConfluencePhxMirrorWeb.AdminSyncRunsExportTest do
     end
 
     test "an administrator gets a file, named for the day and the format", %{conn: conn} do
-      admin = user_fixture(%{email: "ops@example.com", role: "admin"})
+      admin = user_fixture(%{role: "admin"})
 
       conn =
         conn
@@ -44,7 +44,7 @@ defmodule ConfluencePhxMirrorWeb.AdminSyncRunsExportTest do
     end
 
     test "JSON lines is the same history under a different name", %{conn: conn} do
-      admin = user_fixture(%{email: "ops2@example.com", role: "admin"})
+      admin = user_fixture(%{role: "admin"})
 
       conn =
         conn

@@ -5,7 +5,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesSyncTest do
   background rather than pretending the answer is already there.
   """
 
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   use Oban.Testing, repo: ConfluencePhxMirror.Repo
 
@@ -15,7 +15,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesSyncTest do
   alias ConfluencePhxMirror.Sync.PeopleWorker
 
   setup %{conn: conn} do
-    ops = user_fixture(%{email: "ops-identities@example.com", role: "admin"})
+    ops = user_fixture(%{role: "admin"})
 
     {:ok, conn: Plug.Test.init_test_session(conn, %{"user_id" => ops.id})}
   end

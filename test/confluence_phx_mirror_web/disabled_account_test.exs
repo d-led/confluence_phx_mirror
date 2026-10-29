@@ -5,7 +5,7 @@ defmodule ConfluencePhxMirrorWeb.DisabledAccountTest do
   before the flag was set.
   """
 
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 
@@ -16,12 +16,12 @@ defmodule ConfluencePhxMirrorWeb.DisabledAccountTest do
   setup do
     # An administrator who stays on, so switching an account off here is
     # allowed: the mirror never lets its last administrator go.
-    user_fixture(%{email: "keeper@example.com", role: "admin"})
+    user_fixture(%{role: "admin"})
     :ok
   end
 
-  defp disabled_user(email) do
-    user = user_fixture(%{email: email, role: "admin"})
+  defp disabled_user do
+    user = user_fixture(%{role: "admin"})
     {:ok, user} = Accounts.set_disabled(user, true, {:system, "test"})
     user
   end
@@ -29,14 +29,14 @@ defmodule ConfluencePhxMirrorWeb.DisabledAccountTest do
   defp signed_in(conn, user), do: Plug.Test.init_test_session(conn, %{"user_id" => user.id})
 
   test "the session it already holds no longer signs it in", %{conn: conn} do
-    user = disabled_user("gone@example.com")
+    user = disabled_user()
 
     assert {:error, {:redirect, %{to: "/session"}}} =
              signed_in(conn, user) |> live(~p"/admin")
   end
 
   test "its bearer token is refused with 403, not a silent empty answer", %{conn: conn} do
-    user = user_fixture(%{email: "token.gone@example.com"})
+    user = user_fixture()
     {:ok, plain, _token} = Accounts.create_api_token(user, "ci", {:system, "test"})
 
     assert %{"results" => _} =
@@ -57,17 +57,17 @@ defmodule ConfluencePhxMirrorWeb.DisabledAccountTest do
   end
 
   test "asking for a sign-in link says the account is disabled", %{conn: conn} do
-    user = user_fixture(%{email: "link.gone@example.com"})
+    user = user_fixture()
     {:ok, _} = Accounts.set_disabled(user, true, {:system, "test"})
 
-    conn = post(conn, ~p"/session", %{"user" => %{"email" => "link.gone@example.com"}})
+    conn = post(conn, ~p"/session", %{"user" => %{"email" => user.email}})
 
     assert redirected_to(conn) == ~p"/session"
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "disabled"
   end
 
   test "re-enabling gives access back" do
-    user = user_fixture(%{email: "back.again@example.com"})
+    user = user_fixture()
     {:ok, plain, _token} = Accounts.create_api_token(user, "ci", {:system, "test"})
 
     {:ok, _} = Accounts.set_disabled(user, true, {:system, "test"})

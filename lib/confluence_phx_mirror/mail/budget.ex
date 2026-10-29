@@ -139,8 +139,12 @@ defmodule ConfluencePhxMirror.Mail.Budget do
 
   def key(:welcome, %ConfluencePhxMirror.Accounts.User{id: id}), do: "welcome:#{id}"
 
+  # A reader asks for a test message; every ask is its own message. The
+  # millisecond keeps two asks from carrying one name, which the ledger would
+  # read as "this one went already" — the minute between them is a window the
+  # caller measures (see `ConfluencePhxMirror.Mail.send_test/1`).
   def key(:test, %ConfluencePhxMirror.Accounts.User{id: id}),
-    do: "test:#{id}:#{div(System.system_time(:second), 60)}"
+    do: "test:#{id}:#{System.system_time(:millisecond)}"
 
   @doc "How many messages have been handed over today, refusals included."
   @spec used() :: non_neg_integer()
@@ -159,6 +163,22 @@ defmodule ConfluencePhxMirror.Mail.Budget do
   @doc "What is left of today's allowance, for a screen that says so."
   @spec remaining() :: non_neg_integer()
   def remaining, do: max(limit() - used(), 0)
+
+  @doc """
+  When the last test message to `user` went, if one ever did.
+
+  The minute between two of them is measured from here rather than from a
+  clock bucket, so the answer does not depend on when in a minute the first one
+  was sent. A refused attempt does not count: it never went.
+  """
+  @spec last_test_at(ConfluencePhxMirror.Accounts.User.t()) :: DateTime.t() | nil
+  def last_test_at(%ConfluencePhxMirror.Accounts.User{id: id}) do
+    Repo.one(
+      from s in Send,
+        where: like(s.dedup_key, ^"test:#{id}:%") and s.state != "failed",
+        select: max(s.inserted_at)
+    )
+  end
 
   defp seconds_until_tomorrow do
     now = DateTime.utc_now()

@@ -16,10 +16,9 @@ defmodule ConfluencePhxMirror.Mail do
 
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mail.Budget
-  alias ConfluencePhxMirror.{Mailer, RateLimit, Settings}
+  alias ConfluencePhxMirror.{Mailer, Settings}
 
   @window_ms 60_000
-  @per_window 1
 
   @doc """
   Mails `user` a test message at their own address.
@@ -40,11 +39,25 @@ defmodule ConfluencePhxMirror.Mail do
           | {:error, :spent, pos_integer()}
           | {:error, term()}
   def send_test(%User{} = user) do
-    with :ok <- queue_draining?() do
-      case RateLimit.hit(key(user), @window_ms, @per_window) do
-        {:allow, _count} -> deliver(user)
-        {:deny, retry_after_ms} -> {:error, :too_soon, retry_after_ms}
-      end
+    with :ok <- queue_draining?(),
+         :ok <- not_too_soon(user) do
+      deliver(user)
+    end
+  end
+
+  # One a minute, measured from the last message rather than from a clock
+  # bucket: a bucket that turns over lets two through a second apart when they
+  # straddle the boundary, which is not what "one a minute" says. The ledger
+  # already knows when the last one went, so the window costs one query.
+  defp not_too_soon(user) do
+    case Budget.last_test_at(user) do
+      nil ->
+        :ok
+
+      at ->
+        waited = DateTime.diff(DateTime.utc_now(), at, :millisecond)
+
+        if waited >= @window_ms, do: :ok, else: {:error, :too_soon, @window_ms - waited}
     end
   end
 
@@ -109,8 +122,6 @@ defmodule ConfluencePhxMirror.Mail do
   # What tells a reader at a glance whether the relay is instant or slow, which
   # is the other half of "does mail from here reach me".
   defp now, do: Calendar.strftime(DateTime.utc_now(), "%Y-%m-%d %H:%M UTC")
-
-  defp key(%User{id: id}), do: "mail:test:user:#{id}"
 
   defp escape(text) do
     text |> to_string() |> Plug.HTML.html_escape() |> IO.iodata_to_binary()

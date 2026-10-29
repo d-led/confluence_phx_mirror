@@ -3,7 +3,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLiveTest do
   The trash is the only place content is deleted for good, so it has to say what
   is in it, what goes with what, and ask twice before emptying.
   """
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   use Oban.Testing, repo: ConfluencePhxMirror.Repo
 
@@ -15,7 +15,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.TrashLiveTest do
   alias ConfluencePhxMirror.Trash.PurgeWorker
 
   setup %{conn: conn} do
-    ops = user_fixture(%{email: "ops-trash@example.com", role: "admin"})
+    ops = user_fixture(%{role: "admin"})
 
     {:ok, conn: Plug.Test.init_test_session(conn, %{"user_id" => ops.id})}
   end

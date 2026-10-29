@@ -7,7 +7,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuthTest do
   the deployment stops assuming an administrator.
   """
 
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import ConfluencePhxMirror.Fixtures
 
@@ -15,7 +15,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ApiAuthTest do
   alias ConfluencePhxMirrorWeb.Plugs.ApiAuth
 
   setup do
-    user = user_fixture(%{email: "api-reader@example.com"})
+    user = user_fixture()
     {:ok, token, _record} = Accounts.create_api_token(user, "test", {:system, "test"})
 
     %{user: user, token: token}

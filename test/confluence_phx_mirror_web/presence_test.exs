@@ -11,7 +11,7 @@ defmodule ConfluencePhxMirrorWeb.PresenceTest do
   is rendered.
   """
 
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 

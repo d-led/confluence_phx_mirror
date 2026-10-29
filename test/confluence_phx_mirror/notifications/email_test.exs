@@ -8,7 +8,7 @@ defmodule ConfluencePhxMirror.Notifications.EmailTest do
   that says what changed *and* offers the link.
   """
 
-  use ConfluencePhxMirror.DataCase, async: false
+  use ConfluencePhxMirror.DataCase, async: true
 
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror.{Page, Space}

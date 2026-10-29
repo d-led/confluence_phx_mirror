@@ -1,13 +1,14 @@
 defmodule ConfluencePhxMirrorWeb.Skins.FreshBlueTest do
-  # `Settings.reload/0` reads the table the suite keeps in a sandbox.
-  use ConfluencePhxMirror.DataCase, async: false
+  # `Settings.reload/0` reads the table the suite keeps in a sandbox. It is
+  # called in setup, not in `on_exit`: an on_exit runs in another process, where
+  # an async test's owner connection is no longer available.
+  use ConfluencePhxMirror.DataCase, async: true
 
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirrorWeb.Skins
 
   setup do
     Settings.reload()
-    on_exit(fn -> Settings.reload() end)
     %{theme: Skins.get_theme("fresh-blue")}
   end
 

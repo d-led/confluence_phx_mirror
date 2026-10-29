@@ -11,7 +11,11 @@ config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
   hostname: "localhost",
   database: "confluence_phx_mirror_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: System.schedulers_online() * 2
+  # The suite is concurrent by design (most files are `async: true`), and every
+  # running test holds an owner connection of its own while its LiveViews and
+  # tasks check out more. Two per scheduler starved the pool: tests queued past
+  # the 15 s checkout and the whole file looked broken.
+  pool_size: System.schedulers_online() * 3
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.

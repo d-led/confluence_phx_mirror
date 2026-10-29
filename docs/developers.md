@@ -248,10 +248,30 @@ out of the way:
   expression. Everything else is passed in — `Sync.run(mode, source: Module)`,
   a `%Scope{}`, a `%User{}` — which is what keeps the suite concurrent.
 
-`async: true` is the default where nothing global is touched. What still forces
-`async: false` is the shared blob root (`demo_snapshot!` writes real files) and
-`empty_mirror!`, whose deletes cascade into the same committed rows from both
-sides and deadlock beside another such test.
+`async: true` is the default: 92 of 223 files, and rising. The sandbox already
+isolates writes, so a test only has to be sequential when it shares something
+the sandbox cannot roll back — and the rule is *make it yours instead*:
+
+* **Its own data.** `user_fixture/1` and friends generate unique keys
+  (`reader123@example.com`), and a test that needs to read an address back
+  asserts on `user.email` rather than on a literal. Two suites that both insert
+  `ops@example.com` in concurrent transactions wait on the same unique index
+  entry, and a third row in the mix turns that into a `40P01` deadlock — the
+  failures look like the code and are really the fixtures. Fixed on 2026-10-29,
+  which is also when 21 more files moved to `async: true` and the suite dropped
+  from ~249 s to ~175 s.
+* **Not the singleton rows.** `settings`, `site_settings` and `sync_gate` hold
+  one row for the whole mirror; a test that writes one, or drives a real
+  `Sync.run/2` (which takes the gate), is `async: false`.
+* **Not the blob root.** `demo_snapshot!` writes real files under one directory
+  per partition, and `empty_mirror!` deletes the committed rows from both sides
+  of a transaction. Both stay sequential.
+
+The pool is sized for that concurrency (`pool_size: schedulers * 3` in
+`config/test.exs`): two per scheduler starved it, and a test that queued past
+the 15 s checkout reported `DBConnection.ConnectionError` in files whose code was
+fine. An `on_exit` callback runs in another process, where an async test's
+sandbox owner is gone — read what you need in `setup`, not in `on_exit`.
 
 ### Reading at scale
 

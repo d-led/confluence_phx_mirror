@@ -3,7 +3,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
   Oban's own rows on a page: what is waiting, what is running, and what a
   restart left behind — each with the one action that ends it.
   """
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import Ecto.Query
   import ConfluencePhxMirror.Fixtures
@@ -15,9 +15,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
   alias ConfluencePhxMirror.Sync.SyncRun
 
   setup %{conn: conn} do
-    ops = user_fixture(%{email: "ops@example.com", role: "admin"})
+    ops = user_fixture(%{role: "admin"})
 
-    {:ok, conn: Plug.Test.init_test_session(conn, %{"user_id" => ops.id})}
+    {:ok, conn: Plug.Test.init_test_session(conn, %{"user_id" => ops.id}), ops: ops}
   end
 
   test "a job left executing by a dead node can be stopped from the page", %{conn: conn} do
@@ -34,7 +34,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
     refute has_element?(view, "#stop-job-#{job.id}")
   end
 
-  test "stopping a job is recorded with who did it", %{conn: conn} do
+  test "stopping a job is recorded with who did it", %{conn: conn, ops: ops} do
     job = sync_job("MFS") |> with_state("executing")
 
     {:ok, view, _html} = live(conn, ~p"/admin/jobs")
@@ -44,7 +44,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
       from(e in Event, where: e.action == "job.cancelled", order_by: [desc: e.id])
       |> Repo.one!()
 
-    assert entry.actor_email == "ops@example.com"
+    assert entry.actor_email == ops.email
     assert entry.entity_id == to_string(job.id)
   end
 

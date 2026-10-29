@@ -3,7 +3,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncSpaceMenuTest do
   "Sync one space" is a find box, not a list of everything: it opens with the
   cursor already in the input, and typing narrows the list in the database.
   """
-  use ConfluencePhxMirrorWeb.ConnCase, async: false
+  use ConfluencePhxMirrorWeb.ConnCase, async: true
 
   import Ecto.Query
   import ConfluencePhxMirror.Fixtures
@@ -12,7 +12,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncSpaceMenuTest do
   alias ConfluencePhxMirror.Repo
 
   setup %{conn: conn} do
-    ops = user_fixture(%{email: "ops@example.com", role: "admin"})
+    ops = user_fixture(%{role: "admin"})
     space_fixture(%{key: "MFS", name: "My first space"})
     space_fixture(%{key: "ENG", name: "Engineering"})
 
