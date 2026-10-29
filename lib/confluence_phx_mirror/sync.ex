@@ -462,11 +462,17 @@ defmodule ConfluencePhxMirror.Sync do
   keeps its uniqueness, which turns the next scheduled pull away for as long as
   it stays stuck.
 
-  A verify pass, a sweep and a trash pass are on the same queue and take no lock,
-  because they are not a sync. Reading their silence as death cancelled every
-  pass a minute after it started — a pass over a real site takes longer than
-  that. Their liveness is Oban's business (six hours of silence is past any
-  pass) or an administrator's cancellation.
+  A sweep and a trash pass are on the same queue and take no lock, because they
+  are not a sync: they copy nothing and ask one question. Reading their silence
+  as death cancelled every sweep a minute after it started. Their liveness is
+  Oban's business (six hours of silence is past any sweep) or an administrator's
+  cancellation.
+
+  A verify pass does take the lock — it asks the whole site what it lists, which
+  is longer than a sweep and, unlike a sweep, must not run beside a sync — so it
+  is judged by it like a run. That is what killed the job production lost six
+  hours to: a pass whose node died stayed `executing`, and its uniqueness turned
+  every later schedule away until Oban's lifeline noticed.
 
   Returns how many runs it closed.
   """
@@ -486,12 +492,13 @@ defmodule ConfluencePhxMirror.Sync do
   # moment before reading silence as death.
   @gate_grace_seconds 60
 
-  # The workers whose `perform/1` is a `Sync.run/2`, and therefore the only jobs
-  # the sweep may judge. Adding a worker to this list says "a free lock means my
+  # The workers that take the lock themselves, and therefore the only jobs the
+  # sweep may judge. Adding a worker to this list says "a free lock means my
   # process is gone"; leaving one out says "I run beside the lock, and may".
   @synchronised_workers [
     ConfluencePhxMirror.Sync.PageWorker,
     ConfluencePhxMirror.Sync.PeopleWorker,
+    ConfluencePhxMirror.Sync.ReconcileWorker,
     ConfluencePhxMirror.Sync.SnapshotWorker,
     ConfluencePhxMirror.Sync.SpaceWorker
   ]

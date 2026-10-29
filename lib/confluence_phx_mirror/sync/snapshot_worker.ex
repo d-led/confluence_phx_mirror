@@ -18,7 +18,9 @@ defmodule ConfluencePhxMirror.Sync.SnapshotWorker do
 
   A sync that is already in flight makes this tick a no-op: the run it would
   have started would have copied the same pages (see `Sync.Gate`), and the next
-  tick is soon enough.
+  tick is soon enough. A verify pass holding the lock reads as the same thing —
+  one tick lost to a pass of a few minutes, rather than a queue of pulls behind
+  it.
   """
 
   use Oban.Worker,

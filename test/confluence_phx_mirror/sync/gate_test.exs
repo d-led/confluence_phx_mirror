@@ -9,7 +9,15 @@ defmodule ConfluencePhxMirror.SyncGateTest do
 
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
-  alias ConfluencePhxMirror.Sync.{Gate, ReconcileWorker, SnapshotWorker, SyncRun}
+
+  alias ConfluencePhxMirror.Sync.{
+    Gate,
+    ReconcileWorker,
+    SnapshotWorker,
+    SyncRun,
+    TrashAbsentWorker
+  }
+
   alias ConfluencePhxMirror.TestConfig
 
   setup do
@@ -112,14 +120,26 @@ defmodule ConfluencePhxMirror.SyncGateTest do
     end
 
     test "a job that runs beside the lock is not judged by it" do
-      # A verify pass takes no lock, because it is not a sync: it spends minutes
-      # asking the site how many pages each space holds. Reading the free lock as
-      # "nobody is doing that" cancelled a healthy pass a minute in, every time.
-      job = insert_executing_job(ReconcileWorker, minutes_ago: 10)
+      # A trash pass takes no lock, because it is not a sync: it copies nothing
+      # and asks one question. Reading the free lock as "nobody is doing that"
+      # cancelled a healthy pass a minute in, every time.
+      job = insert_executing_job(TrashAbsentWorker, minutes_ago: 10)
 
       assert Sync.abandon_abandoned_runs() == 0
 
       assert Repo.get!(Oban.Job, job.id).state == "executing"
+    end
+
+    test "a verify pass left executing with the lock free is cancelled" do
+      # The incident this exists for: a deploy killed a pass, the job stayed
+      # `executing`, and its uniqueness turned every later schedule away until
+      # Oban's lifeline noticed — six hours. A pass takes the lock now, so a free
+      # lock says its process is gone.
+      job = insert_executing_job(ReconcileWorker, minutes_ago: 10)
+
+      assert Sync.abandon_abandoned_runs() == 0
+
+      assert Repo.get!(Oban.Job, job.id).state == "cancelled"
     end
 
     test "a job that has only just started is left alone" do

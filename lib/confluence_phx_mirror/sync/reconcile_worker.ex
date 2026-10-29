@@ -7,6 +7,16 @@ defmodule ConfluencePhxMirror.Sync.ReconcileWorker do
   enqueues it on a button, and `CM_RECONCILE_INTERVAL_SECONDS` on a clock; the
   pass itself is `ConfluencePhxMirror.Sync.Reconcile` and it never reads a page,
   only names and counts.
+
+  The pass takes the same lock a run does (`Sync.Gate`), for the reason the lock
+  exists: it is one more process asking the whole site questions at once, and
+  the mirror answers one at a time. Holding it is also the only evidence that a
+  job still has a process behind it, which is what lets
+  `Sync.abandon_abandoned_runs/0` clear a pass a deploy killed — production left
+  one `executing` for six hours, because nothing could tell it apart from a pass
+  still working, and its uniqueness turned every later schedule away. A pass that
+  finds the lock taken waits for it; nothing is lost, because each settled space
+  is recorded and the next turn finishes the pass instead of repeating it.
   """
 
   # One pass at a time, whatever it was asked for. Uniqueness on the default
@@ -32,7 +42,12 @@ defmodule ConfluencePhxMirror.Sync.ReconcileWorker do
 
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync
-  alias ConfluencePhxMirror.Sync.Reconcile
+  alias ConfluencePhxMirror.Sync.{Gate, Reconcile}
+
+  # How long a pass waits for a sync to finish before asking again. Short enough
+  # that a pass follows a run closely, long enough that a queue of them does not
+  # become a poll: a snooze costs no attempt.
+  @wait_for_the_lock 60
 
   @impl true
   def perform(%Oban.Job{args: args}) do
@@ -42,7 +57,16 @@ defmodule ConfluencePhxMirror.Sync.ReconcileWorker do
       Logger.info("verify pass waiting: Confluence calls are paused")
       Sync.paused_wait()
     else
-      count(Reconcile.run(source: source(args), trigger: trigger(args)))
+      pass(args)
+    end
+  end
+
+  defp pass(args) do
+    case Gate.exclusive(fn _owner ->
+           Reconcile.run(source: source(args), trigger: trigger(args))
+         end) do
+      {:ok, report} -> count(report)
+      {:error, :already_running} -> {:snooze, @wait_for_the_lock}
     end
   end
 
