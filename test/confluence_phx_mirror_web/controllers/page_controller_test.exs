@@ -27,6 +27,33 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert Enum.empty?(LazyHTML.query(document, "main #header-search-input"))
   end
 
+  test "a live doc says what it is, and an ordinary page does not", %{conn: conn} do
+    make_live_doc(1007)
+
+    live_doc =
+      conn
+      |> get(~p"/spaces/ENG/pages/1007/Meeting+Notes")
+      |> html_response(200)
+      |> LazyHTML.from_fragment()
+
+    page =
+      conn
+      |> get(~p"/spaces/ENG/pages/1002/Architecture+Overview")
+      |> html_response(200)
+      |> LazyHTML.from_fragment()
+
+    assert Enum.count(LazyHTML.query(live_doc, "#page-live-doc")) == 1
+    assert Enum.empty?(LazyHTML.query(page, "#page-live-doc"))
+  end
+
+  defp make_live_doc(confluence_id) do
+    {:ok, page} = ConfluencePhxMirror.Mirror.find_page_by_path("ENG", confluence_id)
+
+    page
+    |> Ecto.Changeset.change(subtype: "live")
+    |> ConfluencePhxMirror.Repo.update!()
+  end
+
   test "a page mirrored before emoticons were converted still shows them", %{conn: conn} do
     # The mirror stores the HTML it rendered at sync time. A body stored before
     # the renderer knew about emoticons still carries Confluence's own image,

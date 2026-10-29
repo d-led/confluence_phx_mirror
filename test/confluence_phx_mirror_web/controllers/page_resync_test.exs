@@ -36,7 +36,13 @@ defmodule ConfluencePhxMirrorWeb.PageResyncTest do
       |> redirected_to()
 
     assert taken == page_path()
-    assert_enqueued(worker: PageWorker, args: %{"confluence_id" => Demo.open_page_number()})
+
+    # `force` is the promise the button makes: a page the sync would otherwise
+    # leave alone — a live doc read a minute ago — is read now.
+    assert_enqueued(
+      worker: PageWorker,
+      args: %{"confluence_id" => Demo.open_page_number(), "force" => true}
+    )
   end
 
   test "a reader is offered no resync and cannot take one", %{conn: _admin} do

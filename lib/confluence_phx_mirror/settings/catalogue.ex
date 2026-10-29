@@ -192,6 +192,16 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       env: "CM_SYNC_LOOKBACK_SECONDS",
       ui: :settings
     },
+    "sync.live_doc_refresh_seconds" => %{
+      type: :pos_integer,
+      default: {:sync, :live_doc_refresh_seconds, 900},
+      group: :sync,
+      label: "Live docs read at most every (seconds)",
+      help:
+        "A live doc is edited continuously by design, so its version moves constantly. Reading it once per this many seconds keeps its copy honest without chasing keystrokes; a resync on the page means now.",
+      env: "CM_LIVE_DOC_REFRESH_SECONDS",
+      ui: :settings
+    },
     "notifications.enabled" => %{
       type: :boolean,
       default: {:notification, :enabled, true},
@@ -328,6 +338,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "sync.concurrency",
     "sync.detail_backlog",
     "sync.lookback_seconds",
+    "sync.live_doc_refresh_seconds",
     "confluence.page_size",
     "notifications.enabled",
     "notifications.digest_hour_utc",

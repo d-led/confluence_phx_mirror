@@ -145,7 +145,7 @@
   <article>
     <.page_header title={@page.title} eyebrow={@space.name}>
       <:badges>
-        <.badges status={@page.status} type={@page.type} />
+        <.badges status={@page.status} type={@page.type} subtype={@page.subtype} />
       </:badges>
       <:meta>
         <.page_meta page={@page} admin?={@admin?} resync_path={@resync_path}>

@@ -475,6 +475,11 @@ config :confluence_phx_mirror,
              "CM_SYNC_DETAIL_BACKLOG",
              Keyword.get(sync_defaults, :detail_backlog, 200)
            ),
+         live_doc_refresh_seconds:
+           env_integer.(
+             "CM_LIVE_DOC_REFRESH_SECONDS",
+             Keyword.get(sync_defaults, :live_doc_refresh_seconds, 900)
+           ),
          paused: System.get_env("CM_SYNC_PAUSED", "false") in ["true", "1", "yes"]
        )
 

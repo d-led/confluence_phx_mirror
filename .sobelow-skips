@@ -4,13 +4,13 @@ Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/confluence_phx_
 Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/build_info.ex:154,3136F0B
 Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/export/site.ex:171,395AFC2
 Traversal.FileModule: Directory Traversal in `File.write!`,lib/confluence_phx_mirror/build_info.ex:117,773A169
+XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:276,30218F5
+XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:316,595A444
+XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:333,131F5A0
+XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:463,3CCDD1C
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/components/layouts/root.html.heex:14,200047D
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/components/layouts/root.html.heex:22,6FC37FB
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/error_html/403.html.heex:10,1C73E04
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/error_html/404.html.heex:10,156654E
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/error_html/429.html.heex:10,67A0DFF
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/controllers/page_html/show.html.heex:170,47EFB4
-XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:275,17FA685
-XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:315,568416D
-XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:332,6A14C43
-XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:462,260104E

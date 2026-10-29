@@ -63,6 +63,22 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       assert page["_links"]["original"] =~ "demo.atlassian.net"
     end
 
+    test "tells a live doc from an ordinary page", %{conn: conn} do
+      make_live_doc(1007)
+
+      live_doc = conn |> get(~p"/api/v1/pages/1007") |> json_response(200)
+      page = conn |> get(~p"/api/v1/pages/1002") |> json_response(200)
+
+      assert live_doc["subtype"] == "live"
+      assert page["subtype"] == nil
+    end
+
+    defp make_live_doc(confluence_id) do
+      {:ok, page} = Mirror.find_page_by_path("ENG", confluence_id)
+
+      ConfluencePhxMirror.Repo.update!(Ecto.Changeset.change(page, subtype: "live"))
+    end
+
     test "lists children, labels, attachments and comments", %{conn: conn} do
       children = conn |> get(~p"/api/v1/pages/1001/children") |> json_response(200)
       assert Enum.any?(children["results"], &(&1["title"] == "Architecture Overview"))

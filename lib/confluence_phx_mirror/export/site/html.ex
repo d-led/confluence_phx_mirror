@@ -249,6 +249,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
           <h1 class="mt-1 text-2xl font-semibold tracking-tight">{@page.title}</h1>
           <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/70">
             <span :if={@page.type == "blogpost"} class="badge badge-ghost badge-xs">Blog post</span>
+            <span :if={@page.subtype == "live"} class="badge badge-ghost badge-xs">Live doc</span>
             <span :if={@page.status == "archived"} class="badge badge-warning badge-xs">
               Archived
             </span>

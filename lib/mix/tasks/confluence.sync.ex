@@ -63,7 +63,9 @@ defmodule Mix.Tasks.Confluence.Sync do
         {:space, [space_key: required!(opts, :space)]}
 
       "page" ->
-        {:page, [confluence_id: required!(opts, :page)]}
+        # A person naming one page means read it: the live-doc floor that keeps
+        # a webhook quiet is not what somebody at a prompt asked for.
+        {:page, [confluence_id: required!(opts, :page), force: true]}
 
       other ->
         Mix.raise("Unknown --mode #{inspect(other)} (snapshot, incremental, space, page)")

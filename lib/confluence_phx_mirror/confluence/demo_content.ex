@@ -175,7 +175,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         version: 21,
         message: "Weekly sync notes",
         updated_at: ~U[2026-10-20 15:40:00Z],
-        author: "Sam Rivera"
+        author: "Sam Rivera",
+        subtype: "live"
       ),
       page(1008, "ENG", 1000, "API Guide", api_body(), ~w(api reference),
         version: 5,
@@ -677,6 +678,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
       id: id,
       type: Keyword.get(opts, :type, "page"),
       status: Keyword.get(opts, :status, "current"),
+      subtype: Keyword.get(opts, :subtype),
       title: title,
       space_key: space_key,
       parent_id: parent_id,

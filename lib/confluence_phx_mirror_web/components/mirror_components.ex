@@ -330,10 +330,19 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
 
   attr :status, :string, default: "current"
   attr :type, :string, default: "page"
+  attr :subtype, :string, default: nil
 
   def badges(assigns) do
     ~H"""
     <div class="flex flex-wrap items-center gap-1.5">
+      <span
+        :if={@subtype == "live"}
+        id="page-live-doc"
+        class="badge badge-secondary badge-sm gap-1"
+        title="Confluence calls this a live doc: it is edited continuously, so this copy is a snapshot"
+      >
+        <.icon name="hero-bolt" class="size-3" /> Live doc
+      </span>
       <span :if={@type == "blogpost"} class="badge badge-info badge-sm gap-1">
         <.icon name="hero-newspaper" class="size-3" /> Blog post
       </span>

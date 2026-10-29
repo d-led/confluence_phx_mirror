@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirror.SyncTest do
   alias ConfluencePhxMirror.Blobs.Store
 
   alias ConfluencePhxMirror.Confluence.{
+    CountingSource,
     EditedSource,
     EmptyListingSource,
     HttpSource,
@@ -396,6 +397,65 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert_raise RuntimeError, ~r/not_found/, fn ->
         Sync.run(:page, confluence_id: 999_999)
       end
+    end
+  end
+
+  describe "live docs" do
+    test "a copy younger than the floor costs no request at all" do
+      demo_snapshot!()
+      live_doc(1002)
+
+      assert {:ok, run} = read_page(1002)
+
+      refute_received {:page_read, 1002}
+      assert run.stats["unchanged"] == 1
+      assert Repo.get_by!(Page, confluence_id: 1002).version_message != EditedSource.edit_note()
+    end
+
+    test "a resync on the page means now, whatever the floor says" do
+      demo_snapshot!()
+      live_doc(1002)
+
+      assert {:ok, run} = read_page(1002, force: true)
+
+      assert_received {:page_read, 1002}
+      assert run.stats["changed"] == 1
+    end
+
+    test "a live doc older than the floor is read again" do
+      demo_snapshot!()
+      live_doc(1002, DateTime.add(DateTime.utc_now(), -Settings.live_doc_refresh_seconds() - 1))
+
+      assert {:ok, run} = read_page(1002)
+
+      assert_received {:page_read, 1002}
+      assert run.stats["changed"] == 1
+    end
+
+    test "an ordinary page is still read whenever the site says it changed" do
+      demo_snapshot!()
+
+      assert {:ok, _run} = read_page(1002)
+
+      assert_received {:page_read, 1002}
+    end
+
+    defp read_page(confluence_id, opts \\ []) do
+      Sync.run(
+        :page,
+        Keyword.merge(
+          [confluence_id: confluence_id, source: CountingSource, report_reads_to: self()],
+          opts
+        )
+      )
+    end
+
+    defp live_doc(confluence_id, synced_at \\ nil) do
+      synced_at = synced_at || DateTime.utc_now() |> DateTime.truncate(:second)
+
+      Repo.update_all(from(p in Page, where: p.confluence_id == ^confluence_id),
+        set: [subtype: "live", synced_at: synced_at]
+      )
     end
   end
 

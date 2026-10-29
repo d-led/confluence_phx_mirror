@@ -105,8 +105,11 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   end
 
   defp enqueue_resync(conn, page) do
+    # `force` is what a live doc's floor must not swallow: pressing resync is a
+    # person saying the copy in front of them is too old to wait.
     Sync.enqueue(PageWorker, %{
       "confluence_id" => page.confluence_id,
+      "force" => true,
       "trigger" => "the page view, by #{conn.assigns[:current_user].email}"
     })
 

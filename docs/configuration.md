@@ -63,6 +63,7 @@ and rolling back never touch stored decisions.
 | `sync.concurrency` | `CM_SYNC_CONCURRENCY` | `4` |
 | `sync.detail_backlog` | `CM_SYNC_DETAIL_BACKLOG` | `200` |
 | `sync.lookback_seconds` | `CM_SYNC_LOOKBACK_SECONDS` | `3600` |
+| `sync.live_doc_refresh_seconds` | `CM_LIVE_DOC_REFRESH_SECONDS` | `900` |
 | `confluence.page_size` | `CM_HTTP_PAGE_SIZE` | `50` |
 
 **Notifications, webhooks, accounts**
@@ -123,6 +124,7 @@ together or not at all, so a save that reports an error changed nothing.
 | `CM_SYNC_INTERVAL_SECONDS` | `3600` | gap between scheduled pulls; `0` switches the timer off. `sync.interval_seconds` changes it at runtime, and a new cadence applies from the tick after the one in flight |
 | `CM_RECONCILE_INTERVAL_SECONDS` | `0` | scheduled missing-pages check — a verify pass over every space (`0` keeps it on demand, from `/admin/upstream`). `sync.reconcile_interval_seconds` changes it at runtime, and `0` is a number the screen accepts: that is how the pass is switched off |
 | `CM_SYNC_LOOKBACK_SECONDS` | `3600` | minimum window for an incremental pull |
+| `CM_LIVE_DOC_REFRESH_SECONDS` | `900` | how often a **live doc** is read again. Confluence lets several people edit a live doc at once, so its version moves continuously and every move would be a full read, render and detail pass; the mirror takes one at most this often (`sync.live_doc_refresh_seconds`), and a resync on the page means now |
 | `CM_SYNC_CONCURRENCY` | `4` | changed pages detailed at once |
 | `CM_SYNC_PERSONAL_SPACES` | `false` | mirror personal (`~account`) spaces — every user has one, and it holds their drafts. A mirrored one is still readable only by its owner and by administrators |
 

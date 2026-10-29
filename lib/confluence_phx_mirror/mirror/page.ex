@@ -21,6 +21,10 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     field :confluence_id, :integer
     field :type, :string, default: "page"
     field :status, :string, default: "current"
+    # `"live"` for a live doc: a page Confluence lets several people edit at
+    # once. A mirror is always a snapshot, so this is what tells a reader that
+    # the copy in front of them is of a page that moves.
+    field :subtype, :string
     field :title, :string
     field :slug, :string
     field :author_name, :string
@@ -76,6 +80,7 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     :parent_id,
     :type,
     :status,
+    :subtype,
     :author_name,
     :author_account_id,
     :body_storage,

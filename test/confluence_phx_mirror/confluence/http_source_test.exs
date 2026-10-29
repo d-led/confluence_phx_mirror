@@ -3,6 +3,32 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceTest do
 
   alias ConfluencePhxMirror.Confluence.HttpSource
 
+  describe "parsing a page" do
+    test "a live doc keeps the kind Confluence gives it" do
+      assert HttpSource.parse_page(content(%{"subtype" => "live"}), "ENG").subtype == "live"
+    end
+
+    test "an ordinary page has no kind" do
+      assert HttpSource.parse_page(content(%{}), "ENG").subtype == nil
+    end
+
+    defp content(overrides) do
+      Map.merge(
+        %{
+          "id" => "458759",
+          "type" => "page",
+          "status" => "current",
+          "title" => "Meeting notes",
+          "version" => %{"number" => 1},
+          "ancestors" => [],
+          "metadata" => %{"labels" => %{"results" => []}},
+          "_links" => %{"webui" => "/spaces/ENG/pages/458759"}
+        },
+        overrides
+      )
+    end
+  end
+
   describe "parsing page restrictions" do
     test "reads users by e-mail and groups by name" do
       body = %{

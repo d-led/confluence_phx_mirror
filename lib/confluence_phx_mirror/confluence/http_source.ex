@@ -646,6 +646,8 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       id: parse_id(content["id"]),
       type: content["type"] || "page",
       status: content["status"] || "current",
+      # "live" for a live doc; absent for an ordinary page.
+      subtype: content["subtype"],
       title: content["title"] || "Untitled",
       space_key: space_key,
       parent_id: List.last(ancestors),

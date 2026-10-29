@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirror.Confluence.Source do
         id: 1002,
         type: "page" | "blogpost",
         status: "current" | "draft" | "archived",
+        subtype: "live" | nil,
         title: "Architecture Overview",
         space_key: "ENG",
         parent_id: 1001 | nil,

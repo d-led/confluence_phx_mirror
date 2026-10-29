@@ -150,6 +150,17 @@ defmodule ConfluencePhxMirror.Settings do
   @spec reconcile_interval_seconds() :: non_neg_integer()
   def reconcile_interval_seconds, do: effective("sync.reconcile_interval_seconds")
 
+  @doc """
+  How often a live doc is read again, in seconds.
+
+  A live doc is a page several people edit at once, so its version moves
+  continuously and every move would be a full read, render and detail pass for
+  a body that differs only in the typing. The mirror reads one at most this
+  often and says how old its copy is; an administrator's resync ignores it.
+  """
+  @spec live_doc_refresh_seconds() :: pos_integer()
+  def live_doc_refresh_seconds, do: effective("sync.live_doc_refresh_seconds")
+
   @doc "Pages one Confluence listing call asks for."
   @spec confluence_page_size() :: pos_integer()
   def confluence_page_size, do: effective("confluence.page_size")

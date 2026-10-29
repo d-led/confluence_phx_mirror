@@ -10,6 +10,10 @@ defmodule ConfluencePhxMirror.Sync.PageWorker do
 
   A sync already in flight makes this job wait rather than drop the edit: the
   webhook said a page changed, and snoozing keeps that promise.
+
+  `"force"` in the job args is a person saying "now": it is what an
+  administrator's resync carries, and it is the one way past the floor a live
+  doc's copy gets (see `Sync.live_doc_fresh?/1`).
   """
 
   use Oban.Worker,
@@ -28,7 +32,8 @@ defmodule ConfluencePhxMirror.Sync.PageWorker do
            confluence_id: confluence_id(id),
            job_id: job_id,
            actor: @actor,
-           trigger: trigger(args)
+           trigger: trigger(args),
+           force: force?(args)
          ) do
       {:ok, _run} ->
         :ok
@@ -50,4 +55,7 @@ defmodule ConfluencePhxMirror.Sync.PageWorker do
     do: trigger
 
   defp trigger(_args), do: @default_trigger
+
+  defp force?(%{"force" => true}), do: true
+  defp force?(_args), do: false
 end

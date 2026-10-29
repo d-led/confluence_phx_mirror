@@ -322,6 +322,30 @@ nothing has to be re-read from Confluence for a comment to become findable. A
 hit remembers which comment matched, and the screen says so rather than quoting
 an unrelated paragraph of the page.
 
+## Live docs are pages that move
+
+Confluence Cloud's "live doc" is not a second content type: it is a page with
+`subtype: "live"`, which is why the sync's `type=page` listing returns them and
+why they render like any other page. The mirror keeps the subtype (`pages.subtype`)
+because a live doc is the one page whose *age* a reader should be told about — it
+is edited continuously by several people, and what the mirror holds is a
+snapshot. The page view says "Live doc" beside the version, the API reports
+`subtype`, and the static export carries the same badge.
+
+It also changes the sync policy: a live doc's version moves constantly, so a
+mirror that took every move would re-read, re-render and re-index a body that
+differs only in the typing, and the webhook would ask for that every few seconds.
+`Sync.live_doc_fresh?/1` therefore holds a live doc that was read within
+`sync.live_doc_refresh_seconds` (default 900) — in the listing paths through
+`change_of/2`, and in a single-page run *before* the page is fetched at all, so
+the cost is a no-op run with one log line rather than a body fetch. An
+administrator's resync carries `force: true` and means now.
+
+The column is filled from the page the sync reads, so a mirror written before it
+existed learns the subtype when it next reads that page. For a live doc that is
+minutes; for a stable page it may be never, and it costs nothing that it is —
+the badge is the only thing missing, and "Re-read everything" fills it.
+
 ## Known limitations
 
 * Confluence's own emoji set (`:big_grin:`, the blue-star family) has no Unicode

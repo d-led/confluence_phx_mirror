@@ -691,6 +691,51 @@ defmodule ConfluencePhxMirror.Sync do
   # Modes
   # ---------------------------------------------------------------------------
 
+  # One page, read from the site: the parts a webhook's single page needs, in
+  # the order that leaves the mirror readable at every step.
+  defp sync_page(source, previous, confluence_id, opts) do
+    with {:ok, dto} <- source.page(confluence_id, opts),
+         {:ok, space, icon_errors} <- ensure_space(source, dto.space_key, opts),
+         {:ok, entry} <- upsert_page_record(space, dto, previous, force: true) do
+      resolve_trees([space])
+      index = Mirror.page_index()
+      record_phase(opts, "people")
+      {members, group_errors, _refreshed} = sync_groups(source, opts)
+      record_phase(opts, "details")
+      {stats, errors} = sync_details(source, [entry], index, opts)
+      {_spaces, permission_errors} = sync_space_permissions(source, [space])
+      {group_rows, referenced_errors} = refresh_groups(source, opts)
+      refresh_dynamic_pages()
+
+      {Map.merge(stats, %{
+         "spaces" => 1,
+         "pages" => 1,
+         "changed" => if(entry.change == :updated, do: 1, else: 0),
+         "unchanged" => if(entry.change == :unchanged, do: 1, else: 0),
+         "group_members" => members + group_rows
+       }), errors ++ icon_errors ++ permission_errors ++ group_errors ++ referenced_errors}
+    else
+      {:error, reason} -> raise_source_error(:page, confluence_id, reason)
+    end
+  end
+
+  # A run that read nothing is still a run that has to say so: the log line is
+  # the answer to "why did the webhook do nothing?".
+  defp left_live_doc_alone(previous, confluence_id) do
+    age = DateTime.diff(now(), previous.synced_at)
+
+    Log.add(
+      :info,
+      "left live doc #{previous.title} alone: its copy is #{age}s old, and live docs " <>
+        "are read at most every #{Settings.live_doc_refresh_seconds()}s",
+      confluence_id: confluence_id
+    )
+
+    {%{changed: 0, unchanged: 1}
+     |> page_counts()
+     |> Map.merge(%{"spaces" => 0, "group_members" => 0}), []}
+  end
+
   defp do_run(:snapshot, source, opts) do
     case source.spaces(opts) do
       {:ok, space_dtos} ->
@@ -811,28 +856,15 @@ defmodule ConfluencePhxMirror.Sync do
     confluence_id = Keyword.fetch!(opts, :confluence_id)
     previous = Page |> Repo.get_by(confluence_id: confluence_id) |> light()
 
-    with {:ok, dto} <- source.page(confluence_id, opts),
-         {:ok, space, icon_errors} <- ensure_space(source, dto.space_key, opts),
-         {:ok, entry} <- upsert_page_record(space, dto, previous, force: true) do
-      resolve_trees([space])
-      index = Mirror.page_index()
-      record_phase(opts, "people")
-      {members, group_errors, _refreshed} = sync_groups(source, opts)
-      record_phase(opts, "details")
-      {stats, errors} = sync_details(source, [entry], index, opts)
-      {_spaces, permission_errors} = sync_space_permissions(source, [space])
-      {group_rows, referenced_errors} = refresh_groups(source, opts)
-      refresh_dynamic_pages()
-
-      {Map.merge(stats, %{
-         "spaces" => 1,
-         "pages" => 1,
-         "changed" => if(entry.change == :updated, do: 1, else: 0),
-         "unchanged" => if(entry.change == :unchanged, do: 1, else: 0),
-         "group_members" => members + group_rows
-       }), errors ++ icon_errors ++ permission_errors ++ group_errors ++ referenced_errors}
+    # The webhook is right that a live doc changed; it says so every few
+    # seconds. Reading it again would spend a body fetch, a render and a detail
+    # pass on a copy nobody in the room needs, so a young live doc is answered
+    # from what the mirror holds. An administrator's resync passes `force: true`
+    # because "now" is exactly what pressing it means.
+    if live_doc_fresh?(previous) and not Keyword.get(opts, :force, false) do
+      left_live_doc_alone(previous, confluence_id)
     else
-      {:error, reason} -> raise_source_error(:page, confluence_id, reason)
+      sync_page(source, previous, confluence_id, opts)
     end
   end
 
@@ -1643,17 +1675,26 @@ defmodule ConfluencePhxMirror.Sync do
       where: p.confluence_id in ^ids,
       select:
         {p.confluence_id, p.version_number, p.title, p.type, not is_nil(p.body_export),
-         p.deleted_at, p.deleted_reason, p.absent_since}
+         p.deleted_at, p.deleted_reason, p.absent_since, p.subtype, p.synced_at}
     )
     |> Repo.all()
-    |> Map.new(fn {id, version, title, type, rendered?, deleted_at, reason, absent_since} ->
+    |> Map.new(fn {id, version, title, type, rendered?, deleted_at, reason, absent_since, subtype,
+                   synced_at} ->
       current? = is_nil(absent_since) and (is_nil(deleted_at) or reason == "manual")
-      {id, light(version, title, type, rendered?, current?)}
+      {id, light(version, title, type, rendered?, current?, subtype, synced_at)}
     end)
   end
 
-  defp light(version, title, type, rendered?, current?) do
-    %{version_number: version, title: title, type: type, rendered?: rendered?, current?: current?}
+  defp light(version, title, type, rendered?, current?, subtype, synced_at) do
+    %{
+      version_number: version,
+      title: title,
+      type: type,
+      rendered?: rendered?,
+      current?: current?,
+      subtype: subtype,
+      synced_at: synced_at
+    }
   end
 
   defp light(%Page{} = page) do
@@ -1662,7 +1703,9 @@ defmodule ConfluencePhxMirror.Sync do
       page.title,
       page.type,
       not is_nil(page.body_export),
-      is_nil(page.absent_since) and (is_nil(page.deleted_at) or page.deleted_reason == "manual")
+      is_nil(page.absent_since) and (is_nil(page.deleted_at) or page.deleted_reason == "manual"),
+      page.subtype,
+      page.synced_at
     )
   end
 
@@ -1672,7 +1715,7 @@ defmodule ConfluencePhxMirror.Sync do
     attrs = page_attrs(dto)
     force? = Keyword.get(opts, :force, false)
 
-    case change_of(previous, attrs) do
+    case change_of(previous, attrs, force?) do
       :unchanged when not force? ->
         {:ok, :unchanged}
 
@@ -1699,10 +1742,17 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
-  defp change_of(nil, _attrs), do: :created
+  defp change_of(nil, _attrs, _force?), do: :created
 
-  defp change_of(previous, attrs) do
+  defp change_of(previous, attrs, force?) do
     cond do
+      # A live doc is edited continuously by design, so its version moves
+      # constantly and each move would be a full read, render and detail pass for
+      # a body that differs only in the typing. The mirror reads one at most
+      # every `sync.live_doc_refresh_seconds` and leaves the copy it has alone
+      # until then — which is why a live doc says how old its copy is. A forced
+      # read has already happened, so it judges the change it found.
+      live_doc_fresh?(previous) and not force? -> :unchanged
       previous.version_number != attrs.version_number -> :updated
       previous.title != attrs.title -> :updated
       previous.type != attrs.type -> :updated
@@ -1729,6 +1779,9 @@ defmodule ConfluencePhxMirror.Sync do
       confluence_id: dto.id,
       type: dto.type,
       status: dto.status,
+      # A source that has no live docs (the demo snapshot, a test double) says
+      # nothing, which is the same as "an ordinary page".
+      subtype: Map.get(dto, :subtype),
       title: dto.title,
       slug: Page.slugify(dto.title),
       author_name: dto.version.by.display_name,
@@ -1743,6 +1796,26 @@ defmodule ConfluencePhxMirror.Sync do
       synced_at: now()
     }
   end
+
+  @doc """
+  Whether a live doc was read recently enough to leave alone.
+
+  Only a live doc has this problem: Confluence lets several people edit one at a
+  time, so its version moves continuously and a mirror that took every move
+  would re-read, re-render and re-index a body that differs in the typing — for
+  a copy it already tells readers is a snapshot. So a live doc is read at most
+  once per `sync.live_doc_refresh_seconds`; an administrator's resync is how
+  somebody says "now".
+
+  Takes a page or the light row `change_of/2` works from, and answers `false`
+  for anything that is not a rendered live doc.
+  """
+  @spec live_doc_fresh?(map() | nil) :: boolean()
+  def live_doc_fresh?(%{subtype: "live", rendered?: true, synced_at: %DateTime{} = synced_at}) do
+    DateTime.diff(now(), synced_at) < Settings.live_doc_refresh_seconds()
+  end
+
+  def live_doc_fresh?(_page), do: false
 
   defp resolve_trees(spaces) do
     Enum.each(Enum.uniq_by(spaces, & &1.id), &Mirror.resolve_parents/1)
