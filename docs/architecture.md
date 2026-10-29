@@ -296,7 +296,7 @@ The full matrix of settings × identities × doors, and what each combination
 does, is [routes-auth.md](routes-auth.md) — with `auth_matrix_test.exs` as its
 executable companion.
 
-## Deployment A — Fly.io (what ships today)
+## Deployment A — Fly.io (what you can easily deploy today)
 
 Three apps, one of them public:
 
