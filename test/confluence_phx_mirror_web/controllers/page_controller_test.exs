@@ -66,6 +66,13 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert html =~ ~s(lang="en-GB")
   end
 
+  test "the tab shows the site's own mark", %{conn: conn} do
+    document = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_fragment()
+
+    assert document |> LazyHTML.query(~s(link[rel="icon"])) |> LazyHTML.attribute("href") ==
+             ["/favicon.ico"]
+  end
+
   test "a mirror that lands on the space directory sends / there", %{conn: conn} do
     {:ok, _applied} = Settings.update(%{"site.landing_page" => "spaces"}, {:system, "test"})
 

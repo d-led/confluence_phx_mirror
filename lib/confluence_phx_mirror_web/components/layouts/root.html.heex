@@ -9,6 +9,9 @@
     <.live_title default="Confluence Mirror" suffix=" · Confluence Mirror" phx-no-format>
       {assigns[:page_title]}
     </.live_title>
+    <%!-- Written by scripts/favicon.sh; the name is the browser's own default,
+    so a shortcut saved without a link still finds it. --%>
+    <link rel="icon" href={~p"/favicon.ico"} />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <%!-- Swagger UI is a bundle of its own and only /api/docs/swagger asks for it:
     the reader pages must not download a vendor UI. --%>
