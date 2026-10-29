@@ -1,5 +1,6 @@
 defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
   use ConfluencePhxMirrorWeb.ConnCase, async: true
+  use Oban.Testing, repo: ConfluencePhxMirror.Repo
 
   import Phoenix.LiveViewTest
   import ConfluencePhxMirror.Fixtures
@@ -7,6 +8,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Sync.PeopleWorker
   alias ConfluencePhxMirror.TestConfig
 
   # This screen is an administrator's: the suite's bootstrap account is signed
@@ -24,6 +26,33 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
 
     assert html =~ "Account provisioning"
     refute html =~ "create-user-form"
+  end
+
+  test "an administrator asks Confluence about people again from here, without a page read",
+       %{conn: conn} do
+    admin = Accounts.ensure_admin!()
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    view |> element("#sync-people") |> render_click()
+
+    assert has_element?(view, "#users-job-queued")
+
+    assert_enqueued(
+      worker: PeopleWorker,
+      args: %{"trigger" => "the users screen, by #{admin.email}"}
+    )
+  end
+
+  test "the list follows an account the site switches off", %{conn: conn} do
+    reader = user_fixture(%{email: "site.off@example.com"})
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    view |> element("#user-filter") |> render_change(%{"q" => "site.off"})
+    refute render(view) =~ "Confluence switched this account off"
+
+    Accounts.reconcile_site_status(reader.confluence_account_id, reader.email, :disabled)
+
+    assert render(view) =~ "Confluence switched this account off"
   end
 
   test "protected administrators cannot be demoted", %{conn: conn} do

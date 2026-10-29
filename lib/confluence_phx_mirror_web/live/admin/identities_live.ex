@@ -23,7 +23,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync
-  alias ConfluencePhxMirror.Sync.PeopleWorker
   alias ConfluencePhxMirrorWeb.Admin.Paging
 
   @page_size 25
@@ -78,9 +77,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
   # and no page at all. It is queued rather than awaited, because the answer is
   # seconds to minutes away and the screen has nothing to show until then.
   def handle_event("sync_people", _params, socket) do
-    args = %{"trigger" => "the identities screen, by #{socket.assigns.current_user.email}"}
-
-    case Sync.enqueue(PeopleWorker, args) do
+    case Sync.request_people("the identities screen, by #{socket.assigns.current_user.email}") do
       {:ok, job} ->
         {:noreply,
          socket

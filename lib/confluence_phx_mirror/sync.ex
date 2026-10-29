@@ -46,6 +46,10 @@ defmodule ConfluencePhxMirror.Sync do
     SyncRun
   }
 
+  # Named because `request_people/1` queues it; a sibling module's short name is
+  # not an implicit alias inside this one.
+  alias ConfluencePhxMirror.Sync.PeopleWorker
+
   @type mode :: :snapshot | :incremental | :space | :page | :people
   @type report :: {:ok, SyncRun.t()}
 
@@ -131,6 +135,20 @@ defmodule ConfluencePhxMirror.Sync do
     else
       opts
     end
+  end
+
+  @doc """
+  Queues a read of who the site says is in which group, and of each account's own
+  status — no page, no body.
+
+  What an administrator asks when somebody left a group, joined one, was made an
+  administrator, or was switched off upstream, and the hours until the next
+  scheduled pull are too long. `trigger` says who asked, the way every run's log
+  names its cause.
+  """
+  @spec request_people(String.t()) :: {:ok, Job.t()} | {:error, term()}
+  def request_people(trigger) when is_binary(trigger) do
+    enqueue(PeopleWorker, %{"trigger" => trigger})
   end
 
   @doc """

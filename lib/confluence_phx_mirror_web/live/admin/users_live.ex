@@ -14,12 +14,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
 
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.{Admins, User}
+  alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Settings
+  alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirrorWeb.Admin.Paging
   alias ConfluencePhxMirrorWeb.Time
 
   @impl true
   def mount(_params, _session, socket) do
+    # A run changes accounts (a site switch-off, a person the site newly names),
+    # and each change is audited; following the trail is what makes the list
+    # behind this screen current instead of a snapshot of the last render.
+    if connected?(socket), do: Phoenix.PubSub.subscribe(ConfluencePhxMirror.PubSub, Audit.topic())
+
     {:ok,
      assign(socket,
        new_token: nil,
@@ -29,6 +37,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
          Application.get_env(:confluence_phx_mirror, :proxy_auth_header, "x-forwarded-email"),
        allow_site_disabled?:
          Application.get_env(:confluence_phx_mirror, :allow_site_disabled_readers, false),
+       paused?: Settings.sync_paused?(),
+       queued: nil,
        page_title: "Users & tokens"
      )
      |> load()}
@@ -54,6 +64,30 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
 
   def handle_event("revoke_token", params, socket), do: revoke_token(params, socket)
   def handle_event("dismiss_token", params, socket), do: dismiss_token(params, socket)
+
+  # This screen's own sync: which group each identity is in, and whether the
+  # site still has the account at all — no page is listed and no body is read.
+  # Queued, not awaited: the answer is a handful of requests away, and the list
+  # follows when the run writes what it found.
+  def handle_event("sync_people", _params, socket) do
+    case Sync.request_people("the users screen, by #{socket.assigns.current_user.email}") do
+      {:ok, job} ->
+        {:noreply,
+         socket
+         |> assign(:queued, %{job: job, what: "A read of the site's groups and account status"})
+         |> put_flash(:info, "Reading the site's groups and each account's status.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not queue it: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def handle_info({:audit_event, %{entity_type: "user"}}, socket) do
+    {:noreply, load(socket)}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   defp filter(%{"q" => q}, socket),
     do: {:noreply, socket |> assign(q: q, users_page: 1) |> load()}
@@ -420,6 +454,30 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       <.admin_header
         title="Users & tokens"
         subtitle="Accounts are mirror-local — no Confluence credentials are stored. Groups come from the last sync."
+      >
+        <:actions>
+          <button
+            type="button"
+            id="sync-people"
+            phx-click="sync_people"
+            class="btn btn-ghost btn-sm gap-1"
+            disabled={@paused?}
+            title={
+              if @paused?,
+                do: "Confluence calls are paused — resume in Settings",
+                else: "Read the site's groups and each account's status again — no page is read"
+            }
+          >
+            <.icon name="hero-arrow-path" class="size-4" /> Re-read people
+          </button>
+        </:actions>
+      </.admin_header>
+
+      <.job_notice
+        :if={@queued}
+        job={@queued.job}
+        what={@queued.what}
+        id="users-job-queued"
       />
 
       <div :if={@new_token} class="mt-5 rounded-xl border border-success/40 bg-success/10 p-4">

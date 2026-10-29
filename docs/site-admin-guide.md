@@ -830,6 +830,28 @@ the site's flags rewrite themselves on the next sync that sees the account again
 flag and nothing else. If Confluence switched the person off, they stay out, and
 the account row says so.
 
+### Asking the site again, without waiting for a pull
+
+The site's flags are written by a run that sees the site's people, which every
+run does *except* a single page: group memberships are re-read, and each identity
+the mirror knows is asked for its own status. On a scheduled mirror that means
+the next pull — hourly by default.
+
+When that is too long (somebody was removed from an admin group, or switched off
+this morning), both screens that show people have the same button:
+
+| Screen | Button | What it reads |
+| --- | --- | --- |
+| *Users & tokens* → header | *Re-read people* | every group the content names, and each account's status. **No page is listed and no body is read** |
+| *Confluence identities* | *Sync with Confluence* | the same run |
+
+It queues a job rather than running in the request, so the answer arrives in the
+background: the sync log names it (`the users screen, by …`), and the users list
+redraws itself as the run writes what it found (each change is an audit event).
+A removed member of an `CM_ADMIN_GROUPS` group stops being an administrator at
+that point; a removal from the site never lifts a role granted on this screen or
+an address listed in `CM_ADMINS` — those are the mirror's own decisions.
+
 ### Letting switched-off readers back in
 
 A mirror usually follows the site on access, which is the safe default. Some
