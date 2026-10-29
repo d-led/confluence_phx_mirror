@@ -63,6 +63,7 @@ defmodule ConfluencePhxMirror.Mail.BudgetTest do
     backdate(send)
 
     assert Budget.used() == 0
+    assert Budget.handed_over() == 1, "the count of all days still has it"
     assert Budget.remaining() == 2
   end
 

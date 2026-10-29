@@ -16,15 +16,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.MailLive do
 
   **Purge** drops everything that has not been delivered and cancels the jobs
   that would have sent it. Delivered rows are the history and stay, which is why
-  the foot of the page counts them.
+  the foot of the page lists them.
 
   The two halves answer different questions and both are here: the *queue* is
   what nobody has sent yet (watchers' notifications, which are queued as Oban
-  jobs), and the *ledger* is what the mirror handed to the relay today, counted
-  against the provider's daily allowance. A test message and a sign-in link are
-  never queued — they are sent because somebody is waiting for them — so they
-  appear in the ledger and not in the queue, and they spend the allowance like
-  everything else.
+  jobs), and the *ledger* is what the mirror sent today, counted against the
+  relay's daily allowance. A test message and a sign-in link are never queued —
+  they are sent because somebody is waiting for them — so they appear in the
+  ledger and not in the queue, and they spend the allowance like everything
+  else.
 
   The page refreshes itself while open: a sync writes to this queue, so the
   numbers move without anyone touching the screen.
@@ -116,7 +116,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.MailLive do
             id="mail-purge"
             phx-click="purge"
             disabled={@counts.queued == 0 and @counts.failed == 0}
-            data-confirm="Drop every message that has not been delivered? What was already sent stays in the history."
+            data-confirm="Drop everything still waiting? What was already sent stays in the history."
             class="btn btn-ghost btn-sm gap-1.5 text-error"
           >
             <.icon name="hero-trash" class="size-4" /> Purge queue
@@ -138,20 +138,22 @@ defmodule ConfluencePhxMirrorWeb.Admin.MailLive do
       <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <.count_card id="mail-count-waiting" label="Waiting" value={@counts.queued} />
         <.count_card id="mail-count-refused" label="Refused by the relay" value={@counts.failed} />
-        <.count_card id="mail-count-delivered" label="Delivered, ever" value={@counts.delivered} />
         <.count_card
           id="mail-count-today"
           label="Sent today"
           value={@used_today}
           suffix={"/ #{@allowance}"}
         />
+        <.count_card id="mail-count-sent" label="Sent, ever" value={@sent_ever} />
       </div>
 
       <p class="mt-2 text-[11px] text-base-content/70">
         <span class="font-medium">Sent today</span>
-        is the provider's own count, against the allowance it is spent on
-        (<code class="font-mono">mail.per_day</code>). A message the relay refused has still spent
-        its place, and a test message is counted like any other.
+        and <span class="font-medium">Sent, ever</span>
+        are the ledger below: one row per message the mirror sent, against the day's allowance
+        (<code class="font-mono">mail.per_day</code>). The queue above is watchers' mail only, so
+        a test message or a sign-in link is counted here without ever having waited there. A
+        message the relay refused has still spent its place.
       </p>
 
       <section id="mail-queue" class="mt-6">
@@ -204,10 +206,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.MailLive do
       </section>
 
       <section id="mail-today" class="mt-8">
-        <h2 class="text-sm font-semibold">Handed over today</h2>
+        <h2 class="text-sm font-semibold">Sent today</h2>
         <p class="mt-1 text-xs text-base-content/70">
           The ledger the allowance is counted from, newest first — one row per message the mirror
-          gave the relay, whatever asked for it.
+          sent or tried to send, whatever asked for it.
         </p>
 
         <table :if={@sends != []} class="mt-3 w-full text-left text-xs">
@@ -234,12 +236,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.MailLive do
         </table>
 
         <p :if={@sends == []} id="mail-today-empty" class="mt-3 text-xs text-base-content/70">
-          Nothing has been handed to the relay today.
+          Nothing has been sent today.
         </p>
       </section>
 
       <section :if={@delivered != []} id="mail-delivered" class="mt-8">
-        <h2 class="text-sm font-semibold">Delivered</h2>
+        <h2 class="text-sm font-semibold">Last sent to readers</h2>
         <p class="mt-1 text-xs text-base-content/70">
           The last {@delivered_limit}, newest first. A purge leaves these alone — they are the
           record of what was sent.
@@ -255,10 +257,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.MailLive do
       </section>
 
       <p class="mt-8 text-[11px] text-base-content/70">
-        The relay itself is configured on
-        <.link navigate={~p"/admin/settings"} class="link">Settings → Mail server</.link>
-        (see <code class="font-mono">docs/brevo-mail.md</code>), and Oban's raw rows for the
-        <code class="font-mono">notifications</code>
+        The relay itself is configured on <.link navigate={~p"/admin/settings"} class="link">Settings → Mail server</.link>, and Oban's raw
+        rows for the <code class="font-mono">notifications</code>
         queue are on <.link navigate={~p"/admin/jobs"} class="link">Jobs</.link>.
       </p>
     </Layouts.app>
@@ -288,6 +288,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.MailLive do
       queue: Notifications.queue(limit: @queue_limit),
       delivered: Notifications.delivered(@delivered_limit),
       used_today: Budget.used(),
+      sent_ever: Budget.handed_over(),
       allowance: Budget.limit(),
       sends: today_sends(),
       queue_limit: @queue_limit,

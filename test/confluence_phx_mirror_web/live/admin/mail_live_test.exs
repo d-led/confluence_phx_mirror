@@ -30,7 +30,7 @@ defmodule ConfluencePhxMirrorWeb.Live.Admin.MailLiveTest do
 
     assert has_element?(view, "#mail-queued-#{waiting.id}")
     assert view |> element("#mail-count-waiting") |> render() =~ "1"
-    assert view |> element("#mail-count-delivered") |> render() =~ "0"
+    assert view |> element("#mail-count-sent") |> render() =~ "0"
   end
 
   test "an empty queue says so instead of showing an empty table", %{conn: conn} do
@@ -66,7 +66,9 @@ defmodule ConfluencePhxMirrorWeb.Live.Admin.MailLiveTest do
 
     assert Notifications.queue() == []
     assert view |> element("#mail-count-waiting") |> render() =~ "0"
-    assert view |> element("#mail-count-delivered") |> render() =~ "1"
+
+    # The history is not the queue: what went is still listed after the drop.
+    assert has_element?(view, "#mail-delivered li", sent.subject)
   end
 
   describe "the day's ledger" do
@@ -81,6 +83,10 @@ defmodule ConfluencePhxMirrorWeb.Live.Admin.MailLiveTest do
       # ledger is where it is, and it spends one of the day's allowance.
       assert has_element?(view, "#mail-queue-empty")
       assert view |> element("#mail-count-today") |> render() =~ "1"
+
+      # One row per message, so the all-time count moves with today's even
+      # though this one never waited in the queue.
+      assert view |> element("#mail-count-sent") |> render() =~ "1"
       assert has_element?(view, "#mail-today tr", "test message")
     end
 

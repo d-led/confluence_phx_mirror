@@ -76,8 +76,8 @@ defmodule ConfluencePhxMirror.Notifications do
   @doc """
   Creates notification rows for everyone watching the page or its space.
 
-  Instant subscribers are enqueued right away; daily subscribers are picked up
-  by `ConfluencePhxMirror.Notifications.DigestWorker`.
+  Instant subscribers are queued for one debounced send (`EmailWorker.schedule/1`);
+  daily subscribers are picked up by `ConfluencePhxMirror.Notifications.DigestWorker`.
   """
   def page_changed(%Page{} = page, action) do
     if enabled?() do
@@ -129,9 +129,7 @@ defmodule ConfluencePhxMirror.Notifications do
   end
 
   defp enqueue(notification, "instant") do
-    %{"notification_id" => notification.id}
-    |> ConfluencePhxMirror.Notifications.EmailWorker.new()
-    |> Oban.insert()
+    ConfluencePhxMirror.Notifications.EmailWorker.schedule(notification.user_id)
   end
 
   defp enqueue(_notification, "daily"), do: {:ok, :deferred_to_digest}
@@ -182,6 +180,24 @@ defmodule ConfluencePhxMirror.Notifications do
     |> Repo.update()
   end
 
+  @doc """
+  What this reader has not been told yet, oldest first.
+
+  A burst of changes is one message, so the sender asks by reader rather than by
+  notification: whatever is still pending when it runs is what the message lists.
+  The page comes with it because a message has to name a link, a space and a
+  version, and reading those one at a time is a query per line.
+  """
+  @spec pending_for(integer()) :: [Notification.t()]
+  def pending_for(user_id) do
+    from(n in Notification,
+      where: n.user_id == ^user_id and is_nil(n.delivered_at),
+      order_by: [asc: n.inserted_at],
+      preload: [:user, page: :space]
+    )
+    |> Repo.all()
+  end
+
   @doc "Unsent daily notifications, grouped for the digest."
   def pending_digest do
     from(n in Notification,
@@ -226,8 +242,9 @@ defmodule ConfluencePhxMirror.Notifications do
   @doc """
   How the outbox stands: waiting, refused, delivered.
 
-  `delivered` is what the mirror has ever sent, which is the number an operator
-  wants after a purge — "the history is still there, the queue is not".
+  `delivered` counts the notifications whose message went — the outbox's own
+  history, and not the mail ledger: a test message or a sign-in link is sent
+  without ever passing through here.
   """
   @spec counts() :: %{
           queued: non_neg_integer(),

@@ -264,7 +264,7 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
 
     assert view
            |> element("#settings-reading-defaults")
-           |> render_click() =~ "Reading follows the deployment"
+           |> render_click() =~ "Reading follows the preconfigured values again"
 
     assert Settings.stored("reader.html_limit") == nil
   end

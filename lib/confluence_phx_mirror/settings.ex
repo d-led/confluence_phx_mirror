@@ -283,6 +283,16 @@ defmodule ConfluencePhxMirror.Settings do
   def mail_paused?, do: effective("mail.paused") == true
 
   @doc """
+  How long a burst of changes is collected before one message goes out.
+
+  `Notifications.EmailWorker` schedules a reader's send a window ahead and lets
+  every change in between join it, so a sync of a hundred pages is one message
+  per reader rather than a hundred.
+  """
+  @spec notification_window_seconds() :: pos_integer()
+  def notification_window_seconds, do: effective("notifications.window_seconds")
+
+  @doc """
   How many messages the provider allows the mirror in one day.
 
   `Mail.Budget` counts against this before handing a message over, because a

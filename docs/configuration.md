@@ -251,6 +251,7 @@ delivery does, are in the [site admin guide](site-admin-guide.md#webhooks).
 | `MIRROR_MAIL_FROM` / `MIRROR_MAIL_FROM_NAME` | `mirror@localhost` / `Confluence Mirror` | sender |
 | `MIRROR_MAIL_PAUSED` | `false` | start with the mail queue stopped (editable as `mail.paused`) |
 | `MIRROR_DIGEST_HOUR_UTC` | `8` | daily digest hour |
+| `MIRROR_NOTIFICATION_WINDOW_SECONDS` | `120` | how long a burst of changes is collected before one message goes out — a sync that changes a hundred pages mails a reader once, not a hundred times. `1` sends each change almost as it comes |
 | `CM_MAIL_PER_DAY` | `300` | messages the relay allows in one day — Brevo's free plan is 300. The mirror counts before it sends: a queue that reaches this stops until midnight UTC rather than being refused |
 | `MIRROR_MAIL_PAUSED` | `false` | stop the queue without stopping sign-in links |
 | `SMTP_RELAY` | – | enables SMTP delivery |

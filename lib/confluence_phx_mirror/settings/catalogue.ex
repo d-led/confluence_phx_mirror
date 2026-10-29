@@ -250,6 +250,16 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       env: "MIRROR_DIGEST_HOUR_UTC",
       ui: :settings
     },
+    "notifications.window_seconds" => %{
+      type: :pos_integer,
+      default: {:notification, :window_seconds, 120},
+      group: :notifications,
+      label: "Collect changes for (seconds)",
+      help:
+        "How long a burst of changes is collected before one message goes out. A sync that changes a hundred pages mails a reader once, not a hundred times. One second sends each change almost as it comes.",
+      env: "MIRROR_NOTIFICATION_WINDOW_SECONDS",
+      ui: :settings
+    },
     "mail.relay" => %{
       type: :string,
       default: {:mail, :relay, nil},
@@ -275,7 +285,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       group: :mail,
       label: "Username",
       help:
-        "Empty means the relay needs no credentials. With Brevo this is the account's login and the password is an SMTP key — neither is the sender below.",
+        "Empty means the relay needs no credentials. Many relay accounts ask for a login here and a separate key as the password — neither is the sender below.",
       env: "SMTP_USERNAME",
       ui: :settings
     },
@@ -285,7 +295,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       group: :mail,
       label: "Password",
       help:
-        "Stored, never shown back: the field says whether one is set. Leave it alone to keep the one in force.",
+        "The relay's password, which the mirror reads from the deployment — `SMTP_PASSWORD` — and never stores. The settings screen shows which variable to set rather than a field, because a password in this database travels in every backup of it.",
       env: "SMTP_PASSWORD",
       secret?: true,
       ui: :settings
@@ -317,7 +327,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       group: :mail,
       label: "Sender address",
       help:
-        "What every message is from. A hosted relay accepts only an address it owns or has verified; Brevo refuses the rest with a 550.",
+        "What every message is from. A hosted relay accepts only an address it owns or has verified, and refuses the rest.",
       env: "MIRROR_MAIL_FROM",
       ui: :settings
     },
@@ -351,7 +361,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       group: :mail,
       label: "Messages a day",
       help:
-        "What the relay allows in one day: 300 on Brevo's free plan, and the figure your plan names if it is bigger. A day's queue stops when this is reached and carries on after midnight UTC.",
+        "What the relay allows in one day — the number its plan names. A day's queue stops when this is reached and carries on after midnight UTC.",
       env: "CM_MAIL_PER_DAY",
       ui: :settings
     },
@@ -496,6 +506,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "confluence.page_size",
     "notifications.enabled",
     "notifications.digest_hour_utc",
+    "notifications.window_seconds",
     "mail.relay",
     "mail.port",
     "mail.username",

@@ -121,7 +121,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
              socket
              |> assign(:space_draft, nil)
              |> assign_settings()
-             |> put_flash(:info, "#{title} follows the deployment's configuration again.")}
+             |> put_flash(:info, "#{title} follows the preconfigured values again.")}
 
           {:error, reason} ->
             {:noreply, put_flash(socket, :error, SettingsRefusal.message(reason))}
@@ -251,7 +251,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
               phx-value-group={group.key}
               class="btn btn-ghost btn-xs"
             >
-              Use the deployment's values
+              Use preconfigured values
             </button>
             <button type="submit" id={"settings-#{group.key}-save"} class="btn btn-primary btn-sm">
               Save {String.downcase(group.title)} settings
@@ -503,7 +503,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
         class="select select-sm w-full max-w-xs"
       >
         <option value="" selected={@field.value == nil}>
-          Use the deployment's
+          Use preconfigured
         </option>
         <option
           :for={{value, text} <- @choices}
@@ -541,7 +541,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
         </span>
         <span class="block text-xs text-base-content/70">{@field.help}</span>
         <span class="mt-0.5 block text-[11px] text-base-content/70">
-          Empty means the deployment's {describe_default(@field.default)} ·
+          Empty means the preconfigured {describe_default(@field.default)} ·
           <code class="font-mono">{@field.env}</code>
         </span>
       </label>

@@ -38,7 +38,7 @@ defmodule ConfluencePhxMirror.Mail.LayoutTest do
     [
       sign_in: Emails.login_link(user(), "https://mirror.test/sign-in/token"),
       welcome: Emails.welcome(user(), site: "Acme", url: "https://mirror.test"),
-      page_changed: Email.page_updated(notification("A page you watch changed"), user()),
+      page_changed: Email.updates(user(), [notification("A page you watch changed")]),
       digest: Email.digest(user(), [notification("One"), notification("Two")])
     ]
   end

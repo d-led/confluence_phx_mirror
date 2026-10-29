@@ -146,6 +146,16 @@ defmodule ConfluencePhxMirror.Mail.Budget do
   @spec used() :: non_neg_integer()
   def used, do: Repo.aggregate(from(s in Send, where: s.day == ^Date.utc_today()), :count)
 
+  @doc """
+  How many messages have been handed over in all, refusals included.
+
+  The same count `used/0` makes for one day, over every day the mirror has sent
+  anything. A screen shows the pair, so "ever" can never be smaller than
+  "today" — it counts the same rows, not another kind of them.
+  """
+  @spec handed_over() :: non_neg_integer()
+  def handed_over, do: Repo.aggregate(Send, :count)
+
   @doc "What is left of today's allowance, for a screen that says so."
   @spec remaining() :: non_neg_integer()
   def remaining, do: max(limit() - used(), 0)

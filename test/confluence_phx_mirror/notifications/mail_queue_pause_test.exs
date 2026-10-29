@@ -74,7 +74,9 @@ defmodule ConfluencePhxMirror.Notifications.MailQueuePauseTest do
     :ok
   end
 
+  # The sender is per reader, not per notification: a burst of changes is one
+  # message (see `EmailWorker`), so the job carries who it is for.
   defp job(notification) do
-    %Oban.Job{args: %{"notification_id" => notification.id}}
+    %Oban.Job{args: %{"user_id" => notification.user_id}}
   end
 end

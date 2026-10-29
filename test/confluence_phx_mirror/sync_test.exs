@@ -474,7 +474,7 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert notification.body =~ "/spaces/ENG/pages/1002/Architecture+Overview"
 
       assert_enqueued(worker: EmailWorker)
-      assert :ok = perform_job(EmailWorker, %{"notification_id" => notification.id})
+      assert :ok = perform_job(EmailWorker, %{"user_id" => notification.user_id})
 
       assert_email_sent(fn email ->
         assert email.subject == notification.subject

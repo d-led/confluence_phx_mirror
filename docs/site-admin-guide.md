@@ -829,8 +829,12 @@ field says whether one is stored, and leaving it blank keeps the one in force.
 
 Readers can watch a page or a whole space from the page rail.
 
-* `instant` – one e-mail per changed page (Oban retries, outbox row with
-  delivery status);
+* `instant` – one e-mail per *burst* of changes: the first change schedules a
+  send `notifications.window_seconds` later (`MIRROR_NOTIFICATION_WINDOW_SECONDS`,
+  two minutes) and everything that changes meanwhile joins it, so a sync that
+  touches a hundred pages mails a reader once with a hundred links rather than a
+  hundred times. Oban retries, and each message is an outbox row with its own
+  delivery status;
 * `daily` – rolled up by `Notifications.DigestWorker` at
   `MIRROR_DIGEST_HOUR_UTC`.
 

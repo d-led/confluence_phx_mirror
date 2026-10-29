@@ -77,9 +77,10 @@ defmodule ConfluencePhxMirror.NotificationsTest do
 
       # The job that carried it is cancelled rather than left to fail on a row
       # that is gone — Oban keeps the row, so the job is still there to look at.
+      # It is the reader's job, so the reader is what names it.
       assert Enum.any?(
                Jobs.list("cancelled"),
-               &(&1.args["notification_id"] == waiting.id)
+               &(&1.args["user_id"] == waiting.user_id)
              )
 
       assert %{action: "mail.queue_purged", metadata: %{"deleted" => 1}} =
