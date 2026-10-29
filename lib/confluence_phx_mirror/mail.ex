@@ -93,15 +93,17 @@ defmodule ConfluencePhxMirror.Mail do
     If you did not ask for it, somebody used your signed-in account — nothing
     else can send this.
     """)
-    |> html_body("""
-    <div style="font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; max-width: 520px;">
-      <h2 style="margin: 0 0 8px;">This is a test message</h2>
-      <p>Hi #{escape(name)},</p>
-      <p>Mail from the Confluence mirror reaches this address. Watchers' updates and
-      sign-in links come from the same sender.</p>
-      <p style="color:#6b7280;font-size:12px;">Sent #{escape(now())} because you asked for it.</p>
-    </div>
-    """)
+    |> html_body(
+      ConfluencePhxMirror.Mail.Layout.message(
+        "Confluence Mirror",
+        "This is a test message",
+        "<p style=\"margin:0 0 4px;\">Hi #{escape(name)},</p>" <>
+          "<p style=\"margin:0;\">Mail from the Confluence mirror reaches this address. Watchers' updates and sign-in links come from the same sender.</p>" <>
+          ConfluencePhxMirror.Mail.Layout.muted("Sent #{escape(now())} because you asked for it."),
+        footer:
+          "If you did not ask for it, somebody used your signed-in account — nothing else can send this."
+      )
+    )
   end
 
   # What tells a reader at a glance whether the relay is instant or slow, which

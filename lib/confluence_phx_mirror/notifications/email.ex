@@ -29,27 +29,29 @@ defmodule ConfluencePhxMirror.Notifications.Email do
   end
 
   defp page_updated_html(notification) do
-    """
-    <div style="font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; max-width: 560px;">
-      <h2 style="margin: 0 0 8px;">#{escape(notification.subject)}</h2>
-      <pre style="white-space: pre-wrap; background: #f6f8fa; padding: 12px; border-radius: 8px;">#{escape(notification.body)}</pre>
-      <p style="color: #6b7280; font-size: 12px;">You are receiving this because you subscribed to updates in the mirror.</p>
-    </div>
-    """
+    ConfluencePhxMirror.Mail.Layout.message(
+      "Confluence Mirror",
+      escape(notification.subject),
+      "<p style=\"margin:0;\">A page you watch has changed.</p>" <>
+        ConfluencePhxMirror.Mail.Layout.quote(escape(notification.body)),
+      footer: "You are receiving this because you subscribed to updates in the mirror."
+    )
   end
 
   defp digest_html(notifications) do
     items =
       Enum.map_join(notifications, "\n", fn notification ->
-        "<li style=\"margin-bottom: 12px;\"><strong>#{escape(notification.subject)}</strong><pre style=\"white-space: pre-wrap; margin: 4px 0 0;\">#{escape(notification.body)}</pre></li>"
+        "<p style=\"margin:0 0 4px;font-weight:600;\">#{escape(notification.subject)}</p>" <>
+          ConfluencePhxMirror.Mail.Layout.quote(escape(notification.body))
       end)
 
-    """
-    <div style="font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; max-width: 640px;">
-      <h2>Your daily mirror digest</h2>
-      <ul>#{items}</ul>
-    </div>
-    """
+    ConfluencePhxMirror.Mail.Layout.message(
+      "Confluence Mirror",
+      "Your daily digest",
+      "<p style=\"margin:0 0 6px;\">#{length(notifications)} pages you watch changed.</p>" <>
+        items,
+      footer: "One message a day, at the hour the mirror is set to send it."
+    )
   end
 
   defp escape(text) do

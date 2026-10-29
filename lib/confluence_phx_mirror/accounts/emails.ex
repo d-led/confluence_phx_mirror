@@ -21,14 +21,19 @@ defmodule ConfluencePhxMirror.Accounts.Emails do
     The link expires in 15 minutes and can be used once. If you did not request
     it, you can ignore this e-mail.
     """)
-    |> html_body("""
-    <div style="font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; max-width: 520px;">
-      <h2>Sign in to the mirror</h2>
-      <p>Hi #{escape(User.display_name(user))},</p>
-      <p><a href="#{escape(url)}" style="display:inline-block;padding:10px 16px;background:#0052cc;color:#fff;border-radius:6px;text-decoration:none;">Sign in</a></p>
-      <p style="color:#6b7280;font-size:12px;">The link expires in 15 minutes and can be used once.</p>
-    </div>
-    """)
+    |> html_body(
+      ConfluencePhxMirror.Mail.Layout.message(
+        "Confluence Mirror",
+        "Sign in to the mirror",
+        "<p style=\"margin:0 0 4px;\">Hi #{escape(User.display_name(user))},</p>" <>
+          "<p style=\"margin:0;\">This link signs you in to the read-only Confluence mirror.</p>" <>
+          ConfluencePhxMirror.Mail.Layout.button("Sign in", escape(url)) <>
+          ConfluencePhxMirror.Mail.Layout.muted(
+            "The link expires in 15 minutes and can be used once."
+          ),
+        footer: "If you did not request it, you can ignore this e-mail."
+      )
+    )
   end
 
   @doc """
@@ -54,16 +59,16 @@ defmodule ConfluencePhxMirror.Accounts.Emails do
     If you were not expecting this, you can ignore it: nothing has been shared
     with you that you could not already read.
     """)
-    |> html_body("""
-    <div style="font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; max-width: 520px;">
-      <h2>An account for you on #{escape(site)}</h2>
-      <p>Hi #{escape(User.display_name(user))},</p>
-      <p>A read-only mirror of the Confluence site exists, and an account has been made for this
-      address.</p>
-      #{sign_in_html(sign_in, mirror_address(opts))}
-      <p style="color:#6b7280;font-size:12px;">If you were not expecting this, you can ignore it.</p>
-    </div>
-    """)
+    |> html_body(
+      ConfluencePhxMirror.Mail.Layout.message(
+        "Confluence Mirror",
+        "An account for you on #{escape(site)}",
+        "<p style=\"margin:0 0 4px;\">Hi #{escape(User.display_name(user))},</p>" <>
+          "<p style=\"margin:0;\">A read-only mirror of the Confluence site exists, and an account has been made for this address.</p>" <>
+          sign_in_html(sign_in, mirror_address(opts)),
+        footer: "If you were not expecting this, you can ignore it."
+      )
+    )
   end
 
   # The address of the mirror itself, or a phrase when the deployment does not
@@ -75,15 +80,17 @@ defmodule ConfluencePhxMirror.Accounts.Emails do
     end
   end
 
-  defp sign_in_html(nil, "the mirror"), do: "<p>Sign in the way you sign in to Confluence.</p>"
+  defp sign_in_html(nil, "the mirror"),
+    do: "<p style=\"margin:12px 0 0;\">Sign in the way you sign in to Confluence.</p>"
 
-  defp sign_in_html(nil, url), do: "<p><a href=\"#{escape(url)}\">#{escape(url)}</a></p>"
+  defp sign_in_html(nil, url),
+    do: ConfluencePhxMirror.Mail.Layout.button("Open #{escape(url)}", escape(url))
 
   defp sign_in_html(url, _site) when is_binary(url) do
-    """
-    <p><a href="#{escape(url)}" style="display:inline-block;padding:10px 16px;background:#0052cc;color:#fff;border-radius:6px;text-decoration:none;">Sign in</a></p>
-    <p style="color:#6b7280;font-size:12px;">The link expires in 15 minutes and can be used once.</p>
-    """
+    ConfluencePhxMirror.Mail.Layout.button("Sign in", escape(url)) <>
+      ConfluencePhxMirror.Mail.Layout.muted(
+        "The link expires in 15 minutes and can be used once."
+      )
   end
 
   defp from_address do
