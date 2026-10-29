@@ -5,7 +5,10 @@ defmodule ConfluencePhxMirror.Sync.HistoryTest do
   runs they are supposed to carry, and both files are read back the way a
   spreadsheet and a script would read them.
   """
-  use ConfluencePhxMirror.DataCase, async: true
+  # Not async: the tag below empties the mirror inside this transaction, and
+  # `DataCase` says why such a file cannot run beside another — two of them
+  # deleting the same committed rows deadlock on the foreign keys.
+  use ConfluencePhxMirror.DataCase, async: false
 
   @moduletag :empty_mirror
 
