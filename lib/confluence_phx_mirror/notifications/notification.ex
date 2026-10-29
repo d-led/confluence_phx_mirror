@@ -6,6 +6,8 @@ defmodule ConfluencePhxMirror.Notifications.Notification do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{}
+
   schema "notifications" do
     field :kind, :string
     field :subject, :string

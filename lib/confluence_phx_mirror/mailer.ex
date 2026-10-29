@@ -136,8 +136,9 @@ defmodule ConfluencePhxMirror.Mailer do
   defp kind(nil), do: "one-off"
   defp kind(dedup_key), do: dedup_key |> String.split(":") |> List.first()
 
+  # A recipient is a `{name, address}` pair; an email with none is not one this
+  # mirror built, and the audit records no address rather than guessing.
   defp recipient(%Swoosh.Email{to: [{_name, address} | _]}), do: address
-  defp recipient(%Swoosh.Email{to: [address | _]}), do: to_string(address)
   defp recipient(_email), do: nil
 
   defp subject(%Swoosh.Email{subject: subject}), do: subject

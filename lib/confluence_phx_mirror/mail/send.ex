@@ -10,6 +10,8 @@ defmodule ConfluencePhxMirror.Mail.Send do
 
   use Ecto.Schema
 
+  @type t :: %__MODULE__{}
+
   schema "mail_sends" do
     field :dedup_key, :string
     field :day, :date
