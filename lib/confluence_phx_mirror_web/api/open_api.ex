@@ -70,6 +70,7 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
     {"get", "/health"},
     {"post", "/api/v1/identities/{account_id}/link"},
     {"delete", "/api/v1/identities/{account_id}/link"},
+    {"post", "/api/v1/users"},
     {"post", "/api/v1/spaces"},
     {"delete", "/api/v1/spaces/{key}"}
   ]
@@ -562,6 +563,20 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
           409 => error("That identity is the account's own sign-in identity, not a link.")
         }
       },
+      {"post", "/api/v1/users"} => %{
+        tag: "Identities",
+        summary: "Create an account before its person arrives",
+        description:
+          "Administrator-only. The account exists from now on, with no sign-in and no Confluence credentials: " <>
+            "link a Confluence identity to it, put it in a group, watch it — all before the person opens the " <>
+            "mirror. Their first sign-in with that address claims it, and no sync ever takes it away.",
+        body: "CreateUserRequest",
+        responses: %{
+          201 => ok("Account", "The account was created."),
+          403 => error("The token does not belong to an administrator."),
+          422 => error("The address is missing, malformed, or already in use.")
+        }
+      },
       {"post", "/api/v1/spaces"} => %{
         tag: "Spaces",
         summary: "Import one more space",
@@ -818,6 +833,14 @@ defmodule ConfluencePhxMirrorWeb.Api.OpenApi do
       "SpaceList" => list_of("Space"),
       "SpaceWhitelistRequest" =>
         object(%{"key" => string("The space key to start importing.")}, ~w(key)),
+      "CreateUserRequest" =>
+        object(
+          %{
+            "email" => string("The address the person will sign in with."),
+            "role" => string("`member` (default) or `admin`.")
+          },
+          ~w(email)
+        ),
       "SpaceWhitelist" =>
         object(%{
           "key" => string("The key this call was about."),

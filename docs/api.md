@@ -131,7 +131,6 @@ generated document cannot enumerate:
 | 422 | `not_saved` | a space key was missing |
 
 Two consequences of the design, both worth knowing before scripting it:
-
 * **A link carries what the identity carries** — its group memberships, the
   spaces and pages it is named in, the content it authored — because every
   permission rule asks the union of an account's identities
@@ -139,6 +138,20 @@ Two consequences of the design, both worth knowing before scripting it:
 * **Adding a space key only widens.** Removing one trashes what the space holds,
   softly: rows stay, and naming the key again brings them back. A key `CM_SPACES`
   names cannot be removed this way, and the answer says `"removed": false`.
+
+### Creating an account before its person arrives
+
+`POST /api/v1/users` — administrator-only, a token or an established identity:
+
+```json
+{"email": "person@example.com", "role": "member"}
+```
+
+`201` answers the account (`id`, `email`, `display_name`, `role`); `422`
+`invalid_user` names the field that was refused under `details` (a missing or
+malformed address, or one already in use — addresses are unique, lower-cased).
+The account has no sign-in and no Confluence identity: the first sign-in with
+that address claims it, and a sync never removes it.
 
 ## Confluence-compatible subset
 

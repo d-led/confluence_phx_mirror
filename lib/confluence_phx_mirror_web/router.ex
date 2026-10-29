@@ -281,6 +281,11 @@ defmodule ConfluencePhxMirrorWeb.Router do
     post "/identities/:account_id/link", IdentityController, :link
     # sobelow_skip ["Config.CSRF"]
     delete "/identities/:account_id/link", IdentityController, :unlink
+
+    # An account made before its person arrives, so it can be linked and put in a
+    # group ahead of the first sign-in. See `UserController`.
+    # sobelow_skip ["Config.CSRF"]
+    post "/users", UserController, :create
   end
 
   # Confluence-compatible subset: existing bots keep working against the mirror.

@@ -59,6 +59,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
   def handle_event("create_service_token", params, socket),
     do: create_service_token(params, socket)
 
+  def handle_event("create_user", params, socket), do: create_user(params, socket)
+
   def handle_event("revoke_service_token", params, socket),
     do: revoke_service_token(params, socket)
 
@@ -275,6 +277,38 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
 
   defp actor(%{assigns: %{current_user: user}}), do: {:user, user}
 
+  # An account made here belongs to whoever signs in with that address first:
+  # `Accounts.create_user/2` writes no `provisioned_at`, so no sync ever takes it
+  # away. The audit entry it writes is what the list follows, but the address is
+  # new to the page too, so it reloads.
+  defp create_user(%{"email" => email} = params, socket) do
+    attrs = %{email: email, role: params["role"] || "member"}
+
+    case Accounts.create_user(attrs, actor(socket)) do
+      {:ok, user} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "#{user.email} was added — their first sign-in claims it.")
+         |> load()}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, refusal_sentence(changeset))}
+    end
+  end
+
+  # A changeset says which field and why; a screen says it in one sentence.
+  defp refusal_sentence(changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
+      Enum.reduce(opts, message, fn {key, value}, text ->
+        String.replace(text, "%{#{key}}", to_string(value))
+      end)
+    end)
+    |> Enum.map_join("; ", fn {field, messages} ->
+      "#{field} #{Enum.join(messages, ", ")}"
+    end)
+  end
+
   defp last_admin_message(user) do
     "#{user.email} is the mirror's last administrator — it has to keep one."
   end
@@ -479,6 +513,41 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
         what={@queued.what}
         id="users-job-queued"
       />
+
+      <%!-- An account can exist before its person does: the address Confluence
+      will send them with is the one decision an administrator can make ahead of
+      time, and a link to their identity can be made on Identities before they
+      ever open the mirror. --%>
+      <form
+        id="new-user-form"
+        phx-submit="create_user"
+        class="mt-5 flex flex-wrap items-end gap-2 rounded-2xl border border-base-300/70 bg-base-100 p-4"
+      >
+        <div class="min-w-0 flex-1">
+          <label for="new-user-email" class="block text-xs font-semibold">
+            Add a person by e-mail
+          </label>
+          <p class="mt-0.5 max-w-md text-[11px] text-base-content/70">
+            The account exists from now on, with no sign-in and no Confluence
+            credentials. Their first sign-in claims it.
+          </p>
+        </div>
+        <input
+          type="email"
+          id="new-user-email"
+          name="email"
+          required
+          placeholder="person@example.com"
+          class="input input-sm min-h-11 w-full rounded-lg sm:min-h-0 sm:w-64"
+        />
+        <select id="new-user-role" name="role" class="select select-sm min-h-11 rounded-lg sm:min-h-0">
+          <option value="member">Member</option>
+          <option value="admin">Administrator</option>
+        </select>
+        <button type="submit" id="new-user-submit" class="btn btn-primary btn-sm">
+          Add
+        </button>
+      </form>
 
       <div :if={@new_token} class="mt-5 rounded-xl border border-success/40 bg-success/10 p-4">
         <div class="flex items-start justify-between gap-3">

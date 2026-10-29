@@ -344,4 +344,32 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
       refute html =~ "haystack@example.com"
     end
   end
+
+  test "a person can be added by e-mail before they ever sign in", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    html =
+      view
+      |> element("#new-user-form")
+      |> render_submit(%{"email" => "Waiting.Person@Example.com", "role" => "member"})
+
+    assert html =~ "waiting.person@example.com was added"
+
+    user = Accounts.get_user_by_email("waiting.person@example.com")
+    assert user.role == "member"
+    assert user.last_sign_in_at == nil
+  end
+
+  test "the same address twice is refused, and said in words", %{conn: conn} do
+    user_fixture(%{email: "already@example.com"})
+
+    {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+    html =
+      view
+      |> element("#new-user-form")
+      |> render_submit(%{"email" => "already@example.com", "role" => "member"})
+
+    assert html =~ "has already been taken"
+  end
 end
