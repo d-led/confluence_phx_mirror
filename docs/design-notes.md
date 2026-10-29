@@ -378,6 +378,51 @@ existed learns the subtype when it next reads that page. For a live doc that is
 minutes; for a stable page it may be never, and it costs nothing that it is —
 the badge is the only thing missing, and "Re-read everything" fills it.
 
+## What the site says about itself
+
+A mirror serves somebody else's site, so the things that belong to the *site*
+rather than to a page — what it is called, which language it is written in,
+where its clock is — have to be asked for rather than copied: they appear in no
+`export_view` and no page listing. `Confluence.Source.site_settings/1` is the
+one request that asks, once per run, and `Sync` reads it before any content:
+
+```
+GET /wiki/rest/api/settings/systemInfo
+→ siteTitle, defaultLocale, defaultTimeZone
+```
+
+Three fields, and the reason the list is that short is the endpoint, not the
+screen. Confluence's *General configuration* is much larger, and the admin page
+reads most of it over GraphQL with a browser session; the REST surface exposes
+`/settings/systemInfo` and `/settings/lookandfeel`, and 404s on `/settings` and
+`/settings/global`. So the mirror syncs the corner that is reachable and is
+honest about the rest: the landing page, the default page width, the date and
+number formats, the attachment size cap and the presence switch belong to the
+mirror's own settings, and the admin guide lists them as such.
+
+What the three fields buy:
+
+* **The title** identifies the site whose content this is. It is kept rather
+  than pasted into the layout, because a mirror's own name (`sites` row, or
+  `CM_MIRROR_NAME`) is what the shell says; the site's title is what the admin
+  overview and the audit trail show beside it.
+* **The locale** becomes the document's language: `en_GB` in Confluence's
+  spelling is `en-GB` in `<html lang>`, on every page, on the error pages and in
+  the static export, because it is a property of the document rather than of a
+  view. A site that has never been read renders `lang="en"` — a claim, and the
+  only one available.
+* **The time zone** is kept for what the mirror renders outside a browser: the
+  export and the mail it sends. Everything inside a page arrives already
+  formatted by Confluence and is not reformatted here.
+
+The row is a singleton (`site_settings`, id 1) with a `fetched_at`, and it is
+read into `:persistent_term` at boot so that a page view asking "which language
+is this document?" costs nothing. A run that cannot reach the endpoint logs a
+warning and changes nothing: an unreachable settings API is not a reason to fail
+a sync, and a site that never answered is not a site that turned its title off.
+An answer that differs is one audit entry (`site.settings_read`), and an answer
+that repeats itself is none — the same discipline a page's version gets.
+
 ## Known limitations
 
 * Confluence's own emoji set (`:big_grin:`, the blue-star family) has no Unicode

@@ -74,6 +74,10 @@ defmodule ConfluencePhxMirror.Application do
         # the per-request theme lookup never queries the database.
         ConfluencePhxMirror.Settings.load()
 
+        # The same for what the site says about itself: the language every
+        # document in this mirror is written in.
+        ConfluencePhxMirror.SiteSettings.load()
+
         # A restart is exactly what leaves a sync job `executing` with nobody
         # behind it, and while it says that, its uniqueness turns the next
         # scheduled pull away. Two queries, and it settles the queue before the

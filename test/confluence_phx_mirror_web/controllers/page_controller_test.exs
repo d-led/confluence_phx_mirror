@@ -54,6 +54,16 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     |> ConfluencePhxMirror.Repo.update!()
   end
 
+  test "the document says which language the site is written in", %{conn: conn} do
+    # What the site said is read once, at boot, and kept in memory; a test
+    # finds it where the application would.
+    ConfluencePhxMirror.SiteSettings.load()
+
+    html = conn |> get(~p"/") |> html_response(200)
+
+    assert html =~ ~s(lang="en-GB")
+  end
+
   test "a page mirrored before emoticons were converted still shows them", %{conn: conn} do
     # The mirror stores the HTML it rendered at sync time. A body stored before
     # the renderer knew about emoticons still carries Confluence's own image,

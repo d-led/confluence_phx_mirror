@@ -308,6 +308,22 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     end
   end
 
+  # The one settings endpoint Confluence Cloud answers with the site's own
+  # configuration. `/settings` and `/settings/global` are Data Center's, and the
+  # rest of the General configuration screen is read by the admin UI over
+  # GraphQL with a browser session — see `ConfluencePhxMirror.SiteSettings`.
+  @impl true
+  def site_settings(_opts) do
+    with {:ok, body} <- request_json("/settings/systemInfo", %{}) do
+      {:ok,
+       %{
+         title: body["siteTitle"],
+         locale: body["defaultLocale"],
+         timezone: body["defaultTimeZone"]
+       }}
+    end
+  end
+
   @impl true
   def attachment_data(attachment, _opts) do
     with {:ok, url} <- download_url(attachment.download_url) do

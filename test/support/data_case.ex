@@ -48,6 +48,10 @@ defmodule ConfluencePhxMirror.DataCase do
     # wearing it for whatever ran next.
     ConfluencePhxMirror.Settings.forget()
 
+    # And for what the site said about itself, which every document's language
+    # attribute is read from.
+    ConfluencePhxMirror.SiteSettings.forget()
+
     pid =
       Ecto.Adapters.SQL.Sandbox.start_owner!(ConfluencePhxMirror.Repo, shared: not tags[:async])
 

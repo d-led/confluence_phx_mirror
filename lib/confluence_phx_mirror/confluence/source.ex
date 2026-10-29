@@ -273,6 +273,27 @@ defmodule ConfluencePhxMirror.Confluence.Source do
   @callback user_status(account_id :: String.t(), keyword()) ::
               {:ok, account_status()} | {:error, term()}
 
+  @doc """
+  The site's own configuration, as far as the mirror can see it.
+
+  What Confluence says about *the site* rather than its content: the title it
+  goes by, the language a reader is defaulted to, and its time zone. A mirror
+  serves one site, so these belong to the mirror the way the space icon belongs
+  to a space.
+
+  Most of the General configuration screen is not here, because Confluence Cloud
+  does not expose it: the admin page reads its own values over GraphQL with a
+  browser session. A source that cannot read any of this leaves the callback
+  out, and the mirror keeps what it last saw.
+  """
+  @callback site_settings(keyword()) :: {:ok, site_settings()} | {:error, term()}
+
+  @type site_settings :: %{
+          title: String.t() | nil,
+          locale: String.t() | nil,
+          timezone: String.t() | nil
+        }
+
   @optional_callbacks changed_since: 2,
                       touched_since: 2,
                       counts: 2,
@@ -283,6 +304,7 @@ defmodule ConfluencePhxMirror.Confluence.Source do
                       group_members: 2,
                       groups_of_account: 2,
                       user_status: 2,
+                      site_settings: 1,
                       web_url: 0
 
   @doc "The configured source module."

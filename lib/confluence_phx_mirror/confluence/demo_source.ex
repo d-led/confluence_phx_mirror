@@ -19,9 +19,16 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
 
   @impl true
   def kind, do: :demo
-
   @impl true
   def web_url, do: nil
+
+  # The bundled snapshot is a site of its own, and it says so the way a real one
+  # does: a title, a language and a time zone. A reader of the demo sees the same
+  # `lang` on the document that a reader of a real mirror would.
+  @impl true
+  def site_settings(_opts) do
+    {:ok, %{title: "Demo Confluence", locale: "en_GB", timezone: "Europe/Berlin"}}
+  end
 
   @impl true
   def spaces(_opts), do: {:ok, DemoContent.spaces()}

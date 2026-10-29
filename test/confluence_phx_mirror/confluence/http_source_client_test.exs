@@ -731,4 +731,22 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
                HttpSource.groups_of_account("557058:jane", [])
     end
   end
+
+  describe "site_settings/1" do
+    test "takes the site's title, language and time zone from systemInfo" do
+      stub(fn conn ->
+        assert conn.request_path == "/wiki/rest/api/settings/systemInfo"
+
+        Req.Test.json(conn, %{
+          "siteTitle" => "Acme Wiki",
+          "defaultLocale" => "en_GB",
+          "defaultTimeZone" => "Europe/Berlin",
+          "cloudId" => "abc-123"
+        })
+      end)
+
+      assert HttpSource.site_settings([]) ==
+               {:ok, %{title: "Acme Wiki", locale: "en_GB", timezone: "Europe/Berlin"}}
+    end
+  end
 end

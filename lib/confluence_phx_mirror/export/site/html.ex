@@ -615,7 +615,11 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
   defp shell(assigns) do
     ~H"""
     <!DOCTYPE html>
-    <html lang="en" {@html_attributes} class="scroll-smooth">
+    <html
+      lang={assigns[:site_lang] || ConfluencePhxMirror.SiteSettings.lang() || "en"}
+      {@html_attributes}
+      class="scroll-smooth"
+    >
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

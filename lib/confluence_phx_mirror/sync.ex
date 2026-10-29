@@ -31,6 +31,7 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sites
+  alias ConfluencePhxMirror.SiteSettings
   alias Oban.Job
 
   alias ConfluencePhxMirror.Sync.{
@@ -161,6 +162,44 @@ defmodule ConfluencePhxMirror.Sync do
   @spec paused_wait() :: {:snooze, pos_integer()}
   def paused_wait, do: {:snooze, 300}
 
+  # One request per run, before any content: what the site calls itself and how
+  # it spells its language. A source with no site, or a site that will not say,
+  # changes nothing — a title is not worth failing a run over.
+  defp read_site_settings(source, run) do
+    if function_exported?(source, :site_settings, 1) do
+      case source.site_settings([]) do
+        {:ok, settings} ->
+          if SiteSettings.put(settings) == :changed do
+            Log.add(:info, "the site's own configuration changed: #{describe(settings)}",
+              sync_run_id: run.id
+            )
+          end
+
+          :ok
+
+        {:error, :not_supported} ->
+          :ok
+
+        {:error, reason} ->
+          Log.add(:warn, "could not read the site's own configuration: #{inspect(reason)}",
+            sync_run_id: run.id
+          )
+
+          :ok
+      end
+    end
+  end
+
+  defp describe(settings) do
+    [
+      settings[:title] && "title #{inspect(settings[:title])}",
+      settings[:locale] && "language #{settings[:locale]}",
+      settings[:timezone] && "time zone #{settings[:timezone]}"
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(", ")
+  end
+
   defp run_locked(mode, opts) do
     source = Keyword.get(opts, :source, Source.source())
     actor = Keyword.get(opts, :actor, {:system, "sync"})
@@ -184,6 +223,8 @@ defmodule ConfluencePhxMirror.Sync do
       sync_run_id: run.id,
       trigger: trigger
     )
+
+    read_site_settings(source, run)
 
     try do
       {stats, errors} = run_work(mode, source, opts, run)

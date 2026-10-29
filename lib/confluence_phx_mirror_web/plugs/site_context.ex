@@ -11,6 +11,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.SiteContext do
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Sites
+  alias ConfluencePhxMirror.SiteSettings
 
   # The switcher is a menu. A mirror with a thousand spaces lists a window of
   # them and links to the directory, rather than sending a thousand rows with
@@ -29,6 +30,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.SiteContext do
     |> assign(:mirror_name, Sites.name())
     |> assign(:mirror_url, Sites.url())
     |> assign(:mirror_host, Sites.host())
+    |> assign(:site_lang, SiteSettings.lang())
     |> assign(:spaces, Authorization.readable_spaces(scope, limit: @switcher_limit))
     |> assign(:last_sync_run, Mirror.last_successful_sync_run())
     |> assign(:mirror_source, ConfluencePhxMirror.Confluence.Source.source())

@@ -773,6 +773,45 @@ next to `light` and `dark`.
 `config/dev.exs` leaves both defaults alone, so development shows what a reader
 sees — Fresh blue, with the variant menu in the header.
 
+## The site's own configuration
+
+Confluence's **General configuration** mixes two kinds of decision, and only one
+of them can travel. A sync reads what Confluence Cloud still answers over REST:
+
+```
+GET /wiki/rest/api/settings/systemInfo
+→ siteTitle, defaultLocale, defaultTimeZone
+```
+
+That is the whole synced list, and it happens once per run, before any content —
+a snapshot, a single page, a webhook delivery. The language becomes the
+document's `<html lang>` on every page, on error pages and in the static export;
+`en_GB` on the site is `en-GB` in the document. A change is one audit entry
+(`site.settings_read`); an answer that repeats itself is none. If the endpoint
+cannot be reached the run logs a warning and carries on — a title is not worth
+failing a sync over, and a site that never answered is not a site that switched
+its title off.
+
+Everything else on that screen is **not** exposed by Confluence Cloud over REST
+(the admin UI reads it over GraphQL with a browser session), so it is the
+mirror's own setting and you set it here:
+
+| General configuration | what the mirror does |
+| --- | --- |
+| Site title | **synced** — kept for the admin screens and the audit trail; the shell's own name stays `CM_MIRROR_NAME` / the `sites` row |
+| Default language | **synced** — the document's `<html lang>` |
+| Time zone | **synced** — used by the export and the mail the mirror sends; dates inside a page arrive already formatted by Confluence |
+| Site landing page | mirror setting — the mirror's home is its space directory |
+| Default page width | mirror setting — the page view is the mirror's layout, not the site's |
+| Date, time and number formats | mirror setting — a body is stored as Confluence rendered it |
+| Maximum attachment size, attachments per upload | mirror setting — `Storage` caps what this mirror accepts from a reader |
+| Presence avatars, likes | not mirrored — read-only mirror |
+| Block templates, contact form, e-mail and push switches, global permissions | not mirrored — they configure authoring and mail on the site, and neither happens here |
+
+The synced three are re-read by any run, so asking the site again is one click:
+*Re-read everything* on `/admin/sync`, or a single page's resync. Neither is
+needed for a rename to show up eventually — the scheduled pull reads them too.
+
 ## Notifications
 
 Readers can watch a page or a whole space from the page rail.

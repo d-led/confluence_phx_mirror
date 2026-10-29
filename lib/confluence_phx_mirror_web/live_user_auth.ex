@@ -100,6 +100,7 @@ defmodule ConfluencePhxMirrorWeb.LiveUserAuth do
     |> assign_new(:mirror_name, fn -> Sites.name() end)
     |> assign_new(:mirror_url, fn -> Sites.url() end)
     |> assign_new(:mirror_host, fn -> Sites.host() end)
+    |> assign_new(:site_lang, fn -> ConfluencePhxMirror.SiteSettings.lang() end)
     |> assign_new(:mirror_source, fn -> ConfluencePhxMirror.Confluence.Source.source() end)
   end
 
