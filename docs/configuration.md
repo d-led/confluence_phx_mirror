@@ -256,6 +256,15 @@ delivery does, are in the [site admin guide](site-admin-guide.md#webhooks).
 | `SMTP_TLS` | `always` | `never` disables TLS |
 | `SMTP_AUTH` | `always` | `never` disables authentication |
 
+The last six are also **live settings**: the *Mail server* group on
+`/admin/settings` stores them (`mail.relay`, `mail.port`, `mail.username`,
+`mail.password`, `mail.tls`, `mail.auth`) and a stored value wins over the
+variable — `Mailer.configure/0` rebuilds the adapter configuration at boot and
+after every save, so a corrected relay takes effect on the next message instead
+of the next deploy. The password is stored, never printed back: the field says
+whether one is set, and a blank field keeps the one in force. `MIRROR_MAIL_FROM`
+stays environment-only; it is shown read-only on the same screen.
+
 ## Storage
 
 | Variable | Default | Purpose |

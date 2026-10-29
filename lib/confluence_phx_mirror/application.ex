@@ -78,6 +78,10 @@ defmodule ConfluencePhxMirror.Application do
         # document in this mirror is written in.
         ConfluencePhxMirror.SiteSettings.load()
 
+        # The mail server an administrator stored wins over the deployment's
+        # SMTP_* values, and has to be in force before the first message.
+        ConfluencePhxMirror.Mailer.configure()
+
         # A restart is exactly what leaves a sync job `executing` with nobody
         # behind it, and while it says that, its uniqueness turns the next
         # scheduled pull away. Two queries, and it settles the queue before the

@@ -83,6 +83,55 @@ defmodule ConfluencePhxMirror.Settings do
   def theme, do: effective("theme")
 
   @doc """
+  The mail adapter's configuration, from the settings in force.
+
+  What the deployment configured is the baseline — `config/runtime.exs` puts
+  the `SMTP_*` values there — and a stored value replaces its part of it. With
+  no relay anywhere, the result has no `:relay` key and Swoosh keeps whatever
+  adapter the deployment chose, which is Local's "write it to a file".
+  """
+  @spec mail_configuration() :: keyword()
+  def mail_configuration do
+    base = Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Mailer, [])
+    relay = blank(stored_value("mail.relay"))
+
+    if relay do
+      base
+      |> Keyword.put(:adapter, Swoosh.Adapters.SMTP)
+      |> Keyword.put(:relay, relay)
+      |> Keyword.put(:port, effective("mail.port") || 587)
+      |> Keyword.put(:username, blank(stored_value("mail.username")))
+      |> Keyword.put(:password, blank(stored_value("mail.password")))
+      |> Keyword.put(:tls, word(effective("mail.tls"), :always))
+      |> Keyword.put(:auth, word(effective("mail.auth"), :always))
+    else
+      base
+    end
+  end
+
+  # A secret is never inherited from the screen: an empty field means "keep what
+  # is in force", which is the deployment's value.
+  defp stored_value(key) do
+    case stored(key) do
+      nil -> default(key)
+      value -> value
+    end
+  end
+
+  defp blank(nil), do: nil
+
+  defp blank(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp word("never", _fallback), do: :never
+  defp word("always", _fallback), do: :always
+  defp word(nil, fallback), do: fallback
+
+  @doc """
   Where a reader lands: the mirror's home screen, or the space directory.
 
   Confluence's own *site home page* is not readable over REST, so this one is
@@ -300,6 +349,7 @@ defmodule ConfluencePhxMirror.Settings do
     case result do
       {:ok, _} ->
         put_cache(changes)
+        ConfluencePhxMirror.Mailer.configure()
         {:ok, changes}
 
       {:error, reason} ->
@@ -534,6 +584,15 @@ defmodule ConfluencePhxMirror.Settings do
   defp resolve({:reader_limit, scope, floor}), do: reader_default(scope, floor)
   defp resolve({:notification, key, floor}), do: notification_default(key, floor)
 
+  # The mail server is the one setting whose default *is* the adapter config, so
+  # it is read from where `config/runtime.exs` put it.
+  defp resolve({:mail, key, floor}) do
+    :confluence_phx_mirror
+    |> Application.get_env(ConfluencePhxMirror.Mailer, [])
+    |> Keyword.get(key, floor)
+    |> mail_value(key)
+  end
+
   defp resolve({:webhook, :enabled, default}) do
     :confluence_phx_mirror
     |> Application.get_env(:webhooks, [])
@@ -600,4 +659,10 @@ defmodule ConfluencePhxMirror.Settings do
     |> Application.get_env(:notifications, [])
     |> Keyword.get(key, floor)
   end
+
+  # `tls`/`auth` are atoms in Swoosh's config and words on the screen.
+  defp mail_value(value, key) when key in [:tls, :auth] and is_atom(value),
+    do: to_string(value)
+
+  defp mail_value(value, _key), do: value
 end

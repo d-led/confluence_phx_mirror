@@ -110,6 +110,57 @@ defmodule ConfluencePhxMirror.SettingsTest do
     end
   end
 
+  describe "the mail server" do
+    # A stored relay rewrites the application environment the mailer reads — it is
+    # global, and a later test that mails would reach for a relay that is not
+    # there. So the deployment's own configuration is put back, value for value,
+    # rather than recomputed from a table the sandbox may not have rolled back.
+    setup do
+      # `TestConfig` is the only door to the application environment in the suite:
+      # it remembers the deployment's value once and puts it back afterwards.
+      TestConfig.put(
+        ConfluencePhxMirror.Mailer,
+        Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Mailer, [])
+      )
+
+      on_exit(fn -> Settings.forget() end)
+      :ok
+    end
+
+    test "is the deployment's until an administrator stores one" do
+      assert Settings.mail_configuration() ==
+               Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Mailer, [])
+    end
+
+    test "a stored relay sends through SMTP, with the values stored beside it" do
+      {:ok, _applied} =
+        Settings.update(
+          %{
+            "mail.relay" => "smtp.example.com",
+            "mail.port" => "2525",
+            "mail.tls" => "never",
+            "mail.auth" => "never"
+          },
+          @actor
+        )
+
+      config = Settings.mail_configuration()
+
+      assert config[:adapter] == Swoosh.Adapters.SMTP
+      assert config[:relay] == "smtp.example.com"
+      assert config[:port] == 2525
+      assert config[:tls] == :never
+      assert config[:auth] == :never
+    end
+
+    test "the save is what puts the stored server in force" do
+      {:ok, _applied} = Settings.update(%{"mail.relay" => "smtp.example.com"}, @actor)
+
+      assert Application.get_env(:confluence_phx_mirror, ConfluencePhxMirror.Mailer)[:relay] ==
+               "smtp.example.com"
+    end
+  end
+
   describe "the cadence and the calls a run makes" do
     test "come from the deployment when nobody decided" do
       merge_config(Source.source(), sync_interval_seconds: 900, page_size: 25)

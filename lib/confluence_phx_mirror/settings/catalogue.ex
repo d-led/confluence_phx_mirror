@@ -33,6 +33,9 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
           | {:choice, [{String.t(), String.t()}]}
 
   @type spec :: %{
+          # A value the screen must never print back: it says whether one is
+          # set, and a blank field leaves the stored one alone.
+          optional(:secret?) => true,
           type: type(),
           default: term(),
           group: atom(),
@@ -245,6 +248,63 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       env: "MIRROR_DIGEST_HOUR_UTC",
       ui: :settings
     },
+    "mail.relay" => %{
+      type: :string,
+      default: {:mail, :relay, nil},
+      group: :mail,
+      label: "SMTP relay",
+      help:
+        "Hostname of the server that sends the mirror's mail. Empty and the deployment's adapter is used — with no relay at all, mail is written to a file and never sent.",
+      env: "SMTP_RELAY",
+      ui: :settings
+    },
+    "mail.port" => %{
+      type: :pos_integer,
+      default: {:mail, :port, 587},
+      group: :mail,
+      label: "Port",
+      help: "587 for a submission relay; 465 usually wants TLS always.",
+      env: "SMTP_PORT",
+      ui: :settings
+    },
+    "mail.username" => %{
+      type: :string,
+      default: {:mail, :username, nil},
+      group: :mail,
+      label: "Username",
+      help: "Empty means the relay needs no credentials.",
+      env: "SMTP_USERNAME",
+      ui: :settings
+    },
+    "mail.password" => %{
+      type: :string,
+      default: {:mail, :password, nil},
+      group: :mail,
+      label: "Password",
+      help:
+        "Stored, never shown back: the field says whether one is set. Leave it alone to keep the one in force.",
+      env: "SMTP_PASSWORD",
+      secret?: true,
+      ui: :settings
+    },
+    "mail.tls" => %{
+      type: {:choice, [{"always", "Always"}, {"never", "Never"}]},
+      default: {:mail, :tls, "always"},
+      group: :mail,
+      label: "TLS",
+      help: "`Never` is for a relay on the same host; a submission port wants `Always`.",
+      env: "SMTP_TLS",
+      ui: :settings
+    },
+    "mail.auth" => %{
+      type: {:choice, [{"always", "Always"}, {"never", "Never"}]},
+      default: {:mail, :auth, "always"},
+      group: :mail,
+      label: "Authentication",
+      help: "`Never` for a relay that takes no credentials.",
+      env: "SMTP_AUTH",
+      ui: :settings
+    },
     "webhook.enabled" => %{
       type: :boolean,
       default: {:webhook, :enabled, true},
@@ -312,7 +372,16 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
   }
 
   # Display order matters: it is the order an operator usually needs things in.
-  @group_order [:appearance, :site, :reading, :sync, :notifications, :operations, :webhooks]
+  @group_order [
+    :appearance,
+    :site,
+    :reading,
+    :sync,
+    :notifications,
+    :mail,
+    :operations,
+    :webhooks
+  ]
 
   @groups %{
     appearance: %{
@@ -335,6 +404,11 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     notifications: %{
       title: "Notifications",
       help: "Watchers' e-mail: whether it goes out, and when."
+    },
+    mail: %{
+      title: "Mail server",
+      help:
+        "How the mirror sends mail. The deployment's `SMTP_*` variables are the default; a value stored here wins and takes effect without a restart."
     },
     operations: %{
       title: "Operations",
@@ -372,6 +446,12 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "confluence.page_size",
     "notifications.enabled",
     "notifications.digest_hour_utc",
+    "mail.relay",
+    "mail.port",
+    "mail.username",
+    "mail.password",
+    "mail.tls",
+    "mail.auth",
     "webhook.enabled",
     "webhook.require_signature",
     "webhook.rate_limit",

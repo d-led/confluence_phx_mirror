@@ -814,6 +814,19 @@ needed for a rename to show up eventually — the scheduled pull reads them too.
 
 ## Notifications
 
+### The mail server
+
+Nothing is mailed until there is a server to mail it through. With no
+`SMTP_RELAY` and nothing stored, the deployment keeps Swoosh's *Local* adapter:
+mail is written to a file and never sent — which is what a fresh deployment does,
+and why "watchers get no e-mail" is usually this and not a bug in the watch.
+
+**Admin → Settings → Mail server** takes the relay, port, username, password, and
+whether TLS and authentication are used. A stored value wins over the
+deployment's `SMTP_*` and takes effect on the next message — `Mailer.configure/0`
+rebuilds the adapter at boot and after every save. The password is write-only: the
+field says whether one is stored, and leaving it blank keeps the one in force.
+
 Readers can watch a page or a whole space from the page rail.
 
 * `instant` – one e-mail per changed page (Oban retries, outbox row with

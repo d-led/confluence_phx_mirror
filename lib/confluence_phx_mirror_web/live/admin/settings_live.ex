@@ -358,6 +358,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
       env: spec.env,
       type: spec.type,
       value: value,
+      secret?: Map.get(spec, :secret?, false),
       default: Settings.default(key)
     }
     |> with_completion(spec.type, draft, value, suggestions)
@@ -402,6 +403,39 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   end
 
   attr :field, :map, required: true
+
+  # A secret is never printed back: the field says whether one is set, and a
+  # blank one leaves the value in force alone — the only shape that lets an
+  # administrator change a password without being handed the old one.
+  defp setting_field(%{field: %{secret?: true}} = assigns) do
+    ~H"""
+    <div
+      id={"setting-#{@field.key}"}
+      class={[
+        "flex flex-col gap-1 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6",
+        @field.hidden? && "hidden"
+      ]}
+    >
+      <label class="min-w-0" for={"setting-#{@field.key}-input"}>
+        <span class="block text-sm">{@field.label}</span>
+        <span class="block text-xs text-base-content/70">{@field.help}</span>
+        <span class="mt-0.5 block text-[11px] text-base-content/70">
+          {if @field.value, do: "a value is stored", else: "nothing stored"} ·
+          <code class="font-mono">{@field.env}</code>
+        </span>
+      </label>
+      <input
+        type="password"
+        id={"setting-#{@field.key}-input"}
+        name={"values[#{@field.key}]"}
+        value=""
+        autocomplete="new-password"
+        placeholder={if @field.value, do: "unchanged", else: "not set"}
+        class="input input-sm w-full max-w-xs"
+      />
+    </div>
+    """
+  end
 
   defp setting_field(%{field: %{type: :boolean}} = assigns) do
     ~H"""
@@ -479,6 +513,46 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
           {text}
         </option>
       </select>
+    </div>
+    """
+  end
+
+  # A free-text setting: a hostname, an address, a name. `:string` has no other
+  # shape on this screen — the theme, the one string setting before the mail
+  # server, is chosen on its own cards.
+  defp setting_field(%{field: %{type: :string}} = assigns) do
+    ~H"""
+    <div
+      id={"setting-#{@field.key}"}
+      class={[
+        "flex flex-col gap-1 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6",
+        @field.hidden? && "hidden"
+      ]}
+    >
+      <label class="min-w-0" for={"setting-#{@field.key}-input"}>
+        <span class="block text-sm">
+          {@field.label}
+          <span
+            :if={@field.value != nil}
+            class="ml-1 text-[10px] uppercase tracking-wide text-primary"
+          >
+            changed
+          </span>
+        </span>
+        <span class="block text-xs text-base-content/70">{@field.help}</span>
+        <span class="mt-0.5 block text-[11px] text-base-content/70">
+          Empty means the deployment's {describe_default(@field.default)} ·
+          <code class="font-mono">{@field.env}</code>
+        </span>
+      </label>
+      <input
+        type="text"
+        id={"setting-#{@field.key}-input"}
+        name={"values[#{@field.key}]"}
+        value={@field.value}
+        placeholder={to_string(@field.default || "")}
+        class="input input-sm w-full max-w-xs"
+      />
     </div>
     """
   end
@@ -564,6 +638,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   defp on_off(true), do: "on"
   defp on_off(false), do: "off"
   defp on_off(nil), do: "the deployment's value"
+
+  defp describe_default(nil), do: "value"
+  defp describe_default(value), do: to_string(value)
 
   # A count that may be zero says so in the field itself: an interval of 0 is how
   # an administrator switches a schedule off.
