@@ -211,6 +211,7 @@ offline. Each edge and its reason:
 
 | You are… | Read |
 | --- | --- |
+| in a hurry: one page of components, data, ingestion, search, authorization and deployment | [architecture.md](docs/architecture.md) |
 | the site administrator: syncing, accounts, permissions, webhooks, themes | [site-admin-guide.md](docs/site-admin-guide.md) |
 | deploying and operating it: build, env contract, migrations, monitoring, backups | [operations.md](docs/operations.md) |
 | deploying to Fly.io or Kubernetes, behind an OAuth proxy | [deployment.md](docs/deployment.md) |
@@ -218,7 +219,7 @@ offline. Each edge and its reason:
 | asking who may reach which route, and what they may read | [routes-auth.md](docs/routes-auth.md) |
 | integrating: JSON API, Confluence-compatible REST, CQL | [api.md](docs/api.md) |
 | letting an AI assistant read the wiki (MCP) | [mcp.md](docs/mcp.md) |
-| working on the code: architecture, tests, quality gates | [developers.md](docs/developers.md) |
+| working on the code: invariants, tests, quality gates | [developers.md](docs/developers.md) |
 | measuring a reader's screens, or load-testing a server | [performance.md](docs/performance.md) |
 | wondering why it is built this way | [design-notes.md](docs/design-notes.md) |
 | reporting a vulnerability | [SECURITY.md](SECURITY.md) |

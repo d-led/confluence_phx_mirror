@@ -1,8 +1,9 @@
 # Developing the mirror
 
-Working on the code itself: architecture, invariants, tests and quality gates.
-Deployment lives in [operations.md](operations.md), settings in
-[configuration.md](configuration.md).
+Working on the code itself: invariants, tests and quality gates. The one-page
+map of the system — runtime, data, ingestion, search, identity, deployment — is
+[architecture.md](architecture.md). Deployment lives in
+[operations.md](operations.md), settings in [configuration.md](configuration.md).
 
 ## Local setup
 
@@ -86,6 +87,9 @@ ones specific to the mirror.
   `config/*.exs`.
 
 ## Architecture
+
+The map is [architecture.md](architecture.md); what follows is the layer table to
+keep in mind while reading the code.
 
 ```mermaid
 flowchart TD
