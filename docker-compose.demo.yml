@@ -1,0 +1,73 @@
+# docker-compose.demo.yml — the bundled demo, one command, Docker only.
+#
+#   docker compose -f docker-compose.demo.yml up
+#
+# Then open http://localhost:4000. Nothing to install and nothing to sign in
+# to: the demo source needs no Confluence credentials, and MIRROR_AUTO_ADMIN is
+# allowed here precisely because the source is the demo.
+#
+# CM_BOOTSTRAP_SYNC is what makes one command enough: a release has no seeds,
+# so the first start against an empty database asks for one snapshot instead of
+# waiting for a clock (see `ConfluencePhxMirror.Sync.StartupPull`). The home
+# page says "40 pages" when it has landed, a second or two after boot.
+#
+# This is a local demo, not a deployment: the secrets below are demo values and
+# are the same for everybody. docs/deployment.md has the same image pointed at
+# a real site, and how to deploy it.
+
+name: confluence-mirror-demo
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: mirror
+      POSTGRES_USER: mirror
+      POSTGRES_PASSWORD: mirror
+    volumes:
+      - demo-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mirror -d mirror"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Once per `up`, before the mirror starts: the same migration step a deploy
+  # runs, so the server never boots against a schema it does not know.
+  migrate:
+    build: .
+    image: confluence-mirror:local
+    command: ["/app/bin/migrate"]
+    environment: &mirror-env
+      DATABASE_URL: ecto://mirror:mirror@db:5432/mirror
+      # Demo values, the same for everybody, and deliberately not secrets. The
+      # key is over 64 bytes because Phoenix's cookie store refuses anything
+      # shorter.
+      SECRET_KEY_BASE: demo-only-secret-key-base-0000000000000000000000000000000000000000000000
+      RELEASE_COOKIE: demo-only-release-cookie
+    depends_on:
+      db:
+        condition: service_healthy
+
+  mirror:
+    image: confluence-mirror:local
+    ports:
+      - "4000:4000"
+    environment:
+      <<: *mirror-env
+      PHX_HOST: localhost
+      CM_SOURCE: demo
+      MIRROR_AUTO_ADMIN: "true"
+      CM_BOOTSTRAP_SYNC: "true"
+    volumes:
+      # Attachments and space icons; a fresh demo rebuilds them from the source.
+      - demo-blobs:/app/var/mirror
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  demo-db:
+  demo-blobs:

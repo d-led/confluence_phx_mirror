@@ -1,0 +1,91 @@
+# docker-compose.site.yml — a mirror of a real Confluence site, run from the
+# image, with no proxy: readers do not sign in.
+#
+#   export CM_CONFLUENCE_SITE=https://acme.atlassian.net
+#   export CM_ATL_EMAIL=you@acme.com          # the account the token belongs to
+#   export CM_ATL_TOKEN=...                   # id.atlassian.com → Security → API tokens
+#   export SECRET_KEY_BASE=$(openssl rand -hex 48)
+#   docker compose -f docker-compose.site.yml up
+#
+# Then open http://localhost:4000 — the first pull starts by itself.
+#
+# `CM_PUBLIC_SITE=true` is what makes it unauthenticated: a reader with no
+# account is a reader, and the permissions the sync mirrors still decide what
+# they see. A space whose permissions the sync never stored is *closed* to
+# them unless the site marks it `anonymousAccess` — that is the whole rule, and
+# docs/routes-auth.md#public-documentation-sites is the long version. Two more
+# switches decide what a stranger sees inside a public page:
+# `CM_ANONYMIZE_CONTRIBUTORS` and `CM_EXCLUDE_COMMENTS`.
+#
+# Administration is separate from reading, and off here. `/admin` needs an
+# identity: set `CM_ADMINS` and an SMTP relay (MIRROR_MAIL_FROM, SMTP_RELAY,
+# SMTP_USERNAME, SMTP_PASSWORD) to sign in by magic link, or — for a trial run
+# on your own machine only — uncomment MIRROR_AUTO_ADMIN below.
+#
+# An empty mirror is filled by `CM_BOOTSTRAP_SYNC`: one snapshot on the first
+# start (see `ConfluencePhxMirror.Sync.StartupPull`). After that the mirror
+# follows the hourly clock, or `/admin` → Sync now, or a webhook.
+
+name: confluence-mirror-site
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: mirror
+      POSTGRES_USER: mirror
+      POSTGRES_PASSWORD: mirror
+    volumes:
+      - site-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mirror -d mirror"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build: .
+    image: confluence-mirror:local
+    command: ["/app/bin/migrate"]
+    environment: &mirror-env
+      DATABASE_URL: ecto://mirror:mirror@db:5432/mirror
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?set SECRET_KEY_BASE - openssl rand -hex 48}
+      RELEASE_COOKIE: ${RELEASE_COOKIE:-change-me-and-share-it-across-replicas}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  mirror:
+    image: confluence-mirror:local
+    ports:
+      - "${PORT:-4000}:4000"
+    environment:
+      <<: *mirror-env
+      PHX_HOST: ${PHX_HOST:-localhost}
+      # What to mirror, and as whom.
+      CM_SOURCE: http
+      CM_CONFLUENCE_SITE: ${CM_CONFLUENCE_SITE:?set CM_CONFLUENCE_SITE}
+      CM_ATL_EMAIL: ${CM_ATL_EMAIL:?set CM_ATL_EMAIL}
+      CM_ATL_TOKEN: ${CM_ATL_TOKEN:?set CM_ATL_TOKEN}
+      # Optional: only these spaces, comma-separated keys. Narrowing this on a
+      # mirror that already holds other spaces marks them missing — the check
+      # asks before anything moves.
+      # CM_SPACES: ENG,PROD
+      # An unauthenticated, read-only site. Set to "false" (or drop both
+      # publishing switches) to keep it private and behind your own proxy.
+      CM_PUBLIC_SITE: "true"
+      # Fill the empty database once, on the first start.
+      CM_BOOTSTRAP_SYNC: "true"
+      # Trial only, on a machine nobody else can reach:
+      # MIRROR_AUTO_ADMIN: "true"
+    volumes:
+      - site-blobs:/app/var/mirror
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  site-db:
+  site-blobs:
