@@ -104,14 +104,14 @@ defmodule ConfluencePhxMirror.Export.MarkdownTest do
       assert md =~ "- [Macros](../Macros/Macros.md)"
     end
 
-    test "the not-implemented widget reads as a note, not as prose" do
+    test "an undrawn macro reads as a note, not as prose" do
       md =
         Markdown.from_html(
-          ~s(<blockquote class="mirror-macro-placeholder"><p>This macro's export renderer is not yet implemented.</p><p>Appfire's table filter.</p></blockquote><p>The table follows.</p>),
+          ~s(<blockquote class="mirror-macro-placeholder"><p>The mirror does not draw this macro.</p><p>Appfire's table filter.</p></blockquote><p>The table follows.</p>),
           @ctx
         )
 
-      assert md =~ "> This macro's export renderer is not yet implemented."
+      assert md =~ "> The mirror does not draw this macro."
       assert md =~ "> Appfire's table filter."
       assert md =~ "The table follows."
     end

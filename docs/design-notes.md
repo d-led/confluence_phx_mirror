@@ -189,16 +189,39 @@ lying about the source, so they fall back to `Sync.Renderer`, which **keeps the
 macro's body** and says what the macro was — a vendor macro is usually a
 container, and dropping its body would lose the page somebody wrote.
 
+### What a mirror cannot draw, and why no mirror can
+
+Two questions get conflated here, and separating them settles the one people ask
+first — *why isn't there a renderer for this macro?*
+
+1. **Did Confluence render it?** The mirror keeps the source's own `export_view`,
+   so a macro Confluence expanded arrives as HTML and is shown verbatim. A macro
+   that arrives as `<ac:structured-macro>` is one the source itself could not
+   render: it needs a browser, a Connect/Forge app, or the reader's session (a
+   Jira query, a form with a backend, a ticking clock). Its answer was never in
+   the payload, and Confluence's read-only API has no endpoint that evaluates a
+   macro. That is a property of the source, and no mirror can produce the output.
+2. **Does the mirror hold the data?** When the answer is in tables the mirror
+   already has — pages, labels, attachments, comments, versions — the macro *is*
+   drawable, and the mirror draws it: twelve of them
+   (`Sync.DynamicContent.Registry`) plus the vendor layout macros above.
+
+So "an export renderer" is not one missing piece of code that could be written
+once. It is a decision per macro, and it can only go one way where the answer
+lives outside the mirror's tables. What is left to add is a list of macros whose
+answer is mirrored but whose rendering has not been written yet — and adding one
+is a module, a test and a line in the registry.
+
 ### The placeholder every undrawn macro gets
 
-Anything no renderer and no extension draws — a Confluence macro on the list
-above, a vendor key nobody has written an extension for, a macro from an app the
-mirror has never heard of — becomes one widget
-(`Sync.MacroPlaceholder`): *"This macro's export renderer is not yet
-implemented."*, then the macro's human name (registered vendor names, then
+Anything no renderer and no extension draws — a live macro, a vendor key nobody
+has written an extension for, a macro from an app the mirror has never heard of —
+becomes one widget (`Sync.MacroPlaceholder`): *"The mirror does not draw this
+macro."*, then the macro's human name (registered vendor names, then
 Confluence's own labels, then the raw `ac:name`), then the body the page held.
 
-The wording names the gap as the mirror's, because it is. And the widget is a
+The sentence names what is missing rather than promising an implementation,
+because for most of these there is none to promise. The widget is a
 `blockquote`: the Markdown export turns a quote into a `>` block, so the note
 survives the site archive as a note rather than being flattened into prose — the
 same node serves both outputs, so the two cannot drift apart.

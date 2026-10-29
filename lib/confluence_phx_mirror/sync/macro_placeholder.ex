@@ -1,12 +1,14 @@
 defmodule ConfluencePhxMirror.Sync.MacroPlaceholder do
   @moduledoc """
-  The widget every macro gets that the mirror cannot draw yet.
+  The widget every macro gets that the mirror cannot draw.
 
   A macro it cannot draw is no reason to lose what the page says: a vendor macro
   is usually a container, so the mirror keeps the body it wrapped and puts the
-  widget in front of it. The wording names the gap as the mirror's — an export
-  renderer that does not exist — rather than leaving a reader to wonder whether
-  Confluence or the mirror dropped the content.
+  widget in front of it. The wording says what is missing — the macro's own
+  output, which the source did not render either — rather than promising an
+  implementation no mirror can make. A macro arrives unexpanded when
+  Confluence itself could not render it without a browser, a Connect/Forge app or
+  the reader's session, so its answer was never in the payload.
 
   It is a `blockquote` on purpose. The Markdown export already turns a quote into
   a `>` block, so the same node that styles as a box on the reader page reads as
@@ -27,10 +29,16 @@ defmodule ConfluencePhxMirror.Sync.MacroPlaceholder do
     [
       {"blockquote", [{"class", "mirror-macro-placeholder"}],
        [
-         {"p", [], ["This macro's export renderer is not yet implemented."]},
-         {"p", [], [label | origin(Keyword.get(opts, :url))]}
+         {"p", [], ["The mirror does not draw this macro."]},
+         {"p", [], [sentence(label) | origin(Keyword.get(opts, :url))]}
        ]}
     ]
+  end
+
+  # The labels are written as they are said mid-sentence ("a Jira issues
+  # search"); at the start of the line they take a capital.
+  defp sentence(label) do
+    label |> String.split_at(1) |> then(fn {first, rest} -> String.upcase(first) <> rest end)
   end
 
   defp origin(nil), do: ["."]
