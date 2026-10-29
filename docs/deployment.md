@@ -217,6 +217,33 @@ reader waiting on it. [performance.md](performance.md#what-it-measured) has the
 numbers; [site-admin-guide.md](site-admin-guide.md#pulling-content) has the log to
 watch.
 
+#### Keeping it current
+
+A copy is a copy until something keeps reading. Three things do that, and one
+stops everything:
+
+| what | how |
+| --- | --- |
+| **the clock** | `CM_SYNC_INTERVAL_SECONDS` (3600 by default) pulls what changed since the last pull. This is the one that has to be on |
+| **a webhook** | Confluence posts to `/webhooks/confluence` and the page is queued. Needs the route reachable from outside, `CM_WEBHOOK_ENABLED=true`, and either `CM_WEBHOOK_SECRET` (signature) or `CM_WEBHOOK_TOKENS` (a token the sender can carry) |
+| ***Sync now*** | the button on `/admin`, or `docker exec <container> /app/bin/confluence_phx_mirror rpc 'ConfluencePhxMirror.Sync.run(:incremental)'` — for "now", by a person |
+
+* **A page says when it was last read**, so a stale mirror looks stale instead
+  of looking wrong.
+* **Missing pages are a separate question.** An optional pass
+  (`CM_RECONCILE_INTERVAL_SECONDS`, off by default) asks each space what it
+  still holds — names and counts, never bodies — and flags what the site
+  stopped listing for a person to review. Nothing is deleted behind your back.
+* **`CM_SYNC_PAUSED=true` stops all reading at once**: runs are refused, queued
+  jobs wait for the resume, and readers keep reading what is already mirrored.
+  It is the switch for "the token expired" or "do not hammer the site this
+  week".
+* **One run at a time, cluster-wide** (`Sync.Gate`), so a webhook and the clock
+  never copy the same page twice.
+
+`docker-compose.site.yml` carries those variables commented out, beside the
+ones it sets.
+
 ### What the build knows about itself
 
 The image carries one extra file, `priv/build_info.json`, written by

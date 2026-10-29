@@ -76,6 +76,19 @@ services:
       CM_PUBLIC_SITE: "true"
       # Fill the empty database once, on the first start.
       CM_BOOTSTRAP_SYNC: "true"
+      # Keeping it current: the clock pulls what changed, hourly by default.
+      # CM_SYNC_INTERVAL_SECONDS: "3600"
+      # An optional pass that finds pages the site stopped listing (names and
+      # counts only) for a person to review. Off unless set.
+      # CM_RECONCILE_INTERVAL_SECONDS: "86400"
+      # A webhook is the fastest way to hear about a change, and needs the
+      # route reachable from outside plus one of: CM_WEBHOOK_SECRET (the
+      # signature Confluence signs with) or a token below.
+      # CM_WEBHOOK_ENABLED: "true"
+      # CM_WEBHOOK_SECRET: "change-me"
+      # CM_WEBHOOK_TOKENS: "confluence=change-me"
+      # Stop reading without stopping the site (reads keep serving).
+      # CM_SYNC_PAUSED: "true"
       # Trial only, on a machine nobody else can reach:
       # MIRROR_AUTO_ADMIN: "true"
     volumes:
