@@ -692,6 +692,14 @@ has not verified; a TLS error is the relay's certificate or its chain. See
 has sent yet, oldest first, with the relay's refusal beside it when there is one,
 and the counts an operator asks for first — waiting, refused, delivered.
 
+Below it is the **day's ledger**: every message handed to the relay today, with
+what became of it, and the count against the provider's allowance
+(`mail.per_day`, 300 by default — Brevo's free plan). A test message and a
+sign-in link are never queued, because somebody is waiting for them: they are
+sent at once, they appear in the ledger rather than the queue, and they spend
+the allowance like everything else. A refused message keeps its place in the
+count — the relay was asked either way.
+
 Two decisions live there, next to the queue they act on:
 
 - **Pause mail** (`mail.paused`, `MIRROR_MAIL_PAUSED`) stops the drain without

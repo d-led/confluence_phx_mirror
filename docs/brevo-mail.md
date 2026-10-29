@@ -114,6 +114,7 @@ answer. A refusal is shown verbatim — that message is the diagnosis.
 | What it says | What it means |
 | --- | --- |
 | "Test e-mail sent to …" | the relay took it. If it does not arrive, look in the spam folder and check Brevo's *Statistics → Transactional → Logs*. |
+| "Test e-mail sent to …" and nothing arrives anywhere | *accepted* is not *delivered*: the relay agreed to carry it, and what happened afterwards is in Brevo's transactional log for that recipient. A `From:` address on a domain with no SPF, DKIM or DMARC records is the usual reason Gmail files it away — authenticate the domain in Brevo (*Senders, Domains & IPs → Domains*), or send from a domain Brevo already authenticates. `/admin/mail` and the `mail_sends` ledger tell you the mirror handed it over; only Brevo can tell you what the other side answered. |
 | `550 … sender … not verified` | the sender in step 1 is not verified in Brevo, or is not the address in `MIRROR_MAIL_FROM`. |
 | `auth_failed` | wrong `SMTP_USERNAME` / `SMTP_PASSWORD` — the key is an SMTP key, not the account password, and it is shown once. |
 | `tls_failed` | the certificate did not verify. Rare; make sure `SMTP_RELAY` is the hostname Brevo gave you and `SMTP_PORT` is `587`. |

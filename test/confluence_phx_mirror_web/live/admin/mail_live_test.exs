@@ -69,6 +69,29 @@ defmodule ConfluencePhxMirrorWeb.Live.Admin.MailLiveTest do
     assert view |> element("#mail-count-delivered") |> render() =~ "1"
   end
 
+  describe "the day's ledger" do
+    test "counts a test message against the allowance and lists it", %{conn: conn} do
+      reader = user_fixture(%{email: "ledger.reader@example.com"})
+
+      assert :ok = ConfluencePhxMirror.Mail.send_test(reader)
+
+      {:ok, view, _html} = live(sign_in(conn), ~p"/admin/mail")
+
+      # The queue is watchers' mail and says nothing about this message; the
+      # ledger is where it is, and it spends one of the day's allowance.
+      assert has_element?(view, "#mail-queue-empty")
+      assert view |> element("#mail-count-today") |> render() =~ "1"
+      assert has_element?(view, "#mail-today tr", "test message")
+    end
+
+    test "says so when nothing has been handed over today", %{conn: conn} do
+      {:ok, view, _html} = live(sign_in(conn), ~p"/admin/mail")
+
+      assert has_element?(view, "#mail-today-empty")
+      assert view |> element("#mail-count-today") |> render() =~ "0"
+    end
+  end
+
   test "a reader who is not an administrator does not get the screen", %{conn: conn} do
     reader = user_fixture(%{email: "no.mail.admin@example.com"})
 

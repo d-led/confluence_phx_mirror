@@ -187,13 +187,31 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     assert Settings.stored("reader.html_limit") == nil
   end
 
-  test "an unchecked box turns notification mail off", %{conn: conn} do
+  test "a switch the deployment turned on is drawn on, before anybody stores it", %{conn: conn} do
     {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
 
-    # A cleared checkbox posts nothing at all, which is an explicit "off".
+    # Nothing is stored, and the mirror does mail watchers: a box drawn empty
+    # here would invite an administrator to switch off what is already on.
+    refute Settings.stored("notifications.enabled")
+    assert has_element?(view, "#setting-notifications\\.enabled-input[checked]")
+
+    view
+    |> element("#settings-notifications")
+    |> render_submit(%{"values" => %{"notifications.enabled" => "on"}})
+
+    assert Settings.notifications_enabled?()
+  end
+
+  test "unchecking the box turns notification mail off", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    # The box is drawn on because the deployment has mail on; a browser posts
+    # nothing for an unchecked box, which the form reads as an explicit "off".
     assert view
            |> element("#settings-notifications")
-           |> render_submit(%{"values" => %{"notifications.digest_hour_utc" => "9"}}) =~
+           |> render_submit(%{
+             "values" => %{"notifications.enabled" => "", "notifications.digest_hour_utc" => "9"}
+           }) =~
              "Notifications saved."
 
     refute Settings.notifications_enabled?()

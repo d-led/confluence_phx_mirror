@@ -448,7 +448,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
           <span class="block text-sm">
             {@field.label}
             <span
-              :if={@field.value != nil}
+              :if={@field.value != nil and @field.value != @field.default}
               class="ml-1 text-[10px] uppercase tracking-wide text-primary"
             >
               changed
@@ -463,7 +463,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
           type="checkbox"
           id={"setting-#{@field.key}-input"}
           name={"values[#{@field.key}]"}
-          checked={@field.value == true}
+          checked={in_force?(@field)}
           class="checkbox checkbox-sm mt-0.5"
         />
       </label>
@@ -638,6 +638,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   defp on_off(true), do: "on"
   defp on_off(false), do: "off"
   defp on_off(nil), do: "the deployment's value"
+
+  # What a switch *is*, not only what has been stored: with nothing stored the
+  # deployment's value is in force, and a box drawn empty would say the opposite
+  # of what the mirror is doing — an administrator asking "is mail on?" would
+  # read "off" and switch it off by saving the group.
+  defp in_force?(%{value: nil, default: default}), do: default == true
+  defp in_force?(%{value: value}), do: value == true
 
   defp describe_default(nil), do: "value"
   defp describe_default(value), do: to_string(value)
