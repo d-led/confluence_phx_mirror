@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirrorWeb.ApiUserTest do
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
   import ConfluencePhxMirror.Fixtures
+  import Swoosh.TestAssertions
 
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.TestConfig
@@ -26,8 +27,14 @@ defmodule ConfluencePhxMirrorWeb.ApiUserTest do
       |> api_admin_token()
       |> post(~p"/api/v1/users", %{"email" => "Bert.Lindner@Example.com", "role" => "admin"})
 
-    assert %{"id" => id, "email" => "bert.lindner@example.com", "role" => "admin"} =
-             json_response(conn, 201)
+    assert %{
+             "id" => id,
+             "email" => "bert.lindner@example.com",
+             "role" => "admin",
+             "welcome" => "sent"
+           } = json_response(conn, 201)
+
+    assert_email_sent(fn email -> elem(hd(email.to), 1) == "bert.lindner@example.com" end)
 
     assert Accounts.get_user(id).email == "bert.lindner@example.com"
   end

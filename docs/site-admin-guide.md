@@ -984,8 +984,8 @@ in the top bar. It has two tabs:
 
 An account can exist ahead of its first sign-in. **Add a person by e-mail** at
 the top of *Users & tokens* takes an address and a role, writes the account —
-audited as `user.created` — and nothing else: no sign-in, no Confluence
-credentials, no invitation. Their first sign-in with that address claims it,
+audited as `user.created` — and a welcome e-mail, when mail is configured. Their
+first sign-in with that address claims it,
 because `Accounts.create_user/2` writes no `provisioned_at` and no sync ever
 removes an account the mirror made itself.
 
@@ -993,6 +993,12 @@ That is what makes a decision *ahead of* the first visit possible: create the
 account, link the Confluence identity on *Identities*, put it in a group, watch
 a space — before the person has ever opened the mirror. The same door exists for
 scripts: `POST /api/v1/users` (see [the API guide](api.md#json-api)).
+
+The welcome says an account exists and where the mirror is; it carries no sign-in
+link, because whether a link or a company account signs a reader in is the
+deployment's business. The screen says whether it was actually sent: with no mail
+server (`SMTP_RELAY` or the *Mail server* settings) nothing leaves the node, and
+the flash says so rather than pretending.
 
 ### Linking a Confluence identity to an account
 

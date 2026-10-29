@@ -3,6 +3,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
   use Oban.Testing, repo: ConfluencePhxMirror.Repo
 
   import Phoenix.LiveViewTest
+  import Swoosh.TestAssertions
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Accounts
@@ -354,6 +355,8 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
       |> render_submit(%{"email" => "Waiting.Person@Example.com", "role" => "member"})
 
     assert html =~ "waiting.person@example.com was added"
+    assert html =~ "A welcome was sent"
+    assert_email_sent(fn email -> email.subject =~ "An account for you" end)
 
     user = Accounts.get_user_by_email("waiting.person@example.com")
     assert user.role == "member"

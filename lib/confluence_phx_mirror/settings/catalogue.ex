@@ -58,6 +58,8 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
   #   {:sync, key, floor}             :sync[key]
   #   {:source, key, floor}           the configured source's own options
   #   {:notification, key, floor}     :notifications[key]
+  #   {:mail, key, floor}             the mailer's own configuration
+  #   {:mail_from, part}              :mail_from, as its name or its address
   #   {:webhook, key} / {:webhook, key, floor}   :webhooks[key] / :webhook_rate_limit
   #   {:accounts, key, floor}         :accounts[key]
   #   {:admin_stats_refresh_seconds, floor}      :admin_stats_refresh_seconds
@@ -272,7 +274,8 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       default: {:mail, :username, nil},
       group: :mail,
       label: "Username",
-      help: "Empty means the relay needs no credentials.",
+      help:
+        "Empty means the relay needs no credentials. With Brevo this is the account's login and the password is an SMTP key — neither is the sender below.",
       env: "SMTP_USERNAME",
       ui: :settings
     },
@@ -303,6 +306,28 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       label: "Authentication",
       help: "`Never` for a relay that takes no credentials.",
       env: "SMTP_AUTH",
+      ui: :settings
+    },
+    # Who the mail is from, as opposed to whom it is sent as: a relay rejects a
+    # sender it does not host or has not verified, and that address is rarely the
+    # account that authenticates.
+    "mail.from" => %{
+      type: :string,
+      default: {:mail_from, :address},
+      group: :mail,
+      label: "Sender address",
+      help:
+        "What every message is from. A hosted relay accepts only an address it owns or has verified; Brevo refuses the rest with a 550.",
+      env: "MIRROR_MAIL_FROM",
+      ui: :settings
+    },
+    "mail.from_name" => %{
+      type: :string,
+      default: {:mail_from, :name},
+      group: :mail,
+      label: "Sender name",
+      help: "The name a reader sees beside the sender address.",
+      env: "MIRROR_MAIL_FROM_NAME",
       ui: :settings
     },
     "webhook.enabled" => %{
@@ -408,7 +433,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     mail: %{
       title: "Mail server",
       help:
-        "How the mirror sends mail. The deployment's `SMTP_*` variables are the default; a value stored here wins and takes effect without a restart."
+        "How the mirror sends mail, and who it is from. The deployment's `SMTP_*` and `MIRROR_MAIL_FROM*` variables are the defaults; a value stored here wins and takes effect without a restart — and every reader can send themselves a test e-mail to see it arrive."
     },
     operations: %{
       title: "Operations",
@@ -452,6 +477,8 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "mail.password",
     "mail.tls",
     "mail.auth",
+    "mail.from",
+    "mail.from_name",
     "webhook.enabled",
     "webhook.require_signature",
     "webhook.rate_limit",

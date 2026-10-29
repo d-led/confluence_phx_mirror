@@ -29,13 +29,22 @@ defmodule ConfluencePhxMirrorWeb.Api.V1.UserController do
 
       case Accounts.create_user(attrs, {:user, conn.assigns.current_user}) do
         {:ok, user} ->
-          conn |> put_status(201) |> json(user_json(user))
+          conn
+          |> put_status(201)
+          |> json(Map.put(user_json(user), "welcome", welcome(Accounts.welcome(user))))
 
         {:error, changeset} ->
           refusal(conn, changeset)
       end
     end
   end
+
+  # Whether the person was told, said as it happened: a caller cannot see the
+  # node's mail configuration, and `sent` would be a claim about a server it
+  # does not know.
+  defp welcome({:ok, :sent}), do: "sent"
+  defp welcome({:ok, :not_configured}), do: "not_configured"
+  defp welcome({:error, _reason}), do: "failed"
 
   defp authorize(conn) do
     if Scope.admin?(Scope.from_assigns(conn.assigns)) do

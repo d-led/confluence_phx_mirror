@@ -53,7 +53,11 @@ config :confluence_phx_mirror,
     api: [limit: 1_000, period_ms: 60_000],
     attachments: [limit: 1_000, period_ms: 60_000]
   ],
-  notifications: [enabled: true, from: {"Mirror", "mirror@localhost"}, digest_hour_utc: 8],
+  notifications: [enabled: true, digest_hour_utc: 8],
+  # The sender a test suite sends from. It matches the fallback the message
+  # builders carry, so a mail means the same thing whether or not a test has
+  # applied the settings (`Mailer.configure/0` is skipped in the suite).
+  mail_from: {"Confluence Mirror", "mirror@localhost"},
   webhooks: [secret: "test-webhook-secret", require_signature: false]
 
 # The route is compiled in so the suite can prove it is administrator-only.

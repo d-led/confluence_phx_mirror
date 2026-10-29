@@ -47,6 +47,10 @@ defmodule ConfluencePhxMirror.Settings do
   @type value :: String.t() | boolean() | integer() | [String.t()] | nil
   @type changes :: %{optional(String.t()) => value()}
 
+  # What a deployment that never mentions a sender mails as — the same pair the
+  # message builders fall back to, so nothing changes until somebody decides.
+  @default_sender {"Confluence Mirror", "mirror@localhost"}
+
   @doc "Every key an administrator can own, in a stable order."
   @spec keys() :: [String.t()]
   def keys, do: Catalogue.keys()
@@ -117,6 +121,18 @@ defmodule ConfluencePhxMirror.Settings do
       value -> value
     end
   end
+
+  @doc """
+  Who the mirror's mail is from, as `{name, address}`.
+
+  A relay accepts only a sender it hosts or has verified — Brevo answers
+  anything else with a 550 — and that address is rarely the account that
+  authenticates, which is why it is a decision of its own rather than the
+  `mail.username`. `ConfluencePhxMirror.Mailer` hands this to every message
+  builder, so a stored sender is what a reader actually receives.
+  """
+  @spec mail_sender() :: {String.t(), String.t()}
+  def mail_sender, do: {effective("mail.from_name"), effective("mail.from")}
 
   defp blank(nil), do: nil
 
@@ -591,6 +607,19 @@ defmodule ConfluencePhxMirror.Settings do
     |> Application.get_env(ConfluencePhxMirror.Mailer, [])
     |> Keyword.get(key, floor)
     |> mail_value(key)
+  end
+
+  # The sender is one deployment value with two halves, and it belongs to no
+  # adapter: `:mail_from` is where `config/runtime.exs` puts `MIRROR_MAIL_FROM`
+  # and `MIRROR_MAIL_FROM_NAME`.
+  defp resolve({:mail_from, part}) do
+    {name, address} =
+      Application.get_env(:confluence_phx_mirror, :mail_from, @default_sender)
+
+    case part do
+      :name -> name
+      :address -> address
+    end
   end
 
   defp resolve({:webhook, :enabled, default}) do

@@ -321,6 +321,44 @@ defmodule ConfluencePhxMirror.Accounts do
   end
 
   @doc """
+  Tells the person that the account an administrator made for them exists.
+
+  `{:ok, :not_configured}` when nothing would actually leave the node: mail
+  switched off, or no relay and Swoosh's Local adapter, which writes a file. A
+  screen that said "a welcome was sent" in that state would be lying about the
+  one thing the administrator cannot see.
+
+  No sign-in link is included on purpose: whether a link or a company account
+  signs a reader in is the deployment's business (proxy, magic link), and a
+  link minted here would be the wrong one for half of them. The mail points at
+  the mirror; the reader signs in the way they already do.
+  """
+  @spec welcome(User.t()) :: {:ok, :sent} | {:ok, :not_configured} | {:error, term()}
+  def welcome(%User{} = user) do
+    if mail_configured?() do
+      user
+      |> ConfluencePhxMirror.Accounts.Emails.welcome(
+        site: ConfluencePhxMirror.Sites.name(),
+        url: ConfluencePhxMirror.Sites.url()
+      )
+      |> Mailer.deliver()
+      |> case do
+        {:ok, _} -> {:ok, :sent}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:ok, :not_configured}
+    end
+  end
+
+  # `Local` is Swoosh's "write it to a file" adapter, so a deployment that has
+  # configured neither the mail server nor a relay sends nothing.
+  defp mail_configured? do
+    ConfluencePhxMirror.Settings.notifications_enabled?() and
+      Application.get_env(:confluence_phx_mirror, Mailer, [])[:adapter] != Swoosh.Adapters.Local
+  end
+
+  @doc """
   Changes the role of an account.
 
   Seeded administrators (`CM_ADMINS`) and the local bootstrap account keep

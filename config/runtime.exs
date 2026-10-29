@@ -397,11 +397,16 @@ config :confluence_phx_mirror,
 config :confluence_phx_mirror,
   notifications: [
     enabled: System.get_env("MIRROR_NOTIFICATIONS", "true") in ~w(1 true yes),
-    from:
-      {System.get_env("MIRROR_MAIL_FROM_NAME", "Confluence Mirror"),
-       System.get_env("MIRROR_MAIL_FROM", "mirror@localhost")},
     digest_hour_utc: String.to_integer(System.get_env("MIRROR_DIGEST_HOUR_UTC", "8"))
   ]
+
+# Who the mirror's mail comes from: a name and an address a relay accepts. Brevo
+# refuses a sender it has not verified, so this is a decision of its own rather
+# than the SMTP login — `mail.username` is the account, this is the sender.
+config :confluence_phx_mirror,
+  mail_from:
+    {System.get_env("MIRROR_MAIL_FROM_NAME", "Confluence Mirror"),
+     System.get_env("MIRROR_MAIL_FROM", "mirror@localhost")}
 
 if rate_limit =
      System.get_env("CM_READER_RATE_LIMIT_PER_MINUTE") ||
@@ -500,13 +505,27 @@ config :confluence_phx_mirror,
          paused: System.get_env("CM_SYNC_PAUSED", "false") in ["true", "1", "yes"]
        )
 
-if smtp_relay = System.get_env("SMTP_RELAY") do
+# The relay the mirror sends through. Brevo's variables are accepted as its own
+# setup spells them: `BREVO_SMTP_USERNAME` and `BREVO_SMTP_PASSWORD` are enough,
+# because the host and the submission port are Brevo's. Where both spellings are
+# set the `SMTP_*` one wins, so a mirrored deployment keeps its own choice.
+# "Sending through Brevo" in docs/configuration.md has the walk-through.
+brevo_smtp? =
+  System.get_env("BREVO_SMTP_USERNAME") != nil and System.get_env("BREVO_SMTP_PASSWORD") != nil
+
+mapping_env = fn name, brevo_name -> System.get_env(name) || System.get_env(brevo_name) end
+
+smtp_relay =
+  System.get_env("SMTP_RELAY") || System.get_env("BREVO_SMTP_HOST") ||
+    if(brevo_smtp?, do: "smtp-relay.brevo.com")
+
+if smtp_relay do
   config :confluence_phx_mirror, ConfluencePhxMirror.Mailer,
     adapter: Swoosh.Adapters.SMTP,
     relay: smtp_relay,
-    port: String.to_integer(System.get_env("SMTP_PORT", "587")),
-    username: System.get_env("SMTP_USERNAME"),
-    password: System.get_env("SMTP_PASSWORD"),
+    port: String.to_integer(mapping_env.("SMTP_PORT", "BREVO_SMTP_PORT") || "587"),
+    username: mapping_env.("SMTP_USERNAME", "BREVO_SMTP_USERNAME"),
+    password: mapping_env.("SMTP_PASSWORD", "BREVO_SMTP_PASSWORD"),
     tls: if(System.get_env("SMTP_TLS", "always") in ~w(never false 0), do: :never, else: :always),
     auth:
       if(System.get_env("SMTP_AUTH", "always") in ~w(never false 0), do: :never, else: :always)

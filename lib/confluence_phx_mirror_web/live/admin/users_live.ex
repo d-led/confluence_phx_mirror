@@ -288,13 +288,26 @@ defmodule ConfluencePhxMirrorWeb.Admin.UsersLive do
       {:ok, user} ->
         {:noreply,
          socket
-         |> put_flash(:info, "#{user.email} was added — their first sign-in claims it.")
+         |> put_flash(
+           :info,
+           "#{user.email} was added — their first sign-in claims it. #{welcome_note(Accounts.welcome(user))}"
+         )
          |> load()}
 
       {:error, changeset} ->
         {:noreply, put_flash(socket, :error, refusal_sentence(changeset))}
     end
   end
+
+  # What happened to the welcome, said the way it happened: a screen that says
+  # "sent" when the deployment has no mail server is lying about the one thing
+  # the administrator cannot check.
+  defp welcome_note({:ok, :sent}), do: "A welcome was sent."
+
+  defp welcome_note({:ok, :not_configured}),
+    do: "No welcome was sent: mail is switched off or has no server."
+
+  defp welcome_note({:error, _reason}), do: "The welcome could not be sent."
 
   # A changeset says which field and why; a screen says it in one sentence.
   defp refusal_sentence(changeset) do

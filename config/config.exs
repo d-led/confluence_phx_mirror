@@ -155,9 +155,13 @@ config :confluence_phx_mirror,
   ],
   notifications: [
     enabled: true,
-    from: {"Confluence Mirror", "mirror@localhost"},
     digest_hour_utc: 8
   ],
+  # Who the mirror's mail comes from. The mail server screen may override it
+  # while the node runs; this is what the deployment says, and what a cleared
+  # setting falls back to. `MIRROR_MAIL_FROM` and `MIRROR_MAIL_FROM_NAME` set it
+  # in `config/runtime.exs`.
+  mail_from: {"Confluence Mirror", "mirror@localhost"},
   # The intake accepts unsigned deliveries unless a deployment requires
   # signatures: a mirror that was just pointed at a Confluence site should
   # work, and /admin/webhooks says loudly what that costs. `CM_WEBHOOK_SECRET`
