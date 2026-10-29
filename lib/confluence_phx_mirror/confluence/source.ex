@@ -250,6 +250,30 @@ defmodule ConfluencePhxMirror.Confluence.Source do
               {:ok, [String.t()]} | {:error, term()}
 
   @doc """
+  The groups the site lists, with the id it knows them by.
+
+  Confluence Cloud stopped serving `/group/{name}/member`, but it does serve
+  `/group/{id}/membersByGroupId` — so a source that can list its groups can read
+  the membership of every one of them, which is the only way a mirror learns
+  about people who neither authored content nor signed in. A source that cannot
+  list groups leaves the callback out.
+  """
+  @callback groups(keyword()) :: {:ok, [group()]} | {:error, term()}
+
+  @type group :: %{name: String.t(), id: String.t() | nil}
+
+  @doc """
+  Each page of one group's members, handed to `sink` as the site serves it.
+
+  The streaming form of `c:group_members/2`, and the one a site with hundreds of
+  thousands of people needs: the mirror writes each page and holds none, so the
+  size of a group is the site's problem rather than the node's. Returns how many
+  members it passed to the sink.
+  """
+  @callback each_group_member_page(group(), keyword(), ([group_member()] -> any())) ::
+              {:ok, non_neg_integer()} | {:error, term()}
+
+  @doc """
   Bytes of one space icon, with the media type the site answered with.
 
   Confluence's icon paths carry no file extension, so the mirror cannot infer
@@ -301,7 +325,9 @@ defmodule ConfluencePhxMirror.Confluence.Source do
                       restrictions: 2,
                       space_permissions: 2,
                       space_icon: 2,
+                      groups: 1,
                       group_members: 2,
+                      each_group_member_page: 3,
                       groups_of_account: 2,
                       user_status: 2,
                       site_settings: 1,

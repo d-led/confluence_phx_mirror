@@ -17,6 +17,10 @@ defmodule ConfluencePhxMirror.Mirror.GroupMember do
     field :email, :string
     field :account_id, :string
     field :display_name, :string
+    # Which read wrote this row. A membership page carries the marker of the
+    # read it belongs to, and the rows still carrying an older one are gone —
+    # that is how a group of half a million is replaced without loading it.
+    field :seen_in, :integer
 
     timestamps(type: :utc_datetime)
   end

@@ -17,6 +17,12 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
     Enum.map(results, & &1.page.title)
   end
 
+  # What a reader gets for what they typed into the search box.
+  defp typed(q) do
+    {:ok, results, _terms} = Search.structured(%{"q" => q})
+    Enum.map(results, & &1.page.title)
+  end
+
   test "filters by space and label" do
     assert titles("space = ENG AND label = architecture") == ["Architecture Overview"]
   end
@@ -35,6 +41,19 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
 
     assert results != []
     assert Enum.any?(results, &(&1.snippet =~ "rate limit"))
+  end
+
+  # A Confluence id is what a colleague pastes in from a URL or a ticket, and it
+  # is in no text index — nobody writes a page called "426221". The reader's
+  # search box reaches `structured/2`, which is the path this pins.
+  test "a page id finds its page" do
+    # First, too: a page that merely repeats the number in its text is a worse
+    # answer than the page the number names.
+    assert ["Architecture Overview" | _] = typed("1002")
+  end
+
+  test "a page id that nothing has finds nothing" do
+    assert typed("426221") == []
   end
 
   describe "snippets" do

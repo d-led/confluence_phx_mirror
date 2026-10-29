@@ -13,7 +13,7 @@ defmodule ConfluencePhxMirrorWeb.AdminNavTest do
 
   @paths ~w(/admin /admin/jobs /admin/sync-log /admin/webhooks /admin/audit
             /admin/trash /admin/spaces /admin/upstream /admin/users /admin/identities
-            /admin/permissions /admin/settings)
+            /admin/groups /admin/permissions /admin/settings)
 
   setup do
     demo_snapshot!()

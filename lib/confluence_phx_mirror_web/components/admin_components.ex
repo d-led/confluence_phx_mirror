@@ -31,6 +31,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
      [
        {:users, "Users", "hero-users"},
        {:identities, "Identities", "hero-identification"},
+       {:groups, "Groups", "hero-user-group"},
        {:permissions, "Permissions", "hero-lock-closed"}
      ]},
     {"Configuration",
@@ -614,6 +615,7 @@ defmodule ConfluencePhxMirrorWeb.AdminComponents do
   defp page_path(:upstream), do: ~p"/admin/upstream"
   defp page_path(:users), do: ~p"/admin/users"
   defp page_path(:identities), do: ~p"/admin/identities"
+  defp page_path(:groups), do: ~p"/admin/groups"
   defp page_path(:permissions), do: ~p"/admin/permissions"
   defp page_path(:settings), do: ~p"/admin/settings"
 end

@@ -282,9 +282,56 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   def parse_space_permissions(_no_permissions), do: []
 
-  # Cloud removed "who is in this group" (`/group/{name}/member` answers 404 for
-  # a group that exists), but it still answers the other direction, so the sync
-  # learns membership one identity at a time instead. See `Mirror.known_identities/0`.
+  # Cloud removed "who is in this group" under a *name* (`/group/{name}/member`
+  # answers 404 for a group that exists) and kept it under the group's id, which
+  # is why the site's group list is read first. The person-first direction stays
+  # too (`groups_of_account/2`): it is the one that works when a group's id is
+  # not readable.
+  @impl true
+  def groups(_opts) do
+    with {:ok, results} <- paginate_json("/group", %{"limit" => page_limit()}) do
+      {:ok, Enum.map(results, &%{name: &1["name"], id: &1["id"]})}
+    end
+  end
+
+  @impl true
+  def each_group_member_page(%{id: id}, _opts, sink) when is_binary(id) do
+    path = "/group/#{URI.encode_www_form(id)}/membersByGroupId"
+    page_members(path, %{"limit" => page_limit()}, sink, 0)
+  end
+
+  def each_group_member_page(%{name: name}, _opts, _sink), do: {:error, {:no_group_id, name}}
+
+  defp page_members(path, params, sink, count) do
+    with {:ok, body} <- request_json(path, params) do
+      members =
+        body |> Map.get("results", []) |> Enum.map(&parse_member/1) |> Enum.reject(&is_nil/1)
+
+      Enum.each(members, &sink_page(sink, &1))
+
+      case get_in(body, ["_links", "next"]) do
+        next when is_binary(next) -> page_members(next, %{}, sink, count + length(members))
+        _ -> {:ok, count + length(members)}
+      end
+    end
+  end
+
+  # The sink takes a page; one member at a time would be one insert per person.
+  defp sink_page(sink, member), do: sink.([member])
+
+  # A group member carries whichever identifiers the site is willing to share.
+  # An app account (a bot) has no address at all, so its id is its identity.
+  defp parse_member(member) do
+    %{
+      account_id: member["accountId"],
+      email: member["email"] |> blank(),
+      display_name: member["displayName"]
+    }
+  end
+
+  defp blank(""), do: nil
+  defp blank(value), do: value
+
   @impl true
   def groups_of_account(account_id, _opts) when is_binary(account_id) and account_id != "" do
     with {:ok, results} <-

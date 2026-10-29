@@ -281,9 +281,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
       person
       |> Map.put(:account_email, holder && holder.email)
       |> Map.put(:account_id_here, holder && holder.id)
+      |> Map.put(:dom_key, dom_key(person.account_id))
     end)
-    |> Enum.with_index(offset + 1)
-    |> Enum.map(fn {person, index} -> Map.put(person, :index, index) end)
+  end
+
+  # A row is named after the identity it shows, not after its place in the list:
+  # the list is searched and paged, so the tenth person on page two is not "10"
+  # of anything. An account id can carry a colon, which a CSS id cannot.
+  defp dom_key(account_id) do
+    account_id |> to_string() |> String.replace(~r/[^A-Za-z0-9_-]/, "-")
   end
 
   attr :page, :integer, required: true
@@ -477,7 +483,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
         </div>
 
         <ul :if={@people != []} class="divide-y divide-base-300/60">
-          <li :for={person <- @people} id={"person-#{person.index}"} class="px-5 py-3 text-xs">
+          <li :for={person <- @people} id={"person-#{person.dom_key}"} class="px-5 py-3 text-xs">
             <div class="flex flex-wrap items-center gap-1.5">
               <span class="truncate font-medium">
                 {person.display_name || person.account_id}
@@ -487,7 +493,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
               </span>
               <span
                 :if={is_nil(person.account_email)}
-                id={"person-no-account-#{person.index}"}
+                id={"person-no-account-#{person.dom_key}"}
                 class="badge badge-ghost badge-xs"
               >
                 not a mirror account
@@ -518,7 +524,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
               <form
                 :if={person.account_email}
                 phx-submit="unlink_identity"
-                id={"unlink-#{person.index}"}
+                id={"unlink-#{person.dom_key}"}
               >
                 <input type="hidden" name="account_id" value={person.account_id} />
                 <button
@@ -538,7 +544,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.IdentitiesLive do
                 phx-click="pick_account"
                 phx-value-account_id={person.account_id}
                 phx-value-name={person.display_name || ""}
-                id={"link-#{person.index}"}
+                id={"link-#{person.dom_key}"}
                 class="btn btn-ghost btn-xs min-h-11 sm:min-h-0"
               >
                 Link to an account…

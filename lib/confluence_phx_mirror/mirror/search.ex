@@ -162,20 +162,26 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   `scal*` asks for that first band alone: a star on the end of the last word is
   the usual way to say "a word that begins like this", and it turns the fragment
   pass off, so the answer is exactly the pages whose word starts there.
+
+  A query that is nothing but a number is also a page id, and finds that page:
+  Confluence ids are what a colleague pastes in from a URL or a ticket, and they
+  are in no text index. The id is looked up on its own index and ranked above
+  every word match.
   """
   @spec text(String.t(), keyword()) :: {:ok, [result()]}
   def text(query, opts \\ []) do
     query = String.trim(query || "")
     limit = min(Keyword.get(opts, :limit, default_limit()), max_limit())
     offset = max(Keyword.get(opts, :start, 0), 0)
+    page_id = page_id_term(query)
 
     case TextQuery.parse(query) do
       :empty ->
         {:ok, []}
 
       {:ok, tsquery, terms} ->
-        with {:ok, results} <- run_text(tsquery, "to_tsquery", terms, limit, offset) do
-          if prefix_only?(query) do
+        with {:ok, results} <- run_text(tsquery, "to_tsquery", terms, limit, offset, page_id) do
+          if page_id || prefix_only?(query) do
             {:ok, results}
           else
             {:ok, inside_words(results, query, terms, limit)}
@@ -183,7 +189,16 @@ defmodule ConfluencePhxMirror.Mirror.Search do
         end
 
       :error ->
-        run_text(query, "websearch_to_tsquery", fallback_terms(query), limit, offset)
+        run_text(query, "websearch_to_tsquery", fallback_terms(query), limit, offset, page_id)
+    end
+  end
+
+  # A whole query that is a number is an id, not a word. A number among other
+  # words is not: "426221 roadmap" is somebody searching for words.
+  defp page_id_term(query) do
+    case Integer.parse(query) do
+      {id, ""} when id > 0 -> id
+      _not_an_id -> nil
     end
   end
 
@@ -261,8 +276,14 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   # listings — a macros gallery, an index, a table of contents — would otherwise
   # outrank the page it names, which is the one thing a reader never meant.
   # sobelow_skip ["SQL.Query"]
-  defp run_text(parameter, function, terms, limit, offset) do
+  defp run_text(parameter, function, terms, limit, offset, page_id) do
     tsquery = "#{function}('#{@language}', $1)"
+
+    # The id arm is written only when there is an id: a `$2` the query does not
+    # use is a parameter Postgres refuses.
+    by_id = if page_id, do: "OR p.confluence_id = $2", else: ""
+    id_band = if page_id, do: "WHEN p.confluence_id = $2 THEN 3", else: ""
+    params = if page_id, do: [parameter, page_id], else: [parameter]
 
     sql = """
     SELECT page_id, rank, comment_id
@@ -271,6 +292,7 @@ defmodule ConfluencePhxMirror.Mirror.Search do
              ts_rank_cd(p.search_vector, #{tsquery}) AS rank,
              NULL::bigint AS comment_id,
              CASE
+               #{id_band}
                WHEN setweight(to_tsvector('#{@language}', coalesce(p.title, '')), 'A') @@ #{tsquery}
                THEN 2 ELSE 1
              END AS band,
@@ -278,7 +300,7 @@ defmodule ConfluencePhxMirror.Mirror.Search do
       FROM pages p
       JOIN spaces s ON s.id = p.space_id
       WHERE p.deleted_at IS NULL
-        AND p.search_vector @@ #{tsquery}
+        AND (p.search_vector @@ #{tsquery} #{by_id})
 
       UNION ALL
 
@@ -307,7 +329,7 @@ defmodule ConfluencePhxMirror.Mirror.Search do
     LIMIT #{Integer.to_string(limit)} OFFSET #{Integer.to_string(offset)}
     """
 
-    {:ok, Repo.query!(sql, [parameter]).rows |> results(terms)}
+    {:ok, Repo.query!(sql, params).rows |> results(terms)}
   end
 
   # One row per page: `[page_id, rank, comment_id]`. The comment is loaded for

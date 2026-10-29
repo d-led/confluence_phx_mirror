@@ -822,26 +822,159 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Enum.uniq_by(&elem(&1, 1))
   end
 
-  @doc "Members Confluence reported for a group, ordered by display name."
-  def group_members(group) do
+  @doc """
+  Members Confluence reported for a group, ordered by display name.
+
+  `:limit` bounds the answer: a group can be the whole staff, and a screen that
+  asked for all of it would draw a page nobody can read.
+  """
+  def group_members(group, opts \\ []) do
     key = GroupMember.key(group)
 
     from(m in GroupMember,
       where: m.group_key == ^key,
       order_by: [asc: m.display_name, asc: m.subject_key]
     )
+    |> limit_if(Keyword.get(opts, :limit))
     |> Repo.all()
   end
 
-  @doc "Every mirrored group with its member count, for the admin screen."
-  def groups_with_counts do
+  @doc """
+  Every mirrored group with its member count, for the admin screen.
+
+  What an audit asks of a group is more than its size, so each row also says
+  whether the group decides anything: `decides_access?` when a space permission
+  or a page restriction names it (its members can read what it grants), and
+  `admin?` when the deployment's admin groups name it (its members administer
+  this mirror). `read_at` is when the newest of its membership rows was written,
+  which is how old the answer is.
+
+  `:query` narrows by name, `:limit` and `:offset` page the answer in the
+  database, and `:key` asks for one group.
+  """
+  def group_catalogue(opts \\ []) do
+    access = MapSet.new(referenced_groups(), &elem(&1, 1))
+    admins = admin_group_keys()
+
+    opts
+    |> groups_query()
+    |> order_by([m], asc: m.group_key)
+    |> limit_if(Keyword.get(opts, :limit))
+    |> offset(^Keyword.get(opts, :offset, 0))
+    |> Repo.all()
+    |> Enum.map(fn {name, key, members, read_at} ->
+      %{
+        name: name,
+        key: key,
+        members: members,
+        read_at: read_at,
+        decides_access?: MapSet.member?(access, key),
+        admin?: MapSet.member?(admins, key)
+      }
+    end)
+  end
+
+  @doc "How many groups the sync has read a member for."
+  def count_groups(opts \\ []) do
+    from(m in GroupMember)
+    |> group_matching(Keyword.get(opts, :query))
+    |> group_keyed(Keyword.get(opts, :key))
+    |> select([m], m.group_key)
+    |> distinct(true)
+    |> subquery()
+    |> select([g], count())
+    |> Repo.one()
+  end
+
+  @doc "One group's catalogue row, or `nil` when no sync has read a member for it."
+  def group(group_name) do
+    key = GroupMember.key(group_name)
+
+    key
+    |> then(&group_catalogue(key: &1))
+    |> List.first()
+  end
+
+  defp groups_query(opts) do
     from(m in GroupMember,
-      group_by: [m.group_key, m.group_name],
-      order_by: [asc: m.group_key],
-      select: {m.group_name, m.group_key, count(m.id)}
+      select: {m.group_name, m.group_key, count(m.id), max(m.updated_at)}
+    )
+    |> group_matching(Keyword.get(opts, :query))
+    |> group_keyed(Keyword.get(opts, :key))
+    |> group_by([m], [m.group_key, m.group_name])
+  end
+
+  defp group_matching(query, blank) when blank in [nil, ""], do: query
+
+  defp group_matching(query, term) do
+    pattern = "%" <> (term |> to_string() |> String.trim() |> String.downcase()) <> "%"
+
+    where(query, [m], fragment("lower(?) like ?", m.group_name, ^pattern))
+  end
+
+  defp group_keyed(query, nil), do: query
+
+  defp group_keyed(query, key) do
+    where(query, [m], m.group_key == ^GroupMember.key(key))
+  end
+
+  defp admin_group_keys do
+    for name <- ConfluencePhxMirror.Accounts.Admins.admin_groups(),
+        into: MapSet.new(),
+        do: GroupMember.key(name)
+  end
+
+  @doc """
+  What one group grants: the spaces whose permissions name it, and the pages
+  restricted to it — each with what the mirror did about that row.
+
+  `:site` is a grant the sync read; `:granted_here` is one an administrator
+  added on top of it, and `:revoked_here` is a grant the site still lists that
+  an administrator took away here. An audit that showed only the first would
+  answer a question nobody asked.
+  """
+  def group_access(group_name) do
+    key = GroupMember.key(group_name)
+
+    %{spaces: group_spaces(key), pages: group_pages(key)}
+  end
+
+  defp group_spaces(key) do
+    from(sp in SpacePermission,
+      join: s in assoc(sp, :space),
+      where: sp.subject_type == "group" and sp.subject_key == ^key,
+      order_by: [asc: s.key],
+      select: {s.key, s.name, sp.operation, sp.granted_by_id, sp.revoked_by_id}
     )
     |> Repo.all()
+    |> Enum.map(fn {space_key, name, operation, granted, revoked} ->
+      %{key: space_key, name: name, operation: operation, source: source(granted, revoked)}
+    end)
   end
+
+  defp group_pages(key) do
+    from(r in PageRestriction,
+      join: p in assoc(r, :page),
+      join: s in assoc(p, :space),
+      where: r.subject_type == "group" and r.subject_key == ^key,
+      where: is_nil(p.deleted_at),
+      order_by: [asc: p.title],
+      select: {s.key, p.confluence_id, p.title, r.granted_by_id, r.revoked_by_id}
+    )
+    |> Repo.all()
+    |> Enum.map(fn {space_key, confluence_id, title, granted, revoked} ->
+      %{
+        space: space_key,
+        confluence_id: confluence_id,
+        title: title,
+        source: source(granted, revoked)
+      }
+    end)
+  end
+
+  defp source(nil, nil), do: :site
+  defp source(_granted, nil), do: :granted_here
+  defp source(_granted, _revoked), do: :revoked_here
 
   @doc """
   Replaces what we know about one group's membership with what Confluence just
@@ -867,6 +1000,55 @@ defmodule ConfluencePhxMirror.Mirror do
       if rows != [], do: Repo.insert_all(GroupMember, rows)
       length(rows)
     end)
+  end
+
+  @doc """
+  Writes one page of a group's membership, stamped with the read it belongs to.
+
+  The streaming half of `replace_group_members/2`, for a site with a group of a
+  hundred thousand people: the page is written as the site serves it, so no part
+  of the mirror ever holds the whole membership.
+  `forget_group_members_not_seen_in/2` then drops whoever the read did not name,
+  which is what makes the read a replacement rather than an addition.
+  """
+  def put_group_members(group_name, members, seen_in) do
+    group_key = GroupMember.key(group_name)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    rows =
+      members
+      |> Enum.map(&member_row(&1, group_name, group_key, now))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq_by(& &1.subject_key)
+      |> Enum.map(&Map.put(&1, :seen_in, seen_in))
+
+    case rows do
+      [] ->
+        {:ok, 0}
+
+      rows ->
+        {written, _} =
+          Repo.insert_all(GroupMember, rows,
+            on_conflict:
+              {:replace, [:group_name, :email, :account_id, :display_name, :updated_at, :seen_in]},
+            conflict_target: [:group_key, :subject_key]
+          )
+
+        {:ok, written}
+    end
+  end
+
+  @doc "Drops the members of a group this read did not name."
+  def forget_group_members_not_seen_in(group_name, seen_in) do
+    key = GroupMember.key(group_name)
+
+    {deleted, _} =
+      Repo.delete_all(
+        from m in GroupMember,
+          where: m.group_key == ^key and (is_nil(m.seen_in) or m.seen_in != ^seen_in)
+      )
+
+    deleted
   end
 
   defp member_row(member, group_name, group_key, now) do
@@ -1017,7 +1199,11 @@ defmodule ConfluencePhxMirror.Mirror do
   defp limit_if(query, nil), do: query
   defp limit_if(query, limit), do: limit(query, ^limit)
 
-  # One row per person, however often the content names them.
+  # One row per person, however often the content names them — and everybody the
+  # site listed in a group counts as named. A group's membership is how a mirror
+  # learns about the people who never authored anything: they are the readers
+  # waiting to sign in, and an administrator links their identities before they
+  # do.
   defp identities_query(opts) do
     from(p in Page,
       where: not is_nil(p.author_account_id),
@@ -1027,6 +1213,12 @@ defmodule ConfluencePhxMirror.Mirror do
       ^from(c in Comment,
         where: not is_nil(c.author_account_id),
         select: %{account_id: c.author_account_id, display_name: c.author_name}
+      )
+    )
+    |> union_all(
+      ^from(m in GroupMember,
+        where: not is_nil(m.account_id),
+        select: %{account_id: m.account_id, display_name: m.display_name}
       )
     )
     |> subquery()
@@ -1163,11 +1355,14 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   # A group the sync lists, or somebody a space permission or page restriction
-  # names. Matched case-insensitively, like the permission checks do.
+  # names. `subject_key` is stored the way it is matched — a lower-cased address
+  # or an account id — so this compares it as it stands: `lower(subject_key)`
+  # would read every row of a group table that can hold half a million, and the
+  # index on `subject_key` would be lost.
   defp listed?(subjects) do
     member? =
       from(m in GroupMember,
-        where: fragment("lower(?)", m.subject_key) in ^subjects,
+        where: m.subject_key in ^subjects or m.account_id in ^subjects,
         limit: 1,
         select: 1
       )

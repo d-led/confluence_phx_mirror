@@ -1530,12 +1530,58 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   defp refresh_groups(source, opts) do
-    if function_exported?(source, :group_members, 2) do
-      groups_to_refresh()
-      |> Enum.reduce({0, []}, &refresh_group(source, &1, &2, opts))
-    else
-      {0, []}
+    cond do
+      # A group whose members the site pages through is read a page at a time:
+      # a group can be the whole staff, and holding it in memory is what breaks
+      # a site with hundreds of thousands of people.
+      function_exported?(source, :each_group_member_page, 3) -> stream_groups(source, opts)
+      function_exported?(source, :group_members, 2) -> list_groups(source, opts)
+      true -> {0, []}
     end
+  end
+
+  # Every group the site lists, not only the ones the content refers to: a
+  # group's membership is how a mirror learns about people who never authored
+  # anything and never signed in.
+  defp stream_groups(source, opts) do
+    case source.groups(opts) do
+      {:ok, groups} ->
+        groups
+        |> Enum.uniq_by(&Mirror.GroupMember.key(&1.name))
+        |> Enum.reduce({0, []}, &stream_group(source, &1, &2, opts))
+
+      {:error, reason} ->
+        {0, [error("groups", nil, reason)]}
+    end
+  end
+
+  defp stream_group(source, group, {count, errors}, opts) do
+    # The marker every page of this read carries, so the prune at the end drops
+    # exactly the people the site no longer lists. Unique per read rather than a
+    # timestamp: two runs inside one second still have to tell their rows apart.
+    seen_in = System.unique_integer([:positive])
+    sink = &Mirror.put_group_members(group.name, &1, seen_in)
+
+    case source.each_group_member_page(group, opts, sink) do
+      {:ok, stored} ->
+        Mirror.forget_group_members_not_seen_in(group.name, seen_in)
+        {count + stored, errors}
+
+      {:error, :not_found} ->
+        {:ok, _} = Mirror.replace_group_members(group.name, [])
+        {count, errors}
+
+      {:error, :not_supported} ->
+        {count, errors}
+
+      {:error, reason} ->
+        {count, [error("group", group.name, reason) | errors]}
+    end
+  end
+
+  defp list_groups(source, opts) do
+    groups_to_refresh()
+    |> Enum.reduce({0, []}, &refresh_group(source, &1, &2, opts))
   end
 
   defp groups_to_refresh do

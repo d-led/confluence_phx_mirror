@@ -44,7 +44,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/admin/identities")
 
-      assert view |> element("#link-1") |> render_click() =~ "to an account"
+      assert view |> element("#link-#{@guest}") |> render_click() =~ "to an account"
 
       view |> element("#account-search-form") |> render_change(%{"q" => "linked.reader"})
 
@@ -55,9 +55,9 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesLiveTest do
 
       assert html =~ "#{@guest} is now linked.reader@example.com"
       assert Accounts.get_user(reader.id).identity_account_ids == [@guest]
-      assert has_element?(view, "#unlink-1")
+      assert has_element?(view, "#unlink-#{@guest}")
 
-      html = view |> element("#unlink-1") |> render_submit()
+      html = view |> element("#unlink-#{@guest}") |> render_submit()
 
       assert html =~ "is no longer"
       assert Accounts.get_user(reader.id).identity_account_ids == []
@@ -114,7 +114,7 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminIdentitiesLiveTest do
       a_person_named(@guest)
 
       {:ok, view, _html} = live(conn, ~p"/admin/identities")
-      view |> element("#link-1") |> render_click()
+      view |> element("#link-#{@guest}") |> render_click()
 
       html = view |> element("#account-search-form") |> render_change(%{"q" => "nobody-here"})
 

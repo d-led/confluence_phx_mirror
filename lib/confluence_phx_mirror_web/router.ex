@@ -183,6 +183,10 @@ defmodule ConfluencePhxMirrorWeb.Router do
       live "/webhooks", WebhooksLive, :index
       live "/users", UsersLive, :index
       live "/identities", IdentitiesLive, :index
+      # A group decides who reads what: the membership the sync read and the
+      # permissions that name it, on one screen. See `GroupsLive`.
+      live "/groups", GroupsLive, :index
+      live "/groups/:name", GroupsLive, :show
       live "/permissions", PermissionsLive, :index
       # Who may read one space, or one page of it, has its own address: an
       # administrator sends a colleague the space with the question, not the
