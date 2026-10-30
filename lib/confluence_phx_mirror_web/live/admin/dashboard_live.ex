@@ -303,11 +303,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     "accounts" => "checking the site's accounts"
   }
 
-  # The site's number beside ours, in the few words that fit a strip.
-  defp pages_hint(held, %{named: named}) when held > named,
-    do: "#{grouped(held - named)} not in Confluence"
+  # The site's number beside ours. It is a *difference* only where the mirror has
+  # actually flagged pages absent, which is the set `/admin/upstream` reviews —
+  # subtracting the last check's total from today's would count every page
+  # imported since that check (6,498 on a mirror checked four days ago) as "not
+  # in Confluence", and every page of a space the check never settled with it.
+  defp pages_hint(%{absent: absent}) when absent > 0,
+    do: "#{grouped(absent)} not in Confluence"
 
-  defp pages_hint(_held, %{named: named}), do: "Confluence has #{grouped(named)}"
+  defp pages_hint(%{named: named, at: at}),
+    do: "Confluence named #{grouped(named)} #{Time.ago(at)}"
 
   defp grouped(count) do
     count
@@ -422,7 +427,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
       run ->
         summary = ReconcileRun.summary(run)
-        %{named: summary.named, at: run.finished_at, at_odds: summary.at_odds}
+
+        %{
+          named: summary.named,
+          at: run.finished_at,
+          at_odds: summary.at_odds,
+          # What the mirror says right now, which is the number the review
+          # screen lists: a check that ran days ago cannot answer for it.
+          absent: Mirror.count_absent()
+        }
     end
   end
 
@@ -755,7 +768,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       >
         <.stat label="Pages" value={@stats.pages} icon="hero-document-text">
           <:hint :if={@upstream && @upstream.named > 0}>
-            {pages_hint(@stats.pages, @upstream)}
+            {pages_hint(@upstream)}
           </:hint>
         </.stat>
         <.stat label="Attachments" value={@stats.attachments} icon="hero-paper-clip" />
