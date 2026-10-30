@@ -236,11 +236,19 @@ looks like a different product:
 | **Space icon** | mirrored: downloaded into the blob store and served at `/spaces/:key/icon`, in the directory and the space header |
 | **Space homepage and description** | mirrored (`homepage_id`, description in the space header) |
 | **Space categories** | mirrored, from `metadata.labels` with the `team:` prefix |
-| **Page cover image** | not implemented — a page property (`cover-picture`) pointing at an attachment |
+| **Page cover image** | not mirrored, by decision: it is a *content property* (`cover-picture`) pointing at an attachment, and the REST API only answers it per page (`/rest/api/content/{id}/property/cover-picture`) — one extra request for every page in the mirror, for a picture that says nothing about the page's content |
 | **Announcement banner** | not reachable: site-level, and not exposed by the read-only REST API |
 
 Deliberately not mirrored: custom themes and layouts (they only make sense with
 the client-side editor), user-generated CSS.
+
+The cover image is the one row that could be filled and is not. It is not a
+limitation of the API — the property is readable — but a per-page request against
+a mirror of a hundred thousand pages buys a decorative image, and the space icon
+(the same idea, one per space) already answers "this is where you are" for a
+thousandth of the requests. A deployment that needs covers can attach the image
+as a space icon or leave it out; the reader never sees a gap where the picture
+would have been, because the page renders without it.
 
 ## Identity: one person, several Confluence accounts
 
