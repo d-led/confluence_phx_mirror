@@ -396,6 +396,16 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       env: "CM_EXPORT_PERSONAL_SPACES",
       ui: :settings
     },
+    "export.prepared" => %{
+      type: :boolean,
+      default: :export_prepared,
+      group: :operations,
+      label: "Prepare a site export before it is downloaded",
+      help:
+        "Writes the archive to the deployment's temporary folder and serves that file: it says how big it is and a broken download can be resumed. Off, the archive is generated while it is sent — smaller and immediate, but a download that stops has to start again.",
+      env: "CM_EXPORT_PREPARED",
+      ui: :settings
+    },
     "trash.retention_days" => %{
       type: :non_negative,
       default: {:trash, :retention_days, 30},
@@ -507,6 +517,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "webhook.rate_limit",
     "accounts.login_token_minutes",
     "export.personal_spaces",
+    "export.prepared",
     "trash.retention_days",
     "dashboard.refresh_seconds"
   ]

@@ -142,6 +142,15 @@ defmodule ConfluencePhxMirror.Export do
     do: download_name([slug(Sites.name(), "confluence_mirror"), "site"], at) <> ".zip"
 
   @doc """
+  The name of the whole site's prepared archive on disk.
+
+  One name, so that every ask for the prepared export — the screen that builds
+  it and the request that sends it — is talking about the same file.
+  """
+  @spec site_artifact() :: String.t()
+  def site_artifact, do: "site.zip"
+
+  @doc """
   Filename offered for one space's static archive.
 
       engineering_handbook_site_20261026T101530Z.zip

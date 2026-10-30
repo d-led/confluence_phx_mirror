@@ -14,9 +14,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   import ConfluencePhxMirrorWeb.UIComponents
   import ConfluencePhxMirrorWeb.AdminComponents
 
+  alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirror.Confluence.Traffic
+  alias ConfluencePhxMirror.Export
+  alias ConfluencePhxMirror.Export.{Artifact, Zip}
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Resources
@@ -93,6 +96,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   def handle_event("sync_space", params, socket), do: sync_space(params, socket)
   def handle_event("cancel_sync", params, socket), do: cancel_sync(params, socket)
   def handle_event("cancel_queued", params, socket), do: cancel_queued(params, socket)
+  def handle_event("prepare_export", params, socket), do: prepare_export(params, socket)
 
   # One dropdown, so a single name: opening it twice closes it, Escape closes
   # it, and a click anywhere else does too.
@@ -397,6 +401,44 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       )
 
     assign(socket, running: running, progress: progress(running))
+    |> assign_export()
+  end
+
+  # The prepared archive, read on the same tick as the run strip. Building it
+  # takes minutes and the screen is where an operator waits for it, so the
+  # button, its label and the note under the header all come from this state.
+  defp assign_export(socket) do
+    assign(socket, export: Export.site_artifact() |> Artifact.status())
+  end
+
+  # One build at a time. A press while somebody else's build runs starts
+  # nothing — the note says whose build it is, and the tick keeps the count up
+  # to date until it is ready to download.
+  defp prepare_export(_params, socket) do
+    scope = socket.assigns.current_scope
+
+    Artifact.prepare(Export.site_artifact(),
+      by: operator(socket),
+      build: fn emit -> emit_site_archive(scope, emit) end
+    )
+
+    {:noreply, assign_export(socket)}
+  end
+
+  defp operator(socket) do
+    case socket.assigns[:current_user] do
+      nil -> nil
+      user -> user.email
+    end
+  end
+
+  # The archive as the artifact writes it: one batch of the zip at a time, so
+  # the build costs one entry of memory however large the mirror is.
+  defp emit_site_archive(%Scope{} = scope, emit) do
+    scope
+    |> Export.site_archive()
+    |> Zip.chunks()
+    |> Enum.each(fn chunk -> emit.(IO.iodata_to_binary(chunk)) end)
   end
 
   @impl true
@@ -499,17 +541,34 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           behind a divider because it is not a sync: it reads what is already
           mirrored and asks the server for nothing but the bytes. --%>
           <span aria-hidden="true" class="mx-1 h-6 w-px bg-base-300/70"></span>
-          <a
-            href="/admin/export/site.zip"
-            id="export-site"
-            download
-            class="btn btn-outline btn-sm gap-1.5"
-            title={export_hint()}
-          >
-            <.icon name="hero-arrow-down-tray" class="size-4" /> Static site
-          </a>
+          <%= if Settings.export_prepared?() do %>
+            <.prepared_export export={@export} hint={export_hint()} />
+          <% else %>
+            <a
+              href="/admin/export/site.zip"
+              id="export-site"
+              download
+              class="btn btn-outline btn-sm gap-1.5"
+              title={export_hint()}
+            >
+              <.icon name="hero-arrow-down-tray" class="size-4" /> Static site
+            </a>
+          <% end %>
         </:actions>
       </.admin_header>
+
+      <%!-- A prepared archive takes minutes, so the press that starts it has to
+      be answered immediately and the wait has to be visible: what it is doing,
+      how much is written, and whose build it is when it is not yours. --%>
+      <p
+        :if={export_note(@export)}
+        id="export-note"
+        role="status"
+        aria-live="polite"
+        class="mb-3 rounded-lg border border-base-300/70 bg-base-100 px-3 py-2 text-xs text-base-content/70"
+      >
+        {export_note(@export)}
+      </p>
 
       <.job_notice
         :if={@queued}
@@ -887,6 +946,63 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       "Every shared space, page and attachment as a static site — personal spaces are left out (an administrator can include them)"
     end
   end
+
+  # The prepared archive in its three states. Preparing is a press of its own
+  # because the file does not exist yet: the wait is the work, and saying so is
+  # what keeps a second press from starting a second build.
+  defp prepared_export(%{export: :absent} = assigns) do
+    ~H"""
+    <button
+      type="button"
+      id="export-site"
+      phx-click="prepare_export"
+      phx-disable-with="Starting…"
+      class="btn btn-outline btn-sm gap-1.5"
+      title={@hint}
+    >
+      <.icon name="hero-arrow-down-tray" class="size-4" /> Prepare static site
+    </button>
+    """
+  end
+
+  defp prepared_export(%{export: {:building, _}} = assigns) do
+    ~H"""
+    <button type="button" id="export-site" disabled class="btn btn-outline btn-sm gap-1.5">
+      <.icon name="hero-arrow-path" class="size-4 animate-spin" /> Preparing…
+    </button>
+    """
+  end
+
+  defp prepared_export(%{export: {:ready, %{bytes: bytes}}} = assigns) do
+    assigns = assign(assigns, :size, human_bytes(bytes))
+
+    ~H"""
+    <a
+      href="/admin/export/site.zip"
+      id="export-site"
+      download
+      class="btn btn-primary btn-sm gap-1.5"
+      title={@hint}
+    >
+      <.icon name="hero-arrow-down-tray" class="size-4" /> Download {@size}
+    </a>
+    """
+  end
+
+  # What the note says, per state. `nil` leaves no element at all: the note is
+  # news, not furniture.
+  defp export_note({:building, %{bytes: bytes} = building}) do
+    "Building the static site — #{human_bytes(bytes)} written so far.#{by(building)} You can keep working here; the download appears when it is done."
+  end
+
+  defp export_note({:ready, %{bytes: bytes, at: at} = ready}) do
+    "Ready: #{human_bytes(bytes)}, built #{Time.ago(at)}.#{by(ready)} A download that stops can be resumed."
+  end
+
+  defp export_note(_idle), do: nil
+
+  defp by(%{by: nil}), do: ""
+  defp by(%{by: who}), do: " Started by #{who}."
 
   # One list in the order an operator waits through it: what is queued, then
   # what already ran. Both kinds share a row shape, because a queued sync is a

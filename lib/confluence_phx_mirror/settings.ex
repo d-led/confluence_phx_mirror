@@ -322,6 +322,17 @@ defmodule ConfluencePhxMirror.Settings do
   @spec export_personal_spaces?() :: boolean()
   def export_personal_spaces?, do: effective("export.personal_spaces") == true
 
+  @doc """
+  Whether a whole-site export is prepared on disk before it is downloaded.
+
+  On, the archive is written to the deployment's temporary folder and served as
+  a file — with a length, resumable, and one build at a time. Off, it is
+  generated while it is sent, which is the cheapest thing a small mirror can do
+  and cannot be resumed.
+  """
+  @spec export_prepared?() :: boolean()
+  def export_prepared?, do: effective("export.prepared") == true
+
   @doc "How often the admin overview re-reads its numbers, in seconds."
   @spec dashboard_refresh_seconds() :: pos_integer()
   def dashboard_refresh_seconds, do: effective("dashboard.refresh_seconds")
@@ -735,6 +746,10 @@ defmodule ConfluencePhxMirror.Settings do
 
   defp resolve(:export_personal_spaces) do
     Application.get_env(:confluence_phx_mirror, :export_personal_spaces, false)
+  end
+
+  defp resolve(:export_prepared) do
+    Application.get_env(:confluence_phx_mirror, :export_prepared, false)
   end
 
   defp reader_default(scope, floor) do

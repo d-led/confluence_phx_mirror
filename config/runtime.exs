@@ -266,6 +266,20 @@ if export_personal = System.get_env("CM_EXPORT_PERSONAL_SPACES") do
   config :confluence_phx_mirror, export_personal_spaces: export_personal in ~w(1 true yes)
 end
 
+# A whole-site export is either generated while it is sent, or written to a file
+# first and served from there. The second says how big the archive is and lets a
+# broken download be resumed, at the cost of the disk it takes while it is kept.
+if export_prepared = System.get_env("CM_EXPORT_PREPARED") do
+  config :confluence_phx_mirror, export_prepared: export_prepared in ~w(1 true yes)
+end
+
+# Where those prepared archives are written. The OS temporary directory by
+# default, which on a Fly machine is the machine's own disk; point it at a
+# volume to keep an archive across a deploy.
+if export_tmp_dir = System.get_env("CM_EXPORT_TMP_DIR") do
+  config :confluence_phx_mirror, export_tmp_dir: export_tmp_dir
+end
+
 # How long a deleted space or page waits in the trash before the nightly purge
 # removes its rows and its attachment files. `0` keeps the trash: nothing is
 # purged until somebody empties it by hand.

@@ -571,12 +571,25 @@ so the archive stays readable. As a guide: a 935-page space is about 2 MB; a
 site of 120,000 mostly-title-only pages is a few hundred MB, and takes minutes
 to prepare.
 
-**A download that stops has to start again.** The archive is produced while it
-is sent — that is what keeps a whole wiki from having to fit in memory twice —
-so it has no length to report and no byte ranges to offer, and the response says
-so (`Accept-Ranges: none`). A browser that loses the connection mid-download
-cannot resume it; it downloads from the beginning again. Take a large archive on
-a connection that will last, or take one space at a time.
+**A download that stops.** A deployment chooses between two shapes, on
+*Admin → Settings* (*Prepare a site export before it is downloaded*,
+`CM_EXPORT_PREPARED`).
+
+Off — the default — the archive is produced while it is sent, which keeps a
+whole wiki from having to fit in memory twice and needs no disk at all. It has no
+length to report and no byte ranges to offer, so the response says so
+(`Accept-Ranges: none`) and a download that stops starts again from the
+beginning.
+
+On, the dashboard's button **prepares** the archive first: the press starts one
+build (one at a time, whoever asked first — a second press is told whose build is
+running and how far it has got), the note under the header counts the bytes as
+they land, and when the file is complete the button becomes a download of it —
+with its size, and with byte ranges, so a browser whose connection dropped
+resumes where it stopped. The file is written to the deployment's temporary
+folder (`CM_EXPORT_TMP_DIR`, the machine's own disk by default) and kept for ten
+minutes, because it is a snapshot; the download's own name carries the moment it
+was built. A deploy empties that folder, so the next press builds again.
 
 What it does not do: content Confluence renders only in the browser (Jira
 issues, page trees, gadgets) already reads as the mirror's "cannot be shown in

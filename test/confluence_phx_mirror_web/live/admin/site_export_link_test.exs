@@ -8,6 +8,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportLinkTest do
 
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
+  alias ConfluencePhxMirror.Export
+  alias ConfluencePhxMirror.Export.Artifact
   alias ConfluencePhxMirror.TestConfig
 
   import ConfluencePhxMirror.Fixtures
@@ -16,6 +18,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportLinkTest do
   setup %{conn: conn} do
     ops = user_fixture(%{email: "ops@example.com", role: "admin"})
     space_fixture(%{key: "ENG", name: "Engineering"})
+    # The prepared archive is one file shared by the whole suite.
+    Artifact.forget()
+    on_exit(fn -> Artifact.forget() end)
 
     {:ok, conn: Plug.Test.init_test_session(conn, %{"user_id" => ops.id})}
   end
@@ -53,5 +58,78 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportLinkTest do
 
     assert hint =~ "personal spaces included"
     refute hint =~ "left out"
+  end
+
+  describe "a deployment that prepares the archive" do
+    setup do
+      TestConfig.put(:export_prepared, true)
+      :ok
+    end
+
+    test "the press starts the build, the note counts it, and the file is handed over", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      # Nothing exists yet, so the press is the work — and the screen says so
+      # rather than leaving an operator wondering whether it registered.
+      assert has_element?(view, "button#export-site", "Prepare static site")
+
+      view |> element("#export-site") |> render_click()
+
+      assert has_element?(view, "button#export-site[disabled]", "Preparing…")
+      assert render(view) =~ "Building the static site"
+      assert render(view) =~ "Started by ops@example.com"
+
+      wait_for_archive()
+      send(view.pid, :progress)
+
+      assert has_element?(view, "a#export-site[href='/admin/export/site.zip'][download]")
+      assert view |> element("#export-site") |> render() =~ "Download"
+      assert render(view) =~ "Ready:"
+      assert render(view) =~ "can be resumed"
+    end
+
+    test "a build somebody else started is named, and not started twice", %{conn: conn} do
+      test = self()
+
+      # A build that does not finish until this test lets it, so the screen is
+      # seen waiting rather than catching a finished file.
+      Artifact.prepare(Export.site_artifact(),
+        by: "boss@example.com",
+        build: fn emit ->
+          emit.("half")
+          send(test, {:half_written, self()})
+          receive do: (:carry_on -> :ok), after: (5_000 -> :never_asked)
+        end
+      )
+
+      assert_receive {:half_written, builder}, 2_000
+
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      assert has_element?(view, "button#export-site[disabled]", "Preparing…")
+      assert render(view) =~ "Started by boss@example.com"
+
+      send(builder, :carry_on)
+      wait_for_archive()
+    end
+  end
+
+  defp wait_for_archive do
+    status =
+      Enum.reduce_while(1..200, nil, fn _attempt, _waited ->
+        case Artifact.status(Export.site_artifact()) do
+          {:ready, _} = ready ->
+            {:halt, ready}
+
+          _not_yet ->
+            Process.sleep(25)
+            {:cont, nil}
+        end
+      end)
+
+    assert status, "the archive was never prepared"
+    status
   end
 end

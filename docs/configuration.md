@@ -242,6 +242,8 @@ delivery does, are in the [site admin guide](site-admin-guide.md#webhooks).
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `CM_EXPORT_PERSONAL_SPACES` | `false` | include personal spaces in the whole-site static archive (`/admin/export/site.zip`). Off by default: a site archive is a file that leaves the building, and somebody's own space — drafts, notes, half-finished pages — is not part of "the site". One space's own archive is unaffected either way |
+| `CM_EXPORT_PREPARED` | `false` | build the whole-site archive into a file before it is downloaded, instead of generating it as it is sent. On, the download says how big it is and a broken download can be resumed; off, nothing is written to disk and a download that stops starts again. Also a setting, on *Admin → Settings* |
+| `CM_EXPORT_TMP_DIR` | the OS temporary directory | where a prepared archive is written. On a Fly machine the default is the machine's own disk, which the platform frees when the machine goes; point it at a mounted volume to keep an archive across a deploy. The files live in `confluence-mirror-exports/` inside it, and that directory is emptied at boot |
 
 ## Mail and notifications
 

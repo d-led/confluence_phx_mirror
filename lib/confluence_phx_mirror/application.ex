@@ -35,6 +35,10 @@ defmodule ConfluencePhxMirror.Application do
       # The spaces a site offers, as it last listed them, for the screen that
       # adds one to the whitelist.
       ConfluencePhxMirror.SpaceDirectory,
+      # The archives a download can be served from: one build at a time, written
+      # to the deployment's temporary folder so that a browser can resume one.
+      {Task.Supervisor, name: ConfluencePhxMirror.Export.TaskSupervisor},
+      ConfluencePhxMirror.Export.Artifact,
       ConfluencePhxMirrorWeb.Presence,
       ConfluencePhxMirror.RateLimit,
       rate_limiter_spec(),

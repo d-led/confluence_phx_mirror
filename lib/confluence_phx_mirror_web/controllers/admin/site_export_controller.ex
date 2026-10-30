@@ -17,15 +17,35 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportController do
 
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Export
+  alias ConfluencePhxMirror.Export.Artifact
   alias ConfluencePhxMirrorWeb.ArchiveDownload
 
   def index(conn, _params) do
     scope = Scope.from_assigns(conn.assigns)
 
     if Scope.admin?(scope) do
-      ArchiveDownload.send(conn, Export.site_archive(scope), Export.site_archive_name())
+      download(conn, scope)
     else
       refuse(conn)
+    end
+  end
+
+  # A prepared archive is a file on disk, so the answer carries a length and
+  # honours a range — a download that stopped where the proxy blinked can be
+  # resumed. Without one, the archive is generated while it is sent: the same
+  # bytes, none of the disk, and no way to resume something that does not exist
+  # yet. Which shape a deployment gets is `export.prepared`.
+  defp download(conn, scope) do
+    case Artifact.status(Export.site_artifact()) do
+      {:ready, %{at: at}} ->
+        conn
+        |> ArchiveDownload.send_file(
+          Artifact.path(Export.site_artifact()),
+          Export.site_archive_name(at)
+        )
+
+      _absent_or_building ->
+        ArchiveDownload.send(conn, Export.site_archive(scope), Export.site_archive_name())
     end
   end
 
