@@ -160,6 +160,9 @@ defmodule ConfluencePhxMirror.Export do
   change what an archive *contains* rather than what it says. Two calls with
   nothing mirrored or configured in between answer the same term.
 
+  The code that writes the pages is not named here, and does not have to be:
+  the pages a release writes are decided when the application starts, and
+  `Export.Artifact` empties its folder when it does — a build outlives neither.
   The aggregates are index maxima, so asking costs one query and no table walk;
   `Export.Artifact` compares the answer with the one a finished build recorded.
   """

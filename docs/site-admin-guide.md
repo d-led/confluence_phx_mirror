@@ -613,8 +613,15 @@ resumes where it stopped. The file is written to the deployment's temporary
 folder (`CM_EXPORT_TMP_DIR`, the machine's own disk by default) and kept for as
 long as the mirror does not change: an updated page, space or attachment, or a
 setting that changes what an archive contains, is a new build, and until then
-the finished file is what the button hands over. A deploy empties that folder,
-so the next press builds again.
+the finished file is what the button hands over.
+
+What ends a build's life is a restart, not a deploy or a filesystem: the folder
+is emptied whenever the application starts, because a half-written archive left
+by a process that died would answer a download with a ZIP that stops halfway.
+So a release can never hand out the previous release's pages, whether it lands
+on a new machine, on a volume, or on the same host again — and the version a
+file is kept under names the mirror's content and settings alone, which is all
+that can change while the application runs.
 
 **A press is answered.** Whichever shape a deployment uses, the download button
 shuts the moment it is pressed and opens again when the request that serves the
