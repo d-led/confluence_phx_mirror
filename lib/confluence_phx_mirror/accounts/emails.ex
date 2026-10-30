@@ -71,6 +71,61 @@ defmodule ConfluencePhxMirror.Accounts.Emails do
     )
   end
 
+  @doc """
+  "A Confluence identity is now linked to this account."
+
+  The same note serves both ends of a link, because the question is the same on
+  both: which account holds this identity now, and what did that change? It is
+  written about the two in the third person, so an inbox reading it as the
+  account's or as the identity's is reading the truth.
+
+  `identity` is what `ConfluencePhxMirror.Mirror.identity_details/1` answered —
+  an account id, an address when the site listed one, and a name — and `:to` is
+  the `{name, address}` the message is for.
+  """
+  def identity_linked(%User{} = user, identity, opts) do
+    {name, _address} = to = Keyword.fetch!(opts, :to)
+    identity_label = identity_label(identity)
+    account = user.email
+
+    Swoosh.Email.new()
+    |> from(from_address())
+    |> to(to)
+    |> subject("[Mirror] A Confluence identity was linked")
+    |> text_body("""
+    Hi #{name},
+
+    the Confluence identity #{identity_label} is now linked to the mirror account
+    for #{account}.
+
+    A link widens what that account may read here: everything the identity may
+    read on the Confluence site becomes readable through it, and nothing else.
+    Unlinking takes it away again.
+
+    If you were not expecting this, tell an administrator of the mirror.
+    """)
+    |> html_body(
+      ConfluencePhxMirror.Mail.Layout.message(
+        "Confluence Mirror",
+        "A Confluence identity was linked",
+        "<p style=\"margin:0 0 4px;\">Hi #{escape(name)},</p>" <>
+          "<p style=\"margin:0;\">The Confluence identity <strong>#{escape(identity_label)}</strong> is now linked to the mirror account for #{escape(account)}.</p>" <>
+          "<p style=\"margin:8px 0 0;\">A link widens what that account may read here: everything the identity may read on the Confluence site becomes readable through it, and nothing else. Unlinking takes it away again.</p>",
+        footer: "If you were not expecting this, tell an administrator of the mirror."
+      )
+    )
+  end
+
+  # A name says who, an account id says which: the message carries both, because
+  # the reader has to be able to tell "yes, that is my guest account" from "no,
+  # and I want it undone".
+  defp identity_label(identity) do
+    case identity.display_name do
+      nil -> identity.account_id
+      name -> "#{name} — #{identity.account_id}"
+    end
+  end
+
   # The address of the mirror itself, or a phrase when the deployment does not
   # know its own (a mail with an empty link is worse than one without a link).
   defp mirror_address(opts) do

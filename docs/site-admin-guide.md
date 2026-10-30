@@ -1077,6 +1077,16 @@ Scripts can do the same thing with an administrator's token —
 `GET /api/v1/identities`, `POST /api/v1/identities/:account_id/link` and
 `DELETE /api/v1/identities/:account_id/link`; see [the API guide](api.md#json-api).
 
+**A link is news to both ends.** Each side that has an address is mailed — the
+account's own, and the one the site listed for the identity, when it is a
+different mailbox — because a link widens what an account may read in somebody
+else's name, and the people it happens to are the ones who can notice a wrong
+one. The note says which identity (name and account id) is now on which account,
+what a link does, and where to object. It is one of the messages the
+*Mail server* allowance pays for, so a spent day means no note rather than a
+refused link: the link is recorded in the audit log either way, and the next
+*Test message* says whether mail works at all.
+
 ### Groups granted here
 
 `/admin/users` can grant a group on top of what the sync says — an incident

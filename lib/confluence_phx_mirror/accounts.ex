@@ -687,8 +687,54 @@ defmodule ConfluencePhxMirror.Accounts do
                |> User.identity_changeset(%{identity_account_ids: [account_id | linked]})
                |> Repo.update() do
           Audit.log(actor, User.audit_event_identity_linked(user, account_id))
+          notify_linked(user, account_id, actor)
           {:ok, user}
         end
+    end
+  end
+
+  # A link is somebody else's decision about what this account may read, so both
+  # ends that have an address are told: the account it was added to, and whoever
+  # the Confluence address belongs to. The mirror itself never writes content,
+  # but a link is the one grant an administrator makes in a reader's name — the
+  # people it grants to are the ones who can notice a wrong one.
+  #
+  # A message that cannot go does not undo the link: no relay, the day's
+  # allowance spent, the relay refusing — `Mailer` records every one of those in
+  # the audit trail, which is where a link is accounted for anyway.
+  defp notify_linked(%User{} = user, account_id, actor) do
+    if mail_configured?() do
+      identity = Mirror.identity_details(account_id)
+
+      user
+      |> link_recipients(identity)
+      |> Enum.each(fn {side, to} ->
+        user
+        |> ConfluencePhxMirror.Accounts.Emails.identity_linked(identity, to: to)
+        |> ConfluencePhxMirror.Mailer.send(
+          ConfluencePhxMirror.Mail.Budget.key(:identity_link, user, account_id, side),
+          actor
+        )
+      end)
+    end
+
+    :ok
+  end
+
+  # The account's own address first, then the one the site lists for the
+  # identity — when it is another one. An identity linked to the account of the
+  # person it belongs to has one inbox, and gets one message.
+  defp link_recipients(%User{} = user, identity) do
+    account = {:account, {User.display_name(user), user.email}}
+
+    case identity.email do
+      nil ->
+        [account]
+
+      address ->
+        if User.normalise_email(address) == User.normalise_email(user.email),
+          do: [account],
+          else: [account, {:identity, {identity.display_name || address, address}}]
     end
   end
 

@@ -16,13 +16,16 @@ defmodule ConfluencePhxMirror.Accounts.IdentityLinkTest do
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
   import ConfluencePhxMirror.Fixtures
+  import Swoosh.TestAssertions
 
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Accounts.{Scope, User}
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Demo
+  alias ConfluencePhxMirror.Mail.Budget
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Settings
 
   @guest "5f057cbe0b38b10022628d68"
   @author "557058:maria"
@@ -145,8 +148,9 @@ defmodule ConfluencePhxMirror.Accounts.IdentityLinkTest do
 
     {:ok, _} = Accounts.link_identity(reader, @guest, admin_actor())
 
-    entry = Audit.recent(1) |> hd()
-    assert entry.action == "user.identity_linked"
+    # The note about the mail is the newest line, so the link's own entry is
+    # found by name rather than by position.
+    entry = Enum.find(Audit.recent(5), &(&1.action == "user.identity_linked"))
     assert entry.entity_id == to_string(reader.id)
     assert entry.metadata["identity"] == @guest
   end
@@ -173,4 +177,78 @@ defmodule ConfluencePhxMirror.Accounts.IdentityLinkTest do
     # token that answered with less than the browser would be a silent demotion.
     assert Authorization.can_read_page?(Scope.for_user(token_user), page)
   end
+
+  describe "the note a link sends" do
+    test "both ends that have an address hear about it" do
+      reader = user_fixture(%{email: "both.ends@example.com"})
+
+      {:ok, _} =
+        Mirror.replace_group_members("confluence-users", [
+          %{account_id: @guest, email: "guest.owner@example.com", display_name: "Guest Person"}
+        ])
+
+      {:ok, _} = Accounts.link_identity(reader, @guest, admin_actor())
+
+      emails = sent_emails()
+      assert Enum.map(emails, &address/1) == ["both.ends@example.com", "guest.owner@example.com"]
+
+      # Whoever reads it has to be able to tell which identity, for which
+      # account — the name for a person, the id for the site — and both ends
+      # are told the same thing about the same link.
+      Enum.each(emails, fn email ->
+        assert email.subject == "[Mirror] A Confluence identity was linked"
+        assert email.text_body =~ "Guest Person — #{@guest}"
+        assert email.text_body =~ "both.ends@example.com"
+      end)
+    end
+
+    test "an identity the mirror holds no address for tells only the account" do
+      reader = user_fixture(%{email: "only.account@example.com"})
+      {:ok, _} = Mirror.replace_group_members("confluence-users", [%{account_id: @guest}])
+
+      {:ok, _} = Accounts.link_identity(reader, @guest, admin_actor())
+
+      assert Enum.map(sent_emails(), &address/1) == ["only.account@example.com"]
+    end
+
+    test "an identity that is the account's own address is one message" do
+      reader = user_fixture(%{email: "one.inbox@example.com"})
+
+      {:ok, _} =
+        Mirror.replace_group_members("confluence-users", [
+          %{account_id: @guest, email: "One.Inbox@Example.com"}
+        ])
+
+      {:ok, _} = Accounts.link_identity(reader, @guest, admin_actor())
+
+      assert Enum.map(sent_emails(), &address/1) == ["one.inbox@example.com"]
+    end
+
+    test "a day with no room for the note still makes the link" do
+      reader = user_fixture(%{email: "no.room@example.com"})
+      {:ok, _} = Mirror.replace_group_members("confluence-users", [%{account_id: @guest}])
+
+      # The day's allowance is one message, and it is already spent: the note is
+      # a message like any other, and a link is not something a relay can veto.
+      Settings.update(%{"mail.per_day" => "1"}, {:system, "test"})
+      on_exit(fn -> Settings.reload() end)
+      assert {:ok, _} = Budget.claim("something:else")
+
+      assert {:ok, user} = Accounts.link_identity(reader, @guest, admin_actor())
+
+      assert user.identity_account_ids == [@guest]
+      refute_email_sent()
+    end
+  end
+
+  # The messages this test's link produced, in the order they were sent.
+  defp sent_emails do
+    receive do
+      {:email, %Swoosh.Email{} = email} -> [email | sent_emails()]
+    after
+      0 -> []
+    end
+  end
+
+  defp address(%Swoosh.Email{to: [{_name, address} | _]}), do: address
 end

@@ -146,6 +146,22 @@ defmodule ConfluencePhxMirror.Mail.Budget do
   def key(:test, %ConfluencePhxMirror.Accounts.User{id: id}),
     do: "test:#{id}:#{System.system_time(:millisecond)}"
 
+  # A link is one event with two ends, and each end that has an address gets its
+  # own message: the side names which one, so neither takes the other's name in
+  # the ledger. The event's own moment keeps the key unique — the same identity
+  # can be unlinked and linked again, and the second time is news too — while a
+  # request that arrives twice finds the identity already linked and never gets
+  # as far as a message.
+  @spec key(
+          :identity_link,
+          ConfluencePhxMirror.Accounts.User.t(),
+          String.t(),
+          :account | :identity
+        ) ::
+          String.t()
+  def key(:identity_link, %ConfluencePhxMirror.Accounts.User{id: id}, account_id, side),
+    do: "identity_link:#{id}:#{account_id}:#{side}:#{System.system_time(:millisecond)}"
+
   @doc "How many messages have been handed over today, refusals included."
   @spec used() :: non_neg_integer()
   def used, do: Repo.aggregate(from(s in Send, where: s.day == ^Date.utc_today()), :count)

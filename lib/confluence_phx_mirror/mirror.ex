@@ -1129,6 +1129,36 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
+  What the mirror knows about one Confluence identity: the address a group
+  listing gave us, and the name beside it.
+
+  Group membership is the one place a Confluence address is written down — an
+  account id on its own is not a mailbox — so an identity nobody has listed
+  answers with no address. A row that carries one is the row to answer with,
+  because the same person can be listed twice, once with and once without.
+  """
+  @spec identity_details(String.t()) :: %{
+          account_id: String.t(),
+          email: String.t() | nil,
+          display_name: String.t() | nil
+        }
+  def identity_details(account_id) when is_binary(account_id) do
+    key = String.downcase(account_id)
+
+    row =
+      from(m in GroupMember,
+        where: m.account_id == ^account_id or m.subject_key == ^key,
+        where: not is_nil(m.email) or not is_nil(m.display_name),
+        order_by: [desc: not is_nil(m.email)],
+        limit: 1,
+        select: %{email: m.email, display_name: m.display_name}
+      )
+      |> Repo.one()
+
+    %{account_id: account_id, email: row && row.email, display_name: row && row.display_name}
+  end
+
+  @doc """
   The Confluence identities the mirrored content names: every page and comment
   author.
 
