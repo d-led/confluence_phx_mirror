@@ -7,10 +7,14 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
 
     * `assets/search.json` is the index itself, for any tool that wants to read
       the archive;
-    * `search.html` carries the same JSON in a `<script type="application/json">`
-      block, so the page can search without fetching anything. A folder opened
-      from `file://` may not fetch its own files, and an archive that needs a
-      server is not a static site.
+    * `assets/search-index.js` assigns the same JSON to a global, which
+      `search.html` loads with a `<script src>` tag: a folder opened from
+      `file://` may not fetch its own files, but it does run its own scripts.
+
+  Both are written **while the export streams**, one space at a time, into a
+  temporary file: a site of a hundred thousand pages makes an index that does
+  not fit in a small box's memory twice over (once as documents, once as JSON),
+  and an archive is not worth an out-of-memory kill.
 
   The matcher is a few hundred lines of plain JavaScript (`script/0`) that runs
   in the page: it ranks title matches above space and label matches above the
@@ -19,45 +23,91 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
   `auto-ynab-csv` uses for its own static report.
   """
 
+  import Ecto.Query
+
+  alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Export.Site
+  alias ConfluencePhxMirror.Mirror.{Page, Space}
+  alias ConfluencePhxMirror.Repo
+
+  # The first characters of a page's text that the index carries; the same
+  # number the archive used to read with every page's plan.
+  @excerpt_chars 400
 
   @doc """
-  One document per page of `plans`, in the order the archive lists them.
+  Writes the index as JSON to `path`, one space at a time.
+
+  Nothing but one space's rows is held: each document is encoded as it is read
+  and appended to the file, and the space's rows are released before the next
+  one is asked for.
+  """
+  @spec write_json(Path.t(), [Space.t()], Scope.t()) :: :ok
+  # The path is the spool file the exporter chose, one it made up from
+  # `System.tmp_dir!()` and a unique integer; nothing a request carries reaches
+  # the filesystem here.
+  # sobelow_skip ["Traversal.FileModule"]
+  def write_json(path, spaces, %Scope{} = scope) do
+    File.open!(path, [:write, :raw, :binary], fn device ->
+      IO.binwrite(device, "[")
+      Enum.each(spaces, &write_space(device, &1, scope))
+      IO.binwrite(device, "]")
+    end)
+
+    :ok
+  end
+
+  defp write_space(device, space, scope) do
+    space
+    |> documents(scope)
+    |> Enum.each(&write_document(device, &1))
+  end
+
+  # The array is written as the documents are read, so every document but the
+  # first is preceded by the comma that separates it — and the file's own
+  # position is what says which one this is.
+  defp write_document(device, document) do
+    {:ok, position} = :file.position(device, :cur)
+    if position > 1, do: IO.binwrite(device, ",")
+    IO.binwrite(device, JSON.encode_to_iodata!(document))
+  end
+
+  @doc """
+  One document per page of `space`, in the order the archive lists them.
 
   Each document is a map with `id`, `title`, `space`, `space_key`, `type`,
   `updated`, `labels`, `url` (relative to the archive root) and `text`.
   """
-  @spec documents([Site.plan()]) :: [map()]
-  def documents(plans) do
-    Enum.flat_map(plans, fn plan ->
-      Enum.map(plan.pages, fn page ->
-        %{
-          id: page.confluence_id,
-          title: page.title,
-          space: plan.space.name,
-          space_key: plan.space.key,
-          type: page.type,
-          updated: date(page.external_updated_at),
-          labels: page.labels || [],
-          url: Site.page_path(plan.space.key, page.confluence_id),
-          text: page.text || ""
-        }
-      end)
+  @spec documents(Space.t(), Scope.t()) :: [map()]
+  def documents(%Space{} = space, %Scope{} = scope) do
+    from(p in Page,
+      as: :page,
+      where: p.space_id == ^space.id and is_nil(p.deleted_at),
+      order_by: [asc: p.title],
+      select: %{
+        id: p.confluence_id,
+        title: p.title,
+        type: p.type,
+        updated: p.external_updated_at,
+        labels: p.labels,
+        text: fragment("left(coalesce(?, ''), ?)", p.body_text, ^@excerpt_chars)
+      }
+    )
+    |> Authorization.restrict_pages(scope)
+    |> Repo.all()
+    |> Enum.map(fn row ->
+      %{
+        id: row.id,
+        title: row.title,
+        space: space.name,
+        space_key: space.key,
+        type: row.type,
+        updated: date(row.updated),
+        labels: row.labels || [],
+        url: Site.page_path(space.key, row.id),
+        text: row.text || ""
+      }
     end)
-  end
-
-  @doc """
-  The index as JSON.
-
-  `<` is written as `\\u003c`: the same bytes are inlined in a `<script>`
-  element, and a page whose text contains `</script>` must not be able to close
-  it.
-  """
-  @spec json([map()]) :: String.t()
-  def json(documents) do
-    documents
-    |> JSON.encode!()
-    |> String.replace("<", "\\u003c")
   end
 
   defp date(nil), do: nil
@@ -66,18 +116,18 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
   @script ~S"""
   // Search for a static copy of the Confluence mirror.
   //
-  // The index is inlined in this page (assets/search.json holds the same
-  // documents for other tools), so search needs no server and no network: open
-  // the folder and type. Every typed word has to match somewhere; a title
-  // weighs more than a space or a label, and those weigh more than the body.
+  // The index arrives as `assets/search-index.js`, which assigns the same
+  // documents `assets/search.json` holds. A script file is what a folder
+  // opened from `file://` will run but not fetch, so search works with no
+  // server and no network: open the folder and type. Every typed word has to
+  // match somewhere; a title weighs more than a space or a label, and those
+  // weigh more than the body.
 
   (function () {
     "use strict";
 
-    var source = document.getElementById("search-index");
-    if (!source) return;
-
-    var documents = JSON.parse(source.textContent);
+    // Written by `assets/search-index.js`, which the page loads first.
+    var documents = window.__MIRROR_SEARCH__ || [];
     var entries = documents.map(prepare);
     var input = document.getElementById("search-q");
     var status = document.getElementById("search-status");

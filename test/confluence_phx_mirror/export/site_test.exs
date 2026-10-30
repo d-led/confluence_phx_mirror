@@ -176,10 +176,14 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       assert Enum.any?(index, &(&1["space_key"] == "ENG"))
       assert Map.has_key?(files, "assets/search.js")
 
+      # The page loads the same documents `search.json` carries, as a script:
+      # a folder opened from `file://` runs its own files but will not fetch
+      # them.
+      assert loaded_index(files) == index
+
       search = files["search.html"]
-      assert search =~ ~s(id="search-index")
+      assert search =~ ~s(src="assets/search-index.js")
       assert search =~ ~s(src="assets/search.js")
-      assert search =~ Demo.open_page_title()
     end
 
     test "a search says it is working, and how far it has got", %{files: files} do
@@ -267,15 +271,6 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
     end
   end
 
-  describe "the search index" do
-    test "cannot close the script element it is inlined in" do
-      json = Search.json([%{title: "</script><img>", text: "</SCRIPT>"}])
-
-      refute json =~ "</script>"
-      assert json =~ "\\u003c/script>"
-    end
-  end
-
   describe "the archive itself" do
     test "streams as a readable ZIP" do
       archive =
@@ -341,6 +336,14 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
     href
     |> Path.expand(Path.dirname("/" <> name))
     |> String.trim_leading("/")
+  end
+
+  # What `search.html` holds once it has loaded `assets/search-index.js`.
+  defp loaded_index(files) do
+    files["assets/search-index.js"]
+    |> String.replace_prefix("window.__MIRROR_SEARCH__ = ", "")
+    |> String.trim_trailing(";\n")
+    |> JSON.decode!()
   end
 
   defp archive(scope) do

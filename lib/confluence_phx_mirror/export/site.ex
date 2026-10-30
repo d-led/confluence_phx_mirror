@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirror.Export.Site do
       attachments/<KEY>/<page>/<file>     one file per mirrored attachment
       assets/site.css                     the mirror's own stylesheet
       assets/search.json                  the search index, for other tools
+      assets/search-index.js              the same index, as a script the page loads
       assets/search.js                    the matcher search.html runs
       assets/favicon.ico                  the mark in the browser tab
 
@@ -28,9 +29,11 @@ defmodule ConfluencePhxMirror.Export.Site do
   archive — goes back to Confluence.
 
   Bodies are not held in memory: the page is read while its entry is written,
-  exactly like `ConfluencePhxMirror.Export.space_archive/2`. The search index
-  is the one exception — an index is a single file — and it carries only ids,
-  titles and an excerpt of each page's text.
+  exactly like `ConfluencePhxMirror.Export.space_archive/2`. The search index is
+  the one file that has to exist whole — a script has to parse in one piece — and
+  a site-wide index is larger than the mirror is willing to keep twice, so it is
+  spooled to a temporary file one space at a time and read back per entry. It
+  carries only ids, titles and an excerpt of each page's text.
   """
 
   import Ecto.Query
@@ -50,10 +53,6 @@ defmodule ConfluencePhxMirror.Export.Site do
   @stylesheet_path "priv/static/assets/css/app.css"
   @favicon_path "priv/static/images/archive-favicon.ico"
   @description_chars 200
-  # What a search document carries of a page's text: enough to find it by a
-  # phrase and to show why it matched, not a second copy of the wiki. The
-  # truncation is done by Postgres, so the plan never holds a whole body.
-  @excerpt_chars 400
   # The label pages live one folder down, so every link they build is relative
   # to `labels/`, not to the archive root.
   @labels_prefix "../"
@@ -83,12 +82,14 @@ defmodule ConfluencePhxMirror.Export.Site do
   def archive(spaces, %Scope{} = scope, opts \\ []) do
     generated = Keyword.get_lazy(opts, :generated_at, &DateTime.utc_now/0)
 
-    plans =
+    spaces =
       spaces
       |> Enum.filter(&Authorization.can_read_space?(scope, &1))
-      |> Enum.map(&plan(&1, scope))
 
-    Stream.concat(index_entries(plans, generated, opts), page_stream(plans, generated))
+    Stream.concat(
+      front_entries(spaces, scope, generated, opts),
+      space_stream(spaces, scope, generated)
+    )
   end
 
   # ---------------------------------------------------------------------------
@@ -112,6 +113,9 @@ defmodule ConfluencePhxMirror.Export.Site do
 
   @doc "The search index, for tools that read the archive."
   def search_index_path, do: "assets/search.json"
+
+  @doc "The same index as a script, which is how the search page loads it."
+  def search_index_script_path, do: "assets/search-index.js"
 
   @doc "The search page's matcher."
   def search_script_path, do: "assets/search.js"
@@ -209,17 +213,16 @@ defmodule ConfluencePhxMirror.Export.Site do
   # Entries
   # ---------------------------------------------------------------------------
 
-  defp index_entries(plans, generated, opts) do
-    json = plans |> Search.documents() |> Search.json()
+  defp front_entries(spaces, scope, generated, opts) do
+    cards = Enum.map(spaces, &card(&1, scope))
 
-    search = [
-      {search_path(), fn -> render_search(plans, json, generated) end},
-      {search_index_path(), json},
-      {search_script_path(), Search.script()}
-    ]
+    search =
+      [{search_path(), fn -> render_search(cards, generated) end}] ++
+        search_index_entry(spaces, scope) ++
+        [{search_script_path(), Search.script()}]
 
-    labels = label_entries(plans, generated)
-    index = [{index_path(), fn -> render_site(plans, generated) end} | search ++ labels]
+    labels = label_entries(spaces, scope, generated)
+    index = [{index_path(), fn -> render_site(cards, generated) end} | search ++ labels]
 
     chrome = [
       {site_script_path(), Chrome.script()},
@@ -233,31 +236,91 @@ defmodule ConfluencePhxMirror.Export.Site do
     end
   end
 
-  defp page_stream(plans, generated) do
+  # One index, two files: `search-index.js` is what the page loads (a
+  # `file://` page runs a script where it will not fetch a sibling), and
+  # `search.json` is the same bytes for any other tool. Both are written to a
+  # temporary file while the export streams, one space at a time, and read back
+  # one file at a time — a site-wide index does not fit in the box twice.
+  #
+  # The file is removed when the second entry is written; a download that stops
+  # between the two leaves it in the container's temporary directory, which the
+  # next restart empties.
+  #
+  # The path is the exporter's own invention, not anything a reader sent.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp search_index_entry(spaces, scope) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "mirror-search-#{System.unique_integer([:positive])}.json"
+      )
+
+    Search.write_json(path, spaces, scope)
+
+    script =
+      {search_index_script_path(),
+       fn -> "window.__MIRROR_SEARCH__ = " <> File.read!(path) <> ";\n" end}
+
+    data = {search_index_path(), fn -> File.read!(path) |> tap(fn _ -> File.rm(path) end) end}
+
+    [script, data]
+  end
+
+  defp card(%Space{} = space, scope) do
+    %{
+      name: space.name,
+      key: space.key,
+      href: space_index_path(space.key),
+      icon: icon_href(space, ""),
+      description: excerpt(space.description),
+      page_count: page_count(space, scope)
+    }
+  end
+
+  defp page_count(%Space{} = space, scope) do
+    from(p in Page,
+      as: :page,
+      where: p.space_id == ^space.id and is_nil(p.deleted_at)
+    )
+    |> Authorization.restrict_pages(scope)
+    |> Repo.aggregate(:count)
+  end
+
+  # One space at a time, and its plan is dropped before the next one starts:
+  # the whole-site export of a large mirror must not need every page's row at
+  # once. The context is site-wide because a page may link into another space,
+  # but it holds ids and paths only.
+  defp space_stream(spaces, scope, generated) do
     context = %{
-      pages:
-        Map.new(
-          Enum.flat_map(plans, fn plan ->
-            Enum.map(
-              plan.pages,
-              &{&1.confluence_id, page_path(plan.space.key, &1.confluence_id)}
-            )
-          end)
-        ),
+      pages: page_paths(spaces, scope),
       origins: origins(),
       external: &external_urls/1,
       external_attachment: &external_attachment/2
     }
 
-    # One space at a time, one page at a time: the plan is ids and titles, the
-    # bodies are read while their entries are written.
-    plans
-    |> Stream.flat_map(fn plan ->
+    Stream.flat_map(spaces, fn space ->
+      plan = plan(space, scope)
+
       Stream.concat(
-        [{space_index_path(plan.space.key), fn -> render_space(plan, generated) end}],
-        Stream.concat(icon_entry(plan.space), page_entries(plan, context, generated))
+        [{space_index_path(space.key), fn -> render_space(plan, generated) end}],
+        Stream.concat(icon_entry(space), page_entries(plan, context, generated))
       )
     end)
+  end
+
+  defp page_paths(spaces, scope) do
+    spaces
+    |> Enum.flat_map(fn space ->
+      from(p in Page,
+        as: :page,
+        where: p.space_id == ^space.id and is_nil(p.deleted_at),
+        select: p.confluence_id
+      )
+      |> Authorization.restrict_pages(scope)
+      |> Repo.all()
+      |> Enum.map(&{&1, page_path(space.key, &1)})
+    end)
+    |> Map.new()
   end
 
   defp icon_entry(%Space{icon_blob_key: nil}), do: []
@@ -306,32 +369,47 @@ defmodule ConfluencePhxMirror.Export.Site do
 
   # A label is a way into the archive the space tree cannot give: "everything
   # about deployment", whichever space it lives in. The mirror has a label
-  # catalogue; the archive carries the same two screens, built from labels the
-  # plan already holds — no query of their own.
-  defp label_entries(plans, generated) do
-    groups = label_groups(plans)
+  # catalogue; the archive carries the same two screens, built one space at a
+  # time so that a site of a hundred thousand pages needs one space's rows.
+  defp label_entries(spaces, scope, generated) do
+    groups = label_groups(spaces, scope)
+    cards = Enum.map(spaces, &card(&1, scope))
 
-    [{labels_path(), fn -> render_labels(plans, groups, generated) end}] ++
+    [{labels_path(), fn -> render_labels(cards, groups, generated) end}] ++
       Enum.map(groups, fn {key, group} ->
-        {label_path(key), fn -> render_label(plans, group, generated) end}
+        {label_path(key), fn -> render_label(cards, group, generated) end}
       end)
   end
 
-  defp label_groups(plans) do
-    plans
-    |> Enum.flat_map(fn plan ->
-      Enum.flat_map(plan.pages, fn page ->
-        Enum.map(page.labels || [], &{label_key(&1), &1, plan.space, page})
+  defp label_groups(spaces, scope) do
+    spaces
+    |> Enum.reduce(%{}, fn space, acc ->
+      space
+      |> label_rows(scope)
+      |> Enum.reduce(acc, fn page, acc ->
+        Enum.reduce(page.labels || [], acc, fn label, acc ->
+          Map.update(acc, label_key(label), [{label, space, page}], &[{label, space, page} | &1])
+        end)
       end)
     end)
-    |> Enum.group_by(&elem(&1, 0))
     |> Map.new(fn {key, entries} -> {key, group(key, entries)} end)
+  end
+
+  # Only what a label page shows: no body, no excerpt.
+  defp label_rows(%Space{} = space, scope) do
+    from(p in Page,
+      as: :page,
+      where: p.space_id == ^space.id and is_nil(p.deleted_at),
+      select: %{confluence_id: p.confluence_id, title: p.title, labels: p.labels}
+    )
+    |> Authorization.restrict_pages(scope)
+    |> Repo.all()
   end
 
   defp group(_key, entries) do
     pages =
       entries
-      |> Enum.map(fn {_key, _label, space, page} ->
+      |> Enum.map(fn {_label, space, page} ->
         %{
           title: page.title,
           confluence_id: page.confluence_id,
@@ -342,7 +420,7 @@ defmodule ConfluencePhxMirror.Export.Site do
       |> Enum.uniq_by(&{&1.space_key, &1.confluence_id})
       |> Enum.sort_by(&{&1.space_name, &1.title})
 
-    %{name: most_common(Enum.map(entries, &elem(&1, 1))), pages: pages}
+    %{name: most_common(Enum.map(entries, &elem(&1, 0))), pages: pages}
   end
 
   # Two spellings can share a file name; the catalogue shows the one most pages
@@ -403,8 +481,7 @@ defmodule ConfluencePhxMirror.Export.Site do
         status: p.status,
         labels: p.labels,
         ancestors: p.ancestors,
-        external_updated_at: p.external_updated_at,
-        text: fragment("left(coalesce(?, ''), ?)", p.body_text, ^@excerpt_chars)
+        external_updated_at: p.external_updated_at
       }
     )
     |> Authorization.restrict_pages(scope)
@@ -437,13 +514,11 @@ defmodule ConfluencePhxMirror.Export.Site do
   # Rendering
   # ---------------------------------------------------------------------------
 
-  defp render_site(plans, generated) do
-    spaces = space_cards(plans, "")
-
+  defp render_site(cards, generated) do
     HTML.site(%{
       title: Sites.name(),
-      spaces: spaces,
-      page_count: Enum.sum(Enum.map(spaces, & &1.page_count)),
+      spaces: cards,
+      page_count: Enum.sum(Enum.map(cards, & &1.page_count)),
       generated: stamp(generated),
       mirror_name: Sites.name(),
       mirror_url: Sites.url(),
@@ -452,14 +527,11 @@ defmodule ConfluencePhxMirror.Export.Site do
     |> to_binary()
   end
 
-  defp render_search(plans, json, generated) do
-    spaces = space_cards(plans, "")
-
+  defp render_search(cards, generated) do
     HTML.search(%{
       title: "Search · #{Sites.name()}",
-      spaces: spaces,
-      page_count: Enum.sum(Enum.map(spaces, & &1.page_count)),
-      json: json,
+      spaces: cards,
+      page_count: Enum.sum(Enum.map(cards, & &1.page_count)),
       generated: stamp(generated),
       mirror_name: Sites.name(),
       mirror_url: Sites.url(),
@@ -468,7 +540,7 @@ defmodule ConfluencePhxMirror.Export.Site do
     |> to_binary()
   end
 
-  defp render_labels(plans, groups, generated) do
+  defp render_labels(cards, groups, generated) do
     labels =
       groups
       |> Enum.map(fn {key, group} ->
@@ -484,7 +556,7 @@ defmodule ConfluencePhxMirror.Export.Site do
     HTML.labels(%{
       title: "Labels · #{Sites.name()}",
       prefix: @labels_prefix,
-      spaces: space_cards(plans, @labels_prefix),
+      spaces: labels_cards(cards),
       labels: labels,
       generated: stamp(generated),
       mirror_name: Sites.name(),
@@ -494,7 +566,7 @@ defmodule ConfluencePhxMirror.Export.Site do
     |> to_binary()
   end
 
-  defp render_label(plans, group, generated) do
+  defp render_label(cards, group, generated) do
     pages =
       Enum.map(group.pages, fn page ->
         Map.put(page, :href, @labels_prefix <> page_path(page.space_key, page.confluence_id))
@@ -503,7 +575,7 @@ defmodule ConfluencePhxMirror.Export.Site do
     HTML.label(%{
       title: "#{group.name} · Labels · #{Sites.name()}",
       prefix: @labels_prefix,
-      spaces: space_cards(plans, @labels_prefix),
+      spaces: labels_cards(cards),
       label: group.name,
       pages: pages,
       generated: stamp(generated),
@@ -514,17 +586,9 @@ defmodule ConfluencePhxMirror.Export.Site do
     |> to_binary()
   end
 
-  defp space_cards(plans, prefix) do
-    Enum.map(plans, fn plan ->
-      %{
-        name: plan.space.name,
-        key: plan.space.key,
-        href: prefix <> space_index_path(plan.space.key),
-        icon: icon_href(plan.space, prefix),
-        description: excerpt(plan.space.description),
-        page_count: length(plan.pages)
-      }
-    end)
+  # A label page sits one directory down, so the cards need their prefix back.
+  defp labels_cards(cards) do
+    Enum.map(cards, fn card -> Map.update!(card, :href, &(@labels_prefix <> &1)) end)
   end
 
   # The addresses this site is known by, whose page URLs are the mirror's own

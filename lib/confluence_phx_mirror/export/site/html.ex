@@ -386,14 +386,15 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
   @doc """
   The archive's search page.
 
-  The index is inlined, so the page searches a folder: `file://` may refuse to
-  fetch a sibling file, and a static site that needs a server is not static.
-  `assets/search.json` carries the same documents for other tools.
+  The index is a script file, not an inline block: a site of a hundred thousand
+  pages makes an index that would have to be built, copied and parsed as part of
+  one HTML string, and `file://` refuses to *fetch* a sibling file while it
+  happily runs one. `assets/search.json` carries the same documents for other
+  tools.
   """
   attr :title, :string, required: true
   attr :spaces, :list, required: true
   attr :page_count, :integer, required: true
-  attr :json, :string, required: true
   attr :generated, :string, required: true
   attr :mirror_name, :string, required: true
   attr :mirror_url, :string, default: nil
@@ -455,12 +456,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
       </div>
       <ol id="search-results" aria-label="Results" aria-busy="false" class="mt-3 space-y-2"></ol>
 
-      <script
-        id="search-index"
-        type="application/json"
-        phx-no-curly-interpolation
-      >
-        <%= Phoenix.HTML.raw(@json) %>
+      <script src="assets/search-index.js" defer>
       </script>
       <script src="assets/search.js" defer>
       </script>
