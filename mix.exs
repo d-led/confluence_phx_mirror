@@ -164,11 +164,6 @@ defmodule ConfluencePhxMirror.MixProject do
         "compile --warnings-as-errors",
         "deps.unlock --check-unused",
         "format --check-formatted",
-        # The Elixir formatter owns Elixir and HEEx and never looks at what
-        # esbuild ships; `assets/.prettierrc` owns the JavaScript and CSS that
-        # it does. Checked here so one alias answers "is this tree formatted?"
-        # for the whole repository.
-        "cmd --cd assets npm run --silent prettier:check",
         "credo --strict",
         "lint.sobelow --config"
       ],
@@ -179,7 +174,16 @@ defmodule ConfluencePhxMirror.MixProject do
       # `Mix.Project` are typed too, not just the app.
       types: ["dialyzer"],
       # Tests with the coverage data the complexity gate needs.
-      cover: ["test --cover --export-coverage default"],
+      #
+      # The suite formats the assets first: `mix format` owns Elixir and HEEx and
+      # never looks at what esbuild ships, so `assets/` is Prettier's half — and
+      # it is written, not checked, because a test run that stops on style is a
+      # test run that did not happen. `npm --prefix assets ci` is what makes it
+      # runnable; `assets.build` needs it anyway.
+      cover: [
+        "cmd --cd assets npm run --silent prettier",
+        "test --cover --export-coverage default"
+      ],
       # CRAP scores every function by complexity and coverage; it reads the
       # exported coverage, so it runs after `mix cover`. The conventional
       # threshold applies to the application code — the operator CLIs in

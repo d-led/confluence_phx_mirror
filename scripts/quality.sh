@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 #
 # The quality report: static analysis, the suite with coverage, and the CRAP
-# ranking, in the order that fails fastest. Read-only — it never formats, never
-# rewrites the lockfile, and never leaves a file behind.
+# ranking, in the order that fails fastest. Read-only but for one thing: the
+# suite formats `assets/` with Prettier before it runs (`mix cover`, from
+# `assets/.prettierrc`), so a run can rewrite a JavaScript or CSS file. It never
+# rewrites Elixir, never rewrites the lockfile, and never leaves a file behind.
 #
 #   scripts/quality.sh              everything CI runs on a push
 #   scripts/quality.sh --fast       static analysis only: no database, no tests
