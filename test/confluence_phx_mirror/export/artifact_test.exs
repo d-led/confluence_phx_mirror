@@ -181,6 +181,66 @@ defmodule ConfluencePhxMirror.Export.ArtifactTest do
     refute File.exists?(Path.join([dir, "confluence-mirror-exports", "site.zip"]))
   end
 
+  # A build outlives a request, and it can outlive a deploy. What says it is gone
+  # is its process, not the clock — a machine slow enough to spend an hour on an
+  # archive is exactly the machine that must not have its file deleted mid-write.
+  describe "a build whose process is gone" do
+    test "is swept away, file and all", %{dir: dir} do
+      sweeper = start_sweeper(dir)
+
+      builder = start_blocked_build(sweeper)
+      Process.exit(builder, :kill)
+      assert soon(fn -> not Process.alive?(builder) end)
+
+      send(sweeper, :sweep)
+      _ = :sys.get_state(sweeper)
+
+      assert Artifact.status("site.zip", sweeper) == :absent
+      refute File.exists?(Path.join([dir, "confluence-mirror-exports", "site.zip"]))
+    end
+
+    test "leaves a build that is still writing alone", %{dir: dir} do
+      sweeper = start_sweeper(dir)
+
+      builder = start_blocked_build(sweeper)
+      send(sweeper, :sweep)
+      _ = :sys.get_state(sweeper)
+
+      assert {:building, _} = Artifact.status("site.zip", sweeper)
+
+      send(builder, :carry_on)
+    end
+  end
+
+  # A registry whose builds are considered old the moment they exist: the point
+  # of the case is the process, not the wait.
+  defp start_sweeper(dir) do
+    sweeper = :"sweeper_#{System.unique_integer([:positive])}"
+    start_supervised!({Artifact, name: sweeper, dir: dir, sweep_ms: 3_600_000, stale_build_ms: 0})
+    sweeper
+  end
+
+  # A build that writes a little and then waits for this test's permission: the
+  # pid it answers with is the only thing that says whether it still runs.
+  defp start_blocked_build(server) do
+    test = self()
+
+    build = fn emit ->
+      emit.("half")
+      send(test, {:half_written, self()})
+
+      receive do
+        :carry_on -> :ok
+      after
+        5_000 -> :never_asked
+      end
+    end
+
+    assert :started = Artifact.prepare("site.zip", server: server, build: build)
+    assert_receive {:half_written, builder}, 2_000
+    builder
+  end
+
   defp emitting(text), do: fn emit -> emit.(text) end
 
   defp failing, do: fn _emit -> raise "the mirror is not there" end

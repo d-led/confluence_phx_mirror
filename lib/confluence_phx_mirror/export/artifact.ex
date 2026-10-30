@@ -31,9 +31,10 @@ defmodule ConfluencePhxMirror.Export.Artifact do
   @subdir "confluence-mirror-exports"
 
   # A finished archive is offered for as long as the content it copied has not
-  # moved (`:version`, which the caller computes). These two are housekeeping:
-  # how long the file stays on disk at all, and how long a "this download
-  # started" mark is worth keeping.
+  # moved (`:version`, which the caller computes). These are housekeeping: how
+  # long the file stays on disk at all, how long a "this download started" mark
+  # is worth keeping, and how old a build has to be before its process is asked
+  # whether it is still there.
   @discard_ms 6 * 60 * 60 * 1000
   @stale_build_ms 60 * 60 * 1000
   @download_ms 5 * 60 * 1000
@@ -41,7 +42,12 @@ defmodule ConfluencePhxMirror.Export.Artifact do
 
   @doc false
   def child_spec(opts) do
-    %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
+    # A registry is named, and a second one is legitimate (a test keeps its own);
+    # the child id follows the name so two can live under one supervisor.
+    %{
+      id: {__MODULE__, Keyword.get(opts, :name, __MODULE__)},
+      start: {__MODULE__, :start_link, [opts]}
+    }
   end
 
   def start_link(opts) do
@@ -161,7 +167,8 @@ defmodule ConfluencePhxMirror.Export.Artifact do
     state = %{
       name: Keyword.get(opts, :name, __MODULE__),
       dir: Path.join(Keyword.get(opts, :dir, dir_root(opts)), @subdir),
-      sweep_ms: Keyword.get(opts, :sweep_ms, @sweep_ms)
+      sweep_ms: Keyword.get(opts, :sweep_ms, @sweep_ms),
+      stale_build_ms: Keyword.get(opts, :stale_build_ms, @stale_build_ms)
     }
 
     :ets.new(state.name, [:named_table, :public, :set, read_concurrency: true])
@@ -230,8 +237,8 @@ defmodule ConfluencePhxMirror.Export.Artifact do
   end
 
   # Housekeeping, not freshness: an archive is discarded long after it stopped
-  # being useful, a "this download started" mark after a few minutes, and a
-  # build that has written nothing for an hour is a process that no longer runs.
+  # being useful, a "this download started" mark after a few minutes, and a build
+  # whose process is gone is forgotten — however long its file sat there.
   # sobelow_skip ["Traversal.FileModule"]
   def handle_info(:sweep, state) do
     cutoff = System.monotonic_time(:millisecond) - @download_ms
@@ -241,7 +248,7 @@ defmodule ConfluencePhxMirror.Export.Artifact do
         if at < cutoff, do: :ets.delete(state.name, {:download, key})
 
       {name, status} ->
-        if discarded?(status) do
+        if discarded?(status, state) do
           :ets.delete(state.name, name)
           File.rm(Path.join(state.dir, name))
         end
@@ -257,14 +264,19 @@ defmodule ConfluencePhxMirror.Export.Artifact do
     file = Path.join(state.dir, name)
     since = DateTime.utc_now()
 
-    progress(state.name, name, %{by: by, since: since, bytes: 0})
+    progress(state.name, name, %{by: by, since: since, bytes: 0, pid: nil})
 
     parent = self()
 
     {:ok, _pid} =
       Task.Supervisor.start_child(ConfluencePhxMirror.Export.TaskSupervisor, fn ->
+        # The builder knows who it is, and the sweep asks it: a build is dead
+        # when its process is, not when a clock says so.
+        building = %{by: by, since: since, bytes: 0, pid: self()}
+        progress(state.name, name, building)
+
         try do
-          write(state.name, name, %{by: by, since: since, bytes: 0}, file, build)
+          write(state.name, name, building, file, build)
           send(parent, {:built, name, File.stat!(file).size, %{by: by, version: version}})
         rescue
           error -> send(parent, {:failed, name, error})
@@ -297,9 +309,16 @@ defmodule ConfluencePhxMirror.Export.Artifact do
 
   defp fresh?(at), do: DateTime.diff(DateTime.utc_now(), at, :millisecond) < @discard_ms
 
-  defp discarded?({:building, %{since: since}}),
-    do: DateTime.diff(DateTime.utc_now(), since, :millisecond) > @stale_build_ms
+  # A build is running while its process is; a pid that is gone leaves a file
+  # nobody will finish, and a row nobody will read.
+  defp discarded?({:building, %{since: since, pid: pid}}, state),
+    do:
+      DateTime.diff(DateTime.utc_now(), since, :millisecond) >= state.stale_build_ms and
+        not alive?(pid)
 
-  defp discarded?({:ready, %{at: at}}), do: not fresh?(at)
-  defp discarded?(_other), do: false
+  defp discarded?({:ready, %{at: at}}, _state), do: not fresh?(at)
+  defp discarded?(_other, _state), do: false
+
+  defp alive?(nil), do: false
+  defp alive?(pid), do: Process.alive?(pid)
 end
