@@ -109,6 +109,13 @@ primary_region = "ams"
   # release and never in Postgres.
   MIRROR_BLOB_ROOT = "/app/var/mirror"
 
+  # A whole-site export is built into a file before it is downloaded, so the
+  # download says how big it is and a broken one can be resumed. The file lives
+  # on the machine's own disk (`/tmp`, ~7 GB — not the 1 GB volume the blobs
+  # are on), for as long as the content it copied does not change. The
+  # administrator's setting on /admin/settings wins over this line.
+  CM_EXPORT_PREPARED = "true"
+
 [http_service]
   internal_port = 8080
   # Flycast is HTTP-only; TLS ends at the proxy app. The mirror's production

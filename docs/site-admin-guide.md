@@ -550,7 +550,9 @@ next to it (`assets/search-index.js`), because a page opened from `file://`
 runs its own scripts but will not fetch its own files. Each document is a
 page's title, space, labels, date and the first 400 characters of its text;
 matching is client-side and ranks titles above spaces and labels, above the
-body.
+body. Every typed word has to match somewhere, and accents are folded away on
+both sides — `uber` finds `Über`, `strasse` finds `Straße` — with the match
+marked on the word as the page spells it.
 
 Typing into the field says what is happening: the search waits for a pause in
 typing (150 ms) and then scans in slices, showing a spinner and "Searching… n%"

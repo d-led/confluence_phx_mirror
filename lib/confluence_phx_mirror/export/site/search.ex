@@ -20,7 +20,8 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
   in the page: it ranks title matches above space and label matches above the
   body, needs every word to match, and tolerates a typed prefix, a word inside
   another word, an in-order subsequence and one typo — the same scale
-  `auto-ynab-csv` uses for its own static report.
+  `auto-ynab-csv` uses for its own static report. Accents are folded on both
+  sides, and a match is marked where it is in the original text.
   """
 
   import Ecto.Query
@@ -153,6 +154,38 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
         });
     }
 
+    // The text folded the way a query is folded, with a way back: a match is
+    // found in the folded copy and marked in the original one, so "uber" marks
+    // "über" instead of finding nothing to underline. Folding can change a
+    // character's length — "ß" folds to two letters, a combining accent to none
+    // — so every folded character remembers the range it came from.
+    function folding(text) {
+      var folded = "";
+      var spans = [];
+      var at = 0;
+
+      Array.from(text).forEach(function (character) {
+        var piece = normalise(character);
+
+        for (var i = 0; i < piece.length; i++) {
+          spans.push([at, at + character.length]);
+        }
+
+        folded += piece;
+        at += character.length;
+      });
+
+      return {
+        text: folded,
+        start: function (index) {
+          return index < spans.length ? spans[index][0] : at;
+        },
+        end: function (index) {
+          return index < spans.length ? spans[index][1] : at;
+        }
+      };
+    }
+
     function isSubsequence(needle, haystack) {
       var found = 0;
       for (var i = 0; i < haystack.length; i++) {
@@ -184,8 +217,7 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
     }
 
     // 100 exact, 80 prefix, 60 substring, 40 in-order subsequence, 30 one typo.
-    function score(token, candidates) {
-      var best = 0;
+    function score(token, candidates) {      var best = 0;
 
       for (var i = 0; i < candidates.length; i++) {
         var candidate = candidates[i];
@@ -252,16 +284,16 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
     function snippet(text, needles) {
       if (!text) return "";
 
-      var lowered = text.toLowerCase();
+      var folded = folding(text);
       var at = -1;
 
       for (var i = 0; i < needles.length && at < 0; i++) {
-        at = lowered.indexOf(needles[i]);
+        at = folded.text.indexOf(needles[i]);
       }
 
       if (at < 0) return text.slice(0, 240);
 
-      var start = Math.max(0, at - 80);
+      var start = Math.max(0, folded.start(at) - 80);
       var end = Math.min(text.length, start + 240);
 
       return (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
@@ -269,14 +301,14 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
 
     function highlight(text, needles) {
       var fragment = document.createDocumentFragment();
-      var lowered = text.toLowerCase();
+      var folded = folding(text);
       var ranges = [];
 
       needles.forEach(function (needle) {
-        var at = lowered.indexOf(needle);
+        var at = folded.text.indexOf(needle);
         while (at >= 0) {
-          ranges.push([at, at + needle.length]);
-          at = lowered.indexOf(needle, at + needle.length);
+          ranges.push([folded.start(at), folded.end(at + needle.length - 1)]);
+          at = folded.text.indexOf(needle, at + needle.length);
         }
       });
 
