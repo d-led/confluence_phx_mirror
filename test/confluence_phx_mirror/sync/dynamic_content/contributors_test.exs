@@ -8,7 +8,9 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.ContributorsTest do
   scan says so rather than counting half of it.
   """
 
-  use ExUnit.Case, async: true
+  # Sequential: a "deployment that publishes no names" is the application
+  # environment, which every test in the suite shares — see `TestConfig`.
+  use ExUnit.Case, async: false
 
   alias ConfluencePhxMirror.Sync.DynamicContent
   alias ConfluencePhxMirror.Sync.DynamicContent.StubContent

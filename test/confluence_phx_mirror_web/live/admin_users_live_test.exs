@@ -1,5 +1,9 @@
 defmodule ConfluencePhxMirrorWeb.Live.AdminUsersLiveTest do
-  use ConfluencePhxMirrorWeb.ConnCase, async: true
+  # Sequential: the seeded-administrator cases change the application
+  # environment, and a test running beside them would see their deployment —
+  # which is how a leaked `:admins` once gave four unrelated last-administrator
+  # tests a second administrator. See `TestConfig`.
+  use ConfluencePhxMirrorWeb.ConnCase, async: false
   use Oban.Testing, repo: ConfluencePhxMirror.Repo
 
   import Phoenix.LiveViewTest
