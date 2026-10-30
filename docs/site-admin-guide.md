@@ -561,6 +561,14 @@ freezes the field. A newer query abandons the older scan, so a result can never
 land under the wrong word. The percentage is hidden from screen readers; they
 hear the settled count ("23 pages match") once.
 
+Every page also carries a search box in its header, and there it is a form:
+Enter takes the word to `search.html?q=…`, which searches as soon as it has
+loaded. It has to be — the index travels with the search page alone, and a copy
+of it in every page would multiply the folder by the number of pages in it. On
+`search.html` itself the header box has the index at hand, so there it answers
+as you type, like the page's own field, and never reloads to parse the index a
+second time.
+
 Every page carries the trail that leads to it — space, then each parent — and
 a link to the space's front page, which holds the space's whole page tree
 once. That is deliberate: a tree in every page makes the archive quadratic, and

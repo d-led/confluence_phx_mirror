@@ -215,6 +215,24 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       page = files["spaces/ENG/pages/#{Demo.open_page()}.html"]
 
       assert page =~ ~s(action="../../../search.html")
+      assert page =~ ~s(enterkeyhint="search")
+
+      # The index travels with `search.html` and nowhere else, so on this page the
+      # box is a form: Enter carries the word to the search page, which searches
+      # as soon as it has loaded.
+      refute page =~ "assets/search.js"
+      refute page =~ "window.__MIRROR_SEARCH__"
+    end
+
+    test "the box in the header searches as you type, where the index is", %{files: files} do
+      script = files["assets/search.js"]
+
+      # `search.html` has two boxes asking one question, and it is the page that
+      # holds the index — so both of them search live, and typing in the header
+      # must not reload the page and parse the index a second time.
+      assert files["search.html"] =~ ~s(name="q")
+      assert script =~ ~s(form[role="search"] input[name="q"])
+      assert script =~ ~s(header.form.addEventListener("submit")
     end
   end
 

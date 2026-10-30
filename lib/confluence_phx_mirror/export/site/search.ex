@@ -519,6 +519,30 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
     input.addEventListener("input", function () {
       settle(input.value);
     });
+
+    // The box in the header asks the same question as this page's, and here the
+    // index is loaded — so it searches as you type too, instead of reloading the
+    // page (and parsing the index again) on Enter. On every other page of the
+    // archive that box stays a form: the index lives here and nowhere else.
+    var header = document.querySelector('form[role="search"] input[name="q"]');
+
+    if (header) {
+      header.value = initial;
+
+      header.addEventListener("input", function () {
+        input.value = header.value;
+        settle(header.value);
+      });
+
+      header.form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        settle(header.value);
+      });
+
+      input.addEventListener("input", function () {
+        header.value = input.value;
+      });
+    }
   })();
   """
 

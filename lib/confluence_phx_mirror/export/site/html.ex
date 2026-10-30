@@ -695,6 +695,8 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
                   placeholder="Search this copy"
                   aria-label="Search this copy"
                   autocomplete="off"
+                  enterkeyhint="search"
+                  title="Press Enter to search this copy — the index lives on the search page"
                   class="input input-sm w-full rounded-lg bg-base-100 sm:w-48"
                 />
               </form>
