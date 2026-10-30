@@ -116,6 +116,49 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportLinkTest do
     end
   end
 
+  describe "the press of a download" do
+    test "shuts the button until the server says the request arrived", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      # The hook sends the key and starts the download itself; the page only
+      # learns that it worked from the request.
+      view |> element("#export-site") |> render_hook("start_download", %{"key" => "press-1"})
+
+      assert has_element?(view, "#export-site[aria-disabled='true']")
+      assert render(view) =~ "Starting the download…"
+
+      Artifact.begin_download("press-1")
+      send(view.pid, :download_check)
+
+      assert has_element?(view, "#export-site[aria-disabled='false']")
+      assert render(view) =~ "The download started."
+    end
+
+    test "opens the button again when the download never arrives", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      refute has_element?(view, "#export-site[aria-disabled='true']")
+
+      view |> element("#export-site") |> render_hook("start_download", %{"key" => "lost-1"})
+
+      # Fifteen seconds of silence, one 250 ms check at a time: the file is not
+      # coming, and an operator has to be able to ask again.
+      for _check <- 1..60, do: send(view.pid, :download_check)
+
+      assert has_element?(view, "#export-site[aria-disabled='false']")
+      assert render(view) =~ "The download did not start"
+    end
+
+    test "says nothing about a key it never received", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/admin")
+
+      view |> element("#export-site") |> render_hook("start_download", %{"key" => ""})
+
+      refute has_element?(view, "#export-site[aria-disabled='true']")
+      refute render(view) =~ "Starting the download"
+    end
+  end
+
   defp wait_for_archive do
     status =
       Enum.reduce_while(1..200, nil, fn _attempt, _waited ->

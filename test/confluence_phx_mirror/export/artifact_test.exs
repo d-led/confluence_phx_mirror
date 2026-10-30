@@ -21,9 +21,7 @@ defmodule ConfluencePhxMirror.Export.ArtifactTest do
   setup do
     dir = Path.join(System.tmp_dir!(), "artifact-#{System.unique_integer([:positive])}")
 
-    start_supervised!(
-      {Artifact, name: @server, dir: dir, keep_ms: 10 * 60 * 1000, sweep_ms: 3_600_000}
-    )
+    start_supervised!({Artifact, name: @server, dir: dir, sweep_ms: 3_600_000})
 
     on_exit(fn -> File.rm_rf(dir) end)
 
@@ -107,11 +105,44 @@ defmodule ConfluencePhxMirror.Export.ArtifactTest do
                )
     end
 
-    test "is not started again while the archive is fresh" do
-      assert :started = Artifact.prepare("site.zip", server: @server, build: emitting("hello"))
+    test "is not built again while the content it copied has not moved" do
+      assert :started =
+               Artifact.prepare("site.zip",
+                 server: @server,
+                 version: {:content, 1},
+                 build: emitting("hello")
+               )
+
+      assert {:ready, %{version: {:content, 1}}} = wait_for_ready()
+
+      # The same content, so the file that already exists is the answer — no
+      # minute of the machine to write it again.
+      assert :ready =
+               Artifact.prepare("site.zip",
+                 server: @server,
+                 version: {:content, 1},
+                 build: emitting("again")
+               )
+    end
+
+    test "is built again when the content moved" do
+      assert :started =
+               Artifact.prepare("site.zip",
+                 server: @server,
+                 version: {:content, 1},
+                 build: emitting("hello")
+               )
+
       assert {:ready, _} = wait_for_ready()
 
-      assert :ready = Artifact.prepare("site.zip", server: @server, build: emitting("again"))
+      assert :started =
+               Artifact.prepare("site.zip",
+                 server: @server,
+                 version: {:content, 2},
+                 build: emitting("hello again")
+               )
+
+      assert {:ready, %{version: {:content, 2}, bytes: 11}} = wait_for_ready()
     end
 
     test "leaves nothing to download when it dies" do
@@ -119,6 +150,24 @@ defmodule ConfluencePhxMirror.Export.ArtifactTest do
 
       assert soon(fn -> Artifact.status("site.zip", @server) == :absent end)
       refute File.exists?(Artifact.path("site.zip"))
+    end
+  end
+
+  describe "a download" do
+    test "is marked when its request arrives, and only under its own key" do
+      Artifact.begin_download("first", @server)
+
+      assert Artifact.download_started?("first", @server)
+      refute Artifact.download_started?("second", @server)
+    end
+
+    test "marks nothing for a request that carried no key, or a nonsense one" do
+      Artifact.begin_download(nil, @server)
+      Artifact.begin_download(String.duplicate("x", 65), @server)
+
+      refute Artifact.download_started?(nil, @server)
+      refute Artifact.download_started?(String.duplicate("x", 65), @server)
+      assert Artifact.status("site.zip", @server) == :absent
     end
   end
 

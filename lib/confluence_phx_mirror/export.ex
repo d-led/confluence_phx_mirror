@@ -28,6 +28,7 @@ defmodule ConfluencePhxMirror.Export do
   alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sites
+  alias ConfluencePhxMirrorWeb.Skins
 
   @doc "Markdown of one page, with Confluence metadata as front matter."
   @spec page_markdown(Page.t()) :: String.t()
@@ -149,6 +150,26 @@ defmodule ConfluencePhxMirror.Export do
   """
   @spec site_artifact() :: String.t()
   def site_artifact, do: "site.zip"
+
+  @doc """
+  The content a prepared archive is a copy of.
+
+  An archive is worth keeping exactly as long as the mirror it copied has not
+  moved, so this names that state: the newest page (by id, so an insert shows),
+  the newest change to any page, space or attachment, and the two settings that
+  change what an archive *contains* rather than what it says. Two calls with
+  nothing mirrored or configured in between answer the same term.
+
+  The aggregates are index maxima, so asking costs one query and no table walk;
+  `Export.Artifact` compares the answer with the one a finished build recorded.
+  """
+  @spec site_archive_version() :: term()
+  def site_archive_version do
+    state = Mirror.content_state()
+
+    {state.page_id, state.page_at, state.space_at, state.attachment_at,
+     Settings.export_personal_spaces?(), Skins.theme(), Sites.name()}
+  end
 
   @doc """
   Filename offered for one space's static archive.

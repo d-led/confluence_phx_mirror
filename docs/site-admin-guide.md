@@ -587,9 +587,19 @@ running and how far it has got), the note under the header counts the bytes as
 they land, and when the file is complete the button becomes a download of it —
 with its size, and with byte ranges, so a browser whose connection dropped
 resumes where it stopped. The file is written to the deployment's temporary
-folder (`CM_EXPORT_TMP_DIR`, the machine's own disk by default) and kept for ten
-minutes, because it is a snapshot; the download's own name carries the moment it
-was built. A deploy empties that folder, so the next press builds again.
+folder (`CM_EXPORT_TMP_DIR`, the machine's own disk by default) and kept for as
+long as the mirror does not change: an updated page, space or attachment, or a
+setting that changes what an archive contains, is a new build, and until then
+the finished file is what the button hands over. A deploy empties that folder,
+so the next press builds again.
+
+**A press is answered.** Whichever shape a deployment uses, the download button
+shuts the moment it is pressed and opens again when the request that serves the
+archive has reached the server — or, after fifteen seconds of nothing, with a
+note saying it did not start. A download is a request of its own that the page
+cannot see, so the request carries a key back to the page: that is how the
+button knows whether its press worked instead of leaving an operator to wonder
+and press three times.
 
 What it does not do: content Confluence renders only in the browser (Jira
 issues, page trees, gadgets) already reads as the mirror's "cannot be shown in

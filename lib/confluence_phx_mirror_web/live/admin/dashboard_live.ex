@@ -40,6 +40,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   @progress_ms 5_000
   @stats_seconds 30
 
+  # A press on a download link is answered here within a tick of 250 ms: the
+  # request marks itself when it reaches the server, and fifteen seconds of
+  # silence is a download that is not coming.
+  @download_check_ms 250
+  @download_tries 60
+
   # The "sync one space" panel narrows in the database and takes a window: a
   # site with hundreds of spaces should not feel like a list of hundreds.
   @space_window 20
@@ -53,7 +59,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
     {:ok,
      socket
-     |> assign(page_title: "Overview", open_menu: nil, space_query: "", queued: nil)
+     |> assign(
+       page_title: "Overview",
+       open_menu: nil,
+       space_query: "",
+       queued: nil,
+       download: %{state: :idle}
+     )
      |> assign(spaces_like(""))
      |> load()}
   end
@@ -61,8 +73,37 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   @impl true
   def handle_info(:stats, socket), do: {:noreply, assign_stats(socket)}
 
+  # The press of a download is answered by the request that serves it, not by
+  # the browser: 250 ms apart, until the archive request has arrived. A press
+  # that produced nothing is the one an operator repeats, so the button stays
+  # shut until there is an answer either way.
+  def handle_info(
+        :download_check,
+        %{assigns: %{download: %{state: :starting} = download}} = socket
+      ) do
+    cond do
+      Artifact.download_started?(download.key) ->
+        {:noreply, assign(socket, :download, %{state: :started})}
+
+      download.tries + 1 >= @download_tries ->
+        {:noreply, assign(socket, :download, %{state: :unstarted})}
+
+      true ->
+        Process.send_after(self(), :download_check, @download_check_ms)
+        {:noreply, assign(socket, :download, %{download | tries: download.tries + 1})}
+    end
+  end
+
+  def handle_info(:download_check, socket), do: {:noreply, socket}
+
   def handle_info(:progress, socket) do
     refreshed = assign_progress(socket)
+    # A download that started said so in the note; the next tick takes the note
+    # away, because it is news and not furniture.
+    refreshed =
+      if refreshed.assigns.download.state == :started,
+        do: assign(refreshed, :download, %{state: :idle}),
+        else: refreshed
 
     # A run that just ended is the one moment the slow numbers are wrong in a
     # way an operator notices: the strip is gone and the row still says
@@ -97,6 +138,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   def handle_event("cancel_sync", params, socket), do: cancel_sync(params, socket)
   def handle_event("cancel_queued", params, socket), do: cancel_queued(params, socket)
   def handle_event("prepare_export", params, socket), do: prepare_export(params, socket)
+  def handle_event("start_download", params, socket), do: start_download(params, socket)
 
   # One dropdown, so a single name: opening it twice closes it, Escape closes
   # it, and a click anywhere else does too.
@@ -419,11 +461,24 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
     Artifact.prepare(Export.site_artifact(),
       by: operator(socket),
+      # An archive is offered again only while the content it copied is the
+      # content in force: an update to any page, space or attachment — or a
+      # setting that changes what an archive holds — is a new build.
+      version: Export.site_archive_version(),
       build: fn emit -> emit_site_archive(scope, emit) end
     )
 
     {:noreply, assign_export(socket)}
   end
+
+  # The browser starts the download itself (the hook hands it the keyed URL), so
+  # all that is left here is to watch for the request arriving.
+  defp start_download(%{"key" => key}, socket) when is_binary(key) and byte_size(key) in 1..64 do
+    Process.send_after(self(), :download_check, @download_check_ms)
+    {:noreply, assign(socket, :download, %{state: :starting, key: key, tries: 0})}
+  end
+
+  defp start_download(_params, socket), do: {:noreply, socket}
 
   defp operator(socket) do
     case socket.assigns[:current_user] do
@@ -542,16 +597,27 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           mirrored and asks the server for nothing but the bytes. --%>
           <span aria-hidden="true" class="mx-1 h-6 w-px bg-base-300/70"></span>
           <%= if Settings.export_prepared?() do %>
-            <.prepared_export export={@export} hint={export_hint()} />
+            <.prepared_export export={@export} download={@download} hint={export_hint()} />
           <% else %>
             <a
               href="/admin/export/site.zip"
               id="export-site"
               download
-              class="btn btn-outline btn-sm gap-1.5"
+              phx-hook=".ExportDownload"
+              aria-disabled={to_string(download_busy?(@download))}
+              class={[
+                "btn btn-outline btn-sm gap-1.5",
+                download_busy?(@download) && "pointer-events-none opacity-60"
+              ]}
               title={export_hint()}
             >
-              <.icon name="hero-arrow-down-tray" class="size-4" /> Static site
+              <.icon
+                name={
+                  if download_busy?(@download), do: "hero-arrow-path", else: "hero-arrow-down-tray"
+                }
+                class={["size-4", download_busy?(@download) && "animate-spin"]}
+              />
+              {if download_busy?(@download), do: "Starting…", else: "Static site"}
             </a>
           <% end %>
         </:actions>
@@ -559,16 +625,56 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
       <%!-- A prepared archive takes minutes, so the press that starts it has to
       be answered immediately and the wait has to be visible: what it is doing,
-      how much is written, and whose build it is when it is not yours. --%>
+      how much is written, and whose build it is when it is not yours. The same
+      strip answers a download press, which is otherwise a press that nothing
+      visibly acknowledges until the file appears. --%>
       <p
-        :if={export_note(@export)}
+        :if={export_note(@export, @download)}
         id="export-note"
         role="status"
         aria-live="polite"
         class="mb-3 rounded-lg border border-base-300/70 bg-base-100 px-3 py-2 text-xs text-base-content/70"
       >
-        {export_note(@export)}
+        {export_note(@export, @download)}
       </p>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".ExportDownload">
+        // A download is a request of its own: the browser makes it and tells the
+        // page nothing, so the page hands it a key and the request says, when it
+        // arrives, that it is the one that arrived — see
+        // ConfluencePhxMirror.Export.Artifact. Until then the button stays shut,
+        // because an unacknowledged press is the press an operator repeats.
+        export default {
+          mounted() {
+            this.el.addEventListener("click", event => this.pressed(event))
+          },
+          pressed(event) {
+            if (this.busy || this.el.getAttribute("aria-disabled") === "true") {
+              event.preventDefault()
+              return
+            }
+
+            this.busy = true
+            event.preventDefault()
+
+            const url = new URL(this.el.href, window.location.href)
+            const key = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+            url.searchParams.set("export", key)
+
+            this.pushEvent("start_download", {key: key})
+
+            const download = document.createElement("a")
+            download.href = url.toString()
+            download.download = ""
+            download.click()
+          },
+          updated() {
+            // The server let go (the request arrived, or gave up waiting): the
+            // press is available again.
+            if (this.el.getAttribute("aria-disabled") !== "true") this.busy = false
+          }
+        }
+      </script>
 
       <.job_notice
         :if={@queued}
@@ -973,33 +1079,59 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     """
   end
 
-  defp prepared_export(%{export: {:ready, %{bytes: bytes}}} = assigns) do
-    assigns = assign(assigns, :size, human_bytes(bytes))
+  defp prepared_export(%{export: {:ready, %{bytes: bytes}}, download: download} = assigns) do
+    busy? = download_busy?(download)
+
+    assigns =
+      assigns
+      |> assign(:busy?, busy?)
+      |> assign(:label, if(busy?, do: "Starting…", else: "Download " <> human_bytes(bytes)))
 
     ~H"""
     <a
       href="/admin/export/site.zip"
       id="export-site"
       download
-      class="btn btn-primary btn-sm gap-1.5"
+      phx-hook=".ExportDownload"
+      aria-disabled={to_string(@busy?)}
+      class={[
+        "btn btn-primary btn-sm gap-1.5",
+        @busy? && "pointer-events-none opacity-60"
+      ]}
       title={@hint}
     >
-      <.icon name="hero-arrow-down-tray" class="size-4" /> Download {@size}
+      <.icon
+        name={if @busy?, do: "hero-arrow-path", else: "hero-arrow-down-tray"}
+        class={["size-4", @busy? && "animate-spin"]}
+      />
+      {@label}
     </a>
     """
   end
 
+  # A press is only worth blocking on if something unblocks it: the note says
+  # what is happening, and the button is shut until the answer arrives.
+  defp download_busy?(%{state: :starting}), do: true
+  defp download_busy?(_download), do: false
+
   # What the note says, per state. `nil` leaves no element at all: the note is
-  # news, not furniture.
-  defp export_note({:building, %{bytes: bytes} = building}) do
+  # news, not furniture. A download press speaks first — it is the press the
+  # operator just made — and the archive's own state answers when there is none.
+  defp export_note(_export, %{state: :starting}), do: "Starting the download…"
+  defp export_note(_export, %{state: :started}), do: "The download started."
+
+  defp export_note(_export, %{state: :unstarted}),
+    do: "The download did not start. Press it again."
+
+  defp export_note({:building, %{bytes: bytes} = building}, _download) do
     "Building the static site — #{human_bytes(bytes)} written so far.#{by(building)} You can keep working here; the download appears when it is done."
   end
 
-  defp export_note({:ready, %{bytes: bytes, at: at} = ready}) do
-    "Ready: #{human_bytes(bytes)}, built #{Time.ago(at)}.#{by(ready)} A download that stops can be resumed."
+  defp export_note({:ready, %{bytes: bytes, at: at} = ready}, _download) do
+    "Ready: #{human_bytes(bytes)}, built #{Time.ago(at)}.#{by(ready)} Kept until the mirror changes; a download that stops can be resumed."
   end
 
-  defp export_note(_idle), do: nil
+  defp export_note(_idle, _download), do: nil
 
   defp by(%{by: nil}), do: ""
   defp by(%{by: who}), do: " Started by #{who}."

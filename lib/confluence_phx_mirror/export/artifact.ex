@@ -30,10 +30,13 @@ defmodule ConfluencePhxMirror.Export.Artifact do
 
   @subdir "confluence-mirror-exports"
 
-  # How long a finished archive is offered before the next ask builds a new one.
-  # It is a snapshot of the mirror, and the mirror moves; the download's own
-  # name carries the moment it was built.
-  @keep_ms 10 * 60 * 1000
+  # A finished archive is offered for as long as the content it copied has not
+  # moved (`:version`, which the caller computes). These two are housekeeping:
+  # how long the file stays on disk at all, and how long a "this download
+  # started" mark is worth keeping.
+  @discard_ms 6 * 60 * 60 * 1000
+  @stale_build_ms 60 * 60 * 1000
+  @download_ms 5 * 60 * 1000
   @sweep_ms 2 * 60 * 1000
 
   @doc false
@@ -73,11 +76,16 @@ defmodule ConfluencePhxMirror.Export.Artifact do
   binary it emits is appended to the file, so the archive is written as it is
   generated and never held in memory.
 
-      Artifact.prepare("site.zip", by: "ops@example.com", build: fn emit ->
+      Artifact.prepare("site.zip", by: "ops@example.com", version: v, build: fn emit ->
         entries
         |> ConfluencePhxMirror.Export.Zip.chunks()
         |> Enum.each(fn chunk -> emit.(IO.iodata_to_binary(chunk)) end)
       end)
+
+  `:version` is the content the build copies — an opaque term the caller decides
+  the meaning of. A finished archive built from the version in force now is
+  handed back instead of built again; anything else is a rebuild, because an
+  archive that no longer matches the mirror is worse than a wait.
   """
   @spec prepare(String.t(), keyword()) :: :started | :ready | {:busy, String.t() | nil}
   def prepare(name, opts) do
@@ -90,18 +98,52 @@ defmodule ConfluencePhxMirror.Export.Artifact do
     * `:absent` — nothing was built, or the last build failed;
     * `{:building, %{by: who, since: datetime, bytes: n}}` — one build is running,
       and `n` is how much of the archive is already on disk;
-    * `{:ready, %{bytes: n, at: datetime, by: who}}` — a file to download.
+    * `{:ready, %{bytes: n, at: datetime, by: who, version: v}}` — a file to
+      download, and the content it was built from.
   """
   @spec status(String.t(), GenServer.server()) ::
           :absent
           | {:building, %{by: String.t() | nil, since: DateTime.t(), bytes: non_neg_integer()}}
-          | {:ready, %{bytes: non_neg_integer(), at: DateTime.t(), by: String.t() | nil}}
+          | {:ready,
+             %{
+               bytes: non_neg_integer(),
+               at: DateTime.t(),
+               by: String.t() | nil,
+               version: term()
+             }}
   def status(name, server \\ __MODULE__) do
     case :ets.lookup(server, name) do
       [{^name, status}] -> status
       [] -> :absent
     end
   end
+
+  @doc """
+  Records that the download for `key` has been handed to a browser.
+
+  A download is a request of its own: no browser reports when one starts, so the
+  request says so — and the page that offered the button asks, because the press
+  that started nothing is the one an operator presses again.
+  """
+  @spec begin_download(String.t() | nil, GenServer.server()) :: :ok
+  def begin_download(key, server \\ __MODULE__)
+
+  def begin_download(key, server) when is_binary(key) and byte_size(key) in 1..64 do
+    :ets.insert(server, {{:download, key}, System.monotonic_time(:millisecond)})
+    :ok
+  end
+
+  def begin_download(_key, _server), do: :ok
+
+  @doc "Whether the download for `key` has started."
+  @spec download_started?(String.t() | nil, GenServer.server()) :: boolean()
+  def download_started?(key, server \\ __MODULE__)
+
+  def download_started?(key, server) when is_binary(key) and byte_size(key) in 1..64 do
+    :ets.member(server, {:download, key})
+  end
+
+  def download_started?(_key, _server), do: false
 
   @doc "Deletes every artifact, ready or half-written."
   @spec forget(GenServer.server()) :: :ok
@@ -119,7 +161,6 @@ defmodule ConfluencePhxMirror.Export.Artifact do
     state = %{
       name: Keyword.get(opts, :name, __MODULE__),
       dir: Path.join(Keyword.get(opts, :dir, dir_root(opts)), @subdir),
-      keep_ms: Keyword.get(opts, :keep_ms, @keep_ms),
       sweep_ms: Keyword.get(opts, :sweep_ms, @sweep_ms)
     }
 
@@ -145,8 +186,12 @@ defmodule ConfluencePhxMirror.Export.Artifact do
   @impl true
   def handle_call({:prepare, name, opts}, _from, state) do
     case status(name, state.name) do
-      {:ready, %{at: at}} ->
-        {:reply, if(fresh?(at, state), do: :ready, else: start(state, name, opts)), state}
+      # The same content, already written: hand the file back rather than spend
+      # a minute of the machine to write it again.
+      {:ready, %{version: version}} ->
+        if version == Keyword.get(opts, :version),
+          do: {:reply, :ready, state},
+          else: {:reply, start(state, name, opts), state}
 
       {:building, %{by: by}} ->
         {:reply, {:busy, by}, state}
@@ -165,8 +210,12 @@ defmodule ConfluencePhxMirror.Export.Artifact do
   end
 
   @impl true
-  def handle_info({:built, name, bytes, by}, state) do
-    :ets.insert(state.name, {name, {:ready, %{bytes: bytes, at: DateTime.utc_now(), by: by}}})
+  def handle_info({:built, name, bytes, %{by: by, version: version}}, state) do
+    :ets.insert(
+      state.name,
+      {name, {:ready, %{bytes: bytes, at: DateTime.utc_now(), by: by, version: version}}}
+    )
+
     {:noreply, state}
   end
 
@@ -180,13 +229,22 @@ defmodule ConfluencePhxMirror.Export.Artifact do
     {:noreply, state}
   end
 
+  # Housekeeping, not freshness: an archive is discarded long after it stopped
+  # being useful, a "this download started" mark after a few minutes, and a
+  # build that has written nothing for an hour is a process that no longer runs.
   # sobelow_skip ["Traversal.FileModule"]
   def handle_info(:sweep, state) do
-    Enum.each(:ets.tab2list(state.name), fn {name, status} ->
-      if stale?(status, state) do
-        :ets.delete(state.name, name)
-        File.rm(Path.join(state.dir, name))
-      end
+    cutoff = System.monotonic_time(:millisecond) - @download_ms
+
+    Enum.each(:ets.tab2list(state.name), fn
+      {{:download, key}, at} ->
+        if at < cutoff, do: :ets.delete(state.name, {:download, key})
+
+      {name, status} ->
+        if discarded?(status) do
+          :ets.delete(state.name, name)
+          File.rm(Path.join(state.dir, name))
+        end
     end)
 
     {:noreply, state}
@@ -194,6 +252,7 @@ defmodule ConfluencePhxMirror.Export.Artifact do
 
   defp start(state, name, opts) do
     by = Keyword.get(opts, :by)
+    version = Keyword.get(opts, :version)
     build = Keyword.fetch!(opts, :build)
     file = Path.join(state.dir, name)
     since = DateTime.utc_now()
@@ -206,7 +265,7 @@ defmodule ConfluencePhxMirror.Export.Artifact do
       Task.Supervisor.start_child(ConfluencePhxMirror.Export.TaskSupervisor, fn ->
         try do
           write(state.name, name, %{by: by, since: since, bytes: 0}, file, build)
-          send(parent, {:built, name, File.stat!(file).size, by})
+          send(parent, {:built, name, File.stat!(file).size, %{by: by, version: version}})
         rescue
           error -> send(parent, {:failed, name, error})
         end
@@ -236,9 +295,11 @@ defmodule ConfluencePhxMirror.Export.Artifact do
     position
   end
 
-  defp fresh?(at, state), do: DateTime.diff(DateTime.utc_now(), at, :millisecond) < state.keep_ms
+  defp fresh?(at), do: DateTime.diff(DateTime.utc_now(), at, :millisecond) < @discard_ms
 
-  defp stale?({:building, %{since: since}}, state), do: not fresh?(since, state)
-  defp stale?({:ready, %{at: at}}, state), do: not fresh?(at, state)
-  defp stale?(_other, _state), do: false
+  defp discarded?({:building, %{since: since}}),
+    do: DateTime.diff(DateTime.utc_now(), since, :millisecond) > @stale_build_ms
+
+  defp discarded?({:ready, %{at: at}}), do: not fresh?(at)
+  defp discarded?(_other), do: false
 end

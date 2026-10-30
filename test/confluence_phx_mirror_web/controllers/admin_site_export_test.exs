@@ -104,14 +104,39 @@ defmodule ConfluencePhxMirrorWeb.AdminSiteExportTest do
       assert conn.status == 416
       assert conn |> get_resp_header("content-range") == ["bytes */#{bytes}"]
     end
+
+    test "an archive older than the content is not the one served", %{conn: conn} do
+      # A file built from content that has since moved would hand an operator
+      # yesterday's site with today's timestamp in its name.
+      assert :started =
+               Artifact.prepare(Export.site_artifact(),
+                 by: "ops@example.com",
+                 version: {:content, "a while ago"},
+                 build: fn emit -> emit.("stale archive") end
+               )
+
+      wait_for_archive()
+
+      conn =
+        conn
+        |> signed_in(user_fixture(%{email: "ops@example.com", role: "admin"}))
+        |> get(~p"/admin/export/site.zip")
+
+      assert conn.status == 200
+      # Not a file send: it is built as it is sent, and says so.
+      assert conn |> get_resp_header("accept-ranges") == ["none"]
+      refute conn.resp_body == "stale archive"
+    end
   end
 
-  # Builds the real archive through the registry a download reads, and waits for
-  # the file. The demo snapshot is small; the point is the shape, not the size.
+  # Builds the real archive through the registry a download reads, and hands
+  # back its size. The demo snapshot is small; the point is the shape, not the
+  # size.
   defp prepare_archive do
     assert :started =
              Artifact.prepare(Export.site_artifact(),
                by: "ops@example.com",
+               version: Export.site_archive_version(),
                build: fn emit ->
                  %Scope{admin?: true}
                  |> Export.site_archive()
@@ -120,17 +145,25 @@ defmodule ConfluencePhxMirrorWeb.AdminSiteExportTest do
                end
              )
 
-    Enum.reduce_while(1..200, 0, fn _attempt, waited ->
-      case Artifact.status(Export.site_artifact()) do
-        {:ready, %{bytes: bytes}} ->
-          {:halt, bytes}
+    {:ready, %{bytes: bytes}} = wait_for_archive()
+    bytes
+  end
 
-        _not_yet ->
-          Process.sleep(25)
-          if waited > 5_000, do: raise("the archive was never prepared")
-          {:cont, waited + 25}
-      end
-    end)
+  defp wait_for_archive do
+    status =
+      Enum.reduce_while(1..200, nil, fn _attempt, _waited ->
+        case Artifact.status(Export.site_artifact()) do
+          {:ready, _} = ready ->
+            {:halt, ready}
+
+          _not_yet ->
+            Process.sleep(25)
+            {:cont, nil}
+        end
+      end)
+
+    assert status, "the archive was never prepared"
+    status
   end
 
   defp signed_in(conn, user), do: init_test_session(conn, %{"user_id" => user.id})

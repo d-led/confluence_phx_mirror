@@ -20,11 +20,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportController do
   alias ConfluencePhxMirror.Export.Artifact
   alias ConfluencePhxMirrorWeb.ArchiveDownload
 
-  def index(conn, _params) do
+  def index(conn, params) do
     scope = Scope.from_assigns(conn.assigns)
 
     if Scope.admin?(scope) do
-      download(conn, scope)
+      download(conn, scope, params)
     else
       refuse(conn)
     end
@@ -35,16 +35,25 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportController do
   # resumed. Without one, the archive is generated while it is sent: the same
   # bytes, none of the disk, and no way to resume something that does not exist
   # yet. Which shape a deployment gets is `export.prepared`.
-  defp download(conn, scope) do
+  defp download(conn, scope, params) do
+    # The page that offered the button cannot see this request, so the request
+    # says it arrived: the press that started nothing is the one an operator
+    # presses again three times.
+    Artifact.begin_download(params["export"])
+
+    version = Export.site_archive_version()
+
     case Artifact.status(Export.site_artifact()) do
-      {:ready, %{at: at}} ->
+      # An archive of the content in force now: the file the browser asked for
+      # already exists, so it is a file send rather than a minute of work.
+      {:ready, %{at: at, version: ^version}} ->
         conn
         |> ArchiveDownload.send_file(
           Artifact.path(Export.site_artifact()),
           Export.site_archive_name(at)
         )
 
-      _absent_or_building ->
+      _absent_building_or_out_of_date ->
         ArchiveDownload.send(conn, Export.site_archive(scope), Export.site_archive_name())
     end
   end

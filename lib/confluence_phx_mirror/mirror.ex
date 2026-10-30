@@ -1159,6 +1159,32 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
+  The state of the mirrored content, as three maxima: the newest page by id,
+  the newest change to a page, and the newest change to a space or a file.
+
+  Two calls with nothing written between them answer the same term, which is
+  what makes it useful as "has anything moved?" — and each maximum is an index
+  lookup, so asking costs one query and no table walk.
+  """
+  @spec content_state() :: %{
+          page_id: integer() | nil,
+          page_at: DateTime.t() | nil,
+          space_at: DateTime.t() | nil,
+          attachment_at: DateTime.t() | nil
+        }
+  def content_state do
+    Repo.one(
+      from p in Page,
+        select: %{
+          page_id: max(p.id),
+          page_at: max(p.updated_at),
+          space_at: fragment("(select max(updated_at) from spaces)"),
+          attachment_at: fragment("(select max(updated_at) from attachments)")
+        }
+    )
+  end
+
+  @doc """
   The Confluence identities the mirrored content names: every page and comment
   author.
 
