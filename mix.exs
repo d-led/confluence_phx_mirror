@@ -80,11 +80,13 @@ defmodule ConfluencePhxMirror.MixProject do
       {:lazy_html, ">= 0.1.0", only: :test},
       {:phoenix_test, "~> 0.13.1", only: :test, runtime: false},
       {:phoenix_live_dashboard, "~> 0.9.1"},
-      # The dashboard's Ecto Stats page is a browser over this package's
-      # queries — index usage, sequential scans, cache hits, bloat — and it
-      # lists no repo at all unless the module is loadable, which is why it
-      # stays out of a release: nothing on the mirror needs it to run.
-      {:ecto_psql_extras, "~> 0.8", only: [:dev, :test]},
+      # The dashboard's Ecto Stats page — index usage, sequential scans, cache
+      # hits, bloat — is a browser over this package's queries, and it offers no
+      # repository at all unless the module is loadable on the node showing the
+      # page. In the release too, then: the page is on wherever `admin_dashboard`
+      # is on, and that is production; without the module the page is still
+      # there and says it found no repository, which is how it shipped once.
+      {:ecto_psql_extras, "~> 0.8"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.5", runtime: Mix.env() == :dev},
       {:heroicons,
