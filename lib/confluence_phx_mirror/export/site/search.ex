@@ -11,6 +11,11 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
       `search.html` loads with a `<script src>` tag: a folder opened from
       `file://` may not fetch its own files, but it does run its own scripts.
 
+  The index loads where a reader asks a question. `search.html` carries it, the
+  archive's front page names it in `data-index` and receives it on the first
+  keystroke, and every other page carries neither: one index serves the whole
+  copy, and a folder of pages should not pay for it on each page a reader opens.
+
   Both are written **while the export streams**, one space at a time, into a
   temporary file: a site of a hundred thousand pages makes an index that does
   not fit in a small box's memory twice over (once as documents, once as JSON),
@@ -127,14 +132,32 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
   (function () {
     "use strict";
 
-    // Written by `assets/search-index.js`, which the page loads first.
+    // Written by `assets/search-index.js`. A page that carries the index loads
+    // it before this script; the archive's front page names it in `data-index`
+    // and gets it on the first keystroke, so opening the folder to browse the
+    // spaces costs nothing until somebody searches.
     var documents = window.__MIRROR_SEARCH__ || [];
+    var loaded = !!window.__MIRROR_SEARCH__;
     var entries = documents.map(prepare);
-    var input = document.getElementById("search-q");
+    var source = document.currentScript
+      ? document.currentScript.getAttribute("data-index")
+      : null;
+
+    // `search.html` has a box of its own, every page has one in the header, and
+    // here the two ask one question.
+    var pageInput = document.getElementById("search-q");
+    var header = document.querySelector('form[role="search"] input[name="q"]');
+    var boxes = [pageInput, header].filter(Boolean);
+
     var status = document.getElementById("search-status");
     var progress = document.getElementById("search-progress");
     var results = document.getElementById("search-results");
     var spinner = document.getElementById("search-spinner");
+
+    // Where results take the place of something else: the front page swaps its
+    // space cards for them.
+    var surface = document.getElementById("search-surface");
+    var cards = document.getElementById("front-spaces");
 
     var MAX_RESULTS = 50;
 
@@ -376,6 +399,10 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
     }
 
     function catalogue() {
+      // Nothing to count until the index is here, and a field nobody has typed
+      // in does not need a promise of a corpus.
+      if (!loaded) return "";
+
       return (
         documents.length +
         (documents.length === 1 ? " page" : " pages") +
@@ -421,6 +448,7 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
     var SLICE_MS = 12;
     var settling = null;
     var scanning = null;
+    var current = "";
 
     function busy(on) {
       if (spinner) spinner.hidden = !on;
@@ -440,18 +468,81 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
       scanning = null;
     }
 
+    // `hidden` is what the markup asks for, but Tailwind's grid on the cards
+    // outranks it, so the swap is an inline display value — cleared back to
+    // whatever the stylesheet says when the box empties.
+    function reveal(element, visible) {
+      if (element) element.style.display = visible ? "" : "none";
+    }
+
+    // The front page names the index but does not ship it: a reader who opens
+    // the folder to look at the spaces should not wait for a scan they never
+    // asked for. The first question fetches it, once; after that it is memory.
+    var asking = false;
+
+    function fetchIndex() {
+      // One fetch, however many keystrokes arrive while it is on its way.
+      if (asking) return;
+
+      if (!source) {
+        status.textContent = "This copy carries no search index.";
+        return;
+      }
+
+      asking = true;
+      busy(true);
+      working("Loading the index…");
+
+      var script = document.createElement("script");
+      script.src = source;
+      script.async = false;
+      script.onload = function () {
+        documents = window.__MIRROR_SEARCH__ || [];
+        entries = documents.map(prepare);
+        loaded = true;
+        asking = false;
+
+        // The box may have grown, or been emptied, while the index arrived, so
+        // the question asked now is the one answered — not the one that
+        // started the fetch.
+        run(current);
+      };
+      script.onerror = function () {
+        asking = false;
+        busy(false);
+        status.textContent = "The index is missing from this copy.";
+      };
+      document.head.appendChild(script);
+    }
+
     function run(query) {
+      current = query;
       cancelScan();
 
       var needles = words(query);
+      var searching = needles.length > 0;
 
-      if (needles.length === 0) {
+      // Where the results take the place of something else, the swap follows
+      // the box rather than the result: the reader sees the search begin.
+      reveal(surface, searching);
+      reveal(cards, !searching);
+
+      if (!searching) {
         busy(false);
         clear();
         status.textContent = catalogue();
         return;
       }
 
+      if (!loaded) {
+        fetchIndex();
+        return;
+      }
+
+      startScan(needles);
+    }
+
+    function startScan(needles) {
       var scan = {cancelled: false};
       var hits = [];
       var at = 0;
@@ -512,37 +603,38 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
       initial = "";
     }
 
-    input.value = initial;
-    run(initial);
-    input.focus();
-
-    input.addEventListener("input", function () {
-      settle(input.value);
+    boxes.forEach(function (box) {
+      box.value = initial;
     });
 
-    // The box in the header asks the same question as this page's, and here the
-    // index is loaded — so it searches as you type too, instead of reloading the
-    // page (and parsing the index again) on Enter. On every other page of the
-    // archive that box stays a form: the index lives here and nowhere else.
-    var header = document.querySelector('form[role="search"] input[name="q"]');
+    if (pageInput) pageInput.focus();
 
-    if (header) {
-      header.value = initial;
+    // Whichever box the reader types in, the other follows, and every keystroke
+    // only settles the scan: a word typed at speed is scanned once, not once
+    // per letter.
+    boxes.forEach(function (box) {
+      box.addEventListener("input", function () {
+        boxes.forEach(function (other) {
+          if (other !== box) other.value = box.value;
+        });
 
-      header.addEventListener("input", function () {
-        input.value = header.value;
-        settle(header.value);
+        settle(box.value);
       });
+    });
 
+    // With the index in hand Enter has nothing left to carry: the box has
+    // already searched, and submitting would reload the page to parse the index
+    // a second time. Pages without this script keep the untouched form, which
+    // takes the reader to `search.html?q=` — and that page searches as soon as
+    // it has its index.
+    if (header && header.form) {
       header.form.addEventListener("submit", function (event) {
         event.preventDefault();
         settle(header.value);
       });
-
-      input.addEventListener("input", function () {
-        header.value = input.value;
-      });
     }
+
+    run(initial);
   })();
   """
 

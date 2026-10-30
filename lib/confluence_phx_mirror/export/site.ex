@@ -546,7 +546,9 @@ defmodule ConfluencePhxMirror.Export.Site do
       |> Enum.map(fn {key, group} ->
         %{
           name: group.name,
-          href: label_path(key),
+          # The catalogue sits one directory down with the label pages it
+          # names, so its links are written from there.
+          href: @labels_prefix <> label_path(key),
           count: length(group.pages),
           spaces: group.pages |> Enum.map(& &1.space_key) |> Enum.uniq() |> length()
         }

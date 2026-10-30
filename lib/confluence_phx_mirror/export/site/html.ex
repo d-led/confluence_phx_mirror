@@ -36,21 +36,11 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
       mirror_name={@mirror_name}
       mirror_url={@mirror_url}
       html_attributes={@html_attributes}
+      search={:live}
       note={"#{plural(@page_count, "page")} in #{plural(length(@spaces), "space")}, copied #{@generated}."}
     >
       <:nav>
-        <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-base-content/70">
-          Spaces
-        </p>
-        <ul class="menu menu-sm w-full gap-1 p-0">
-          <li :for={space <- @spaces}>
-            <a href={space.href} class="truncate">
-              {space.name}
-              <span class="badge badge-ghost badge-xs">{space.key}</span>
-            </a>
-          </li>
-        </ul>
-        <.labels_link prefix="" />
+        <.space_nav spaces={@spaces} prefix="" />
       </:nav>
 
       <h1 class="text-2xl font-semibold tracking-tight">{@title}</h1>
@@ -61,7 +51,23 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
         carry go back to the original site.
       </p>
 
-      <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <%!-- Where the box in the header puts its answers. The cards below give way
+      to them, and come back when the box is emptied. --%>
+      <div id="search-surface" style="display: none" class="mt-5">
+        <div class="flex items-center gap-2">
+          <span
+            id="search-spinner"
+            hidden
+            aria-hidden="true"
+            class="loading loading-spinner loading-xs text-primary"
+          ></span>
+          <p id="search-progress" aria-hidden="true" class="text-xs text-base-content/70"></p>
+          <p id="search-status" role="status" class="text-xs text-base-content/70"></p>
+        </div>
+        <ol id="search-results" aria-label="Results" aria-busy="false" class="mt-3 space-y-2"></ol>
+      </div>
+
+      <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" id="front-spaces">
         <a
           :for={space <- @spaces}
           href={space.href}
@@ -94,6 +100,13 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
           </span>
         </a>
       </div>
+
+      <%!-- The index is named, not shipped: the copy's whole index is tens of
+      megabytes, and a reader who came to look at the spaces should not pay for
+      a scan nobody asked for. The first keystroke in the header box fetches it
+      from the folder's own `assets/`. --%>
+      <script src="assets/search.js" data-index="assets/search-index.js" defer>
+      </script>
     </.shell>
     """
   end
@@ -131,9 +144,9 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
         <p class="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-base-content/70">
           <span class="truncate">{@space.name}</span>
           <span class="badge badge-ghost badge-xs">{@space.key}</span>
+          <.labels_link prefix={@prefix} />
         </p>
         <.tree nodes={@tree} />
-        <.labels_link prefix={@prefix} />
       </:nav>
 
       <header class="flex flex-wrap items-start gap-3">
@@ -408,21 +421,11 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
       mirror_name={@mirror_name}
       mirror_url={@mirror_url}
       html_attributes={@html_attributes}
+      search={:live}
       note={"#{plural(@page_count, "page")} in #{plural(length(@spaces), "space")}, copied #{@generated}."}
     >
       <:nav>
-        <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-base-content/70">
-          Spaces
-        </p>
-        <ul class="menu menu-sm w-full gap-1 p-0">
-          <li :for={space <- @spaces}>
-            <a href={space.href} class="truncate">
-              {space.name}
-              <span class="badge badge-ghost badge-xs">{space.key}</span>
-            </a>
-          </li>
-        </ul>
-        <.labels_link prefix="" />
+        <.space_nav spaces={@spaces} prefix="" />
       </:nav>
 
       <h1 class="text-2xl font-semibold tracking-tight">Search this copy</h1>
@@ -489,17 +492,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
       note={"#{plural(length(@labels), "label")}, copied #{@generated}."}
     >
       <:nav>
-        <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-base-content/70">
-          Spaces
-        </p>
-        <ul class="menu menu-sm w-full gap-1 p-0">
-          <li :for={space <- @spaces}>
-            <a href={space.href} class="truncate">
-              {space.name}
-              <span class="badge badge-ghost badge-xs">{space.key}</span>
-            </a>
-          </li>
-        </ul>
+        <.space_nav spaces={@spaces} prefix={@prefix} />
       </:nav>
 
       <h1 class="text-2xl font-semibold tracking-tight">Labels</h1>
@@ -508,8 +501,13 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
         whichever space it lives in.
       </p>
 
-      <ul class="mt-5 flex flex-wrap gap-2">
-        <li :for={label <- @labels}>
+      <.long_list
+        id="labels"
+        count={length(@labels)}
+        placeholder="Filter labels"
+        list_class="mt-5 flex flex-wrap gap-2"
+      >
+        <:item :for={label <- @labels}>
           <a
             href={label.href}
             class="inline-flex items-center gap-1.5 rounded-lg border border-base-300/70 bg-base-100 px-2.5 py-1.5 text-xs transition hover:border-primary/40 hover:bg-base-200/40"
@@ -520,8 +518,8 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
               {plural(label.spaces, "space")}
             </span>
           </a>
-        </li>
-      </ul>
+        </:item>
+      </.long_list>
 
       <p :if={@labels == []} class="mt-4 text-sm text-base-content/70">
         No page in this copy carries a label.
@@ -553,17 +551,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
       crumbs={[%{title: "All labels", href: @prefix <> "labels/index.html"}]}
     >
       <:nav>
-        <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-base-content/70">
-          Spaces
-        </p>
-        <ul class="menu menu-sm w-full gap-1 p-0">
-          <li :for={space <- @spaces}>
-            <a href={space.href} class="truncate">
-              {space.name}
-              <span class="badge badge-ghost badge-xs">{space.key}</span>
-            </a>
-          </li>
-        </ul>
+        <.space_nav spaces={@spaces} prefix={@prefix} />
       </:nav>
 
       <h1 class="text-2xl font-semibold tracking-tight">{@label}</h1>
@@ -574,8 +562,13 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
         )}
       </p>
 
-      <ul class="mt-4 divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100">
-        <li :for={page <- @pages}>
+      <.long_list
+        id="label-pages"
+        count={length(@pages)}
+        placeholder="Filter pages"
+        list_class="mt-4 divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
+      >
+        <:item :for={page <- @pages}>
           <a
             href={page.href}
             class="flex min-h-11 items-baseline gap-2 px-3 py-2 text-sm transition hover:bg-base-200/40"
@@ -586,8 +579,8 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
               <span class="badge badge-ghost badge-xs">{page.space_key}</span>
             </span>
           </a>
-        </li>
-      </ul>
+        </:item>
+      </.long_list>
     </.shell>
     """
   end
@@ -603,6 +596,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
   attr :html_attributes, :map, default: %{}
   attr :note, :string, default: ""
   attr :crumbs, :list, default: []
+  attr :search, :atom, default: :submit, values: [:submit, :live]
 
   slot :nav
   slot :rail
@@ -696,7 +690,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
                   aria-label="Search this copy"
                   autocomplete="off"
                   enterkeyhint="search"
-                  title="Press Enter to search this copy — the index lives on the search page"
+                  title={search_hint(@search)}
                   class="input input-sm w-full rounded-lg bg-base-100 sm:w-48"
                 />
               </form>
@@ -841,15 +835,145 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
     ~H"""
     <a
       href={@prefix <> "labels/index.html"}
-      class="mt-3 block text-[11px] font-medium text-primary hover:underline"
+      class="ml-auto shrink-0 text-[11px] font-medium tracking-normal normal-case text-primary hover:underline"
     >
       All labels →
     </a>
     """
   end
 
+  # The spaces, in the sidebar of the pages that list them: the copy's front
+  # page, the search page and the two label pages. A mirror of a large wiki has
+  # more spaces than a sidebar can show at once, so the list narrows as the
+  # reader types; blocked by a browser, the script leaves it whole.
+  attr :spaces, :list, required: true
+  attr :prefix, :string, required: true
+
+  defp space_nav(assigns) do
+    ~H"""
+    <p class="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-base-content/70">
+      <span>Spaces</span>
+      <.labels_link prefix={@prefix} />
+    </p>
+    <.long_list
+      id="spaces"
+      count={length(@spaces)}
+      page={false}
+      placeholder="Filter spaces"
+      list_class="menu menu-sm w-full gap-1 p-0"
+    >
+      <:item :for={space <- @spaces}>
+        <a href={space.href} class="truncate">
+          {space.name}
+          <span class="badge badge-ghost badge-xs">{space.key}</span>
+        </a>
+      </:item>
+    </.long_list>
+    """
+  end
+
+  # A list a reader can take in without moving their eyes needs no controls;
+  # beyond that, the filter appears, and past a page's worth so does the pager.
+  @at_a_glance 8
+
+  @doc """
+  A list long enough to need narrowing: the spaces, the labels, the pages under
+  a label.
+
+  Everything is in the HTML already — the filter and the pager only hide rows —
+  so a browser that blocks the script shows the whole list instead of a hole.
+  """
+  attr :id, :string, required: true
+  attr :count, :integer, required: true
+  attr :placeholder, :string, required: true
+  attr :page, :boolean, default: true
+  attr :list_class, :string, required: true
+  slot :item, required: true
+
+  def long_list(assigns) do
+    assigns = assign(assigns, :narrow, assigns.count > @at_a_glance)
+
+    ~H"""
+    <div data-list={@id}>
+      <div
+        :if={@narrow}
+        data-controls
+        style="display: none"
+        class="mb-2 flex flex-wrap items-center gap-2"
+      >
+        <input
+          type="search"
+          data-filter="true"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder={@placeholder}
+          aria-label={@placeholder}
+          class="input input-sm w-full rounded-lg bg-base-100 sm:max-w-xs"
+        />
+        <span
+          :if={@page}
+          data-page-info="true"
+          aria-live="polite"
+          class="text-xs text-base-content/70"
+        ></span>
+        <div :if={@page} class="ml-auto flex items-center gap-1">
+          <label for={@id <> "-size"} class="text-[11px] text-base-content/70">Per page</label>
+          <select
+            id={@id <> "-size"}
+            data-page-size="true"
+            class="select select-sm w-20 rounded-lg bg-base-100"
+          >
+            <option value="10">10</option>
+            <option value="100" selected>100</option>
+            <option value="1000">1000</option>
+          </select>
+          <button
+            type="button"
+            data-page-prev="true"
+            aria-label="Previous page"
+            title="Previous page"
+            class="btn btn-ghost btn-sm"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            data-page-next="true"
+            aria-label="Next page"
+            title="Next page"
+            class="btn btn-ghost btn-sm"
+          >
+            ›
+          </button>
+        </div>
+      </div>
+
+      <ul data-page-list="true" class={@list_class}>
+        <li :for={item <- @item}>{render_slot(item)}</li>
+      </ul>
+
+      <p
+        :if={@narrow}
+        data-filter-empty="true"
+        hidden
+        class="mt-2 text-xs text-base-content/70"
+      >
+        Nothing matches that.
+      </p>
+    </div>
+    """
+  end
+
   defp plural(1, word), do: "1 " <> word
   defp plural(count, word), do: "#{count} #{word}s"
+
+  # What the box in the header will do, said where a reader looks for it: the
+  # pages that hold the index answer as they type, and the pages that do not
+  # carry the question to the page that does.
+  defp search_hint(:live), do: "Searches this copy as you type — nothing leaves the folder"
+
+  defp search_hint(:submit),
+    do: "Press Enter to search this copy — the index lives on the search page"
 
   defp initial(name) do
     name

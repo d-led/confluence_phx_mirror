@@ -8,9 +8,12 @@ defmodule ConfluencePhxMirror.Export.Site.Chrome do
   system says — so a page they chose dark does not flash white first.
 
   `script/0` runs after the document is parsed and adds what a server no longer
-  can: folding the page tree away (remembered, keyboard-reachable), and cycling
-  the theme. Without JavaScript both still work in the plain sense — the tree
-  is simply always there and the page follows the system.
+  can: folding the page tree away (remembered, keyboard-reachable), cycling the
+  theme, and narrowing and paging the lists a large wiki makes long — the
+  spaces in the sidebar, the labels in the catalogue, the pages under a label.
+  Without JavaScript all of it still works in the plain sense: the tree is
+  simply always there, the page follows the system, and every row of every list
+  is shown.
 
   Nothing is fetched: no fonts, no framework, no analytics.
   """
@@ -179,6 +182,137 @@ defmodule ConfluencePhxMirror.Export.Site.Chrome do
     }
 
     drawTheme();
+
+    // --- long lists ----------------------------------------------------------
+    //
+    // A copy of a large wiki holds more spaces than a sidebar can show at once,
+    // a thousand labels, five thousand pages under one label. The filter
+    // narrows a list, the pager walks it, and both only hide rows that are
+    // already in the file: with this script blocked every row is there, which
+    // is the same list, unasked.
+
+    var SIZE_KEY = "mirror-export:page-size";
+
+    function folded(text) {
+      return String(text)
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+
+    document.querySelectorAll("[data-list]").forEach(function (root) {
+      var list = root.querySelector("[data-page-list]");
+      if (!list) return;
+
+      var rows = Array.prototype.slice.call(list.children);
+      var texts = rows.map(function (row) {
+        return folded(row.textContent);
+      });
+
+      var field = root.querySelector("[data-filter]");
+      var controls = root.querySelector("[data-controls]");
+      var sizeField = root.querySelector("[data-page-size]");
+      var info = root.querySelector("[data-page-info]");
+      var previous = root.querySelector("[data-page-prev]");
+      var next = root.querySelector("[data-page-next]");
+      var empty = root.querySelector("[data-filter-empty]");
+
+      // Without a pager the list is only narrowed, never cut: every matching
+      // row is shown.
+      var size = sizeField ? pageSize() : Math.max(1, rows.length);
+      var page = 0;
+      var query = "";
+
+      function pageSize() {
+        var remembered = Number(recall(SIZE_KEY));
+        if (remembered > 0) return remembered;
+        return Number(sizeField.value) || 100;
+      }
+
+      // Every typed word has to be in the row, wherever it is in the row.
+      function matching() {
+        var words = folded(query).split(/\s+/).filter(Boolean);
+        var kept = [];
+
+        for (var i = 0; i < rows.length; i++) {
+          var text = texts[i];
+          var found = words.every(function (word) {
+            return text.indexOf(word) >= 0;
+          });
+
+          if (found) kept.push(i);
+        }
+
+        return kept;
+      }
+
+      function draw() {
+        var kept = matching();
+        var pages = Math.max(1, Math.ceil(kept.length / size));
+        if (page > pages - 1) page = pages - 1;
+
+        var from = page * size;
+        var to = Math.min(from + size, kept.length);
+
+        rows.forEach(function (row) {
+          row.hidden = true;
+        });
+
+        kept.slice(from, to).forEach(function (index) {
+          rows[index].hidden = false;
+        });
+
+        if (previous) previous.disabled = page <= 0;
+        if (next) next.disabled = page >= pages - 1;
+
+        if (info) {
+          info.textContent =
+            kept.length === 0 ? "" : from + 1 + "–" + to + " of " + kept.length;
+        }
+
+        if (empty) empty.hidden = kept.length > 0;
+      }
+
+      if (field) {
+        field.addEventListener("input", function () {
+          query = field.value;
+          page = 0;
+          draw();
+        });
+      }
+
+      if (sizeField) {
+        sizeField.value = String(size);
+
+        sizeField.addEventListener("change", function () {
+          size = Number(sizeField.value) || 100;
+          remember(SIZE_KEY, String(size));
+          page = 0;
+          draw();
+        });
+      }
+
+      if (previous) {
+        previous.addEventListener("click", function () {
+          if (page === 0) return;
+          page -= 1;
+          draw();
+        });
+      }
+
+      if (next) {
+        next.addEventListener("click", function () {
+          page += 1;
+          draw();
+        });
+      }
+
+      // The controls are in the file but out of sight until this runs: a page
+      // whose script was blocked shows the whole list and no dead buttons.
+      if (controls) controls.style.display = "";
+
+      draw();
+    });
   })();
   """
 
@@ -186,7 +320,7 @@ defmodule ConfluencePhxMirror.Export.Site.Chrome do
   @spec theme_script() :: String.t()
   def theme_script, do: @theme_script
 
-  @doc "Sidebar folding and the theme button."
+  @doc "Sidebar folding, the theme button, and narrowing and paging long lists."
   @spec script() :: String.t()
   def script, do: @script
 end

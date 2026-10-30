@@ -7,7 +7,6 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Export
-  alias ConfluencePhxMirror.Export.Site.Search
   alias ConfluencePhxMirror.Mirror
 
   @stylesheet "/* the theme this site wears */"
@@ -146,13 +145,23 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       catalogue = files["labels/index.html"]
 
       assert catalogue =~ "architecture"
-      assert catalogue =~ "labels/architecture.html"
+      # The catalogue sits beside the label pages, not above them.
+      assert catalogue =~ ~s(href="../labels/architecture.html")
 
       labelled = files["labels/architecture.html"]
       assert labelled =~ Demo.open_page_title()
       # The label pages sit one folder down: their links are relative to it.
       assert labelled =~ ~s(href="../spaces/ENG/pages/#{Demo.open_page()}.html")
       assert catalogue =~ ~s(href="../assets/site.css")
+    end
+
+    test "every link inside the archive points at a file the archive carries", %{files: files} do
+      for {name, page} <- files,
+          String.ends_with?(name, ".html"),
+          {tag, attribute, href} <- relative_links(page) do
+        assert Map.has_key?(files, inside_archive(name, href)),
+               "#{name}: <#{tag} #{attribute}=\"#{href}\"> is not in the archive"
+      end
     end
 
     test "a page's label chips lead into the catalogue", %{files: files} do
@@ -207,8 +216,25 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
 
       # Every keystroke settles the field; none of them starts a scan of its
       # own, so a word typed at speed is scanned once, not once per letter.
-      assert script =~ "settle(input.value)"
-      refute script =~ "run(input.value)"
+      assert script =~ "settle(box.value)"
+      refute script =~ "run(box.value)"
+    end
+
+    test "the front page answers as the reader types, and fetches its index then", %{files: files} do
+      front = files["index.html"]
+
+      assert front =~ ~s(id="search-results")
+      assert front =~ ~s(id="front-spaces")
+      assert front =~ ~s(src="assets/search.js")
+      assert front =~ ~s(data-index="assets/search-index.js")
+
+      # Named, not shipped: the index is as large as the copy, and a reader who
+      # came to look at the spaces should not wait for a scan nobody asked for.
+      refute front =~ ~s(src="assets/search-index.js")
+
+      script = files["assets/search.js"]
+      assert script =~ ~s{getAttribute("data-index")}
+      assert script =~ ~s{getElementById("front-spaces")}
     end
 
     test "every page links to the copy's own search", %{files: files} do
@@ -233,6 +259,64 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       assert files["search.html"] =~ ~s(name="q")
       assert script =~ ~s(form[role="search"] input[name="q"])
       assert script =~ ~s(header.form.addEventListener("submit")
+    end
+
+    test "a short list of spaces needs no filter", %{files: files} do
+      # Two spaces fit in a sidebar; a field over them would be furniture.
+      assert files["index.html"] =~ ~s(data-list="spaces")
+      refute files["index.html"] =~ ~s(placeholder="Filter spaces")
+    end
+
+    test "the lists narrow and page without asking the network", %{files: files} do
+      script = files["assets/site.js"]
+
+      assert script =~ ~s{querySelectorAll("[data-list]")}
+      # A page size is a reading preference, kept with the theme and the folded
+      # tree, so it survives the next page the reader opens.
+      assert script =~ "mirror-export:page-size"
+      refute script =~ "http"
+    end
+  end
+
+  describe "a copy bigger than one screen" do
+    setup %{} do
+      # Nine more spaces than a sidebar can show at once, and twelve labels the
+      # catalogue can only list.
+      for index <- 1..9, do: space_fixture(%{name: "Load test #{index}"})
+
+      for index <- 1..12 do
+        page = page_fixture(space_fixture(), %{title: "Topic #{index}"})
+        {:ok, _labelled} = Mirror.replace_labels(page, ["topic-#{index}"])
+      end
+
+      %{files: archive(admin())}
+    end
+
+    test "the spaces in the sidebar narrow as the reader types", %{files: files} do
+      for page <- ["index.html", "search.html", "labels/index.html"] do
+        assert files[page] =~ ~s(data-list="spaces")
+        assert files[page] =~ ~s(placeholder="Filter spaces")
+        assert files[page] =~ ~s(data-filter="true")
+      end
+    end
+
+    test "the label catalogue offers a filter and a page size", %{files: files} do
+      catalogue = files["labels/index.html"]
+
+      assert catalogue =~ ~s(data-list="labels")
+      assert catalogue =~ ~s(placeholder="Filter labels")
+      assert catalogue =~ ~s(<option value="10">10</option>)
+      assert catalogue =~ ~s(<option value="100" selected>100</option>)
+      assert catalogue =~ ~s(<option value="1000">1000</option>)
+    end
+
+    test "the controls wait for the script that makes them work", %{files: files} do
+      # Every row is in the file, so a reader without the script sees the whole
+      # list and no buttons that do nothing.
+      catalogue = files["labels/index.html"]
+
+      assert catalogue =~ ~s(data-controls style="display: none")
+      assert catalogue =~ "topic-1"
     end
   end
 
@@ -354,6 +438,18 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
     href
     |> Path.expand(Path.dirname("/" <> name))
     |> String.trim_leading("/")
+  end
+
+  # What a reader can follow to another file in the folder. An address with a
+  # scheme leaves the archive on purpose, and a bare `#` stays on the page.
+  defp relative_links(page) do
+    document = LazyHTML.from_fragment(page)
+
+    for {tag, attribute} <- [{"a", "href"}, {"img", "src"}, {"link", "href"}, {"script", "src"}],
+        href <- LazyHTML.attribute(LazyHTML.query(document, tag), attribute),
+        href != "",
+        not String.starts_with?(href, ["#", "http:", "https:", "mailto:", "data:"]),
+        do: {tag, attribute, href}
   end
 
   # What `search.html` holds once it has loaded `assets/search-index.js`.

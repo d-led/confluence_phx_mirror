@@ -508,7 +508,7 @@ spaces/<KEY>/pages/<id>.md        the same page as Markdown
 spaces/<KEY>/icon.<ext>           the space icon, when the mirror has it
 attachments/<KEY>/<page>/<file>   the mirrored attachments
 assets/site.css                   the site's compiled theme
-assets/site.js                    folding the page tree, switching the theme
+assets/site.js                    the page tree, the theme, and long lists
 assets/theme.js                   the pinned theme, applied before the first paint
 assets/search.json                the search index, for other tools
 assets/search-index.js            the same index, as the script search.html loads
@@ -525,9 +525,9 @@ that reader may open.
 **The look is the site's.** `assets/site.css` is the stylesheet this instance
 serves — the theme an administrator picked, custom skins included — and every
 page is written with the same markup as the reader screens. Nothing on a page
-is built by script: the heading permalinks are in the HTML, and the two scripts
-an archive carries only fold the page tree away and switch the theme, so a page
-with scripts blocked still reads.
+is built by script: the heading permalinks are in the HTML, and the scripts an
+archive carries only fold the page tree away, switch the theme and narrow a
+long list, so a page with scripts blocked still reads.
 
 **Reading a page is as comfortable as in the mirror.** The page tree folds away
 and stays folded (`site.js` remembers the choice in the browser, like the reader
@@ -561,13 +561,26 @@ freezes the field. A newer query abandons the older scan, so a result can never
 land under the wrong word. The percentage is hidden from screen readers; they
 hear the settled count ("23 pages match") once.
 
-Every page also carries a search box in its header, and there it is a form:
-Enter takes the word to `search.html?q=…`, which searches as soon as it has
-loaded. It has to be — the index travels with the search page alone, and a copy
-of it in every page would multiply the folder by the number of pages in it. On
-`search.html` itself the header box has the index at hand, so there it answers
-as you type, like the page's own field, and never reloads to parse the index a
-second time.
+**Every page also carries a search box in its header.** On the two pages that
+can answer it — `search.html`, which carries the index, and `index.html`, the
+archive's front page, which names it — the box searches as you type and never
+reloads to parse the index a second time. The front page fetches the index on
+the first keystroke rather than at load, so opening the folder to browse the
+spaces costs nothing: the space cards give way to the results, and come back
+when the box is emptied. Everywhere else the box is a form: Enter takes the
+word to `search.html?q=…`, which searches as soon as it has loaded. It has to
+be — the index is one file for the whole copy, and a copy of it in every page
+would multiply the folder by the number of pages in it.
+
+**Lists that outgrow a screen narrow and page.** A mirror of a large wiki has
+more spaces than a sidebar can show at once and more labels than a catalogue
+can list, so the spaces in the sidebar take a filter, and the label catalogue
+and a label's own page list take a filter and a pager — 10, 100 or 1000 rows a
+page, remembered in the browser alongside the theme and the folded tree. None
+of it is a fetch: every row is already in the file, and the filter and the
+pager only hide what is not wanted. A browser with scripts blocked therefore
+shows the whole list, and the controls stay out of sight instead of sitting in
+the page doing nothing.
 
 Every page carries the trail that leads to it — space, then each parent — and
 a link to the space's front page, which holds the space's whole page tree

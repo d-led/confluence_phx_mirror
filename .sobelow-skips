@@ -5,10 +5,9 @@ Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirr
 Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/export/site.ex:180,4BBE6D5
 Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/export/site.ex:195,7FD4A80
 Traversal.FileModule: Directory Traversal in `File.write!`,lib/confluence_phx_mirror/build_info.ex:117,773A169
-XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:276,30218F5
-XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:316,595A444
-XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:333,131F5A0
-XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:463,3CCDD1C
+XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:289,2E58CAB
+XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:329,D1FB5C
+XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:346,442E696
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/components/layouts/root.html.heex:14,200047D
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/components/layouts/root.html.heex:22,6FC37FB
 XSS.Raw: XSS,lib/confluence_phx_mirror_web/components/layouts/root.html.heex:25,5294B9E
