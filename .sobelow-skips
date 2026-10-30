@@ -2,8 +2,8 @@ Config.CSRF: Missing CSRF Protections,lib/confluence_phx_mirror_web/router.ex:32
 Config.HTTPS: HTTPS Not Enabled,config/prod.exs:0,2B5C077
 Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/confluence_phx_mirror/build_info.ex:115,1C89591
 Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/build_info.ex:154,3136F0B
-Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/export/site.ex:180,4BBE6D5
-Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/export/site.ex:195,7FD4A80
+Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/export/site.ex:176,2383DCC
+Traversal.FileModule: Directory Traversal in `File.read`,lib/confluence_phx_mirror/export/site.ex:191,17A742B
 Traversal.FileModule: Directory Traversal in `File.write!`,lib/confluence_phx_mirror/build_info.ex:117,773A169
 XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:289,2E58CAB
 XSS.Raw: XSS,lib/confluence_phx_mirror/export/site/html.ex:329,D1FB5C

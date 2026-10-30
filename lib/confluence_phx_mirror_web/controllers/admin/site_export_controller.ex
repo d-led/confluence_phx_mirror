@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportController do
   use ConfluencePhxMirrorWeb, :controller
 
   alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Export.Artifact
   alias ConfluencePhxMirrorWeb.ArchiveDownload
@@ -47,6 +48,10 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportController do
       # An archive of the content in force now: the file the browser asked for
       # already exists, so it is a file send rather than a minute of work.
       {:ready, %{at: at, version: ^version}} ->
+        # The trail says which shape left the building: the file that was
+        # already on disk, or one built for this request.
+        Audit.log(actor(scope), Export.audit_event_site_exported(true))
+
         conn
         |> ArchiveDownload.send_file(
           Artifact.path(Export.site_artifact()),
@@ -54,9 +59,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportController do
         )
 
       _absent_building_or_out_of_date ->
+        Audit.log(actor(scope), Export.audit_event_site_exported(false))
+
         ArchiveDownload.send(conn, Export.site_archive(scope), Export.site_archive_name())
     end
   end
+
+  # The administrator who asked. `index/2` has already refused everyone else, so
+  # the scope here always carries one.
+  defp actor(%Scope{user: %{} = user}), do: {:user, user}
 
   defp refuse(conn) do
     conn

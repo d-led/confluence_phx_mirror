@@ -31,65 +31,91 @@ defmodule ConfluencePhxMirror.Export.Zip do
   # The largest value a classic 32-bit field can hold; it doubles as the
   # "look in the extra field" marker.
   @limit 0xFFFFFFFF
-  # 1980-01-01 00:00, the DOS epoch.
-  @dos_date 0x0021
-  @dos_time 0x0000
 
   @doc """
   Turns `{name, data}` pairs into a stream of chunks.
 
   `data` may be a binary, iodata or a zero-arity function; the function form
   keeps attachments lazy (read from the blob store while streaming).
+
+  An entry may be `{name, data, %DateTime{}}` instead, and then the archive says
+  that moment for it. Every other entry gets `:at` — one moment for the whole
+  archive, read once when the stream starts, because a folder of pages written
+  today should say so rather than 1980, the DOS epoch a zero timestamp means.
   """
-  @spec chunks(Enumerable.t()) :: Enumerable.t()
-  def chunks(entries) do
+  @spec chunks(Enumerable.t(), keyword()) :: Enumerable.t()
+  def chunks(entries, opts \\ []) do
+    at = Keyword.get_lazy(opts, :at, &DateTime.utc_now/0)
+
     entries
     # The central directory can only be written once every offset is known, so
     # the stream gets one synthetic final element instead of relying on an
     # "after" callback that cannot emit.
     |> Stream.concat([:__end_of_archive__])
-    |> Stream.transform({0, []}, &chunk/2)
+    |> Stream.transform({0, [], at}, &chunk/2)
   end
 
-  defp chunk(:__end_of_archive__, {offset, central}) do
+  defp chunk(:__end_of_archive__, {offset, central, _at}) do
     records = Enum.reverse(central)
     directory = records |> Enum.map_join(&central_record/1) |> IO.iodata_to_binary()
 
     {[directory | end_records(length(records), byte_size(directory), offset)], {offset, central}}
   end
 
-  defp chunk({name, data}, {offset, central}) do
+  defp chunk({name, data}, {offset, central, at}),
+    do: chunk({name, data, at}, {offset, central, at})
+
+  defp chunk({name, data, at}, {offset, central, archive_at}) do
     data = if is_function(data, 0), do: data.(), else: data
     data = IO.iodata_to_binary(data)
     crc = :erlang.crc32(data)
     {method, payload} = deflate(data)
 
-    record = {name, crc, byte_size(data), byte_size(payload), method, offset}
+    record = {name, crc, byte_size(data), byte_size(payload), method, offset, dos(at)}
     header = local_header(record)
-    {[header, payload], {offset + byte_size(header) + byte_size(payload), [record | central]}}
+
+    {[header, payload],
+     {offset + byte_size(header) + byte_size(payload), [record | central], archive_at}}
+  end
+
+  # A DOS timestamp, which is what a ZIP stores: the year counted from 1980, the
+  # seconds halved because the field has five bits, and no zone — the moment is
+  # written in UTC, which is the only one this application keeps.
+  defp dos(%DateTime{} = at) do
+    year = (at.year - 1980) |> max(0) |> min(127)
+
+    time =
+      Bitwise.bor(
+        Bitwise.bsl(at.hour, 11),
+        Bitwise.bor(Bitwise.bsl(at.minute, 5), div(at.second, 2))
+      )
+
+    date = Bitwise.bor(Bitwise.bsl(year, 9), Bitwise.bor(Bitwise.bsl(at.month, 5), at.day))
+
+    {time, date}
   end
 
   # ---------------------------------------------------------------------------
   # Headers
   # ---------------------------------------------------------------------------
 
-  defp local_header({name, crc, size, compressed, method, offset}) do
+  defp local_header({name, crc, size, compressed, method, offset, {time, date}}) do
     zip64? = zip64?(size, compressed, offset)
     extra = extra(size, compressed, nil, zip64?)
 
     <<@local_header_signature::little-32, version(zip64?)::little-16, @utf8_flag::little-16,
-      method::little-16, @dos_time::little-16, @dos_date::little-16, crc::little-32,
+      method::little-16, time::little-16, date::little-16, crc::little-32,
       field(compressed, zip64?)::little-32, field(size, zip64?)::little-32,
       byte_size(name)::little-16, byte_size(extra)::little-16, name::binary, extra::binary>>
   end
 
-  defp central_record({name, crc, size, compressed, method, offset}) do
+  defp central_record({name, crc, size, compressed, method, offset, {time, date}}) do
     zip64? = zip64?(size, compressed, offset)
     extra = extra(size, compressed, offset, zip64?)
 
     <<@central_signature::little-32, version(zip64?)::little-16, version(zip64?)::little-16,
-      @utf8_flag::little-16, method::little-16, @dos_time::little-16, @dos_date::little-16,
-      crc::little-32, field(compressed, zip64?)::little-32, field(size, zip64?)::little-32,
+      @utf8_flag::little-16, method::little-16, time::little-16, date::little-16, crc::little-32,
+      field(compressed, zip64?)::little-32, field(size, zip64?)::little-32,
       byte_size(name)::little-16, byte_size(extra)::little-16, 0::little-16, 0::little-16,
       0::little-16, 0::little-32, field(offset, zip64?)::little-32, name::binary, extra::binary>>
   end

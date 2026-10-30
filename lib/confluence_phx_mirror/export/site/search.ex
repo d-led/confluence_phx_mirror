@@ -3,20 +3,19 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
   The search index an exported site carries.
 
   One document per page — its title, space, labels, date and the first
-  400 characters of its text — written twice on purpose:
-
-    * `assets/search.json` is the index itself, for any tool that wants to read
-      the archive;
-    * `assets/search-index.js` assigns the same JSON to a global, which
-      `search.html` loads with a `<script src>` tag: a folder opened from
-      `file://` may not fetch its own files, but it does run its own scripts.
+  400 characters of its text — written once, as `assets/search-index.js`: it
+  assigns the JSON to a global, which `search.html` loads with a `<script src>`
+  tag, because a folder opened from `file://` may not fetch its own files but
+  does run its own scripts. The documents are plain JSON inside that file, so
+  anything that wants to read the index can, without the archive carrying a
+  second copy of its largest member.
 
   The index loads where a reader asks a question. `search.html` carries it, the
   archive's front page names it in `data-index` and receives it on the first
   keystroke, and every other page carries neither: one index serves the whole
   copy, and a folder of pages should not pay for it on each page a reader opens.
 
-  Both are written **while the export streams**, one space at a time, into a
+  It is written **while the export streams**, one space at a time, into a
   temporary file: a site of a hundred thousand pages makes an index that does
   not fit in a small box's memory twice over (once as documents, once as JSON),
   and an archive is not worth an out-of-memory kill.
@@ -122,12 +121,11 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
   @script ~S"""
   // Search for a static copy of the Confluence mirror.
   //
-  // The index arrives as `assets/search-index.js`, which assigns the same
-  // documents `assets/search.json` holds. A script file is what a folder
-  // opened from `file://` will run but not fetch, so search works with no
-  // server and no network: open the folder and type. Every typed word has to
-  // match somewhere; a title weighs more than a space or a label, and those
-  // weigh more than the body.
+  // The index arrives as `assets/search-index.js`, which assigns the documents
+  // to a global. A script file is what a folder opened from `file://` will run
+  // but not fetch, so search works with no server and no network: open the
+  // folder and type. Every typed word has to match somewhere; a title weighs
+  // more than a space or a label, and those weigh more than the body.
 
   (function () {
     "use strict";

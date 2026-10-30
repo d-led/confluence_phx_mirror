@@ -76,6 +76,28 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       assert files[attachment] =~ "<svg"
     end
 
+    test "says when a file changed, and when the archive was written", %{} do
+      # A file manager shows these dates, so they have to be real: a file the
+      # site gave us a date for says that date, and everything else says when the
+      # archive was made — never 1980, the DOS epoch a zero timestamp means.
+      changed = ~U[2021-03-04 05:06:08Z]
+      space = space_fixture(%{key: "DATED", name: "Dated space"})
+      page = page_fixture(space, %{title: "Page with a file"})
+
+      file =
+        attachment_fixture(page, %{filename: "plan.svg", external_updated_at: changed})
+
+      stamps = stamps(Export.space_site_archive(space, admin()))
+
+      assert stamps[
+               "attachments/DATED/#{page.confluence_id}/#{file.confluence_id}/plan.svg"
+             ] == changed
+
+      page_stamp = stamps["spaces/DATED/index.html"]
+      assert DateTime.diff(DateTime.utc_now(), page_stamp, :second) < 60
+      refute Enum.any?(stamps, fn {_name, at} -> at.year < 2020 end)
+    end
+
     test "a page's own furniture points inside the archive", %{files: files} do
       page = files["spaces/ENG/pages/#{Demo.open_page()}.html"]
 
@@ -175,7 +197,9 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
     end
 
     test "carries a search index and the page that searches it", %{files: files} do
-      index = files["assets/search.json"] |> JSON.decode!()
+      # The page loads the documents as a script: a folder opened from `file://`
+      # runs its own files but will not fetch them.
+      index = loaded_index(files)
 
       assert Enum.any?(index, fn document ->
                document["title"] == Demo.open_page_title() and
@@ -185,10 +209,10 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       assert Enum.any?(index, &(&1["space_key"] == "ENG"))
       assert Map.has_key?(files, "assets/search.js")
 
-      # The page loads the same documents `search.json` carries, as a script:
-      # a folder opened from `file://` runs its own files but will not fetch
-      # them.
-      assert loaded_index(files) == index
+      # One copy of the index, not two: the script carries the documents, and a
+      # second `search.json` of the same bytes was the largest member of the
+      # archive written twice and read twice.
+      refute Map.has_key?(files, "assets/search.json")
 
       search = files["search.html"]
       assert search =~ ~s(src="assets/search-index.js")
@@ -452,6 +476,39 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
         do: {tag, attribute, href}
   end
 
+  # What an archive says each of its entries is dated: the moment a file manager
+  # would show, read back from the archive as a ZIP reader sees it.
+  defp stamps(entries) do
+    path =
+      Path.join(System.tmp_dir!(), "mirror-stamps-#{System.unique_integer([:positive])}.zip")
+
+    entries
+    |> Export.Zip.chunks()
+    |> Enum.to_list()
+    |> IO.iodata_to_binary()
+    |> then(&File.write!(path, &1))
+
+    try do
+      {:ok, entries} = :zip.list_dir(String.to_charlist(path))
+
+      entries
+      |> Enum.filter(&match?({:zip_file, _, _, _, _, _}, &1))
+      |> Map.new(fn {:zip_file, name, info, _comment, _offset, _size} ->
+        # `#file_info{}` is a record: the fifth element after the tag is mtime.
+        {List.to_string(name), utc(elem(info, 5))}
+      end)
+    after
+      File.rm(path)
+    end
+  end
+
+  defp utc({{year, month, day}, {hour, minute, second}}) do
+    {:ok, at} =
+      DateTime.new(Date.new!(year, month, day), Time.new!(hour, minute, second), "Etc/UTC")
+
+    at
+  end
+
   # What `search.html` holds once it has loaded `assets/search-index.js`.
   defp loaded_index(files) do
     files["assets/search-index.js"]
@@ -460,13 +517,19 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
     |> JSON.decode!()
   end
 
+  # The archive's files by name. An entry that carries a date of its own says so
+  # in the ZIP; here only the bytes matter, and `stamps/1` reads the dates.
   defp archive(scope) do
     Export.site_archive(scope, stylesheet: @stylesheet)
     |> Enum.to_list()
-    |> Map.new(fn {name, data} ->
-      {name, if(is_function(data, 0), do: data.(), else: data)}
+    |> Map.new(fn
+      {name, data} -> {name, read(data)}
+      {name, data, _at} -> {name, read(data)}
     end)
   end
+
+  defp read(data) when is_function(data, 0), do: data.()
+  defp read(data), do: data
 
   defp unzip(chunks) do
     path =

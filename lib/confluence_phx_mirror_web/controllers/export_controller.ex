@@ -4,12 +4,15 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
   a streaming ZIP of Markdown, and a space as a standalone static site.
 
   Exports only read the mirror; nothing here writes content anywhere except the
-  reader's browser.
+  reader's browser. A copy leaving the building is a decision rather than a
+  read, so every download is in the audit log before it starts — see
+  `ConfluencePhxMirror.Export.audit_event_*_exported/2`.
   """
 
   use ConfluencePhxMirrorWeb, :controller
 
-  alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Accounts.{Scope, User}
+  alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Mirror
@@ -18,6 +21,8 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
 
   def space(conn, %{"key" => key}) do
     with {:ok, space} <- readable_space(conn, key) do
+      audit(conn, Export.audit_event_space_exported(space, :markdown))
+
       ArchiveDownload.send(
         conn,
         Export.space_archive(space, scope(conn)),
@@ -33,6 +38,8 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
   """
   def site(conn, %{"key" => key}) do
     with {:ok, space} <- readable_space(conn, key) do
+      audit(conn, Export.audit_event_space_exported(space, :static))
+
       ArchiveDownload.send(
         conn,
         Export.space_site_archive(space, scope(conn)),
@@ -43,6 +50,8 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
 
   def page(conn, %{"space_key" => space_key, "id" => id}) do
     with {:ok, page} <- readable_page(conn, space_key, id) do
+      audit(conn, Export.audit_event_page_exported(page, :markdown))
+
       conn
       |> put_resp_content_type("text/markdown; charset=utf-8")
       |> put_resp_header(
@@ -60,6 +69,8 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
   """
   def page_archive(conn, %{"space_key" => space_key, "id" => id}) do
     with {:ok, page} <- readable_page(conn, space_key, id) do
+      audit(conn, Export.audit_event_page_exported(page, :zip))
+
       ArchiveDownload.send(
         conn,
         Export.page_archive(page),
@@ -90,4 +101,18 @@ defmodule ConfluencePhxMirrorWeb.ExportController do
   end
 
   defp scope(conn), do: Scope.from_assigns(conn.assigns)
+
+  # Who took the copy. The proxy in front of a deployment names every reader, so
+  # an absent user means a request the deployment let through without one — and
+  # the copy still happened, so it is still recorded, as the anonymous reader it
+  # was.
+  defp audit(conn, entry) do
+    actor =
+      case conn.assigns[:current_user] do
+        %User{} = user -> {:user, user}
+        _no_one -> {:system, "anonymous reader"}
+      end
+
+    Audit.log(actor, entry)
+  end
 end

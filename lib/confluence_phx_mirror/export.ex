@@ -19,6 +19,7 @@ defmodule ConfluencePhxMirror.Export do
   """
 
   alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Blobs.{Key, Store}
   alias ConfluencePhxMirror.Export.Markdown
@@ -85,7 +86,9 @@ defmodule ConfluencePhxMirror.Export do
 
     Stream.concat(
       [{page_filename(page), fn -> page_markdown(page, attachments_ctx(files)) end}],
-      Stream.map(files, fn {file, path} -> {path, fn -> read_blob(file.blob_key) end} end)
+      Stream.map(files, fn {file, path} ->
+        timed(path, fn -> read_blob(file.blob_key) end, file.external_updated_at)
+      end)
     )
   end
 
@@ -173,6 +176,44 @@ defmodule ConfluencePhxMirror.Export do
     {state.page_id, state.page_at, state.space_at, state.attachment_at,
      Settings.export_personal_spaces?(), Skins.theme(), Sites.name()}
   end
+
+  # ---------------------------------------------------------------------------
+  # Audit events
+  #
+  # An export is not a read: a copy leaves the building, and who asked for it is
+  # the thing an auditor wants. The entry is written when the download starts —
+  # an archive is written as it is sent, so "started" is all a stream can
+  # promise, and it is the moment the copy exists.
+  # ---------------------------------------------------------------------------
+
+  @doc "Audit entry for the whole site being taken away as one archive."
+  @spec audit_event_site_exported(boolean()) :: Audit.Entry.t()
+  def audit_event_site_exported(prepared?) do
+    Audit.Entry.new("site.exported", "site", Sites.name(), %{
+      "format" => site_artifact(),
+      "prepared" => prepared?
+    })
+  end
+
+  @doc "Audit entry for one space leaving as Markdown (`:markdown`) or a static site."
+  @spec audit_event_space_exported(Space.t(), :markdown | :static) :: Audit.Entry.t()
+  def audit_event_space_exported(%Space{} = space, format) do
+    Audit.Entry.new("space.exported", "space", space.key, %{
+      "format" => export_format(format)
+    })
+  end
+
+  @doc "Audit entry for one page leaving as Markdown (`:markdown`) or with its files."
+  @spec audit_event_page_exported(Page.t(), :markdown | :zip) :: Audit.Entry.t()
+  def audit_event_page_exported(%Page{} = page, format) do
+    Audit.Entry.new("page.exported", "page", page.confluence_id, %{
+      "format" => export_format(format)
+    })
+  end
+
+  defp export_format(:markdown), do: "markdown"
+  defp export_format(:zip), do: "zip"
+  defp export_format(:static), do: "static site"
 
   @doc """
   Filename offered for one space's static archive.
@@ -290,10 +331,18 @@ defmodule ConfluencePhxMirror.Export do
     page
     |> Mirror.attachments()
     |> Enum.map(fn attachment ->
-      target = folder <> "/attachments/" <> local_name(attachment)
-      {target, fn -> read_blob(attachment.blob_key) end}
+      timed(
+        folder <> "/attachments/" <> local_name(attachment),
+        fn -> read_blob(attachment.blob_key) end,
+        attachment.external_updated_at
+      )
     end)
   end
+
+  # A file the site gave us a date for says that date in the archive; everything
+  # else says when the archive was written, which the ZIP writer stamps once.
+  defp timed(name, data, %DateTime{} = at), do: {name, data, at}
+  defp timed(name, data, _no_date), do: {name, data}
 
   # ---------------------------------------------------------------------------
   # One page's files

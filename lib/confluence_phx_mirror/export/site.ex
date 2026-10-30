@@ -15,8 +15,7 @@ defmodule ConfluencePhxMirror.Export.Site do
       spaces/<KEY>/icon.<ext>             the space's icon, when it has one
       attachments/<KEY>/<page>/<file>     one file per mirrored attachment
       assets/site.css                     the mirror's own stylesheet
-      assets/search.json                  the search index, for other tools
-      assets/search-index.js              the same index, as a script the page loads
+      assets/search-index.js              the search index, as a script the page loads
       assets/search.js                    the matcher search.html runs
       assets/favicon.ico                  the mark in the browser tab
 
@@ -108,13 +107,10 @@ defmodule ConfluencePhxMirror.Export.Site do
   @doc "A page, as Markdown."
   def markdown_path(space_key, confluence_id), do: "spaces/#{space_key}/pages/#{confluence_id}.md"
 
-  @doc "The archive's search page."
+  @doc "The search page."
   def search_path, do: "search.html"
 
-  @doc "The search index, for tools that read the archive."
-  def search_index_path, do: "assets/search.json"
-
-  @doc "The same index as a script, which is how the search page loads it."
+  @doc "The index as a script, which is how the search page loads it."
   def search_index_script_path, do: "assets/search-index.js"
 
   @doc "The search page's matcher."
@@ -236,15 +232,19 @@ defmodule ConfluencePhxMirror.Export.Site do
     end
   end
 
-  # One index, two files: `search-index.js` is what the page loads (a
-  # `file://` page runs a script where it will not fetch a sibling), and
-  # `search.json` is the same bytes for any other tool. Both are written to a
-  # temporary file while the export streams, one space at a time, and read back
-  # one file at a time — a site-wide index does not fit in the box twice.
+  # One index, one file. `search-index.js` is what the page loads — a `file://`
+  # page runs a script where it will not fetch a sibling — and the documents are
+  # plain JSON inside it (`window.__MIRROR_SEARCH__ = [...]`), so a tool that
+  # wants them has them. Writing the same bytes a second time as `search.json`
+  # doubled the largest member of the archive and made the export read the
+  # spooled index twice, which is exactly the duplication a large site cannot
+  # afford.
   #
-  # The file is removed when the second entry is written; a download that stops
-  # between the two leaves it in the container's temporary directory, which the
-  # next restart empties.
+  # The index is written to a temporary file while the export streams, one space
+  # at a time, and read back once — a site-wide index does not fit in the box
+  # twice. The file goes with the read; a download that stops before it is
+  # written leaves it in the container's temporary directory, which the next
+  # restart empties.
   #
   # The path is the exporter's own invention, not anything a reader sent.
   # sobelow_skip ["Traversal.FileModule"]
@@ -257,13 +257,14 @@ defmodule ConfluencePhxMirror.Export.Site do
 
     Search.write_json(path, spaces, scope)
 
-    script =
+    [
       {search_index_script_path(),
-       fn -> "window.__MIRROR_SEARCH__ = " <> File.read!(path) <> ";\n" end}
-
-    data = {search_index_path(), fn -> File.read!(path) |> tap(fn _ -> File.rm(path) end) end}
-
-    [script, data]
+       fn ->
+         index = "window.__MIRROR_SEARCH__ = " <> File.read!(path) <> ";\n"
+         File.rm(path)
+         index
+       end}
+    ]
   end
 
   defp card(%Space{} = space, scope) do
@@ -350,13 +351,22 @@ defmodule ConfluencePhxMirror.Export.Site do
   end
 
   defp attachment_entry(plan, row, attachment) do
-    {attachment_path(
-       plan.space.key,
-       row.confluence_id,
-       attachment.confluence_id,
-       attachment.filename
-     ), fn -> read_blob(attachment.blob_key) end}
+    timed(
+      attachment_path(
+        plan.space.key,
+        row.confluence_id,
+        attachment.confluence_id,
+        attachment.filename
+      ),
+      fn -> read_blob(attachment.blob_key) end,
+      attachment.external_updated_at
+    )
   end
+
+  # A file the site gave us a date for says that date in the archive; everything
+  # else says when the archive was written, which the ZIP writer stamps once.
+  defp timed(name, data, %DateTime{} = at), do: {name, data, at}
+  defp timed(name, data, _no_date), do: {name, data}
 
   defp read_blob(nil), do: ""
 

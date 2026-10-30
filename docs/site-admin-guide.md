@@ -262,8 +262,13 @@ page:
   whether its signature checked out, including rejected deliveries, plus
   whether a secret and fixed tokens are configured.
 * `/admin/audit` (**live**) – the audit log: decisions and changes (accounts,
-  tokens, subscriptions, webhooks) and one entry per sync with its counters and
-  what triggered it.
+  tokens, subscriptions, webhooks), one entry per sync with its counters and
+  what triggered it, and one per export — `site.exported`, `space.exported`,
+  `page.exported` — naming who took a copy of what and in which shape (Markdown,
+  a page's ZIP, a space's static site, the whole site's archive, prepared or
+  built for the request). A download is written when it starts: an archive is
+  produced while it is sent, so "started" is what the trail can promise, and it
+  is the moment the copy exists.
 * `/admin/trash` (**live**) – content an administrator moved out of the way:
   trashed spaces with their page counts, and trashed pages and blog posts, each
   with a purge button. "Empty the trash" asks for a second click. Purging is the
@@ -510,8 +515,7 @@ attachments/<KEY>/<page>/<file>   the mirrored attachments
 assets/site.css                   the site's compiled theme
 assets/site.js                    the page tree, the theme, and long lists
 assets/theme.js                   the pinned theme, applied before the first paint
-assets/search.json                the search index, for other tools
-assets/search-index.js            the same index, as the script search.html loads
+assets/search-index.js            the search index, as the script search.html loads
 assets/search.js                  the matcher search.html runs
 ```
 
@@ -547,7 +551,9 @@ cannot give: everything about one subject, whichever space it lives in.
 
 **Search is part of the folder.** `search.html` loads the index from a script
 next to it (`assets/search-index.js`), because a page opened from `file://`
-runs its own scripts but will not fetch its own files. Each document is a
+runs its own scripts but will not fetch its own files. The documents are plain
+JSON inside that file, so a tool that wants to read the index can; the archive
+carries it once, because a second copy would be its largest member twice over. Each document is a
 page's title, space, labels, date and the first 400 characters of its text;
 matching is client-side and ranks titles above spaces and labels, above the
 body. Every typed word has to match somewhere, and accents are folded away on
@@ -594,6 +600,12 @@ so the archive stays readable. As a guide: a 935-page space is about 2 MB; a
 site of 120,000 mostly-title-only pages is a few hundred MB, and takes minutes
 to prepare.
 
+**Every entry says when it was written.** A file the site gave a date for says
+when it changed; everything else says when the archive was made — one moment for
+the whole archive, read once when it starts writing. Never 1980, which is what a
+ZIP's empty timestamp means and what a folder of today's pages has no business
+claiming.
+
 **A download that stops.** A deployment chooses between two shapes, on
 *Admin → Settings* (*Prepare a site export before it is downloaded*,
 `CM_EXPORT_PREPARED`).
@@ -630,6 +642,15 @@ note saying it did not start. A download is a request of its own that the page
 cannot see, so the request carries a key back to the page: that is how the
 button knows whether its press worked instead of leaving an operator to wonder
 and press three times.
+
+**Every copy is in the trail.** An archive is not a read: it is a copy that
+leaves the building. `site.exported` names the administrator and whether the
+prepared file or a fresh build went out, and the space and page downloads are
+recorded the same way — `space.exported` with `markdown` or `static site`,
+`page.exported` with `markdown` or `zip`. A refused request writes nothing,
+because nothing left. The entry is written when the download starts: an archive
+is produced while it is sent, so that is all a stream can promise — and it is
+the moment the copy exists.
 
 What it does not do: content Confluence renders only in the browser (Jira
 issues, page trees, gadgets) already reads as the mirror's "cannot be shown in

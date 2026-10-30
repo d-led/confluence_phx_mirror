@@ -52,8 +52,11 @@ defmodule ConfluencePhxMirror.ExportTest do
     end
 
     test "reads a file's bytes only while the archive is written", %{page: page} do
-      assert {_path, data} =
-               Enum.find(Export.page_archive(page), &(elem(&1, 0) == "attachments/diagram.svg"))
+      {_path, data} =
+        page
+        |> Export.page_archive()
+        |> by_name()
+        |> Enum.find(fn {name, _data} -> name == "attachments/diagram.svg" end)
 
       assert is_function(data, 0)
       assert data.() =~ "<svg"
@@ -129,7 +132,7 @@ defmodule ConfluencePhxMirror.ExportTest do
       assert %{
                "Engineering Handbook/Getting Started/Architecture Overview/Architecture Overview.md" =>
                  markdown
-             } = Map.new(entries)
+             } = Map.new(by_name(entries))
 
       assert markdown =~ "[Getting Started](../Getting Started.md)"
       assert markdown =~ "![Sync architecture diagram](attachments/diagram.svg)"
@@ -141,10 +144,10 @@ defmodule ConfluencePhxMirror.ExportTest do
     end
 
     test "reads attachment bytes only while the archive is written", %{entries: entries} do
-      assert {_name, data} =
-               Enum.find(entries, fn {name, _} ->
-                 String.ends_with?(name, "attachments/diagram.svg")
-               end)
+      {_name, data} =
+        entries
+        |> by_name()
+        |> Enum.find(fn {name, _data} -> String.ends_with?(name, "attachments/diagram.svg") end)
 
       assert is_function(data, 0)
       assert is_binary(data.())
@@ -200,6 +203,11 @@ defmodule ConfluencePhxMirror.ExportTest do
   end
 
   defp entry_names(entries), do: Enum.map(entries, &elem(&1, 0))
+
+  # An entry is `{name, data}`, or `{name, data, %DateTime{}}` when the file it
+  # carries says when it changed — the date belongs to the ZIP, not to these
+  # assertions about content.
+  defp by_name(entries), do: Enum.map(entries, &{elem(&1, 0), elem(&1, 1)})
 
   defp archive(page) do
     page

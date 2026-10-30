@@ -11,6 +11,7 @@ defmodule ConfluencePhxMirrorWeb.AdminSiteExportTest do
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Export.Artifact
 
@@ -36,9 +37,18 @@ defmodule ConfluencePhxMirrorWeb.AdminSiteExportTest do
     test "an anonymous reader is refused", %{conn: conn} do
       assert conn |> get(~p"/admin/export/site.zip") |> response(403)
     end
+
+    test "a refusal leaves nothing in the audit trail", %{conn: conn} do
+      conn |> get(~p"/admin/export/site.zip") |> response(403)
+
+      assert Audit.search(action: "site.exported") == []
+    end
   end
 
   describe "the download" do
+    # The whole mirror is the largest copy this application can hand out, so the
+    # trail names who took it and whether it was the file already on disk or one
+    # built for the request.
     test "is a ZIP named after the site", %{conn: conn} do
       conn =
         conn
@@ -48,6 +58,15 @@ defmodule ConfluencePhxMirrorWeb.AdminSiteExportTest do
       assert conn.status == 200
       assert conn |> get_resp_header("content-type") |> hd() =~ "application/zip"
       assert conn |> get_resp_header("content-disposition") |> hd() =~ "site_"
+
+      assert [
+               %{
+                 action: "site.exported",
+                 entity_type: "site",
+                 actor_email: "ops@example.com",
+                 metadata: %{"format" => "site.zip", "prepared" => false}
+               }
+             ] = Audit.search(action: "site.exported")
     end
 
     test "says the archive cannot be resumed", %{conn: conn} do
@@ -72,6 +91,9 @@ defmodule ConfluencePhxMirrorWeb.AdminSiteExportTest do
       head = conn |> signed_in(ops) |> get(~p"/admin/export/site.zip")
       assert head.status == 200
       assert head |> get_resp_header("accept-ranges") == ["bytes"]
+
+      # The prepared file, not a build: the trail says which shape went out.
+      assert [%{metadata: %{"prepared" => true}}] = Audit.search(action: "site.exported")
 
       # The length is the adapter's to write when it sends a file (Bandit sets
       # `content-length` from it); what this test can hold on to is that the
