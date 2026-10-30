@@ -18,49 +18,49 @@
 // The text belongs to the action, not to this file: it has to name what will be
 // lost ("Revoke token “confluence-webhooks”? Integrations stop working.").
 
-let asking = false
-let askedByClick = false
+let asking = false;
+let askedByClick = false;
 
-const ask = message => {
-  if (!message || asking) return true
-  asking = true
+const ask = (message) => {
+  if (!message || asking) return true;
+  asking = true;
   try {
-    return window.confirm(message)
+    return window.confirm(message);
   } finally {
-    asking = false
+    asking = false;
   }
-}
+};
 
-const refuse = event => {
-  event.preventDefault()
-  event.stopImmediatePropagation()
-}
+const refuse = (event) => {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+};
 
 document.addEventListener(
   "click",
-  event => {
-    const target = event.target instanceof Element ? event.target : null
-    if (!target || !target.closest("[data-confirm]")) return
+  (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || !target.closest("[data-confirm]")) return;
     // phoenix_html is about to ask about exactly this; a submit follows in the
     // same tick, and it must not ask again.
-    askedByClick = true
-    setTimeout(() => (askedByClick = false), 0)
+    askedByClick = true;
+    setTimeout(() => (askedByClick = false), 0);
   },
-  true
-)
+  true,
+);
 
 document.addEventListener(
   "submit",
-  event => {
-    if (!(event.target instanceof HTMLFormElement)) return
+  (event) => {
+    if (!(event.target instanceof HTMLFormElement)) return;
 
-    const message = event.target.getAttribute("data-confirm")
+    const message = event.target.getAttribute("data-confirm");
     if (askedByClick) {
-      askedByClick = false
-      return
+      askedByClick = false;
+      return;
     }
-    if (ask(message)) return
-    refuse(event)
+    if (ask(message)) return;
+    refuse(event);
   },
-  true
-)
+  true,
+);

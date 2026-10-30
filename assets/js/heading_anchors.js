@@ -10,32 +10,33 @@
 // Idempotent on purpose: LiveView patches and the page-loading-stop event both
 // run this, and a heading must not collect a second anchor.
 
-const HEADINGS = ".confluence-content h1[id], .confluence-content h2[id], .confluence-content h3[id], .confluence-content h4[id], .confluence-content h5[id], .confluence-content h6[id]"
+const HEADINGS =
+  ".confluence-content h1[id], .confluence-content h2[id], .confluence-content h3[id], .confluence-content h4[id], .confluence-content h5[id], .confluence-content h6[id]";
 
 function addHeadingAnchors(root = document) {
-  root.querySelectorAll(HEADINGS).forEach(heading => {
-    if (heading.querySelector(":scope > .heading-anchor")) return
+  root.querySelectorAll(HEADINGS).forEach((heading) => {
+    if (heading.querySelector(":scope > .heading-anchor")) return;
 
-    const link = document.createElement("a")
-    link.className = "heading-anchor"
+    const link = document.createElement("a");
+    link.className = "heading-anchor";
     // The fragment is the id verbatim: ids may be non-ASCII, and a browser
     // matches `#…` against the id it finds in the document.
-    link.href = `#${heading.id}`
-    link.setAttribute("aria-label", "Link to this heading")
-    link.title = "Link to this heading"
-    link.textContent = "#"
+    link.href = `#${heading.id}`;
+    link.setAttribute("aria-label", "Link to this heading");
+    link.title = "Link to this heading";
+    link.textContent = "#";
 
-    heading.append(link)
-  })
+    heading.append(link);
+  });
 }
 
 function init() {
-  addHeadingAnchors()
-  window.addEventListener("phx:page-loading-stop", () => addHeadingAnchors())
+  addHeadingAnchors();
+  window.addEventListener("phx:page-loading-stop", () => addHeadingAnchors());
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", init)
+  document.addEventListener("DOMContentLoaded", init);
 } else {
-  init()
+  init();
 }

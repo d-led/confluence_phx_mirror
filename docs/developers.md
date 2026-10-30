@@ -73,6 +73,12 @@ ones specific to the mirror.
 * **JS dependencies are real dependencies**: `assets/package.json`, `npm ci`
   wired into `assets.build` / `assets.deploy`. Syntax highlighting uses the
   highlight.js grammar chosen from Confluence's `brush:` attribute.
+* **Two formatters, one gate.** `mix format` owns Elixir and HEEx and never
+  reads what esbuild ships; Prettier owns that half — `assets/.prettierrc` (two
+  spaces, no tabs) for the JavaScript and CSS, `assets/.prettierignore` for the
+  vendored bundles and the build output. `mix lint` checks both, so "is this
+  tree formatted?" has one answer for the whole repository and CI needs no
+  second job; when it fails, `npm run prettier` in `assets/` is the fix.
 * **Instants are UTC, everywhere but the screen.** Columns are
   `:utc_datetime`, code writes `DateTime.utc_now() |> DateTime.truncate(:second)`,
   and Confluence timestamps are parsed with `DateTime.from_iso8601/1`, which

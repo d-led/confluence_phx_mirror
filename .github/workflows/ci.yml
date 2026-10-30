@@ -85,10 +85,17 @@ jobs:
           restore-keys: |
             lint-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
       - run: mix deps.get
+      # `mix lint` ends in Prettier for the JavaScript and CSS the Elixir
+      # formatter never reads, so the assets' dependencies have to be here. The
+      # runner's own Node runs it: the formatter itself is pinned by
+      # `assets/package-lock.json`, so the version underneath changes nothing,
+      # and caching is not worth it for the three packages that are there.
+      - run: npm ci --no-audit --no-fund
+        working-directory: assets
       # compile --warnings-as-errors, deps.unlock --check-unused,
-      # format --check-formatted, credo --strict, lint.sobelow --config (sobelow,
-      # with the quoted-key warning it provokes from mix.lock attributed rather
-      # than printed as ours)
+      # format --check-formatted, prettier --check (assets), credo --strict,
+      # lint.sobelow --config (sobelow, with the quoted-key warning it provokes
+      # from mix.lock attributed rather than printed as ours)
       - run: mix lint
 
   types:

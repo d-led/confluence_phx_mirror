@@ -1,0 +1,15 @@
+# What Prettier does not own.
+#
+# `mix format` owns Elixir and HEEx (`.formatter.exs`); Prettier owns the
+# JavaScript and CSS that esbuild and tailwind ship, which the Elixir formatter
+# never looks at. Vendored bundles are someone else's formatting, and the
+# generated and built trees are not source at all.
+
+node_modules/
+vendor/
+
+# Build output: written by esbuild and tailwind, never edited.
+../priv/static/
+
+# Lockfiles: npm writes them, Prettier only churns them.
+package-lock.json

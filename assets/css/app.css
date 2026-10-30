@@ -105,7 +105,10 @@
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 /* Make LiveView wrapper divs transparent for layout */
-[data-phx-session], [data-phx-teleported-src] { display: contents }
+[data-phx-session],
+[data-phx-teleported-src] {
+  display: contents;
+}
 
 /* ---------------------------------------------------------------------------
    Readability floor.
@@ -150,14 +153,20 @@
   scroll-margin-top: 5.5rem;
 }
 
-.confluence-content h1 { font-size: 1.65rem; }
+.confluence-content h1 {
+  font-size: 1.65rem;
+}
 .confluence-content h2 {
   font-size: 1.35rem;
   border-bottom: 1px solid var(--color-base-300);
   padding-bottom: 0.25rem;
 }
-.confluence-content h3 { font-size: 1.15rem; }
-.confluence-content h4 { font-size: 1rem; }
+.confluence-content h3 {
+  font-size: 1.15rem;
+}
+.confluence-content h4 {
+  font-size: 1rem;
+}
 
 /* A heading a reader can link to. The id is Confluence's own, so an anchor
    copied here works there, and the page-loading script only adds the link. */
@@ -171,7 +180,9 @@
 }
 
 .confluence-content :is(h1, h2, h3, h4, h5, h6):hover > .heading-anchor,
-.confluence-content :is(h1, h2, h3, h4, h5, h6) > .heading-anchor:focus-visible {
+.confluence-content
+  :is(h1, h2, h3, h4, h5, h6)
+  > .heading-anchor:focus-visible {
   opacity: 0.55;
 }
 
@@ -197,11 +208,21 @@
   max-width: 78ch;
 }
 
-.confluence-content ul { list-style: disc; padding-left: 1.4rem; }
-.confluence-content ol { list-style: decimal; padding-left: 1.4rem; }
-.confluence-content li { margin: 0.2rem 0; }
+.confluence-content ul {
+  list-style: disc;
+  padding-left: 1.4rem;
+}
+.confluence-content ol {
+  list-style: decimal;
+  padding-left: 1.4rem;
+}
+.confluence-content li {
+  margin: 0.2rem 0;
+}
 .confluence-content li > ul,
-.confluence-content li > ol { margin: 0.2rem 0; }
+.confluence-content li > ol {
+  margin: 0.2rem 0;
+}
 
 .confluence-content a {
   color: var(--color-primary);
@@ -213,7 +234,9 @@
   text-decoration-thickness: 2px;
 }
 
-.confluence-content strong { font-weight: 600; }
+.confluence-content strong {
+  font-weight: 600;
+}
 
 .confluence-content hr {
   border: 0;
@@ -391,10 +414,18 @@
   color: #172b4d;
 }
 
-.confluence-content .panel:not(.code) a { color: #0052cc; }
-.confluence-content .panel:not(.code) .panelContent { padding: 0.15rem 0; }
-.confluence-content .panel:not(.code) .panelContent > :first-child { margin-top: 0.35rem; }
-.confluence-content .panel:not(.code) .panelContent > :last-child { margin-bottom: 0.35rem; }
+.confluence-content .panel:not(.code) a {
+  color: #0052cc;
+}
+.confluence-content .panel:not(.code) .panelContent {
+  padding: 0.15rem 0;
+}
+.confluence-content .panel:not(.code) .panelContent > :first-child {
+  margin-top: 0.35rem;
+}
+.confluence-content .panel:not(.code) .panelContent > :last-child {
+  margin-bottom: 0.35rem;
+}
 
 /* Code / preformatted -------------------------------------------------- */
 
@@ -530,8 +561,12 @@
   color: var(--color-error);
 }
 
-.confluence-content .hljs-emphasis { font-style: italic; }
-.confluence-content .hljs-strong { font-weight: 700; }
+.confluence-content .hljs-emphasis {
+  font-style: italic;
+}
+.confluence-content .hljs-strong {
+  font-weight: 700;
+}
 
 /* Dynamic macros (resolved at sync time) -------------------------------- */
 
@@ -559,7 +594,9 @@
   list-style: disc;
 }
 
-.confluence-content .mirror-dynamic-list li { margin: 0.15rem 0; }
+.confluence-content .mirror-dynamic-list li {
+  margin: 0.15rem 0;
+}
 
 .confluence-content .mirror-dynamic-meta {
   font-size: 0.85em;
@@ -573,7 +610,9 @@
   color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 
-.confluence-content .mirror-dynamic-report { margin: 0.25rem 0 0; }
+.confluence-content .mirror-dynamic-report {
+  margin: 0.25rem 0 0;
+}
 
 /* A page tree is drawn by its nesting, so the levels get a rail rather than
    bullets nobody counts. */
@@ -584,7 +623,9 @@
   font-size: 0.92rem;
 }
 
-.confluence-content .mirror-tree li { margin: 0.15rem 0; }
+.confluence-content .mirror-tree li {
+  margin: 0.15rem 0;
+}
 
 .confluence-content .mirror-tree ul {
   margin: 0.15rem 0 0;
@@ -599,7 +640,9 @@
   list-style: "▸  ";
 }
 
-.confluence-content .mirror-files li { margin: 0.2rem 0; }
+.confluence-content .mirror-files li {
+  margin: 0.2rem 0;
+}
 
 .confluence-content .mirror-toc {
   margin: 0;
@@ -608,7 +651,9 @@
   font-size: 0.9rem;
 }
 
-.confluence-content .mirror-toc li { margin: 0.15rem 0; }
+.confluence-content .mirror-toc li {
+  margin: 0.15rem 0;
+}
 
 .confluence-content .mirror-toc ul {
   margin: 0.15rem 0 0;
@@ -624,7 +669,9 @@
   transition: border-color 150ms ease;
 }
 
-.confluence-content .mirror-toc a:hover { border-bottom-color: currentColor; }
+.confluence-content .mirror-toc a:hover {
+  border-bottom-color: currentColor;
+}
 
 /* Third-party layout macros drawn as plain HTML ------------------------ */
 
@@ -642,7 +689,9 @@
 }
 
 .confluence-content .mirror-aura-tab:first-child,
-.confluence-content .mirror-tab:first-child { border-top: 0; }
+.confluence-content .mirror-tab:first-child {
+  border-top: 0;
+}
 
 .confluence-content .mirror-aura-tab > summary,
 .confluence-content .mirror-tab > summary {
@@ -910,7 +959,9 @@
   margin: 0;
 }
 
-.confluence-content .toc-macro li { margin: 0.15rem 0; }
+.confluence-content .toc-macro li {
+  margin: 0.15rem 0;
+}
 
 .confluence-content .children-display {
   margin: 0.9rem 0;
@@ -998,7 +1049,11 @@
 .confluence-content .inline-task-list li.checked {
   color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
   text-decoration: line-through;
-  text-decoration-color: color-mix(in oklab, var(--color-base-content) 30%, transparent);
+  text-decoration-color: color-mix(
+    in oklab,
+    var(--color-base-content) 30%,
+    transparent
+  );
 }
 
 .confluence-content .inline-task-list li.checked .aui-icon {
@@ -1249,4 +1304,3 @@ html[data-theme="dark"] .swagger-ui-frame {
     margin: 15mm;
   }
 }
-

@@ -8,10 +8,10 @@
 // "Try it out" sends its requests to this mirror. The URL travels in the
 // container's `data-spec-url` rather than being spelled again here — the
 // router owns the path, this file only renders it.
-import SwaggerUIBundle from "swagger-ui-dist/swagger-ui-bundle.js"
-import "swagger-ui-dist/swagger-ui.css"
+import SwaggerUIBundle from "swagger-ui-dist/swagger-ui-bundle.js";
+import "swagger-ui-dist/swagger-ui.css";
 
-const container = document.getElementById("swagger-ui")
+const container = document.getElementById("swagger-ui");
 
 if (container) {
   SwaggerUIBundle({
@@ -24,5 +24,5 @@ if (container) {
     // means "Try it out" is already signed in; the Authorize dialog stays for
     // scripts, which have a token instead.
     withCredentials: true,
-  })
+  });
 }

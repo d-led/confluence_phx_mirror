@@ -164,6 +164,11 @@ defmodule ConfluencePhxMirror.MixProject do
         "compile --warnings-as-errors",
         "deps.unlock --check-unused",
         "format --check-formatted",
+        # The Elixir formatter owns Elixir and HEEx and never looks at what
+        # esbuild ships; `assets/.prettierrc` owns the JavaScript and CSS that
+        # it does. Checked here so one alias answers "is this tree formatted?"
+        # for the whole repository.
+        "cmd --cd assets npm run --silent prettier:check",
         "credo --strict",
         "lint.sobelow --config"
       ],

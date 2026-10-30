@@ -9,121 +9,130 @@
 // Everything is delegated from `document` and looks elements up on demand, so
 // LiveView navigations that add or drop the sidebar need no re-initialisation.
 
-const STORAGE_KEY = "mirror:sidebar"
-const DESKTOP_QUERY = "(min-width: 1024px)"
-const BREAKPOINTS = window.matchMedia(DESKTOP_QUERY)
+const STORAGE_KEY = "mirror:sidebar";
+const DESKTOP_QUERY = "(min-width: 1024px)";
+const BREAKPOINTS = window.matchMedia(DESKTOP_QUERY);
 
-const state = {open: false, collapsed: readCollapsed()}
+const state = { open: false, collapsed: readCollapsed() };
 
 function elements() {
   return {
     aside: document.getElementById("mirror-sidebar"),
     backdrop: document.querySelector("[data-sidebar-backdrop]"),
-    toggle: document.querySelector("[data-sidebar-toggle]")
-  }
+    toggle: document.querySelector("[data-sidebar-toggle]"),
+  };
 }
 
 function readCollapsed() {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === "collapsed"
+    return window.localStorage.getItem(STORAGE_KEY) === "collapsed";
   } catch (_error) {
-    return false
+    return false;
   }
 }
 
 function rememberCollapsed() {
   try {
-    window.localStorage.setItem(STORAGE_KEY, state.collapsed ? "collapsed" : "expanded")
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      state.collapsed ? "collapsed" : "expanded",
+    );
   } catch (_error) {
     // Private browsing: the preference simply does not persist.
   }
 }
 
-const onDesktop = () => BREAKPOINTS.matches
+const onDesktop = () => BREAKPOINTS.matches;
 
 function render() {
-  const {aside, backdrop, toggle} = elements()
-  if (!aside) return
+  const { aside, backdrop, toggle } = elements();
+  if (!aside) return;
 
-  const desktop = onDesktop()
-  const visible = desktop ? !state.collapsed : state.open
+  const desktop = onDesktop();
+  const visible = desktop ? !state.collapsed : state.open;
 
-  aside.toggleAttribute("data-open", state.open)
-  aside.toggleAttribute("data-collapsed", desktop && state.collapsed)
+  aside.toggleAttribute("data-open", state.open);
+  aside.toggleAttribute("data-collapsed", desktop && state.collapsed);
   // Off-screen must also mean out of the tab order and out of the a11y tree.
-  aside.inert = !visible
-  if (backdrop) backdrop.hidden = !(state.open && !desktop)
-  document.body.classList.toggle("overflow-hidden", state.open && !desktop)
+  aside.inert = !visible;
+  if (backdrop) backdrop.hidden = !(state.open && !desktop);
+  document.body.classList.toggle("overflow-hidden", state.open && !desktop);
   if (toggle) {
-    toggle.setAttribute("aria-expanded", String(visible))
+    toggle.setAttribute("aria-expanded", String(visible));
     // The button names the action it performs, not the state it is in: on a
     // laptop it collapses or expands the column, on a phone it is the drawer.
-    const label = desktop ? (state.collapsed ? "Expand sidebar" : "Collapse sidebar") : (state.open ? "Close navigation" : "Open navigation")
-    toggle.setAttribute("aria-label", label)
-    toggle.setAttribute("title", label)
+    const label = desktop
+      ? state.collapsed
+        ? "Expand sidebar"
+        : "Collapse sidebar"
+      : state.open
+        ? "Close navigation"
+        : "Open navigation";
+    toggle.setAttribute("aria-label", label);
+    toggle.setAttribute("title", label);
   }
 }
 
-function closeDrawer({restoreFocus = true} = {}) {
-  if (!state.open) return
+function closeDrawer({ restoreFocus = true } = {}) {
+  if (!state.open) return;
 
-  state.open = false
-  render()
-  const {toggle} = elements()
-  if (restoreFocus && toggle) toggle.focus()
+  state.open = false;
+  render();
+  const { toggle } = elements();
+  if (restoreFocus && toggle) toggle.focus();
 }
 
 function toggleNavigation() {
   if (onDesktop()) {
-    state.collapsed = !state.collapsed
-    rememberCollapsed()
+    state.collapsed = !state.collapsed;
+    rememberCollapsed();
   } else {
-    state.open = !state.open
-    if (state.open) elements().aside?.focus()
+    state.open = !state.open;
+    if (state.open) elements().aside?.focus();
   }
 
-  render()
+  render();
 }
 
 function init() {
   document.addEventListener("click", (event) => {
     if (event.target.closest("[data-sidebar-toggle]")) {
-      toggleNavigation()
-      return
+      toggleNavigation();
+      return;
     }
 
     if (event.target.closest("[data-sidebar-backdrop]")) {
-      closeDrawer()
-      return
+      closeDrawer();
+      return;
     }
 
     // Following a link in the drawer should not leave it open behind the page.
     if (!onDesktop() && event.target.closest("#mirror-sidebar a")) {
-      closeDrawer({restoreFocus: false})
+      closeDrawer({ restoreFocus: false });
     }
-  })
+  });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeDrawer()
-  })
+    if (event.key === "Escape") closeDrawer();
+  });
 
   BREAKPOINTS.addEventListener("change", () => {
-    state.open = false
-    render()
-  })
+    state.open = false;
+    render();
+  });
 
   // A LiveView navigation may add the sidebar, drop it, or arrive at a page
   // where it should start closed.
   window.addEventListener("phx:page-loading-stop", () => {
-    state.open = false
-    render()
-  })
+    state.open = false;
+    render();
+  });
 
-  render()
+  render();
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", init)
+  document.addEventListener("DOMContentLoaded", init);
 } else {
-  init()
+  init();
 }

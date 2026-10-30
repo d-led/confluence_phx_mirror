@@ -10,32 +10,39 @@
 // patch that re-renders the sidebar needs no re-initialisation.
 
 async function expand(branch, toggle) {
-  const space = document.getElementById("page-tree")?.dataset.treeSpace
-  if (!space) return
+  const space = document.getElementById("page-tree")?.dataset.treeSpace;
+  if (!space) return;
 
   if (branch.dataset.loaded !== "true") {
-    const response = await fetch(`/spaces/${encodeURIComponent(space)}/tree/${toggle.dataset.treeToggle}`, {
-      headers: {accept: "text/html"}
-    })
+    const response = await fetch(
+      `/spaces/${encodeURIComponent(space)}/tree/${toggle.dataset.treeToggle}`,
+      {
+        headers: { accept: "text/html" },
+      },
+    );
     // A branch nobody may open is a branch that stays closed.
-    if (!response.ok) return
+    if (!response.ok) return;
 
-    branch.insertAdjacentHTML("beforeend", await response.text())
-    branch.dataset.loaded = "true"
+    branch.insertAdjacentHTML("beforeend", await response.text());
+    branch.dataset.loaded = "true";
   }
 
-  const opened = toggle.getAttribute("aria-expanded") !== "true"
-  toggle.setAttribute("aria-expanded", String(opened))
-  branch.classList.toggle("hidden", !opened)
+  const opened = toggle.getAttribute("aria-expanded") !== "true";
+  toggle.setAttribute("aria-expanded", String(opened));
+  branch.classList.toggle("hidden", !opened);
 }
 
 document.addEventListener("click", (event) => {
-  const toggle = event.target.closest("[data-tree-toggle]")
-  if (!toggle) return
+  const toggle = event.target.closest("[data-tree-toggle]");
+  if (!toggle) return;
 
-  const branch = toggle.closest("li")?.querySelector(":scope > [data-tree-children]")
-  if (!branch) return
+  const branch = toggle
+    .closest("li")
+    ?.querySelector(":scope > [data-tree-children]");
+  if (!branch) return;
 
-  event.preventDefault()
-  expand(branch, toggle).catch((error) => console.error("the page tree:", error))
-})
+  event.preventDefault();
+  expand(branch, toggle).catch((error) =>
+    console.error("the page tree:", error),
+  );
+});
