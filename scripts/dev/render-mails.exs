@@ -33,7 +33,13 @@ page = fn space, id, title, slug, version ->
   }
 end
 
-reader = %User{id: 7, email: "ada@example.com", display_name: "Ada Lovelace"}
+# A fresh id per run: the send ledger throttles a real test message to one a
+# minute per reader, and a preview run twice in a row is not a reader retrying.
+reader = %User{
+  id: System.unique_integer([:positive]),
+  email: "ada@example.com",
+  display_name: "Ada Lovelace"
+}
 
 notification = fn page, action, body ->
   %Notification{
@@ -75,7 +81,16 @@ messages = [
   {"digest", render.(Email.digest(reader, many))},
   {"login-link", render.(Emails.login_link(reader, "#{url}/session/token/abc123"))},
   {"welcome-url", render.(Emails.welcome(reader, site: site, url: url))},
-  {"welcome-link", render.(Emails.welcome(reader, site: site, sign_in: "#{url}/session/token/def456"))}
+  {"welcome-link",
+   render.(Emails.welcome(reader, site: site, sign_in: "#{url}/session/token/def456"))},
+  {"identity-linked",
+   render.(
+     Emails.identity_linked(
+       reader,
+       %{account_id: "5b10ac8d82e05b22cc7d4ef5", email: "ada.contractor@example.com", display_name: "Ada (contractor)"},
+       to: {"Ada Lovelace", "ada@example.com"}
+     )
+   )}
 ]
 
 mail_test = fn ->
