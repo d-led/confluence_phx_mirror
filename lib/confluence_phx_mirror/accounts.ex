@@ -257,26 +257,55 @@ defmodule ConfluencePhxMirror.Accounts do
     |> Repo.all()
   end
 
-  @doc "Finds a user or creates one (used by magic-link sign-up and auto admin)."
+  @doc """
+  Finds a user or creates one (used by magic-link sign-up and auto admin).
+
+  Two requests for the same *new* address can arrive together — a proxy that
+  authenticates every request makes that a question of load, not of luck — and
+  both would read "no such user" and insert. So the insert is allowed to lose:
+  the one that collides inserts nothing, and the row it collided with is read
+  back. When the other transaction has not committed yet even that read comes
+  back empty, and the answer is `{:error, :racing}` rather than a changeset the
+  caller cannot act on; the next request finds the row.
+
+  Only a real insert logs `user.created`: the row that was already there is
+  somebody else's news.
+  """
+  @spec ensure_user(String.t(), map()) ::
+          {:ok, User.t()} | {:error, :racing} | {:error, Ecto.Changeset.t()}
   def ensure_user(email, attrs \\ %{}) do
     case get_user_by_email(email) do
       nil ->
-        %User{}
-        |> User.changeset(
-          Map.merge(%{email: email, display_name: display_name_for(email)}, attrs)
-        )
-        |> Repo.insert()
-        |> case do
-          {:ok, user} ->
-            Audit.log(Audit.system_actor(), User.audit_event_created(user))
-            {:ok, user}
-
-          {:error, changeset} ->
-            {:error, changeset}
-        end
+        insert_user(email, attrs)
 
       user ->
         {:ok, user}
+    end
+  end
+
+  defp insert_user(email, attrs) do
+    %User{}
+    |> User.changeset(Map.merge(%{email: email, display_name: display_name_for(email)}, attrs))
+    |> Repo.insert(on_conflict: :nothing)
+    |> case do
+      {:ok, %User{id: id} = user} when not is_nil(id) ->
+        Audit.log(Audit.system_actor(), User.audit_event_created(user))
+        {:ok, user}
+
+      # The insert did nothing because the address is taken, and the database
+      # will not say which row took it: that is the read below.
+      {:ok, _nothing_inserted} ->
+        re_read(email)
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  defp re_read(email) do
+    case get_user_by_email(email) do
+      nil -> {:error, :racing}
+      user -> {:ok, user}
     end
   end
 
@@ -285,8 +314,11 @@ defmodule ConfluencePhxMirror.Accounts do
       {:ok, user} ->
         user
 
-      {:error, changeset} ->
+      {:error, %Ecto.Changeset{} = changeset} ->
         raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
+
+      {:error, reason} ->
+        raise "could not ensure an account for #{email}: #{inspect(reason)}"
     end
   end
 

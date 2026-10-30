@@ -18,6 +18,27 @@ defmodule ConfluencePhxMirror.AccountsTest do
     end
   end
 
+  describe "ensuring an account" do
+    # A proxy that authenticates every request makes "two requests for the same
+    # new address at once" a question of load. The insert is allowed to lose:
+    # one row, one creation, and the same account both times.
+    test "an address that already has an account is found, not created again" do
+      {:ok, first} = Accounts.ensure_user("twice@example.com")
+      {:ok, second} = Accounts.ensure_user("twice@example.com")
+
+      assert second.id == first.id
+      assert 1 == Repo.aggregate(from(u in User, where: u.email == ^"twice@example.com"), :count)
+
+      assert 1 ==
+               Repo.aggregate(
+                 from(e in Event,
+                   where: e.action == "user.created" and e.entity_id == ^to_string(first.id)
+                 ),
+                 :count
+               )
+    end
+  end
+
   describe "magic links" do
     test "send a single-use link and sign the user in" do
       user = user_fixture(%{email: "alice@example.com"})

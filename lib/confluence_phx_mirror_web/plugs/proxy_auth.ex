@@ -67,7 +67,7 @@ defmodule ConfluencePhxMirrorWeb.Plugs.ProxyAuth do
         |> assign(:current_user, user)
         |> assign(:current_scope, Scope.for_user(user))
 
-      {:error, _changeset} ->
+      {:error, _reason} ->
         refuse(conn)
     end
   end
