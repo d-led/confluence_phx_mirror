@@ -511,6 +511,7 @@ assets/site.css                   the site's compiled theme
 assets/site.js                    folding the page tree, switching the theme
 assets/theme.js                   the pinned theme, applied before the first paint
 assets/search.json                the search index, for other tools
+assets/search-index.js            the same index, as the script search.html loads
 assets/search.js                  the matcher search.html runs
 ```
 
@@ -544,11 +545,12 @@ reply is exported under the page it hangs off, so the link in the comment
 resolves. Label chips lead into `labels/`, which is the way in the page tree
 cannot give: everything about one subject, whichever space it lives in.
 
-**Search is part of the folder.** `search.html` carries the index inline, so
-it works when the archive is opened from `file://` (where a page may not fetch
-its own files). Each document is a page's title, space, labels, date and the
-first 400 characters of its text; matching is client-side and ranks titles
-above spaces and labels, above the body.
+**Search is part of the folder.** `search.html` loads the index from a script
+next to it (`assets/search-index.js`), because a page opened from `file://`
+runs its own scripts but will not fetch its own files. Each document is a
+page's title, space, labels, date and the first 400 characters of its text;
+matching is client-side and ranks titles above spaces and labels, above the
+body.
 
 Typing into the field says what is happening: the search waits for a pause in
 typing (150 ms) and then scans in slices, showing a spinner and "Searching… n%"
@@ -568,6 +570,13 @@ ZIP64 format when a site needs it — more than 65,535 files, or more than 4 GiB
 so the archive stays readable. As a guide: a 935-page space is about 2 MB; a
 site of 120,000 mostly-title-only pages is a few hundred MB, and takes minutes
 to prepare.
+
+**A download that stops has to start again.** The archive is produced while it
+is sent — that is what keeps a whole wiki from having to fit in memory twice —
+so it has no length to report and no byte ranges to offer, and the response says
+so (`Accept-Ranges: none`). A browser that loses the connection mid-download
+cannot resume it; it downloads from the beginning again. Take a large archive on
+a connection that will last, or take one space at a time.
 
 What it does not do: content Confluence renders only in the browser (Jira
 issues, page trees, gadgets) already reads as the mirror's "cannot be shown in

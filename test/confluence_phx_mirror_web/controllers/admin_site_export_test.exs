@@ -41,6 +41,21 @@ defmodule ConfluencePhxMirrorWeb.AdminSiteExportTest do
       assert conn |> get_resp_header("content-type") |> hd() =~ "application/zip"
       assert conn |> get_resp_header("content-disposition") |> hd() =~ "site_"
     end
+
+    test "says the archive cannot be resumed", %{conn: conn} do
+      conn =
+        conn
+        |> signed_in(user_fixture(%{email: "ops@example.com", role: "admin"}))
+        |> put_req_header("range", "bytes=100-")
+        |> get(~p"/admin/export/site.zip")
+
+      # The archive is generated while it is sent, so a byte range has nothing
+      # to point at. A browser that is told so starts again instead of asking
+      # for a part the server would answer with the whole thing.
+      assert conn |> get_resp_header("accept-ranges") == ["none"]
+      assert conn.status == 200
+      refute List.keyfind(conn.resp_headers, "content-range", 0)
+    end
   end
 
   defp signed_in(conn, user), do: init_test_session(conn, %{"user_id" => user.id})

@@ -31,6 +31,12 @@ defmodule ConfluencePhxMirrorWeb.ArchiveDownload do
     # An export is a snapshot of right now, so a cached copy would be
     # yesterday's answer presented as today's.
     |> put_resp_header("cache-control", "no-store")
+    # The archive is produced while it is sent and no byte in it means the same
+    # thing twice, so a range has nothing to point at and a download cannot be
+    # resumed. Saying so is the honest half: without it a browser offers to
+    # resume, asks for the rest, and is handed the whole archive from the start
+    # — worse than starting again on purpose.
+    |> put_resp_header("accept-ranges", "none")
     |> send_chunked(200)
     |> stream(entries)
   end

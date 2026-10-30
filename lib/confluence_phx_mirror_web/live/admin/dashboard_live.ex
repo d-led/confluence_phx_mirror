@@ -502,6 +502,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           <a
             href="/admin/export/site.zip"
             id="export-site"
+            download
             class="btn btn-outline btn-sm gap-1.5"
             title={export_hint()}
           >
@@ -611,27 +612,17 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
       <%!-- What the box costs: the mount the attachments live on, the room left
       on that device, and the database behind it. A deployment usually keeps the
-      database on another machine, so it is a figure rather than a share. --%>
+      database on another machine, so it is a figure rather than a share.
+
+      These are the point-in-time figures, mirror-specific ones included (the
+      blob mount, the database). The header's one way into the BEAM's own
+      dashboard has the same numbers as graphs with history when the deployment
+      mounts it; its memory figure counts *free*, ours counts *available*. --%>
       <.section
         id="resources"
         title="Resources"
         subtitle="What this node occupies, and the room left beside it."
       >
-        <:actions>
-          <%!-- This strip is the point-in-time view, mirror-specific figures
-          included (the blob mount, the database). The BEAM's own dashboard has
-          the same OS numbers as graphs with history, when the deployment mounts
-          it; its memory figure counts *free*, ours counts *available*. --%>
-          <a
-            :if={admin_dashboard?()}
-            href="/admin/runtime/os_mon"
-            id="resources-os-data"
-            title="CPU load, memory and every mount, with history — LiveDashboard's OS Data page"
-            class="link text-xs"
-          >
-            CPU and memory graphs →
-          </a>
-        </:actions>
         <div class="grid gap-3 sm:grid-cols-3">
           <.resource_meter
             id="resources-blob-mount"
