@@ -50,6 +50,13 @@ fn start_sidecar() -> Result<(Child, String), Box<dyn std::error::Error>> {
 
     let mut child = Command::new(&path)
         .arg("start")
+        // The tool has no peers, so distribution buys it nothing and costs it
+        // everything: a release node name is fixed, and a second launch — or a
+        // sidecar left running by an earlier one — makes this one die with
+        // "the name confluence_phx_mirror@host seems to be in use by another
+        // Erlang node", which the shell can only report as a sidecar that never
+        // said where it listens.
+        .env("RELEASE_DISTRIBUTION", "none")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()

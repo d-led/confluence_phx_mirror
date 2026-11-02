@@ -134,6 +134,12 @@ fi
 # a relative path against whatever directory it happened to be started in.
 export CONFLUENCE_EXPORT_SIDECAR="$sidecar"
 
+# No peers to cluster with. A distributed release has a fixed node name, so a
+# second launch fails with "the name ... is in use by another Erlang node" —
+# which is how the window ends up aborting: the sidecar never says where it
+# listens. The `--in-browser` path starts the release from this script too.
+export RELEASE_DISTRIBUTION=none
+
 if [[ ! -x "$window" ]] || window_stale; then
   if ! build_window; then
     echo "the native window could not be built (is cargo installed?)" >&2

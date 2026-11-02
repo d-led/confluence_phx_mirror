@@ -1,3 +1,7 @@
+# sobelow_skip ["Config.HTTPS"]
+# TLS is not missing: it is terminated in front of the mirror, by oauth2-proxy or
+# by the ingress, and `force_ssl` below redirects on `X-Forwarded-Proto`. Said
+# here rather than in a review file, so it cannot drift away from the code.
 import Config
 
 # Note we also include the path to a cache manifest
