@@ -46,6 +46,25 @@ defmodule ConfluencePhxMirror.Desktop.Setup do
     :ok
   end
 
+  @doc """
+  Applies the migrations, then declines to be supervised.
+
+  A child placed straight after the repo: a supervisor starts its children in the
+  order they are listed, and this does its work in `start_link`, so nothing that
+  queries the catalogue can start against a schema from last week — or, on a
+  fresh install, against no schema at all. `:ignore` says there is nothing to keep
+  running once the work is done.
+  """
+  def child_spec(_opts) do
+    %{id: __MODULE__, start: {__MODULE__, :start_link, []}, type: :worker, restart: :temporary}
+  end
+
+  @spec start_link() :: :ignore
+  def start_link do
+    migrate()
+    :ignore
+  end
+
   # A file with applied migrations that do not include the first shared one came
   # from an earlier build. A file with none at all is either new or empty, and the
   # migrator knows what to do with both.
