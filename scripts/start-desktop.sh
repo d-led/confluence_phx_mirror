@@ -23,6 +23,10 @@ release="_build/desktop/rel/$name"
 sidecar="$PWD/$release/bin/$name"
 window="src-tauri/target/debug/confluence-export"
 
+# Where a build's output goes. Kept rather than discarded: a build that fails
+# after two minutes of silence is a build nobody can diagnose.
+build_log="${TMPDIR:-/tmp}/confluence-export-build.log"
+
 mode=open
 
 usage() {
@@ -44,15 +48,23 @@ while [[ $# -gt 0 ]]; do
 done
 
 build_release() {
-  echo "building the desktop release…"
-  MIX_ENV=desktop mix release --overwrite >/dev/null
-  echo "built"
+  echo "building the desktop release… (a minute, cold)"
+  if ! MIX_ENV=desktop mix release --overwrite >"$build_log" 2>&1; then
+    echo "the release could not be built. Last lines of $build_log:" >&2
+    tail -20 "$build_log" >&2
+    return 1
+  fi
+  echo "release built"
 }
 
 build_window() {
-  echo "building the window…"
-  cargo build --manifest-path src-tauri/Cargo.toml >/dev/null 2>&1 || return 1
-  echo "built"
+  echo "building the window… (cargo, first time is slower)"
+  if ! cargo build --manifest-path src-tauri/Cargo.toml >"$build_log" 2>&1; then
+    echo "the window could not be built. Last lines of $build_log:" >&2
+    tail -20 "$build_log" >&2
+    return 1
+  fi
+  echo "window built"
 }
 
 # A release is a copy, not a link: editing `lib_desktop` leaves the built one
@@ -149,4 +161,17 @@ if [[ ! -x "$window" ]] || window_stale; then
   fi
 fi
 
-exec "$window"
+# `exec` here would replace the shell with the window, so a hang shows nothing
+# and an abort shows nothing either. Run it, say what happened, and pass the
+# status on: a launcher that fails silently is worse than one that fails.
+echo "opening the window…"
+echo "  window:  $window"
+echo "  sidecar: $sidecar"
+echo "The window starts the sidecar, waits for the address it prints, and loads it."
+echo "Its output follows. Ctrl-C stops both."
+
+"$window"
+status=$?
+
+echo "the window exited with status $status" >&2
+exit $status
