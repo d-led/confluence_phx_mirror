@@ -103,14 +103,47 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   @spec email() :: String.t() | nil
   def email, do: read()["email"]
 
+  @doc """
+  Whether this workspace can be used to reach Confluence yet.
+
+  `:ready`, or `{:needs, missing}` naming what is absent — so the screen that
+  asks for it can ask for the right thing instead of a form that rejects a
+  submission it could have prevented.
+  """
+  @spec readiness() :: :ready | {:needs, [atom()]}
+  def readiness do
+    case missing() do
+      [] -> :ready
+      missing -> {:needs, missing}
+    end
+  end
+
   @doc "Whether this workspace can be used to reach Confluence yet."
   @spec configured?() :: boolean()
-  def configured? do
-    with site when is_binary(site) and site != "" <- site(),
-         {:ok, _secret} <- Credentials.fetch(id()) do
-      true
-    else
-      _ -> false
+  def configured?, do: readiness() == :ready
+
+  # The id is read rather than generated: asking whether a workspace is ready
+  # must not be the thing that creates it.
+  defp missing do
+    []
+    |> require_site()
+    |> require_secret()
+  end
+
+  defp require_site(acc) do
+    if blank(site()), do: acc, else: acc ++ [:site]
+  end
+
+  defp require_secret(acc) do
+    case read()["id"] do
+      nil ->
+        acc ++ [:secret]
+
+      id ->
+        case Credentials.fetch(id) do
+          {:ok, _secret} -> acc
+          {:error, _reason} -> acc ++ [:secret]
+        end
     end
   end
 
