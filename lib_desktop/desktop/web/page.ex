@@ -70,18 +70,106 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
       <dt>Attachments</dt><dd>#{escape(Settings.blobs())}</dd>
     </dl>
-    <p class="note">Choosing what to mirror and writing the archive comes next.</p>
+    <p><a href="/spaces">Choose spaces to mirror</a></p>
     <p><a href="/setup">Change the connection</a></p>
     """)
   end
 
-  defp document(title, body) do
+  @doc """
+  The spaces the source offers, with what the catalogue already holds.
+
+  A space that has been mirrored before says how many pages it has, so the
+  button is a choice between "mirror" and "mirror again" rather than a guess.
+  """
+  @spec spaces([map()], %{String.t() => non_neg_integer()}) :: String.t()
+  def spaces(spaces, counts) do
+    rows =
+      Enum.map_join(spaces, "", fn space ->
+        mirrored = Map.get(counts, space.key, 0)
+
+        """
+        <li>
+          <div>
+            <strong>#{escape(space.name)}</strong>
+            <small>#{escape(space.key)}#{
+          if mirrored > 0, do: " · #{mirrored} pages mirrored", else: " · not mirrored yet"
+        }</small>
+          </div>
+          <form method="post" action="/mirror">
+            <input type="hidden" name="space" value="#{escape(space.key)}">
+            <button type="submit" class="secondary">#{if mirrored > 0, do: "Mirror again", else: "Mirror"}</button>
+          </form>
+        </li>
+        """
+      end)
+
+    document("Spaces", """
+    <h1>Spaces</h1>
+    <p class="lede">Choose what to copy from #{escape(Settings.site() || "Confluence")}.</p>
+    <ul class="spaces">#{rows}</ul>
+    <p><a href="/">Back</a></p>
+    """)
+  end
+
+  @doc "How the mirror is doing, in the words the run itself reports."
+  @spec mirror(map()) :: String.t()
+  def mirror(%{state: :running} = status) do
+    document(
+      "Mirroring #{status.space_key}",
+      """
+      <h1>Mirroring #{escape(status.space_key)}</h1>
+      <p class="lede">#{status.done} of #{status.total} pages</p>
+      <p class="note">This page follows the run; it is not a progress bar that
+      guesses.</p>
+      """,
+      refresh: true
+    )
+  end
+
+  def mirror(%{state: :done} = status) do
+    document("Mirrored #{status.space_key}", """
+    <h1>Mirrored #{escape(status.space_key)}</h1>
+    <p class="lede">#{status.total} pages are in the catalogue.</p>
+    <p class="note">Writing the archive comes next.</p>
+    <p><a href="/spaces">Back to spaces</a></p>
+    """)
+  end
+
+  def mirror(%{state: :error} = status) do
+    document("Mirror stopped", """
+    <h1>Mirror stopped</h1>
+    <p class="lede">#{escape(status.space_key)} could not be finished.</p>
+    <p class="error" role="alert">#{escape(inspect(status.error))}</p>
+    <p><a href="/spaces">Back to spaces</a></p>
+    """)
+  end
+
+  def mirror(_status) do
+    document("Nothing running", """
+    <h1>Nothing is running</h1>
+    <p><a href="/spaces">Choose a space</a></p>
+    """)
+  end
+
+  @doc "A problem reaching the source."
+  @spec problem(term()) :: String.t()
+  def problem(reason) do
+    document("Confluence could not be reached", """
+    <h1>Confluence could not be reached</h1>
+    <p class="lede">#{escape(Settings.site() || "The site")} did not answer.</p>
+    <p class="error" role="alert">#{escape(inspect(reason))}</p>
+    <p><a href="/spaces">Try again</a></p>
+    """)
+  end
+
+  defp document(title, body, opts \\ []) do
     """
     <!doctype html>
     <html lang="en">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
+      #{if opts[:refresh], do: ~s(<meta http-equiv="refresh" content="1">), else: ""}
       <title>#{escape(title)}</title>
       <style>
         :root { color-scheme: light dark; }
@@ -125,6 +213,15 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         dt { font-weight: 600; }
         dd { margin: 0; opacity: .75; overflow-wrap: anywhere; }
         a { color: #2f5fe0; }
+        ul.spaces { list-style: none; margin: 0 0 1.5rem; padding: 0; }
+        ul.spaces li { display: flex; align-items: center; justify-content: space-between;
+                       gap: 1rem; padding: .75rem 0; border-bottom: 1px solid rgba(127,127,127,.2); }
+        ul.spaces li:first-child { border-top: 1px solid rgba(127,127,127,.2); }
+        ul.spaces form { margin: 0; }
+        button.secondary { width: auto; padding: .4rem .9rem; font-size: .8125rem;
+                           background: transparent; color: #2f5fe0;
+                           border: 1px solid rgba(47,95,224,.4); }
+        button.secondary:hover { background: rgba(47,95,224,.08); }
       </style>
     </head>
     <body><main>#{body}</main></body>

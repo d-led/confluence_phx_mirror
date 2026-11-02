@@ -17,6 +17,8 @@ defmodule ConfluencePhxMirror.Desktop.Mirror do
   read yet still becomes a local link rather than one back to Confluence.
   """
 
+  import Ecto.Query
+
   alias ConfluencePhxMirror.Blobs.Store
   alias ConfluencePhxMirror.Confluence.Source
   alias ConfluencePhxMirror.Desktop.Repo
@@ -55,6 +57,18 @@ defmodule ConfluencePhxMirror.Desktop.Mirror do
   @spec spaces(keyword()) :: {:ok, [map()]} | {:error, term()}
   def spaces(opts \\ []) do
     Keyword.get(opts, :source, Source.source()).spaces([])
+  end
+
+  @doc "How many pages the catalogue holds, per space key."
+  @spec page_counts() :: %{String.t() => non_neg_integer()}
+  def page_counts do
+    from(p in Page,
+      join: s in assoc(p, :space),
+      group_by: s.key,
+      select: {s.key, count(p.id)}
+    )
+    |> Repo.all()
+    |> Map.new()
   end
 
   # ---------------------------------------------------------------------------

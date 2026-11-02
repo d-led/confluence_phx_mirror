@@ -11,7 +11,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   use Plug.Router
 
-  alias ConfluencePhxMirror.Desktop.{Settings, Web.Page}
+  alias ConfluencePhxMirror.Desktop.{Jobs, Mirror, Settings, Web.Page}
 
   plug :match
   plug Plug.Parsers, parsers: [:urlencoded]
@@ -49,6 +49,29 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   get "/state" do
     send_resp(conn, 200, JSON.encode_to_iodata!(state()))
+  end
+
+  get "/spaces" do
+    case Mirror.spaces() do
+      {:ok, spaces} ->
+        send_resp(conn, 200, Page.spaces(spaces, Mirror.page_counts()))
+
+      {:error, reason} ->
+        send_resp(conn, 502, Page.problem(reason))
+    end
+  end
+
+  post "/mirror" do
+    case Jobs.start_mirror(conn.params["space"]) do
+      # A run already going: sending the reader to watch it is more useful than
+      # a refusal, because it is the same answer they wanted.
+      {:error, :busy} -> conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
+      {:ok, :started} -> conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
+    end
+  end
+
+  get "/mirror" do
+    send_resp(conn, 200, Page.mirror(Jobs.status()))
   end
 
   match _ do

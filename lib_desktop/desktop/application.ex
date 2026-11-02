@@ -25,6 +25,9 @@ defmodule ConfluencePhxMirror.Desktop.Application do
     children = [
       ConfluencePhxMirror.Desktop.Repo,
       {Task.Supervisor, name: ConfluencePhxMirror.Desktop.TaskSupervisor},
+      # Holds the one mirror run the tool can be doing, so a screen can ask how
+      # far along it is.
+      ConfluencePhxMirror.Desktop.Jobs,
       # Last, so the window it advertises is only reachable once the store
       # behind it exists.
       ConfluencePhxMirror.Desktop.Web.Server
