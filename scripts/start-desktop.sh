@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 #
-# Opens the export tool: builds the release if it is missing, starts it, and
-# opens its window.
+# Opens the export tool.
 #
-#   scripts/start-desktop.sh              open the tool
-#   scripts/start-desktop.sh --rebuild    build first, then open
-#   scripts/start-desktop.sh --where      print the workspace in use, then exit
+#   scripts/start-desktop.sh               build whatever is stale, then open
+#   scripts/start-desktop.sh --rebuild     rebuild the release and the shell first
+#   scripts/start-desktop.sh --in-browser  serve the tool and open a browser
+#                                          window instead, for machines with no
+#                                          Rust toolchain
+#   scripts/start-desktop.sh --where       print the workspace in use, then exit
 #
-# This runs the compiled release, not `mix` and not a REPL: what it opens is the
-# artifact a person would install. The window is the page the tool serves, in an
-# app-style window of whichever browser is present. The native shell that
-# removes that dependency is the next piece of work, and it needs this binary to
-# exist first, because the binary is what the shell launches.
+# What it opens is the native window: `src-tauri`, which starts the Elixir
+# release as its sidecar, reads the address that release prints, and points a
+# webview at it. The window adds no behaviour — every screen is the sidecar's,
+# which is also the binary a headless machine would run.
 
 set -euo pipefail
 
@@ -19,17 +20,19 @@ cd "$(dirname "$0")/.."
 
 name=confluence_phx_mirror
 release="_build/desktop/rel/$name"
-binary="$release/bin/$name"
+sidecar="$PWD/$release/bin/$name"
+window="src-tauri/target/debug/confluence-export"
 
 mode=open
 
 usage() {
-  sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//; s/^#$//'
+  sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//; s/^#$//'
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --rebuild) mode=rebuild; shift ;;
+    --in-browser) mode=browser; shift ;;
     --where) mode=where; shift ;;
     -h | --help) usage; exit 0 ;;
     *)
@@ -40,23 +43,34 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-build() {
+build_release() {
   echo "building the desktop release…"
   MIX_ENV=desktop mix release --overwrite >/dev/null
   echo "built"
 }
 
+build_window() {
+  echo "building the window…"
+  cargo build --manifest-path src-tauri/Cargo.toml >/dev/null 2>&1 || return 1
+  echo "built"
+}
+
 # A release is a copy, not a link: editing `lib_desktop` leaves the built one
-# serving the old code until it is rebuilt. Anything newer than the binary means
-# the binary is stale.
-stale() {
-  [[ -n "$(find lib lib_desktop config mix.exs mix.lock -newer "$binary" -print -quit 2>/dev/null)" ]]
+# serving old code until it is rebuilt. Same for the window.
+release_stale() {
+  [[ ! -x "$sidecar" ]] && return 0
+  [[ -n "$(find lib lib_desktop config mix.exs mix.lock -newer "$sidecar" -print -quit 2>/dev/null)" ]]
+}
+
+window_stale() {
+  [[ ! -x "$window" ]] && return 0
+  [[ -n "$(find src-tauri/src src-tauri/Cargo.toml src-tauri/tauri.conf.json -newer "$window" -print -quit 2>/dev/null)" ]]
 }
 
 # `eval` starts no applications, which is all this needs: reading the workspace
 # touches a settings file and never the catalogue.
 where() {
-  "$binary" eval '
+  "$sidecar" eval '
     alias ConfluencePhxMirror.Desktop.Settings
 
     IO.puts("id:          #{Settings.id()}")
@@ -68,69 +82,65 @@ where() {
   '
 }
 
-# An app-style window where a Chromium browser is installed: no address bar, no
-# tabs, its own entry in the dock. Otherwise the default browser, which is worse
-# and always works.
-open_window() {
-  local url=$1
+open_in_browser() {
+  local log url
+  log=$(mktemp -t confluence-export.XXXXXX)
 
-  if [[ "$(uname)" == Darwin ]]; then
-    for app in "Google Chrome" "Microsoft Edge" "Brave Browser" "Chromium"; do
-      if [[ -d "/Applications/$app.app" ]]; then
-        open -na "$app" --args --app="$url"
-        return
-      fi
-    done
-    open "$url"
-  elif command -v xdg-open >/dev/null; then
-    xdg-open "$url"
-  else
-    open "$url"
+  cleanup() {
+    "$sidecar" stop >/dev/null 2>&1 || true
+    rm -f "$log"
+  }
+  trap cleanup EXIT INT TERM
+
+  "$sidecar" start >"$log" 2>&1 &
+
+  url=""
+  for _ in $(seq 1 150); do
+    url=$(sed -n 's/^desktop ui: //p' "$log" 2>/dev/null | head -1)
+    if [[ -n "$url" ]]; then break; fi
+    sleep 0.1
+  done
+
+  if [[ -z "$url" ]]; then
+    echo "the tool did not start:" >&2
+    tail -20 "$log" >&2
+    exit 1
   fi
+
+  echo "desktop ui: $url"
+  open "$url"
+  wait
 }
 
-case "$mode" in
-  where)
-    [[ -x "$binary" ]] || build
-    where
-    ;;
-  open | rebuild)
-    if [[ "$mode" == rebuild ]] || [[ ! -x "$binary" ]] || stale; then
-      build
-    fi
+if [[ "$mode" == where ]]; then
+  if release_stale; then build_release; fi
+  where
+  exit 0
+fi
 
-    log=$(mktemp -t confluence-export.XXXXXX)
+if [[ "$mode" == rebuild ]]; then
+  build_release
+  build_window || true
+elif release_stale; then
+  build_release
+fi
 
-    # Stopped on the way out however the script ends: a closed window over a
-    # server still running is a port nobody can find again.
-    cleanup() {
-      "$binary" stop >/dev/null 2>&1 || true
-      rm -f "$log"
-    }
-    trap cleanup EXIT INT TERM
+if [[ "$mode" == browser ]]; then
+  open_in_browser
+  exit 0
+fi
 
-    "$binary" start >"$log" 2>&1 &
+# The shell is told where the sidecar is, absolutely: it would otherwise resolve
+# a relative path against whatever directory it happened to be started in.
+export CONFLUENCE_EXPORT_SIDECAR="$sidecar"
 
-    # The port is whichever the OS granted, so it is read from the tool's own
-    # output rather than guessed.
-    url=""
-    for _ in $(seq 1 150); do
-      url=$(sed -n 's/^desktop ui: //p' "$log" 2>/dev/null | head -1)
-      if [[ -n "$url" ]]; then
-        break
-      fi
-      sleep 0.1
-    done
+if [[ ! -x "$window" ]] || window_stale; then
+  if ! build_window; then
+    echo "the native window could not be built (is cargo installed?)" >&2
+    echo "opening the tool in a browser window instead" >&2
+    open_in_browser
+    exit 0
+  fi
+fi
 
-    if [[ -z "$url" ]]; then
-      echo "the tool did not start:" >&2
-      tail -20 "$log" >&2
-      exit 1
-    fi
-
-    echo "desktop ui: $url"
-    open_window "$url"
-
-    wait
-    ;;
-esac
+exec "$window"
