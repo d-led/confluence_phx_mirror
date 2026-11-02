@@ -237,3 +237,9 @@ backups/
 
 # The window's build tree.
 /src-tauri/target/
+
+# The placeholder Tauri insists on at `frontendDist`. It is not a frontend: the
+# window points at the sidecar, so there is nothing to build — but the directory
+# has to exist, and the generic `dist` rule above would drop it from the repo.
+!/src-tauri/dist/
+!/src-tauri/dist/**
