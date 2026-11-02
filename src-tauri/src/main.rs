@@ -21,7 +21,7 @@ fn main() {
     tauri::Builder::default()
         .manage(Sidecar(Mutex::new(None)))
         .setup(|app| {
-            let (child, url) = start_sidecar()?;
+            let (child, url) = start_sidecar(app)?;
             app.state::<Sidecar>().0.lock().unwrap().replace(child);
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.parse()?))
@@ -45,8 +45,8 @@ fn main() {
 }
 
 /// Starts the release and blocks until it says where it listens.
-fn start_sidecar() -> Result<(Child, String), Box<dyn std::error::Error>> {
-    let path = sidecar_path();
+fn start_sidecar(app: &tauri::App) -> Result<(Child, String), Box<dyn std::error::Error>> {
+    let path = sidecar_path(app);
 
     let mut child = Command::new(&path)
         .arg("start")
@@ -89,12 +89,23 @@ fn start_sidecar() -> Result<(Child, String), Box<dyn std::error::Error>> {
     }
 }
 
-fn sidecar_path() -> std::path::PathBuf {
+fn sidecar_path(app: &tauri::App) -> std::path::PathBuf {
     if let Ok(explicit) = std::env::var("CONFLUENCE_EXPORT_SIDECAR") {
         return explicit.into();
     }
 
-    // Development: the release inside the checkout. A bundle puts the same
-    // binary in Resources, which is this call with a different parent.
+    // In a bundle the release travels inside Resources — `bundle.resources` in
+    // tauri.conf.json puts it there — so this is the same layout with a
+    // different parent. Asked first, because a window run from the checkout and
+    // a window double-clicked from /Applications must not be able to disagree
+    // about which release is behind them.
+    if let Ok(resources) = app.path().resource_dir() {
+        let bundled = resources.join("rel/confluence_phx_mirror/bin/confluence_phx_mirror");
+        if bundled.exists() {
+            return bundled;
+        }
+    }
+
+    // Development: the release inside the checkout.
     "../_build/desktop/rel/confluence_phx_mirror/bin/confluence_phx_mirror".into()
 }
