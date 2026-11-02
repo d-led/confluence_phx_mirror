@@ -15,7 +15,7 @@
   "bundle": {
     "active": true,
     "targets": ["app"],
-    "icon": [],
+    "icon": ["icons/icon.png"],
     "resources": {
       "../_build/desktop/rel/confluence_phx_mirror": "rel/confluence_phx_mirror"
     }
