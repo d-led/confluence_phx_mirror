@@ -234,3 +234,6 @@ backups/
 # copies next to the build. Both are outputs, per platform and per machine.
 /native/*/target/
 /priv/native/
+
+# The window's build tree.
+/src-tauri/target/
