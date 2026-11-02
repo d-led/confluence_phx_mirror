@@ -40,8 +40,10 @@ defmodule ConfluencePhxMirror.Repo.Migrations.CreatePermissions do
       # The bridge between a mirror account and Confluence: restrictions name
       # accounts and groups, so a reader needs the same identifiers here.
       add :confluence_account_id, :string
-      add :groups, ConfluencePhxMirror.Migration.list_type(:string),
-        ConfluencePhxMirror.Migration.list_options(null: false)
+
+      add :groups,
+          ConfluencePhxMirror.Migration.list_type(:string),
+          ConfluencePhxMirror.Migration.list_options(null: false)
     end
   end
 end

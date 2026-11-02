@@ -18,7 +18,11 @@ defmodule ConfluencePhxMirror.Mirror.Space do
 
   # `text[]` where the database has an array type, JSON text where it has not —
   # the same rule that chose the adapter and the migration's column type.
-  @string_list Application.compile_env(:confluence_phx_mirror, :string_list_type, {:array, :string})
+  @string_list Application.compile_env(
+                 :confluence_phx_mirror,
+                 :string_list_type,
+                 {:array, :string}
+               )
 
   schema "spaces" do
     field :key, :string

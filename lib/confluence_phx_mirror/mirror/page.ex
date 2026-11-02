@@ -20,7 +20,11 @@ defmodule ConfluencePhxMirror.Mirror.Page do
   # `text[]` where the database has an array type, JSON text where it has not.
   # The rule is the one that chose the adapter and the column type the migration
   # built, so all three agree by construction.
-  @string_list Application.compile_env(:confluence_phx_mirror, :string_list_type, {:array, :string})
+  @string_list Application.compile_env(
+                 :confluence_phx_mirror,
+                 :string_list_type,
+                 {:array, :string}
+               )
   @integer_list Application.compile_env(
                   :confluence_phx_mirror,
                   :integer_list_type,

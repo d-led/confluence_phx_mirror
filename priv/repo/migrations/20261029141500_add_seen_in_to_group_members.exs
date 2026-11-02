@@ -23,8 +23,6 @@ defmodule ConfluencePhxMirror.Repo.Migrations.AddSeenInToGroupMembers do
       concurrently: true
     )
 
-    ConfluencePhxMirror.Migration.create_index(:group_members, [:account_id],
-      concurrently: true
-    )
+    ConfluencePhxMirror.Migration.create_index(:group_members, [:account_id], concurrently: true)
   end
 end

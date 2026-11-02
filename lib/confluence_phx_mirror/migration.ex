@@ -57,7 +57,6 @@ defmodule ConfluencePhxMirror.Migration do
   ordinary index is created and its full-text work is done by an FTS5 table of
   its own (`ConfluencePhxMirror.Mirror.Search` says which).
   """
-  @spec search_index(atom(), [atom()]) :: :ok
   def search_index(table, columns) do
     if postgres?() do
       create index(table, columns, using: :gin)
@@ -80,7 +79,6 @@ defmodule ConfluencePhxMirror.Migration do
   and no second writer to block, so both are dropped and the plain index is
   built.
   """
-  @spec create_index(atom(), list(), keyword()) :: :ok
   def create_index(table, columns, opts \\ []) do
     opts = if postgres?(), do: opts, else: Keyword.drop(opts, [:concurrently, :where])
     create(index(table, columns, opts))

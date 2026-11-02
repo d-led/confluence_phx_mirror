@@ -36,11 +36,15 @@ defmodule ConfluencePhxMirror.Repo.Migrations.CreateMirrorCore do
       add :body_storage, :text
       add :body_export, :text
       add :body_text, :text
-      add :labels, ConfluencePhxMirror.Migration.list_type(:string),
-        ConfluencePhxMirror.Migration.list_options(null: false)
 
-      add :ancestors, ConfluencePhxMirror.Migration.list_type(:bigint),
-        ConfluencePhxMirror.Migration.list_options(null: false)
+      add :labels,
+          ConfluencePhxMirror.Migration.list_type(:string),
+          ConfluencePhxMirror.Migration.list_options(null: false)
+
+      add :ancestors,
+          ConfluencePhxMirror.Migration.list_type(:bigint),
+          ConfluencePhxMirror.Migration.list_options(null: false)
+
       add :version_number, :integer, null: false, default: 1
       add :version_message, :string
       add :external_url, :string

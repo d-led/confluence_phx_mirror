@@ -45,5 +45,6 @@ defmodule ConfluencePhxMirror.Repo.Migrations.AddCommentAttachmentsAndDetailSync
       "pages_details_synced_at_index",
       :pages,
       [:details_synced_at]
-    )  end
+    )
+  end
 end
