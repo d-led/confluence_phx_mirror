@@ -34,5 +34,16 @@ defmodule ConfluencePhxMirror.Desktop.Application do
       strategy: :one_for_one,
       name: ConfluencePhxMirror.Desktop.Supervisor
     )
+    |> migrate()
   end
+
+  # After the tree, not before it: the migration needs the repo, and the repo is
+  # one of the children. A failure here stops the tool rather than letting it
+  # serve screens over a schema that does not match.
+  defp migrate({:ok, _pid} = started) do
+    ConfluencePhxMirror.Desktop.Setup.migrate()
+    started
+  end
+
+  defp migrate(error), do: error
 end
