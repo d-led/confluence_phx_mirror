@@ -21,8 +21,8 @@ defmodule ConfluencePhxMirror.Desktop.Mirror do
 
   alias ConfluencePhxMirror.Blobs.Store
   alias ConfluencePhxMirror.Confluence.Source
-  alias ConfluencePhxMirror.Desktop.Repo
-  alias ConfluencePhxMirror.Desktop.Schema.{Attachment, Comment, Page, Space}
+  alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
+  alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.{Emoticons, Renderer}
 
@@ -229,21 +229,46 @@ defmodule ConfluencePhxMirror.Desktop.Mirror do
   end
 
   defp write_comments(source, dto, page) do
-    with {:ok, comments} <- source.comments(dto.id, []) do
-      Enum.reduce_while(comments, {:ok, []}, fn dto_comment, {:ok, acc} ->
-        case write_comment(dto_comment, page) do
-          {:ok, comment} -> {:cont, {:ok, [comment | acc]}}
-          {:error, reason} -> {:halt, {:error, reason}}
-        end
-      end)
+    with {:ok, comments} <- source.comments(dto.id, []),
+         {:ok, written} <- write_comment_rows(comments, page) do
+      resolve_parents(written, comments)
+      {:ok, written}
     end
+  end
+
+  defp write_comment_rows(comments, page) do
+    Enum.reduce_while(comments, {:ok, []}, fn dto_comment, {:ok, acc} ->
+      case write_comment(dto_comment, page) do
+        {:ok, comment} -> {:cont, {:ok, [comment | acc]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  # A reply names its parent by Confluence's id, and `parent_id` is a foreign key
+  # into this same table — so the parent has to exist before the reply can point
+  # at it. The server settles this after writing the comments, and so does this;
+  # a reply whose parent the source no longer carries stays at the top level
+  # rather than pointing at nothing.
+  defp resolve_parents(written, comments) do
+    by_confluence_id = Map.new(written, &{&1.confluence_id, &1})
+    parent_of = Map.new(comments, &{&1.id, Map.get(&1, :parent_id)})
+
+    Enum.each(written, fn comment ->
+      with parent_confluence_id when not is_nil(parent_confluence_id) <-
+             Map.get(parent_of, comment.confluence_id),
+           %Comment{} = parent <- Map.get(by_confluence_id, parent_confluence_id) do
+        comment
+        |> Ecto.Changeset.change(parent_id: parent.id)
+        |> Repo.update!()
+      end
+    end)
   end
 
   defp write_comment(dto, page) do
     attrs = %{
       page_id: page.id,
       confluence_id: dto.id,
-      parent_id: Map.get(dto, :parent_id),
       author_name: Map.get(dto, :author),
       author_account_id: Map.get(dto, :author_account_id),
       body_export: Map.get(dto, :body_export),

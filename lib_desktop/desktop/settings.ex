@@ -253,8 +253,24 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   def apply_runtime_config do
     Application.put_env(@app, :blob_store, LocalStore)
     Application.put_env(@app, :blob_root, blobs())
+    put_repo_config()
     put_site_config()
     :ok
+  end
+
+  # The repo reads `:database` when it starts, so the path is written here first.
+  # A folder chosen while the tool is running takes effect in `restart_repo/0`.
+  defp put_repo_config do
+    current = Application.get_env(@app, ConfluencePhxMirror.Repo, [])
+
+    Application.put_env(
+      @app,
+      ConfluencePhxMirror.Repo,
+      current
+      |> Keyword.put(:database, database())
+      |> Keyword.put_new(:journal_mode, :wal)
+      |> Keyword.put_new(:pool_size, 1)
+    )
   end
 
   @doc """
@@ -284,12 +300,12 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
 
   A repo reads its `:database` once, when it starts, so a folder chosen while the
   app is running takes effect when the repo restarts — which is what this does,
-  through the supervisor that owns it. `Desktop.Repo.init/2` reads the new path.
+  through the supervisor that owns it.
   """
   @spec restart_repo() :: {:ok, pid()} | {:error, term()}
   def restart_repo do
     supervisor = ConfluencePhxMirror.Desktop.Supervisor
-    repo = ConfluencePhxMirror.Desktop.Repo
+    repo = ConfluencePhxMirror.Repo
 
     with :ok <- Supervisor.terminate_child(supervisor, repo) do
       Supervisor.restart_child(supervisor, repo)

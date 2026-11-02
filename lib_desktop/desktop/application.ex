@@ -23,7 +23,7 @@ defmodule ConfluencePhxMirror.Desktop.Application do
     Settings.apply_runtime_config()
 
     children = [
-      ConfluencePhxMirror.Desktop.Repo,
+      ConfluencePhxMirror.Repo,
       {Task.Supervisor, name: ConfluencePhxMirror.Desktop.TaskSupervisor},
       # Holds the one mirror run the tool can be doing, so a screen can ask how
       # far along it is.

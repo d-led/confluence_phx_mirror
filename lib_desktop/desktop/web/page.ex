@@ -156,7 +156,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
 
     # The empty note is rendered by the server too, so the answer survives with
     # JavaScript off; the script only unhides it as you type.
+    # The way out goes at the top. A window with no address bar has only the
+    # links it renders, and one at the end of two hundred spaces is not a link.
     document("Spaces", """
+    <nav class="top"><a href="/">Home</a></nav>
     <h1>Spaces</h1>
     <p class="lede">#{known} spaces on #{escape(Settings.site() || "Confluence")}.</p>
     #{status_banner(Map.get(meta, :run))}
@@ -168,7 +171,6 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     <ul class="spaces">#{rows}</ul>
     #{truncated}
     <p class="note" data-empty #{if spaces != [], do: "hidden", else: ""}>Nothing matches that.</p>
-    <p><a href="/">Back</a></p>
     """, status: Map.get(meta, :status), script: true)
   end
 
@@ -397,6 +399,9 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         dt { font-weight: 600; }
         dd { margin: 0; opacity: .75; overflow-wrap: anywhere; }
         a { color: #2f5fe0; }
+        nav.top { margin-bottom: 1rem; font-size: .8125rem; }
+        nav.top a { text-decoration: none; opacity: .7; }
+        nav.top a:hover { text-decoration: underline; opacity: 1; }
         ul.spaces { list-style: none; margin: 0 0 1.5rem; padding: 0; }
         ul.spaces li { display: flex; align-items: center; justify-content: space-between;
                        gap: 1rem; padding: .75rem 0; border-bottom: 1px solid rgba(127,127,127,.2); }

@@ -6,12 +6,20 @@ import Config
 data_dir = :filename.basedir(:user_data, "confluence-export")
 File.mkdir_p!(data_dir)
 
-config :confluence_phx_mirror, ecto_repos: [ConfluencePhxMirror.Desktop.Repo]
+config :confluence_phx_mirror,
+  ecto_repos: [ConfluencePhxMirror.Repo],
+  # Fixed at compile time by `ConfluencePhxMirror.Repo`. dev, test and prod never
+  # set it, so they keep building the same module on Postgres.
+  repo_adapter: Ecto.Adapters.SQLite3,
+  # The columns Postgres stores as `text[]`: JSON text here. The schemas read
+  # these two keys when they compile, so a list column and its storage agree.
+  string_list_type: ConfluencePhxMirror.Schema.JSONList,
+  integer_list_type: ConfluencePhxMirror.Schema.JSONList
 
-# Defaults only. `ConfluencePhxMirror.Desktop.Paths` owns the real answer — the
-# folder a person picks is written to a settings file and read when the repo
+# Defaults only. `ConfluencePhxMirror.Desktop.Settings` owns the real answer — the
+# folder a person picks is written to a settings file and read before the repo
 # starts — so these are what a fresh install uses, and what `mix ecto.*` sees.
-config :confluence_phx_mirror, ConfluencePhxMirror.Desktop.Repo,
+config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
   database: Path.join(data_dir, "catalogue.db"),
   journal_mode: :wal,
   # One connection. SQLite has one writer, the ingest is the only writer, and a

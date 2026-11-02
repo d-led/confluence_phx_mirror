@@ -22,7 +22,7 @@ server's expense, the desktop tool takes the harder road.
 | shared, unchanged | `Blobs.{Key,LocalStore}` | attachments as files |
 | shared, unchanged | `Mirror.{Page,Space,Attachment,Comment}` structs, `Web.Skins`, `Mirror.URLs` | plain data and pure functions |
 | shared behind a seam | `Export.Site` | reads its rows through `Export.Site.Catalogue` |
-| forked | persistence | SQLite schema and migrations in `lib_desktop` |
+| shared, different adapter | persistence | the server's own schema, migrations and contexts; `{:array, _}` becomes JSON text |
 | forked | ingest loop | a small pipeline, not `Sync` |
 | absent | `Mirror.Search`, `Authorization`, `Accounts`, `Oban`, `Endpoint`, admin | the tool has one user, no permissions, no queue, no web layer |
 
@@ -89,8 +89,6 @@ lib_desktop/
     ingest/attachment.ex    bytes to the blob store
     catalogue.ex            Export.Site.Catalogue over SQLite
     export.ex               Catalogue → Export.Site → zip
-    schema/{space,page,attachment,comment}.ex
-    migrations/*.exs
 ```
 
 Two modules carry all the risk, and both are small: `Ingest` and `Catalogue`.
@@ -117,19 +115,27 @@ of `config/config.exs`. It configures the repo with a file under the user's data
 directory, not `var/`:
 
 ```elixir
-data_dir = :filename.basedir(:user_data, "confluence-export")
-File.mkdir_p!(data_dir)
+config :confluence_phx_mirror,
+  ecto_repos: [ConfluencePhxMirror.Repo],
+  repo_adapter: Ecto.Adapters.SQLite3
 
-config :confluence_phx_mirror, ConfluencePhxMirror.Desktop.Repo,
+config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
   database: Path.join(data_dir, "catalogue.db"),
   journal_mode: :wal,
   pool_size: 1
 
 # The same directory holds the mirrored attachments.
-config :confluence_phx_mirror, ConfluencePhxMirror.Blobs.Store,
-  impl: ConfluencePhxMirror.Blobs.LocalStore,
-  root: Path.join(data_dir, "blobs")
+config :confluence_phx_mirror, :blob_store, ConfluencePhxMirror.Blobs.LocalStore
+config :confluence_phx_mirror, :blob_root, Path.join(data_dir, "blobs")
 ```
+
+There is one repo module, not two. Which *adapter* it uses is decided when an
+environment compiles — `use Ecto.Repo` fixes the adapter into the generated code,
+so `MIX_ENV=desktop` builds `ConfluencePhxMirror.Repo` on SQLite and every other
+environment builds the same module on Postgres. Where the *database* is, is
+start-time configuration: `Desktop.Settings.apply_runtime_config/0` writes
+`:database` from the chosen folder before the repo starts, so a release can be
+pointed at a different workspace without being rebuilt.
 
 `pool_size: 1` is not timidity. SQLite has one writer, the ingest is the only
 writer, and a pool that allows a second connection only discovers the lock
@@ -147,11 +153,11 @@ assuming only prod reaches them.
 
 ```elixir
 children = [
-  ConfluencePhxMirror.Desktop.Repo,
+  ConfluencePhxMirror.Repo,
   {Task.Supervisor, name: ConfluencePhxMirror.Desktop.TaskSupervisor},
-  ConfluencePhxMirror.RateLimit,
-  ConfluencePhxMirror.Confluence.Traffic,
-  ConfluencePhxMirror.Desktop.Supervisor
+  ConfluencePhxMirror.Desktop.Jobs,
+  ConfluencePhxMirror.Desktop.Spaces,
+  ConfluencePhxMirror.Desktop.Web.Server
 ]
 ```
 
@@ -171,18 +177,19 @@ compiler will point at each read.
 
 ## Storage
 
-The desktop schema is not the server schema. It carries what the exporter reads,
-and nothing else:
+The desktop uses the server's schema. There is one set of migrations, in
+`priv/repo/migrations`, and it builds the same tables on both storages — so the
+tool queries `Mirror.Page`, `Mirror.Space` and the rest unmodified, and a context
+written for the server is a context the tool can call. A second schema was tried
+and deleted: two definitions of one schema drift, and every query would have had
+to be written twice.
 
-| column | SQLite | note |
-| --- | --- | --- |
-| `confluence_id`, `space_id`, `parent_id` | integer | identity, as in the mirror |
-| `title`, `type`, `slug`, `status` | text | |
-| `body_export`, `body_text`, `body_storage` | text | |
-| `labels` | text | JSON array; only ever read as a list |
-| `ancestors` | text | JSON array; only used for ordering |
-| `external_created_at`, `external_updated_at`, `version_number` | | |
-| `deleted_at` | datetime | the exporter filters on it |
+Two constructs have no SQLite equivalent, and `ConfluencePhxMirror.Migration`
+holds both: the `{:array, _}` column type, which SQLite stores as JSON text, and
+the Postgres index access methods and extensions. `ConfluencePhxMirror.Schema.JSONList`
+is the Ecto half of the same decision — the schemas read `:string_list_type` when
+they compile, so a list column and its storage agree by construction, and a
+server build still gets `text[]`.
 
 `labels` and `ancestors` are JSON text rather than a join table because the
 export path reads them as a list and never filters by them. The archive's label
