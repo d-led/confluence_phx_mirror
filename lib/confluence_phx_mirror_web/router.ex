@@ -29,6 +29,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
     plug Plugs.ReaderRateLimit, scope: :html
   end
 
+  # sobelow_skip ["Config.CSRF"]
+  # A read-only, token-authenticated JSON API: CSRF needs a state change and a
+  # credential the browser attaches by itself. Neither is here.
   pipeline :api do
     plug :accepts, ["json"]
     # The caller may already be known: the proxy in front of the mirror
