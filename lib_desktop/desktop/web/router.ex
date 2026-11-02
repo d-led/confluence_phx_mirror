@@ -70,7 +70,8 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
             query: query,
             known: length(spaces),
             matching: length(matching),
-            status: if(Spaces.state().refreshing?, do: "Refreshing the space list…")
+            status: if(Spaces.state().refreshing?, do: "Refreshing the space list…"),
+            run: Jobs.status()
           })
         )
 
@@ -84,20 +85,27 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
     end
   end
 
+  # A run is started and then left alone: the screen it leaves you on follows
+  # it, so a mirror that takes an hour does not take an hour of your attention.
   post "/mirror" do
-    case Jobs.start_mirror([conn.params["space"]], conn.params["space"]) do
-      {:ok, :started} -> conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
-      # A run already going: watching it is the same answer they wanted.
-      {:error, _busy} -> conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
-    end
+    _ = Jobs.start_mirror([conn.params["space"]], conn.params["space"])
+    conn |> put_resp_header("location", "/spaces") |> send_resp(303, "")
   end
 
   post "/mirror_all" do
+    query = String.trim(conn.params["q"] || "")
+
     case Spaces.list() do
       {:ok, spaces} ->
-        keys = Enum.map(spaces, & &1.key)
-        _ = Jobs.start_mirror(keys, "all #{length(keys)} spaces")
-        conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
+        keys = spaces |> filter(query) |> Enum.map(& &1.key)
+
+        label =
+          if query == "",
+            do: "all #{length(keys)} spaces",
+            else: "#{length(keys)} spaces matching #{inspect(query)}"
+
+        _ = Jobs.start_mirror(keys, label)
+        conn |> put_resp_header("location", "/spaces") |> send_resp(303, "")
 
       # Still being fetched: send them back to the screen that shows it, rather
       # than mirroring a list that is not there yet.
@@ -106,8 +114,22 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
     end
   end
 
+  # The live filter. Served rather than inlined: the page is generated HTML, but
+  # a script tag pointing at one file is still the only copy of it.
+  get "/assets/app.js" do
+    conn
+    |> put_resp_content_type("text/javascript")
+    |> send_resp(200, Page.script())
+  end
+
   get "/mirror" do
     send_resp(conn, 200, Page.mirror(Jobs.status()))
+  end
+
+  # What the banner polls. Small and frequent, which is why it is its own route
+  # rather than a page.
+  get "/status" do
+    send_resp(conn, 200, JSON.encode_to_iodata!(Jobs.status()))
   end
 
   match _ do
@@ -121,15 +143,18 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
     end
   end
 
-  # Case-insensitive, on the key as well as the name: a person looking for ENG
-  # types ENG, not "Engineering".
+  # Case-insensitive, on the key as well as the name, and every word has to
+  # match — the same rule the mirror's own search uses, so a phrase narrows
+  # rather than being one odd substring. A person looking for ENG types ENG,
+  # not "Engineering".
   defp filter(spaces, ""), do: spaces
 
   defp filter(spaces, query) do
-    needle = String.downcase(query)
+    words = query |> String.downcase() |> String.split(~r/\s+/u, trim: true)
 
     Enum.filter(spaces, fn space ->
-      String.contains?(String.downcase(space.name) <> " " <> String.downcase(space.key), needle)
+      haystack = String.downcase(space.name) <> " " <> String.downcase(space.key)
+      Enum.all?(words, &String.contains?(haystack, &1))
     end)
   end
 

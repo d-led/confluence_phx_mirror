@@ -112,7 +112,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         mirrored = Map.get(counts, space.key, 0)
 
         """
-        <li>
+        <li data-search="#{escape(String.downcase(space.name))} #{escape(String.downcase(space.key))}">
           <div>
             <strong>#{escape(space.name)}</strong>
             <small>#{escape(space.key)}#{
@@ -134,7 +134,8 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       if matching > 0 do
         """
         <form method="post" action="/mirror_all" class="everything">
-          <button type="submit">Mirror all #{matching} spaces</button>
+          <input type="hidden" name="q" value="#{escape(Map.get(meta, :query, ""))}">
+          <button type="submit">Mirror all <span data-count>#{matching}</span> <span data-noun>spaces</span></button>
           <small>One after another, in the order they are listed.</small>
         </form>
         """
@@ -153,21 +154,22 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         ""
       end
 
-    empty = if spaces == [], do: ~s(<p class="note">Nothing matches that.</p>), else: ""
-
+    # The empty note is rendered by the server too, so the answer survives with
+    # JavaScript off; the script only unhides it as you type.
     document("Spaces", """
     <h1>Spaces</h1>
     <p class="lede">#{known} spaces on #{escape(Settings.site() || "Confluence")}.</p>
+    #{status_banner(Map.get(meta, :run))}
     #{everything}
     <form method="get" action="/spaces" class="filter" role="search">
       <input name="q" type="search" value="#{escape(Map.get(meta, :query, ""))}"
-             placeholder="Filter by name or key" autofocus>
+             placeholder="Filter by name or key" data-filter autofocus>
     </form>
     <ul class="spaces">#{rows}</ul>
     #{truncated}
-    #{empty}
+    <p class="note" data-empty #{if spaces != [], do: "hidden", else: ""}>Nothing matches that.</p>
     <p><a href="/">Back</a></p>
-    """, status: Map.get(meta, :status))
+    """, status: Map.get(meta, :status), script: true)
   end
 
   @doc "How the mirror is doing, in the words the run itself reports."
@@ -222,6 +224,126 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     <p class="error" role="alert">#{escape(inspect(reason))}</p>
     <p><a href="/spaces">Try again</a></p>
     """)
+  end
+
+  @doc """
+  A line saying a run is going, for the screen that started it.
+
+  The screen it leaves you on follows the run rather than blocking on it: a
+  mirror of a large space is an hour of waiting, and an hour of somebody's
+  attention is not a thing to take. The line updates itself by asking `/status`;
+  when the run ends the page reloads once, so the counts change with it.
+  """
+  @spec status_banner(map() | nil) :: String.t()
+  def status_banner(%{state: :running} = status) do
+    """
+    <div class="run" data-run data-status-url="/status">
+      <span class="dot" aria-hidden="true"></span>
+      <span data-run-text>#{escape(run_text(status))}</span>
+      <a href="/mirror">details</a>
+    </div>
+    """
+  end
+
+  def status_banner(%{state: :error} = status) do
+    """
+    <div class="run error">
+      <span data-run-text>Stopped: #{escape(status.label || "the run")}</span>
+      <a href="/mirror">details</a>
+    </div>
+    """
+  end
+
+  def status_banner(_status), do: ""
+
+  defp run_text(status) do
+    across = if status.count > 1, do: " · space #{status.index} of #{status.count}", else: ""
+    "Mirroring #{status.label}#{across} · #{status.done} of #{status.total} pages"
+  end
+
+  @doc """
+  The one script the tool serves: the live filter, and the run banner's pulse.
+
+  Served as a file rather than inlined, so there is one copy of it and the page
+  can cache it. It does nothing the server does not already do — the same AND
+  rule, the same status — it only does it without a round trip.
+  """
+  @spec script() :: String.t()
+  def script do
+    ~S"""
+    (function () {
+      "use strict";
+
+      // Live filter: every typed word must appear, the same rule the server
+      // applies on submit, so typing and pressing Enter agree.
+      var input = document.querySelector("[data-filter]");
+      var items = Array.prototype.slice.call(document.querySelectorAll("ul.spaces > li"));
+      var empty = document.querySelector("[data-empty]");
+      var counts = Array.prototype.slice.call(document.querySelectorAll("[data-count]"));
+      var form = document.querySelector("form.everything");
+
+      function applyFilter() {
+        var words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+        var shown = 0;
+
+        items.forEach(function (item) {
+          var haystack = item.getAttribute("data-search") || "";
+          var match = words.every(function (word) {
+            return haystack.indexOf(word) !== -1;
+          });
+          item.hidden = !match;
+          if (match) shown++;
+        });
+
+        counts.forEach(function (count) { count.textContent = shown; });
+        if (empty) empty.hidden = shown !== 0;
+        if (form) form.hidden = shown === 0;
+      }
+
+      if (input && items.length) {
+        input.addEventListener("input", applyFilter);
+        applyFilter();
+      }
+
+      // The run banner. Polls while it exists, then reloads once so the
+      // catalogue counts shown on this page are the ones that just changed.
+      var banner = document.querySelector("[data-run]");
+      if (!banner) return;
+
+      var text = banner.querySelector("[data-run-text]");
+      var finished = false;
+
+      function poll() {
+        if (finished) return;
+
+        fetch(banner.getAttribute("data-status-url"), { headers: { accept: "application/json" } })
+          .then(function (response) { return response.json(); })
+          .then(function (status) {
+            if (!text) return;
+
+            if (status.state === "running") {
+              var across = status.count > 1 ? " · space " + status.index + " of " + status.count : "";
+              text.textContent = "Mirroring " + status.label + across + " · " + status.done + " of " + status.total + " pages";
+            } else if (status.state === "done") {
+              finished = true;
+              text.textContent = "Finished " + status.label;
+              setTimeout(function () { window.location.reload(); }, 800);
+            } else if (status.state === "error") {
+              finished = true;
+              text.textContent = "Stopped: " + status.label;
+            } else {
+              finished = true;
+              banner.remove();
+            }
+          })
+          // A dropped poll keeps the last known text: saying "unknown" would be
+          // worse than being a second out of date.
+          .catch(function () {});
+      }
+
+      setInterval(poll, 2000);
+    })();
+    """
   end
 
   defp document(title, body, opts \\ []) do
