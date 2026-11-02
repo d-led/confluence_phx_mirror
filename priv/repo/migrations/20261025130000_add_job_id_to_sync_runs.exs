@@ -19,6 +19,6 @@ defmodule ConfluencePhxMirror.Repo.Migrations.AddJobIdToSyncRuns do
       add :job_id, :bigint
     end
 
-    create index(:sync_runs, [:job_id], concurrently: true)
+    ConfluencePhxMirror.Migration.create_index(:sync_runs, [:job_id], concurrently: true)
   end
 end

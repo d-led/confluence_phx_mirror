@@ -12,32 +12,40 @@ defmodule ConfluencePhxMirror.Repo.Migrations.SlugTitlesLikeConfluence do
   """
   use Ecto.Migration
 
+  # Rewriting `slug` for the rows a deployment already has. SQLite is created
+  # empty by this migration set and its ingest writes the new rule as it goes, so
+  # there is nothing to rewrite — and `ALTER COLUMN`, which is how the column
+  # stops being required, is Postgres-only.
   def up do
-    # A title with no ASCII words in it has no segment at all, so the column
-    # stops being required: NULL is "serve this page by its id".
-    execute("ALTER TABLE pages ALTER COLUMN slug DROP NOT NULL")
+    if ConfluencePhxMirror.Migration.postgres?() do
+      # A title with no ASCII words in it has no segment at all, so the column
+      # stops being required: NULL is "serve this page by its id".
+      execute("ALTER TABLE pages ALTER COLUMN slug DROP NOT NULL")
 
-    execute("""
-    UPDATE pages
-    SET slug = nullif(
-                 trim(both '+' from left(regexp_replace(title, '[^A-Za-z0-9_]+', '+', 'g'), 255)),
-                 ''
-               )
-    """)
+      execute("""
+      UPDATE pages
+      SET slug = nullif(
+                   trim(both '+' from left(regexp_replace(title, '[^A-Za-z0-9_]+', '+', 'g'), 255)),
+                   ''
+                 )
+      """)
+    end
   end
 
   def down do
-    execute("""
-    UPDATE pages
-    SET slug = coalesce(
-                 nullif(
-                   trim(both '-' from left(lower(regexp_replace(title, '[^a-z0-9]+', '-', 'g')), 80)),
-                   ''
-                 ),
-                 'page'
-               )
-    """)
+    if ConfluencePhxMirror.Migration.postgres?() do
+      execute("""
+      UPDATE pages
+      SET slug = coalesce(
+                   nullif(
+                     trim(both '-' from left(lower(regexp_replace(title, '[^a-z0-9]+', '-', 'g')), 80)),
+                     ''
+                   ),
+                   'page'
+                 )
+      """)
 
-    execute("ALTER TABLE pages ALTER COLUMN slug SET NOT NULL")
+      execute("ALTER TABLE pages ALTER COLUMN slug SET NOT NULL")
+    end
   end
 end

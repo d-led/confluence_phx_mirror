@@ -19,6 +19,8 @@ defmodule ConfluencePhxMirror.Repo.Migrations.MarkRestrictionsGrantedHere do
       add :granted_by_id, references(:users, on_delete: :nilify_all)
     end
 
-    create index(:page_restrictions, [:granted_by_id], concurrently: true)
+    ConfluencePhxMirror.Migration.create_index(:page_restrictions, [:granted_by_id],
+      concurrently: true
+    )
   end
 end

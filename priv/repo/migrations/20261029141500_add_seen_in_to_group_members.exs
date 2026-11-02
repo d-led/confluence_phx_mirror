@@ -19,7 +19,12 @@ defmodule ConfluencePhxMirror.Repo.Migrations.AddSeenInToGroupMembers do
       add :seen_in, :bigint
     end
 
-    create index(:group_members, [:group_key, :seen_in], concurrently: true)
-    create index(:group_members, [:account_id], concurrently: true)
+    ConfluencePhxMirror.Migration.create_index(:group_members, [:group_key, :seen_in],
+      concurrently: true
+    )
+
+    ConfluencePhxMirror.Migration.create_index(:group_members, [:account_id],
+      concurrently: true
+    )
   end
 end

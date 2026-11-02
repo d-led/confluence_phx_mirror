@@ -26,6 +26,8 @@ defmodule ConfluencePhxMirror.Repo.Migrations.MarkPermissionsGrantedHere do
       add :granted_by_id, references(:users, on_delete: :nilify_all)
     end
 
-    create index(:space_permissions, [:granted_by_id], concurrently: true)
+    ConfluencePhxMirror.Migration.create_index(:space_permissions, [:granted_by_id],
+      concurrently: true
+    )
   end
 end

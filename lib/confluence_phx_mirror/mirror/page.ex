@@ -17,6 +17,16 @@ defmodule ConfluencePhxMirror.Mirror.Page do
   @types ~w(page blogpost)
   @statuses ~w(current draft archived)
 
+  # `text[]` where the database has an array type, JSON text where it has not.
+  # The rule is the one that chose the adapter and the column type the migration
+  # built, so all three agree by construction.
+  @string_list Application.compile_env(:confluence_phx_mirror, :string_list_type, {:array, :string})
+  @integer_list Application.compile_env(
+                  :confluence_phx_mirror,
+                  :integer_list_type,
+                  {:array, :integer}
+                )
+
   schema "pages" do
     field :confluence_id, :integer
     field :type, :string, default: "page"
@@ -32,8 +42,8 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     field :body_storage, :string
     field :body_export, :string
     field :body_text, :string
-    field :labels, {:array, :string}, default: []
-    field :ancestors, {:array, :integer}, default: []
+    field :labels, @string_list, default: []
+    field :ancestors, @integer_list, default: []
     field :version_number, :integer, default: 1
     field :version_message, :string
     field :external_url, :string

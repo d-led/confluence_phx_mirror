@@ -31,7 +31,8 @@ defmodule ConfluencePhxMirror.Repo.Migrations.AddIdentityAccountIdsToUsers do
 
   def change do
     alter table(:users) do
-      add :identity_account_ids, {:array, :string}, null: false, default: []
+      add :identity_account_ids, ConfluencePhxMirror.Migration.list_type(:string),
+        ConfluencePhxMirror.Migration.list_options(null: false)
     end
   end
 end

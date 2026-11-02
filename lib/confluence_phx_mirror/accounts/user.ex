@@ -11,6 +11,10 @@ defmodule ConfluencePhxMirror.Accounts.User do
 
   @roles ~w(admin member)
 
+  # `text[]` where the database has an array type, JSON text where it has not —
+  # the same rule that chose the adapter and the migration's column type.
+  @string_list Application.compile_env(:confluence_phx_mirror, :string_list_type, {:array, :string})
+
   @type t :: %__MODULE__{}
 
   schema "users" do
@@ -27,10 +31,10 @@ defmodule ConfluencePhxMirror.Accounts.User do
     # Further Confluence identities an administrator linked to this account:
     # one person, several Atlassian accounts. What may be read is the union, so
     # every permission rule asks `identity_keys/1` rather than this field.
-    field :identity_account_ids, {:array, :string}, default: []
+    field :identity_account_ids, @string_list, default: []
     # Groups an administrator granted here, kept across syncs. Confluence group
     # memberships come from the mirror itself (`Mirror.GroupMember`).
-    field :groups, {:array, :string}, default: []
+    field :groups, @string_list, default: []
     # Switched off here by an administrator.
     field :disabled_at, :utc_datetime
     # Switched off on the mirrored site, as the sync last saw it.

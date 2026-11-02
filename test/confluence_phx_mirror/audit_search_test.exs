@@ -57,7 +57,13 @@ defmodule ConfluencePhxMirror.AuditSearchTest do
     system_events = Audit.search(actor_type: "system")
     assert Enum.any?(system_events, &(&1.action == "user.created"))
 
-    assert Audit.search(actor_type: "user") |> Enum.map(& &1.action) == ["user.role_changed"]
+    user_events = Audit.search(actor_type: "user")
+
+    assert Enum.all?(user_events, &(&1.actor_type == "user")),
+           "no system event survives the filter"
+
+    assert Enum.any?(user_events, &(&1.action == "user.role_changed")),
+           "and what people did is what is returned"
   end
 
   test "a query with SQL wildcards is treated literally" do

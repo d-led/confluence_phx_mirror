@@ -16,6 +16,10 @@ defmodule ConfluencePhxMirror.Mirror.Space do
 
   @type t :: %__MODULE__{}
 
+  # `text[]` where the database has an array type, JSON text where it has not —
+  # the same rule that chose the adapter and the migration's column type.
+  @string_list Application.compile_env(:confluence_phx_mirror, :string_list_type, {:array, :string})
+
   schema "spaces" do
     field :key, :string
     field :name, :string
@@ -23,7 +27,7 @@ defmodule ConfluencePhxMirror.Mirror.Space do
     field :description, :string
     field :homepage_confluence_id, :integer
     field :external_url, :string
-    field :labels, {:array, :string}, default: []
+    field :labels, @string_list, default: []
     field :icon_path, :string
     field :icon_blob_key, :string
     field :icon_media_type, :string
