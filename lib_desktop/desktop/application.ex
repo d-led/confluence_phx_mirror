@@ -14,13 +14,18 @@ defmodule ConfluencePhxMirror.Desktop.Application do
 
   use Application
 
-  alias ConfluencePhxMirror.Desktop.Settings
+  alias ConfluencePhxMirror.Desktop.{Settings, Setup}
 
   @impl true
   def start(_type, _args) do
     # Before the repo: the store resolves its root on use, and the repo reads its
     # path from the settings file as it starts.
     Settings.apply_runtime_config()
+
+    # A catalogue written by an earlier build cannot be migrated onto the shared
+    # schema, and the rename this does cannot happen underneath an open
+    # connection — so it happens here, before there is one.
+    Setup.prepare(Settings.database())
 
     children = [
       ConfluencePhxMirror.Repo,
