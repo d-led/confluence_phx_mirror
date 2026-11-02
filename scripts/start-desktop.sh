@@ -1,32 +1,35 @@
 #!/usr/bin/env bash
 #
-# Starts the desktop export tool: the same code as the server, under its own
-# environment (see docs/desktop-tool.md).
+# Opens the export tool: builds the release if it is missing, starts it, and
+# opens its window.
 #
-#   scripts/start-desktop.sh                  an IEx session with the tool's tree
-#   scripts/start-desktop.sh --folder PATH    point the run at PATH, then start
-#   scripts/start-desktop.sh --where          print the folders in use, then exit
+#   scripts/start-desktop.sh              open the tool
+#   scripts/start-desktop.sh --rebuild    build first, then open
+#   scripts/start-desktop.sh --where      print the workspace in use, then exit
 #
-# The folder holds the catalogue and the attachments. It is remembered in a
-# settings file rather than in config, because it is chosen after the app exists.
-# Nothing here touches the server's database or its `MIX_ENV`.
-#
-# Exit status is non-zero if the tool cannot start, so it can sit in a pipeline.
+# This runs the compiled release, not `mix` and not a REPL: what it opens is the
+# artifact a person would install. The window is the page the tool serves, in an
+# app-style window of whichever browser is present. The native shell that
+# removes that dependency is the next piece of work, and it needs this binary to
+# exist first, because the binary is what the shell launches.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-mode=start
-folder=""
+name=confluence_phx_mirror
+release="_build/desktop/rel/$name"
+binary="$release/bin/$name"
+
+mode=open
 
 usage() {
-  sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//; s/^#$//'
+  sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//; s/^#$//'
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --folder) folder="${2:?--folder needs a path}"; shift 2 ;;
+    --rebuild) mode=rebuild; shift ;;
     --where) mode=where; shift ;;
     -h | --help) usage; exit 0 ;;
     *)
@@ -37,18 +40,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-export MIX_ENV=desktop
+build() {
+  echo "building the desktop release…"
+  MIX_ENV=desktop mix release --overwrite >/dev/null
+  echo "built"
+}
 
-# `only: :desktop` is why this is a separate fetch: the server's `mix deps.get`
-# never sees the SQLite adapter, and a checkout that has only run that has not
-# got it yet.
-mix deps.get >/dev/null
-
-# `--no-start` on purpose: these two read and write a settings file, and booting
-# the app first would open the catalogue in the old folder — creating a database
-# file somebody did not ask for, one line before it is abandoned.
+# `eval` starts no applications, which is all this needs: reading the workspace
+# touches a settings file and never the catalogue.
 where() {
-  mix run --no-start -e '
+  "$binary" eval '
     alias ConfluencePhxMirror.Desktop.Settings
 
     IO.puts("id:          #{Settings.id()}")
@@ -57,53 +58,72 @@ where() {
     IO.puts("attachments: #{Settings.blobs()}")
     IO.puts("site:        #{Settings.site() || "(not set)"}")
     IO.puts("account:     #{Settings.email() || "(bearer token)"}")
-
-    readiness =
-      case Settings.readiness() do
-        :ready -> "ready"
-        {:needs, missing} -> "needs " <> Enum.join(missing, ", ")
-      end
-
-    IO.puts("readiness:   #{readiness}")
   '
 }
 
-# The configuration form is served, not asked for in a terminal: the tool's
-# window opens it on a first run. This script only starts the tool.
+# An app-style window where a Chromium browser is installed: no address bar, no
+# tabs, its own entry in the dock. Otherwise the default browser, which is worse
+# and always works.
+open_window() {
+  local url=$1
+
+  if [[ "$(uname)" == Darwin ]]; then
+    for app in "Google Chrome" "Microsoft Edge" "Brave Browser" "Chromium"; do
+      if [[ -d "/Applications/$app.app" ]]; then
+        open -na "$app" --args --app="$url"
+        return
+      fi
+    done
+    open "$url"
+  elif command -v xdg-open >/dev/null; then
+    xdg-open "$url"
+  else
+    open "$url"
+  fi
+}
 
 case "$mode" in
   where)
+    [[ -x "$binary" ]] || build
     where
     ;;
-  start)
-    if [[ -n "$folder" ]]; then
-      # The tool says precisely what is wrong with a folder — it cannot be
-      # created, it refuses a write — so the message is passed through rather
-      # than replaced with "invalid folder".
-      case "$(realpath "$folder" 2>/dev/null || echo "$folder")" in
-        /*) ;;
-        *) echo "--folder needs an absolute path, got: $folder" >&2; exit 64 ;;
-      esac
-
-      if ! CONFLUENCE_EXPORT_WORKSPACE="$folder" mix run --no-start -e '
-        case ConfluencePhxMirror.Desktop.Settings.choose_root(
-               System.fetch_env!("CONFLUENCE_EXPORT_WORKSPACE")
-             ) do
-          :ok -> :ok
-          {:error, reason} ->
-            IO.puts(:standard_error, "cannot use that folder: #{inspect(reason)}")
-            System.halt(1)
-        end
-      '; then
-        exit 1
-      fi
-
-      where
+  open | rebuild)
+    if [[ "$mode" == rebuild ]] || [[ ! -x "$binary" ]]; then
+      build
     fi
 
-    # Configured or not, the tool starts the same way: the page it serves is the
-    # one that decides — the form on a first run, the mirror afterwards.
-    echo "starting the desktop tool — ConfluencePhxMirror.Desktop.Application, SQLite"
-    exec iex -S mix
+    log=$(mktemp -t confluence-export.XXXXXX)
+
+    # Stopped on the way out however the script ends: a closed window over a
+    # server still running is a port nobody can find again.
+    cleanup() {
+      "$binary" stop >/dev/null 2>&1 || true
+      rm -f "$log"
+    }
+    trap cleanup EXIT INT TERM
+
+    "$binary" start >"$log" 2>&1 &
+
+    # The port is whichever the OS granted, so it is read from the tool's own
+    # output rather than guessed.
+    url=""
+    for _ in $(seq 1 150); do
+      url=$(sed -n 's/^desktop ui: //p' "$log" 2>/dev/null | head -1)
+      if [[ -n "$url" ]]; then
+        break
+      fi
+      sleep 0.1
+    done
+
+    if [[ -z "$url" ]]; then
+      echo "the tool did not start:" >&2
+      tail -20 "$log" >&2
+      exit 1
+    fi
+
+    echo "desktop ui: $url"
+    open_window "$url"
+
+    wait
     ;;
 esac
