@@ -1,0 +1,126 @@
+# Publishes the desktop tool when a version tag is pushed.
+#
+#   git tag v1.2.3 && git push origin v1.2.3
+#
+# What is attached to the release is a tarball, not a `.app`. That is deliberate
+# and it is temporary: bundling a window, a release and an icon into a signed
+# application is its own piece of work, and a workflow that produces a `.app`
+# nobody has run would be worse than one that produces something honest. Today
+# the tarball holds:
+#
+#   confluence-export          the window, built in release mode
+#   confluence_phx_mirror/     the sidecar release, with its own Erlang runtime
+#   start                      a script that points the window at the sidecar
+#
+# `start` exists because the window looks for its sidecar by a relative path in
+# development and by `CONFLUENCE_EXPORT_SIDECAR` otherwise; a bundle will set
+# that itself, and until there is a bundle the script is what makes the download
+# runnable.
+#
+# The build is macOS only for the same reason as the debug workflow: it is the
+# platform the window has actually been run on.
+
+name: desktop-release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  # Never cancel a release build: a half-uploaded asset is worse than a slow one.
+  cancel-in-progress: false
+
+env:
+  MIX_ENV: desktop
+  ELIXIR_VERSION: "1.20.4"
+  OTP_VERSION: "29.1.2"
+
+jobs:
+  release:
+    name: release (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        id: beam
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build/desktop
+            src-tauri/target
+          key: desktop-release-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            desktop-release-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+
+      - name: Fetch dependencies
+        run: mix deps.get
+
+      - name: Build the release
+        run: mix release --overwrite
+
+      - name: Build the window
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+
+      # A release that builds but does not boot is not a release. This is the
+      # same check the debug workflow makes, and it runs before anything is
+      # published.
+      - name: Boot the release and check it serves
+        run: |
+          set -euo pipefail
+          bin=_build/desktop/rel/confluence_phx_mirror/bin/confluence_phx_mirror
+          log=$(mktemp)
+          "$bin" start >"$log" 2>&1 &
+          trap '"$bin" stop >/dev/null 2>&1 || true' EXIT
+
+          for _ in $(seq 1 60); do
+            url=$(sed -n 's/^desktop ui: //p' "$log" | head -1)
+            [ -n "$url" ] && break
+            sleep 1
+          done
+
+          [ -n "$url" ] || { echo "the release never said where it listens"; cat "$log"; exit 1; }
+          curl -fsS "$url/state"
+
+      - name: Assemble
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp -R _build/desktop/rel/confluence_phx_mirror dist/confluence_phx_mirror
+          cp src-tauri/target/release/confluence-export dist/confluence-export
+
+          cat >dist/start <<'SCRIPT'
+          #!/bin/sh
+          # Starts the tool. The window runs the sidecar beside it; setting the
+          # path here is what ties the two downloaded pieces together until
+          # there is an application bundle to do it.
+          here=$(cd "$(dirname "$0")" && pwd)
+          export CONFLUENCE_EXPORT_SIDECAR="$here/confluence_phx_mirror/bin/confluence_phx_mirror"
+          exec "$here/confluence-export" "$@"
+          SCRIPT
+          chmod +x dist/start
+
+          tar -czf "confluence-export-${GITHUB_REF_NAME}-macos.tar.gz" -C dist .
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          asset="confluence-export-${tag}-macos.tar.gz"
+
+          gh release view "$tag" >/dev/null 2>&1 ||
+            gh release create "$tag" --title "$tag" --generate-notes
+
+          gh release upload "$tag" "$asset" --clobber

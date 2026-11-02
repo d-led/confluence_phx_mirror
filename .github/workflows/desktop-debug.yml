@@ -1,0 +1,109 @@
+# Builds the desktop tool on every branch commit, so a change that breaks the
+# release or the window is found on the branch that broke it rather than at a
+# release.
+#
+# Two artefacts, both debug:
+#
+#   release  the Elixir sidecar, `MIX_ENV=desktop mix release`. This is what
+#            catches a `lib_desktop` module that compiles in dev but not in a
+#            release — the code path a person actually installs.
+#   window   `cargo build` of `src-tauri`. It compiles the Rust crate that
+#            spawns the sidecar and builds the webview window.
+#
+# Neither is a packaging step: there is no `.app` yet and no signing. What this
+# proves is that both halves build from a clean checkout on a runner that has
+# never seen the repository — which is the thing that quietly stops working when
+# a dependency is optional in `mix.exs` and only present on a developer machine.
+#
+# macOS only, for now, because that is the platform the window has been built
+# and run on. Adding a platform is a matrix entry plus its system libraries
+# (Linux needs webkit2gtk; Windows needs nothing beyond the runner), and is
+# worth doing when someone is ready to test the result.
+
+name: desktop-debug
+
+on:
+  push:
+    # Every branch, `main` included: a desktop build that only runs on feature
+    # branches stops being built exactly when a change lands.
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-debug-${{ github.workflow }}-${{ github.ref }}
+  # Only the newest commit of a branch is worth building.
+  cancel-in-progress: true
+
+env:
+  MIX_ENV: desktop
+  ELIXIR_VERSION: "1.20.4"
+  OTP_VERSION: "29.1.2"
+
+jobs:
+  build:
+    name: build (debug)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        id: beam
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+
+      # `lib_desktop` is compiled only in this environment, so the cache has to
+      # be keyed by it as well as by the lockfile.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build/desktop
+            src-tauri/target
+          key: desktop-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            desktop-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+
+      # `ecto_sqlite3` and `rustler` are `only: :desktop`, so this is a different
+      # dependency set from the server's — it is not the same as `mix deps.get`.
+      - name: Fetch dependencies
+        run: mix deps.get
+
+      - name: Build the release
+        run: mix release --overwrite
+
+      - name: Build the window
+        run: cargo build --manifest-path src-tauri/Cargo.toml
+
+      # A release that builds but cannot boot is not much of a signal, and boot
+      # is where a missing `:persistent_term` or a Swoosh client shows up.
+      - name: Boot the release and check it serves
+        run: |
+          set -euo pipefail
+          bin=_build/desktop/rel/confluence_phx_mirror/bin/confluence_phx_mirror
+          log=$(mktemp)
+          "$bin" start >"$log" 2>&1 &
+          trap '"$bin" stop >/dev/null 2>&1 || true; cat "$log"' EXIT
+
+          for _ in $(seq 1 60); do
+            url=$(sed -n 's/^desktop ui: //p' "$log" | head -1)
+            [ -n "$url" ] && break
+            sleep 1
+          done
+
+          [ -n "$url" ] || { echo "the release never said where it listens"; exit 1; }
+          echo "serving at $url"
+          curl -fsS "$url/state" || exit 1
+          echo
+
+      - name: Keep the window binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: confluence-export-${{ github.sha }}
+          path: src-tauri/target/debug/confluence-export
+          if-no-files-found: error
+          retention-days: 7
