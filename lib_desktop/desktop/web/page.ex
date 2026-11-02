@@ -76,6 +76,27 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   end
 
   @doc """
+  A screen shown while something is being fetched.
+
+  A blank window with a spinner and no words is its own kind of panic, so this
+  says what is being fetched, from where, and that nothing was lost. The page
+  checks again itself; there is nothing for a person to press.
+  """
+  @spec loading(String.t()) :: String.t()
+  def loading(message) do
+    document(
+      "Loading…",
+      """
+      <div class="spinner" role="status" aria-label="Loading"></div>
+      <h1>Still fetching</h1>
+      <p class="lede">#{escape(message)}</p>
+      <p class="status">This page checks again every second. Nothing is lost if it takes a while.</p>
+      """,
+      refresh: true
+    )
+  end
+
+  @doc """
   The spaces the source offers, with what the catalogue already holds.
 
   A space that has been mirrored before says how many pages it has, so the
@@ -146,7 +167,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     #{truncated}
     #{empty}
     <p><a href="/">Back</a></p>
-    """)
+    """, status: Map.get(meta, :status))
   end
 
   @doc "How the mirror is doing, in the words the run itself reports."
@@ -268,9 +289,19 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         form.everything small { display: block; margin-top: .4rem; text-align: center; }
         form.filter { margin: 0 0 1rem; }
         form.filter input { width: 100%; }
+        .status { margin: 2rem 0 0; font-size: .8125rem; opacity: .5; }
+        .spinner {
+          width: 1.25rem; height: 1.25rem; margin: 0 0 1rem;
+          border: 2px solid rgba(127,127,127,.3); border-top-color: #2f5fe0;
+          border-radius: 50%; animation: spin .8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
       </style>
     </head>
-    <body><main>#{body}</main></body>
+    <body><main>#{body}
+    #{if opts[:status], do: ~s(<p class="status">#{escape(opts[:status])}</p>), else: ""}
+    </main></body>
     </html>
     """
   end

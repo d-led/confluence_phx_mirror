@@ -11,7 +11,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   use Plug.Router
 
-  alias ConfluencePhxMirror.Desktop.{Jobs, Mirror, Settings, Web.Page}
+  alias ConfluencePhxMirror.Desktop.{Jobs, Mirror, Settings, Spaces, Web.Page}
 
   # A site can have a hundred thousand spaces. The screen renders a page of them
   # and says how many it is not showing; nobody scrolls to the hundred
@@ -59,7 +59,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
   get "/spaces" do
     query = String.trim(conn.params["q"] || "")
 
-    case Mirror.spaces() do
+    case Spaces.list() do
       {:ok, spaces} ->
         matching = filter(spaces, query)
 
@@ -69,9 +69,15 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
           Page.spaces(Enum.take(matching, @page_size), Mirror.page_counts(), %{
             query: query,
             known: length(spaces),
-            matching: length(matching)
+            matching: length(matching),
+            status: if(Spaces.state().refreshing?, do: "Refreshing the space list…")
           })
         )
+
+      # Nothing is fetched in the request: no screen waits on Confluence, and a
+      # slow site shows what is happening instead of a blank window.
+      :loading ->
+        send_resp(conn, 200, Page.loading("Asking #{Settings.site() || "the site"} for its spaces."))
 
       {:error, reason} ->
         send_resp(conn, 502, Page.problem(reason))
@@ -87,12 +93,16 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
   end
 
   post "/mirror_all" do
-    with {:ok, spaces} <- Mirror.spaces(),
-         keys = Enum.map(spaces, & &1.key),
-         {:ok, :started} <- Jobs.start_mirror(keys, "all #{length(keys)} spaces") do
-      conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
-    else
-      _nothing_or_busy -> conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
+    case Spaces.list() do
+      {:ok, spaces} ->
+        keys = Enum.map(spaces, & &1.key)
+        _ = Jobs.start_mirror(keys, "all #{length(keys)} spaces")
+        conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
+
+      # Still being fetched: send them back to the screen that shows it, rather
+      # than mirroring a list that is not there yet.
+      _loading_or_failed ->
+        conn |> put_resp_header("location", "/spaces") |> send_resp(303, "")
     end
   end
 

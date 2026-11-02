@@ -28,6 +28,8 @@ defmodule ConfluencePhxMirror.Desktop.Application do
       # Holds the one mirror run the tool can be doing, so a screen can ask how
       # far along it is.
       ConfluencePhxMirror.Desktop.Jobs,
+      # The space list, fetched in the background so no screen waits on it.
+      ConfluencePhxMirror.Desktop.Spaces,
       # Last, so the window it advertises is only reachable once the store
       # behind it exists.
       ConfluencePhxMirror.Desktop.Web.Server
