@@ -81,8 +81,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   A space that has been mirrored before says how many pages it has, so the
   button is a choice between "mirror" and "mirror again" rather than a guess.
   """
-  @spec spaces([map()], %{String.t() => non_neg_integer()}) :: String.t()
-  def spaces(spaces, counts) do
+  @spec spaces([map()], %{String.t() => non_neg_integer()}, map()) :: String.t()
+  def spaces(spaces, counts, meta \\ %{}) do
+    matching = Map.get(meta, :matching, length(spaces))
+    known = Map.get(meta, :known, matching)
+
     rows =
       Enum.map_join(spaces, "", fn space ->
         mirrored = Map.get(counts, space.key, 0)
@@ -103,10 +106,45 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         """
       end)
 
+    # The nuclear option belongs first: on a site with a hundred thousand
+    # spaces it is the only thing most people want, and finding it at the bottom
+    # of a list they cannot scroll is the whole complaint.
+    everything =
+      if matching > 0 do
+        """
+        <form method="post" action="/mirror_all" class="everything">
+          <button type="submit">Mirror all #{matching} spaces</button>
+          <small>One after another, in the order they are listed.</small>
+        </form>
+        """
+      else
+        ""
+      end
+
+    truncated =
+      if matching > length(spaces) do
+        """
+        <p class="note">
+          Showing #{length(spaces)} of #{matching}. Narrow the filter to reach the rest.
+        </p>
+        """
+      else
+        ""
+      end
+
+    empty = if spaces == [], do: ~s(<p class="note">Nothing matches that.</p>), else: ""
+
     document("Spaces", """
     <h1>Spaces</h1>
-    <p class="lede">Choose what to copy from #{escape(Settings.site() || "Confluence")}.</p>
+    <p class="lede">#{known} spaces on #{escape(Settings.site() || "Confluence")}.</p>
+    #{everything}
+    <form method="get" action="/spaces" class="filter" role="search">
+      <input name="q" type="search" value="#{escape(Map.get(meta, :query, ""))}"
+             placeholder="Filter by name or key" autofocus>
+    </form>
     <ul class="spaces">#{rows}</ul>
+    #{truncated}
+    #{empty}
     <p><a href="/">Back</a></p>
     """)
   end
@@ -114,11 +152,14 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   @doc "How the mirror is doing, in the words the run itself reports."
   @spec mirror(map()) :: String.t()
   def mirror(%{state: :running} = status) do
+    across =
+      if status.count > 1, do: " · space #{status.index} of #{status.count}", else: ""
+
     document(
-      "Mirroring #{status.space_key}",
+      "Mirroring #{status.label}",
       """
-      <h1>Mirroring #{escape(status.space_key)}</h1>
-      <p class="lede">#{status.done} of #{status.total} pages</p>
+      <h1>Mirroring #{escape(status.label)}#{escape(across)}</h1>
+      <p class="lede">#{status.done} of #{status.total} pages in this space</p>
       <p class="note">This page follows the run; it is not a progress bar that
       guesses.</p>
       """,
@@ -127,9 +168,9 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   end
 
   def mirror(%{state: :done} = status) do
-    document("Mirrored #{status.space_key}", """
-    <h1>Mirrored #{escape(status.space_key)}</h1>
-    <p class="lede">#{status.total} pages are in the catalogue.</p>
+    document("Mirrored #{status.label}", """
+    <h1>Done</h1>
+    <p class="lede">#{escape(status.label)} #{if status.count > 1, do: "are", else: "is"} in the catalogue.</p>
     <p class="note">Writing the archive comes next.</p>
     <p><a href="/spaces">Back to spaces</a></p>
     """)
@@ -138,7 +179,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   def mirror(%{state: :error} = status) do
     document("Mirror stopped", """
     <h1>Mirror stopped</h1>
-    <p class="lede">#{escape(status.space_key)} could not be finished.</p>
+    <p class="lede">#{escape(status.label)} could not be finished.</p>
     <p class="error" role="alert">#{escape(inspect(status.error))}</p>
     <p><a href="/spaces">Back to spaces</a></p>
     """)
@@ -222,6 +263,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
                            background: transparent; color: #2f5fe0;
                            border: 1px solid rgba(47,95,224,.4); }
         button.secondary:hover { background: rgba(47,95,224,.08); }
+        form.everything { margin: 0 0 1rem; }
+        form.everything button { width: 100%; }
+        form.everything small { display: block; margin-top: .4rem; text-align: center; }
+        form.filter { margin: 0 0 1rem; }
+        form.filter input { width: 100%; }
       </style>
     </head>
     <body><main>#{body}</main></body>

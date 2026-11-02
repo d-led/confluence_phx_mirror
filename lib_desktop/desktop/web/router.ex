@@ -13,6 +13,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   alias ConfluencePhxMirror.Desktop.{Jobs, Mirror, Settings, Web.Page}
 
+  # A site can have a hundred thousand spaces. The screen renders a page of them
+  # and says how many it is not showing; nobody scrolls to the hundred
+  # thousandth, and rendering it would cost the request that found it.
+  @page_size 200
+
   plug :match
   plug Plug.Parsers, parsers: [:urlencoded]
   plug :dispatch
@@ -52,9 +57,21 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
   end
 
   get "/spaces" do
+    query = String.trim(conn.params["q"] || "")
+
     case Mirror.spaces() do
       {:ok, spaces} ->
-        send_resp(conn, 200, Page.spaces(spaces, Mirror.page_counts()))
+        matching = filter(spaces, query)
+
+        send_resp(
+          conn,
+          200,
+          Page.spaces(Enum.take(matching, @page_size), Mirror.page_counts(), %{
+            query: query,
+            known: length(spaces),
+            matching: length(matching)
+          })
+        )
 
       {:error, reason} ->
         send_resp(conn, 502, Page.problem(reason))
@@ -62,11 +79,20 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
   end
 
   post "/mirror" do
-    case Jobs.start_mirror(conn.params["space"]) do
-      # A run already going: sending the reader to watch it is more useful than
-      # a refusal, because it is the same answer they wanted.
-      {:error, :busy} -> conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
+    case Jobs.start_mirror([conn.params["space"]], conn.params["space"]) do
       {:ok, :started} -> conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
+      # A run already going: watching it is the same answer they wanted.
+      {:error, _busy} -> conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
+    end
+  end
+
+  post "/mirror_all" do
+    with {:ok, spaces} <- Mirror.spaces(),
+         keys = Enum.map(spaces, & &1.key),
+         {:ok, :started} <- Jobs.start_mirror(keys, "all #{length(keys)} spaces") do
+      conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
+    else
+      _nothing_or_busy -> conn |> put_resp_header("location", "/mirror") |> send_resp(303, "")
     end
   end
 
@@ -83,6 +109,18 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
       :ready -> %{readiness: "ready", site: Settings.site()}
       {:needs, missing} -> %{readiness: "needs", missing: Enum.map(missing, &Atom.to_string/1)}
     end
+  end
+
+  # Case-insensitive, on the key as well as the name: a person looking for ENG
+  # types ENG, not "Engineering".
+  defp filter(spaces, ""), do: spaces
+
+  defp filter(spaces, query) do
+    needle = String.downcase(query)
+
+    Enum.filter(spaces, fn space ->
+      String.contains?(String.downcase(space.name) <> " " <> String.downcase(space.key), needle)
+    end)
   end
 
   # The reason as a sentence, because the form shows it to a person.
