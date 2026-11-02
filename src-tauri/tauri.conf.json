@@ -13,11 +13,8 @@
     }
   },
   "bundle": {
-    "active": true,
+    "active": false,
     "targets": ["app"],
-    "icon": ["icons/icon.png"],
-    "resources": {
-      "../_build/desktop/rel/confluence_phx_mirror": "rel/confluence_phx_mirror"
-    }
+    "icon": ["icons/icon.png"]
   }
 }
