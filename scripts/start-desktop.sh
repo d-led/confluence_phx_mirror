@@ -46,6 +46,13 @@ build() {
   echo "built"
 }
 
+# A release is a copy, not a link: editing `lib_desktop` leaves the built one
+# serving the old code until it is rebuilt. Anything newer than the binary means
+# the binary is stale.
+stale() {
+  [[ -n "$(find lib lib_desktop config mix.exs mix.lock -newer "$binary" -print -quit 2>/dev/null)" ]]
+}
+
 # `eval` starts no applications, which is all this needs: reading the workspace
 # touches a settings file and never the catalogue.
 where() {
@@ -88,7 +95,7 @@ case "$mode" in
     where
     ;;
   open | rebuild)
-    if [[ "$mode" == rebuild ]] || [[ ! -x "$binary" ]]; then
+    if [[ "$mode" == rebuild ]] || [[ ! -x "$binary" ]] || stale; then
       build
     fi
 

@@ -21,8 +21,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   """
   @spec setup(map()) :: String.t()
   def setup(assigns \\ %{}) do
-    site = escape(assigns[:site] || "")
-    email = escape(assigns[:email] || "")
+    # What is already known is already filled in: the workspace's own values, or
+    # the environment's on a machine that was provisioned rather than set up.
+    site = escape(assigns[:site] || Settings.site() || "")
+    email = escape(assigns[:email] || Settings.email() || "")
 
     error =
       case assigns[:error] do

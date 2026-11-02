@@ -95,13 +95,31 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     end
   end
 
-  @doc "The site this workspace mirrors, as a URL, or `nil`."
+  @doc """
+  The site this workspace mirrors, as a URL, or `nil`.
+
+  The workspace wins; the environment is what an unconfigured one falls back to.
+  That is how a machine provisioned the way the server is provisioned —
+  `CM_CONFLUENCE_SITE`, `CM_ATL_EMAIL`, `CM_ATL_TOKEN` — opens straight onto the
+  mirror instead of a form asking for what it was already told.
+  """
   @spec site() :: String.t() | nil
-  def site, do: read()["site"]
+  def site, do: read()["site"] || from_env("CM_CONFLUENCE_SITE")
 
   @doc "The account it signs in as, or `nil` for a bearer token."
   @spec email() :: String.t() | nil
-  def email, do: read()["email"]
+  def email, do: read()["email"] || from_env("CM_ATL_EMAIL")
+
+  @doc "The token, from the credential store, or the environment's when there is none."
+  @spec secret() :: {:ok, String.t()} | {:error, :not_found}
+  def secret do
+    with {:error, _none} <- stored_secret() do
+      case from_env("CM_ATL_TOKEN") do
+        nil -> {:error, :not_found}
+        token -> {:ok, token}
+      end
+    end
+  end
 
   @doc """
   Whether this workspace can be used to reach Confluence yet.
@@ -135,15 +153,25 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   end
 
   defp require_secret(acc) do
-    case read()["id"] do
-      nil ->
-        acc ++ [:secret]
+    case secret() do
+      {:ok, _secret} -> acc
+      {:error, _reason} -> acc ++ [:secret]
+    end
+  end
 
-      id ->
-        case Credentials.fetch(id) do
-          {:ok, _secret} -> acc
-          {:error, _reason} -> acc ++ [:secret]
-        end
+  # The id is read rather than generated: asking whether a workspace is ready
+  # must not be the thing that creates it.
+  defp stored_secret do
+    case read()["id"] do
+      nil -> {:error, :not_found}
+      id -> Credentials.fetch(id)
+    end
+  end
+
+  defp from_env(name) do
+    case System.get_env(name) do
+      nil -> nil
+      value -> blank(value)
     end
   end
 
@@ -239,7 +267,7 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   """
   @spec begin_session() :: :ok | {:error, term()}
   def begin_session do
-    with {:ok, token} <- Credentials.fetch(id()) do
+    with {:ok, token} <- secret() do
       put_http_source(api_token: token)
     end
   end
