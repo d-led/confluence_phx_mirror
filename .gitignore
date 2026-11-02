@@ -229,3 +229,8 @@ priv/build_info.json
 
 # database dumps taken by scripts/fly-pg-backup.sh
 backups/
+
+# The desktop tool's keyring NIF: Cargo's build tree, and the `.so` Rustler
+# copies next to the build. Both are outputs, per platform and per machine.
+/native/*/target/
+/priv/native/

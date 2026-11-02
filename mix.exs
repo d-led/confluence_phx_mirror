@@ -44,7 +44,7 @@ defmodule ConfluencePhxMirror.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {ConfluencePhxMirror.Application, []},
+      mod: {application_module(Mix.env()), []},
       # os_mon is what answers "how much memory is left": memsup samples the
       # machine, which is the number the admin overview shows next to the
       # mirror's own heap. It also raises a system alarm when the disk or the
@@ -62,8 +62,16 @@ defmodule ConfluencePhxMirror.MixProject do
   end
 
   # Specifies which paths to compile per environment.
+  #
+  # `:desktop` is the export tool: the same `lib/`, its own persistence and
+  # supervision tree in `lib_desktop/`. Dev, test and prod do not compile that
+  # path, so nothing the server ships contains the desktop code.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:desktop), do: ["lib", "lib_desktop"]
   defp elixirc_paths(_), do: ["lib"]
+
+  defp application_module(:desktop), do: ConfluencePhxMirror.Desktop.Application
+  defp application_module(_), do: ConfluencePhxMirror.Application
 
   # Specifies your project dependencies.
   #
@@ -74,6 +82,14 @@ defmodule ConfluencePhxMirror.MixProject do
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
+      # The desktop export tool's store. `only: :desktop` keeps it, and the
+      # driver's C NIF, out of every release the server builds.
+      # See docs/desktop-tool.md.
+      {:ecto_sqlite3, "~> 0.17", only: :desktop},
+      # Compiles `native/confluence_keyring` and loads it as a NIF. `:desktop`
+      # only, or every server build would need a Rust toolchain for a credential
+      # store it does not have.
+      {:rustler, "~> 0.38.0", only: :desktop, runtime: false},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.2.0"},
