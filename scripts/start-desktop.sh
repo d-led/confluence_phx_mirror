@@ -67,43 +67,9 @@ where() {
     IO.puts("readiness:   #{readiness}")
   '
 }
-# The same question the desktop shell will ask the sidecar before deciding
-# between the configuration form and the main screen.
-readiness() {
-  mix run --no-start -e '
-    IO.write(
-      case ConfluencePhxMirror.Desktop.Settings.readiness() do
-        :ready -> "ready"
-        {:needs, missing} -> "needs:" <> Enum.join(missing, ",")
-      end
-    )
-  '
-}
 
-# The configuration dialog, for the CLI. The answers are piped to the child
-# process rather than passed as arguments or environment: a token on a command
-# line is a token in `ps`.
-configure() {
-  local site email secret
-
-  read -r -p "Confluence site URL: " site
-  read -r -p "Account e-mail (blank for a personal access token): " email
-  read -r -s -p "API token (input hidden): " secret
-  echo
-
-  printf '%s\n%s\n%s\n' "$site" "$email" "$secret" | mix run --no-start -e '
-    read_line = fn -> IO.read(:stdio, :line) |> to_string() |> String.trim() end
-
-    attrs = %{site: read_line.(), email: read_line.(), secret: read_line.()}
-
-    case ConfluencePhxMirror.Desktop.Settings.configure(attrs) do
-      {:ok, _id} -> IO.puts("workspace configured")
-      {:error, reason} ->
-        IO.puts(:standard_error, "cannot configure: #{inspect(reason)}")
-        System.halt(1)
-    end
-  '
-}
+# The configuration form is served, not asked for in a terminal: the tool's
+# window opens it on a first run. This script only starts the tool.
 
 case "$mode" in
   where)
@@ -135,16 +101,8 @@ case "$mode" in
       where
     fi
 
-    # Not configured: this is the point where the desktop shell shows the
-    # configuration form instead of the main screen. From a terminal it is the
-    # same form, asking the same question of the same module.
-    if [[ "$(readiness)" != "ready" ]]; then
-      echo "this workspace is not configured yet"
-      configure || exit 1
-      echo
-      where
-    fi
-
+    # Configured or not, the tool starts the same way: the page it serves is the
+    # one that decides — the form on a first run, the mirror afterwards.
     echo "starting the desktop tool — ConfluencePhxMirror.Desktop.Application, SQLite"
     exec iex -S mix
     ;;

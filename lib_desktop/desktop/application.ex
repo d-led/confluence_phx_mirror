@@ -24,7 +24,10 @@ defmodule ConfluencePhxMirror.Desktop.Application do
 
     children = [
       ConfluencePhxMirror.Desktop.Repo,
-      {Task.Supervisor, name: ConfluencePhxMirror.Desktop.TaskSupervisor}
+      {Task.Supervisor, name: ConfluencePhxMirror.Desktop.TaskSupervisor},
+      # Last, so the window it advertises is only reachable once the store
+      # behind it exists.
+      ConfluencePhxMirror.Desktop.Web.Server
     ]
 
     Supervisor.start_link(children,
