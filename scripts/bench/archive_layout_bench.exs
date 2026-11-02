@@ -1,96 +1,104 @@
-# Archive layout: one directory, or two levels of fan-out?
+# Archive layout: one directory, or fan-out?
 #
 #   mix run --no-start scripts/bench/archive_layout_bench.exs
-#   N=200000 mix run --no-start scripts/bench/archive_layout_bench.exs
+#   N=300000 mix run --no-start scripts/bench/archive_layout_bench.exs
 #
-# A space can hold a million pages. With Markdown alongside, and two or three
-# attachments each, an archive is a few million files — so the question is not
-# whether the layout matters but how much. This measures, on the filesystem in
-# front of you, the two things that go wrong when a directory holds everything:
-# writing into it, and listing it.
+# A space can hold a million pages; with Markdown beside them and two or three
+# attachments each, an archive is a few million files. Two layouts are measured
+# here — everything in one directory, and two levels of fan-out (10,000 buckets)
+# — because those are the extremes and the middle has to sit between them.
 #
-# Files are small on purpose. This measures the directory, not the disk: a page's
-# size changes how long the bytes take to reach the platter, and says nothing
-# about whether a directory can hold a million entries.
+# Method. This is the third version of this script; the first two were wrong in
+# ways worth remembering:
+#
+#   * The first called `mkdir_p` per file in the sharded arm and "found" a 15x
+#     regression, which was 100,000 redundant `mkdir` calls.
+#   * The second ran both arms into one volume, so the second was measured on a
+#     fuller disk than the first.
+#
+# So: each arm gets a clean directory and is deleted before the other runs;
+# bucket creation is timed separately from writing; and the bucket list is
+# derived from the shards the ids actually use, so a write can never land in a
+# directory the setup forgot. Files are small on purpose — this measures
+# directories, not disks.
 
 alias ConfluencePhxMirror.Export.Site
 
 n = System.get_env("N", "100000") |> String.to_integer()
-root = Path.join(System.tmp_dir!(), "archive-layout-bench")
+
+# A directory of its own, per run. A fixed name means two runs of this script
+# delete each other's files mid-write, which reads as "no such file or
+# directory" for a directory that was created a moment ago — and costs an hour
+# of looking at the wrong thing.
+root = Path.join(System.tmp_dir!(), "archive-layout-bench-#{System.unique_integer([:positive])}")
 
 File.rm_rf!(root)
 File.mkdir_p!(root)
-
-flat = Path.join(root, "flat")
-sharded = Path.join(root, "sharded")
 
 body = :binary.copy("x", 200)
 
 timed = fn fun ->
   {microseconds, _} = :timer.tc(fun)
-  Float.round(microseconds / 1_000_000, 2)
+  microseconds / 1_000_000
 end
 
-pad = fn number -> number |> Integer.to_string() |> String.pad_leading(2, "0") end
+# ---------------------------------------------------------------------------
+# One directory
+# ---------------------------------------------------------------------------
 
-IO.puts("writing #{n} files each way, on #{inspect(:os.type())}…")
+flat_dir = Path.join(root, "flat")
+File.mkdir_p!(flat_dir)
 
 flat_write =
   timed.(fn ->
-    File.mkdir_p!(flat)
-    for i <- 1..n, do: File.write!(Path.join(flat, "#{i}.html"), body)
+    for i <- 1..n, do: File.write!(Path.join(flat_dir, "#{i}.html"), body)
   end)
 
-# The buckets are made once, before anything is timed. The first version of this
-# script called `mkdir_p` per file and "proved" sharding was 15x slower — it had
-# measured a hundred thousand redundant `mkdir` calls, which is not what an
-# exporter does and not what sharding costs. A one-off cost belongs in its own
-# number, below.
-buckets =
-  for first <- 0..99, second <- 0..99 do
-    directory = Path.join([sharded, pad.(first), pad.(second)])
-    File.mkdir_p!(directory)
-    directory
-  end
+flat_list = timed.(fn -> File.ls!(flat_dir) end)
+File.rm_rf!(flat_dir)
 
-IO.puts("made #{length(buckets)} buckets in #{timed.(fn -> :ok end)}s (before timing)")
+# ---------------------------------------------------------------------------
+# Two levels of fan-out
+# ---------------------------------------------------------------------------
 
-sharded_write =
+deep_dir = Path.join(root, "deep")
+
+shards = for i <- 1..n, into: MapSet.new(), do: Site.shard(i)
+
+deep_buckets =
+  timed.(fn ->
+    Enum.each(shards, fn {first, second} ->
+      File.mkdir_p!(Path.join([deep_dir, first, second]))
+    end)
+  end)
+
+deep_write =
   timed.(fn ->
     for i <- 1..n do
       {first, second} = Site.shard(i)
-      File.write!(Path.join([sharded, first, second, "#{i}.html"]), body)
+      File.write!(Path.join([deep_dir, first, second, "#{i}.html"]), body)
     end
   end)
 
-flat_list = timed.(fn -> File.ls!(flat) end)
-{first, second} = Site.shard(1)
-shard_list = timed.(fn -> File.ls!(Path.join([sharded, first, second])) end)
+deep_list = timed.(fn -> File.ls!(deep_dir) end)
+File.rm_rf!(deep_dir)
 
-flat_stat = timed.(fn -> File.stat!(Path.join(flat, "1.html")) end)
-shard_stat = timed.(fn -> File.stat!(Path.join([sharded, first, second, "1.html"])) end)
+# ---------------------------------------------------------------------------
+# The comparison
+# ---------------------------------------------------------------------------
 
+format = fn seconds -> :io_lib.format("~6.2f", [seconds]) |> to_string() end
+
+IO.puts("#{n} files, #{inspect(:os.type())}")
 IO.puts("")
-
-IO.puts(
-  "write          flat #{flat_write}s   sharded #{sharded_write}s   (#{Float.round(flat_write / max(sharded_write, 0.01), 1)}x)"
-)
-
-IO.puts("list 1 dir     flat #{flat_list}s   one shard #{shard_list}s")
-IO.puts("stat 1 file    flat #{flat_stat}s   sharded #{shard_stat}s")
+IO.puts("                     flat    2 levels")
+IO.puts("write files     #{format.(flat_write)}s    #{format.(deep_write)}s")
+IO.puts("create buckets  #{format.(0.0)}s    #{format.(deep_buckets)}s")
+IO.puts("list root       #{format.(flat_list)}s    #{format.(deep_list)}s")
 IO.puts("")
-IO.puts("directories:   flat 1   sharded #{length(File.ls!(sharded)) * 100}")
-IO.puts("per directory: flat #{n}   sharded ~#{div(n, max(length(File.ls!(sharded)), 1))}")
-
-# A million pages is ten of these runs, and four and a half million files once
-# Markdown and attachments are counted. Linear extrapolation is generous — real
-# filesystems degrade faster than that as a directory grows — so treat these as
-# a floor.
+IO.puts("directories            1        #{MapSet.size(shards)}")
+IO.puts("per directory      #{n}    #{div(n, max(MapSet.size(shards), 1))}")
 IO.puts("")
-IO.puts("extrapolated to 1M pages (2 files each) + 2.5M attachments:")
-
-for {label, seconds} <- [{"flat write", flat_write}, {"sharded write", sharded_write}] do
-  IO.puts("  #{label}: #{Float.round(seconds * 50 / 60, 1)} minutes")
-end
+IO.puts("write ratio: #{Float.round(deep_write / max(flat_write, 0.0001), 2)}x flat")
 
 File.rm_rf!(root)
