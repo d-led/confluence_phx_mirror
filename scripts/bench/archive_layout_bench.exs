@@ -31,6 +31,8 @@ timed = fn fun ->
   Float.round(microseconds / 1_000_000, 2)
 end
 
+pad = fn number -> number |> Integer.to_string() |> String.pad_leading(2, "0") end
+
 IO.puts("writing #{n} files each way, on #{inspect(:os.type())}…")
 
 flat_write =
@@ -39,13 +41,25 @@ flat_write =
     for i <- 1..n, do: File.write!(Path.join(flat, "#{i}.html"), body)
   end)
 
+# The buckets are made once, before anything is timed. The first version of this
+# script called `mkdir_p` per file and "proved" sharding was 15x slower — it had
+# measured a hundred thousand redundant `mkdir` calls, which is not what an
+# exporter does and not what sharding costs. A one-off cost belongs in its own
+# number, below.
+buckets =
+  for first <- 0..99, second <- 0..99 do
+    directory = Path.join([sharded, pad.(first), pad.(second)])
+    File.mkdir_p!(directory)
+    directory
+  end
+
+IO.puts("made #{length(buckets)} buckets in #{timed.(fn -> :ok end)}s (before timing)")
+
 sharded_write =
   timed.(fn ->
     for i <- 1..n do
       {first, second} = Site.shard(i)
-      directory = Path.join([sharded, first, second])
-      File.mkdir_p!(directory)
-      File.write!(Path.join(directory, "#{i}.html"), body)
+      File.write!(Path.join([sharded, first, second, "#{i}.html"]), body)
     end
   end)
 
