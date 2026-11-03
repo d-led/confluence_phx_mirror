@@ -21,6 +21,8 @@ defmodule ConfluencePhxMirror.Desktop.Archive do
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Export.{Artifact, Zip}
 
+  require Logger
+
   @by "this tool"
 
   @doc """
@@ -56,9 +58,16 @@ defmodule ConfluencePhxMirror.Desktop.Archive do
   @spec published?() :: boolean()
   def published?, do: File.exists?(Path.join(dir(), "index.html"))
 
-  @doc "Whether the copy is being written right now."
-  @spec publishing?() :: boolean()
-  def publishing?, do: :persistent_term.get({__MODULE__, :publishing}, false)
+  @doc """
+  What the last publish did: `:idle`, `:publishing`, `{:done, at}` or
+  `{:error, message}`.
+
+  A failure is kept and shown, not just logged: a screen that goes back to
+  "nothing to read yet" after a failed write tells a person their mirror is empty
+  when it is not.
+  """
+  @spec publish_status() :: :idle | :publishing | {:done, DateTime.t()} | {:error, String.t()}
+  def publish_status, do: :persistent_term.get({__MODULE__, :publish}, :idle)
 
   @doc """
   Writes the mirror as a folder of pages the tool can serve.
@@ -67,21 +76,27 @@ defmodule ConfluencePhxMirror.Desktop.Archive do
   of zipped: the window then reads the mirror over loopback, with the same
   links, search page and labels a downloaded copy has, and there is no second
   renderer to drift from the one that ships.
+
+  Written into a staging folder and renamed into place, so a copy that fails
+  halfway is never mistaken for one that finished.
   """
   @spec publish() :: :ok
   def publish do
-    directory = dir()
+    target = dir()
+    staging = target <> ".building"
 
-    File.rm_rf!(directory)
-    File.mkdir_p!(directory)
+    File.rm_rf!(staging)
+    File.mkdir_p!(staging)
 
     %Scope{admin?: true}
     |> Export.site_archive()
     |> Enum.each(fn
-      {path, data, _at} -> write(directory, path, data)
-      {path, data} -> write(directory, path, data)
+      {path, data, _at} -> write(staging, path, data)
+      {path, data} -> write(staging, path, data)
     end)
 
+    File.rm_rf!(target)
+    File.rename!(staging, target)
     :ok
   end
 
@@ -90,27 +105,43 @@ defmodule ConfluencePhxMirror.Desktop.Archive do
 
   One writer at a time, because two would write the same files and the last one
   to finish would win — including when the loser was the one with the newer
-  catalogue.
+  catalogue. A failure ends up in `status/0` and in the log, and the previous
+  copy is left exactly as it was.
   """
   @spec publish_async() :: :started | :publishing
   def publish_async do
-    if publishing?() do
+    if publish_status() == :publishing do
       :publishing
     else
-      :persistent_term.put({__MODULE__, :publishing}, true)
+      :persistent_term.put({__MODULE__, :publish}, :publishing)
 
       {:ok, _pid} =
         Task.Supervisor.start_child(ConfluencePhxMirror.Desktop.TaskSupervisor, fn ->
-          try do
-            publish()
-          after
-            :persistent_term.put({__MODULE__, :publishing}, false)
-          end
+          status =
+            try do
+              publish()
+              {:done, DateTime.utc_now()}
+            rescue
+              error -> failed(error)
+            catch
+              :exit, reason -> failed({:exit, reason})
+            end
+
+          :persistent_term.put({__MODULE__, :publish}, status)
         end)
 
       :started
     end
   end
+
+  defp failed(reason) do
+    message = format_reason(reason)
+    Logger.error("writing the mirror failed: #{message}")
+    {:error, message}
+  end
+
+  defp format_reason(%{__exception__: true} = error), do: Exception.message(error)
+  defp format_reason(reason), do: inspect(reason)
 
   defp write(directory, path, data) do
     data = if is_function(data, 0), do: data.(), else: data
