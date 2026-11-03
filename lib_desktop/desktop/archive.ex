@@ -148,8 +148,29 @@ defmodule ConfluencePhxMirror.Desktop.Archive do
     target = Path.join(directory, path)
 
     File.mkdir_p!(Path.dirname(target))
-    File.write!(target, data)
+    File.write!(target, return_to_the_tool(path, data))
   end
+
+  # The pages the window serves are the exporter's, and their links are the
+  # archive's: they know nothing about the tool that is showing them. A webview
+  # has no address bar and no Back button, so without this every page of the
+  # mirror is a page you cannot leave.
+  #
+  # Only the served copy gets it. The archive stays exactly what Confluence
+  # exports, because a downloaded folder has no tool to return to.
+  @return_bar """
+  <a href="/" data-tool-return style="position:fixed;left:1rem;bottom:1rem;z-index:2147483647;padding:.5rem .85rem;border-radius:999px;border:1px solid color-mix(in srgb, CanvasText 30%, transparent);background:Canvas;color:CanvasText;font:600 13px/1 ui-sans-serif,-apple-system,'Segoe UI',Roboto,sans-serif;text-decoration:none;box-shadow:0 2px 10px rgba(0,0,0,.25)">\u2190 Back to the tool</a>
+  """
+
+  defp return_to_the_tool(path, html) when is_binary(html) do
+    if String.ends_with?(path, ".html") do
+      Regex.replace(~r/<body[^>]*>/i, html, "\\0" <> @return_bar, global: false)
+    else
+      html
+    end
+  end
+
+  defp return_to_the_tool(_path, data), do: data
 
   # The tool has one reader and no authorisation model of its own: everything in
   # its catalogue is theirs, which is what the server's exporter calls an

@@ -113,8 +113,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
   # A run is started and then left alone: the screen it leaves you on follows
   # it, so a mirror that takes an hour does not take an hour of your attention.
   post "/mirror" do
-    _ = Jobs.start_mirror([conn.params["space"]], conn.params["space"])
-    conn |> put_resp_header("location", "/spaces") |> send_resp(303, "")
+    started(conn, Jobs.start_mirror([conn.params["space"]], conn.params["space"]))
   end
 
   post "/mirror_all" do
@@ -129,13 +128,12 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
             do: "all #{length(keys)} spaces",
             else: "#{length(keys)} spaces matching #{inspect(query)}"
 
-        _ = Jobs.start_mirror(keys, label)
-        conn |> put_resp_header("location", "/spaces") |> send_resp(303, "")
+        started(conn, Jobs.start_mirror(keys, label))
 
       # Still being fetched: send them back to the screen that shows it, rather
       # than mirroring a list that is not there yet.
       _loading_or_failed ->
-        conn |> put_resp_header("location", "/spaces") |> send_resp(303, "")
+        redirect_to(conn, "/spaces")
     end
   end
 
@@ -153,6 +151,14 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   # The pages, as a folder the window can browse. Writing them is the same work
   # the archive does, so it is started and followed rather than waited on.
+  #
+  # Asking for the mirror is asking to read it, so a copy that exists is served:
+  # a redirect, one hop, no screen in between. A catalogue nobody has written
+  # yet is written now — the first visit waits on the same job every later visit
+  # finds finished — and only a catalogue with no pages at all has nothing to
+  # offer. This is why "Mirror" in the bar lands on content, during a sync or
+  # after one: the published copy is last night's, and it is readable while the
+  # new one is being fetched.
   get "/site" do
     case Archive.publish_status() do
       :publishing ->
@@ -161,10 +167,18 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
       {:error, message} ->
         send_resp(conn, 500, Page.site({:error, message}))
 
-      _done_or_idle ->
-        if Archive.published?(),
-          do: send_resp(conn, 200, Page.site(:built)),
-          else: send_resp(conn, 200, Page.site(:absent))
+      _idle_or_done ->
+        cond do
+          Archive.published?() ->
+            conn |> put_resp_header("location", "/site/index.html") |> send_resp(302, "")
+
+          Mirror.pages?() ->
+            _ = Archive.publish_async()
+            send_resp(conn, 200, Page.site(:building))
+
+          true ->
+            send_resp(conn, 200, Page.site(:absent))
+        end
     end
   end
 
@@ -213,6 +227,18 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
       :ready -> %{readiness: "ready", site: Settings.site()}
       {:needs, missing} -> %{readiness: "needs", missing: Enum.map(missing, &Atom.to_string/1)}
     end
+  end
+
+  # Where a start leaves the screen. Started: the list, which follows the run.
+  # Refused: the run screen, which says which run is going or what stopped it —
+  # a redirect that hides the answer is how a button appears to do nothing.
+  defp started(conn, {:ok, :started}), do: redirect_to(conn, "/spaces")
+  defp started(conn, {:error, :busy}), do: redirect_to(conn, "/mirror")
+  defp started(conn, {:error, :no_worker}), do: redirect_to(conn, "/mirror")
+  defp started(conn, {:error, :nothing_to_do}), do: redirect_to(conn, "/spaces")
+
+  defp redirect_to(conn, path) do
+    conn |> put_resp_header("location", path) |> send_resp(303, "")
   end
 
   # Case-insensitive, on the key as well as the name, and every word has to

@@ -55,7 +55,7 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
   `{:error, :nothing_to_do}` when there is nothing to mirror.
   """
   @spec start_mirror([String.t()], String.t(), keyword()) ::
-          {:ok, :started} | {:error, :busy | :nothing_to_do}
+          {:ok, :started} | {:error, :busy | :nothing_to_do | :no_worker}
   def start_mirror(space_keys, label, opts \\ []) do
     GenServer.call(__MODULE__, {:start, space_keys, label, Keyword.get(opts, :source)})
   end
@@ -86,11 +86,17 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
   def handle_call({:start, keys, label, source}, _from, _status) do
     status = %{@idle | state: :running, label: label, count: length(keys)}
 
-    Task.Supervisor.start_child(ConfluencePhxMirror.Desktop.TaskSupervisor, fn ->
-      run(keys, source || Source.source())
-    end)
+    case Task.Supervisor.start_child(ConfluencePhxMirror.Desktop.TaskSupervisor, fn ->
+           run(keys, source || Source.source())
+         end) do
+      {:ok, _pid} ->
+        {:reply, {:ok, :started}, status}
 
-    {:reply, {:ok, :started}, status}
+      # Nothing was started, so nothing will report progress. Left as :running,
+      # the screen would follow a run that does not exist.
+      {:error, reason} ->
+        {:reply, {:error, :no_worker}, %{status | state: :error, error: reason}}
+    end
   end
 
   @impl true

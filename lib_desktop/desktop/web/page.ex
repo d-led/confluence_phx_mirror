@@ -156,12 +156,23 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       Enum.map_join(spaces, "", fn space ->
         mirrored = Map.get(counts, space.key, 0)
 
+        # A space that has been mirrored has pages on disk, so the row is also
+        # the way into them: `/site` serves the published copy, which is the
+        # last finished one — readable while the next is being fetched.
+        read =
+          if mirrored > 0 do
+            ~s( <a class="read" href="/site/spaces/#{escape(space.key)}/index.html">Read</a>)
+          else
+            ""
+          end
+
         """
         <li data-search="#{escape(String.downcase(space.name))} #{escape(String.downcase(space.key))}">
           <div>
             <strong>#{escape(space.name)}</strong>
             <small>#{escape(space.key)}#{if mirrored > 0, do: " · #{mirrored} pages mirrored", else: " · not mirrored yet"}</small>
           </div>
+          #{read}
           <form method="post" action="/mirror">
             <input type="hidden" name="space" value="#{escape(space.key)}">
             <button type="submit" class="secondary">#{if mirrored > 0, do: "Mirror again", else: "Mirror"}</button>
@@ -588,6 +599,9 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     """
   end
 
+  # Where "read the mirror" goes. `/site` decides: the pages themselves when
+  # there is a copy, a build when there is something to build, and the reason
+  # when there is neither — so a link here is never a dead end.
   defp escape(value) when is_binary(value), do: Plug.HTML.html_escape(value) |> to_string()
 
   # Every screen but the first-run form carries the same bar, because every

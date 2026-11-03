@@ -71,6 +71,15 @@ defmodule ConfluencePhxMirror.Desktop.Mirror do
     |> Map.new()
   end
 
+  @doc """
+  Whether the catalogue holds a page at all.
+
+  The question the mirror screen asks before it writes one: a catalogue with
+  content has a mirror worth building, and an empty one has nothing to say.
+  """
+  @spec pages?() :: boolean()
+  def pages?, do: page_counts() |> Map.values() |> Enum.sum() > 0
+
   # ---------------------------------------------------------------------------
   # Pass one: the rows, so every page has an id
   # ---------------------------------------------------------------------------

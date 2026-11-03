@@ -5,6 +5,7 @@
 #   scripts/start-desktop.sh               build both halves, then open the window
 #   scripts/start-desktop.sh --in-browser  build the release, then serve it here
 #   scripts/start-desktop.sh --where       build the release, then print the workspace
+#   scripts/start-desktop.sh --app         build the .app bundle, then open that
 #
 # What it opens is the native window: `src-tauri`, which starts the Elixir
 # release as its sidecar, reads the address that release prints, and points a
@@ -24,6 +25,16 @@ release="_build/desktop/rel/$name"
 sidecar="$PWD/$release/bin/$name"
 window="src-tauri/target/debug/confluence-export"
 
+# The double-clickable app: the release window plus a copy of the release
+# inside it, so it runs without this checkout and without this script.
+bundle="src-tauri/target/release/bundle/macos/Confluence Export.app"
+
+# Bundling is a separate config, merged only for `--app`. `bundle.active` in the
+# main config makes `cargo build` (the debug window this script opens every run)
+# fail in tauri-build's resource phase with "Permission denied (os error 13)",
+# and the debug window has no use for a bundle.
+bundle_config="src-tauri/tauri.bundle.conf.json"
+
 # Nothing about the build is configured from here. The two exports further down
 # are for the running app, and they are set after the builds on purpose: cargo
 # re-runs a build script when a variable it reads changes, so a variable that
@@ -32,17 +43,19 @@ window="src-tauri/target/debug/confluence-export"
 mode=open
 
 usage() {
-  echo "scripts/start-desktop.sh [--in-browser | --where]"
+  echo "scripts/start-desktop.sh [--in-browser | --where | --app]"
   echo
   echo "  (no flags)     build the release and the window, then open the window"
   echo "  --in-browser   build the release, then serve it in this terminal"
   echo "  --where        build the release, then print the workspace in use"
+  echo "  --app          build the .app bundle, then open that"
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --in-browser) mode=browser; shift ;;
     --where) mode=where; shift ;;
+    --app) mode=app; shift ;;
     -h | --help) usage; exit 0 ;;
     *)
       echo "unknown option: $1"
@@ -115,6 +128,20 @@ if [[ "$mode" == browser ]]; then
   echo "of output — nothing to wait for, nothing to clean up afterwards."
   echo
   exec "$sidecar" start
+fi
+
+# The bundle is the same window with the release carried inside it, so it runs
+# where this checkout is not. `open -W` waits for it to quit, which is what
+# makes this the last step of a script rather than a process left behind.
+if [[ "$mode" == app ]]; then
+  run "building the app bundle (a minute warm, six cold — the window is rebuilt in release)" \
+    cargo tauri build --bundles app --config "$PWD/$bundle_config"
+
+  echo
+  echo "opening the app. Close its window to come back here; Ctrl-C leaves it running."
+  echo
+  run "the app" open -W "$bundle"
+  exit 0
 fi
 
 run "building the window (nothing to do when neither the shell nor its config changed)" \

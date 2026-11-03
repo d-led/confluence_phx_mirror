@@ -81,10 +81,16 @@ defmodule ConfluencePhxMirror.Desktop.Spaces do
   defp start_refresh(state) do
     parent = self()
 
-    Task.Supervisor.start_child(ConfluencePhxMirror.Desktop.TaskSupervisor, fn ->
-      send(parent, {:loaded, Mirror.spaces()})
-    end)
+    case Task.Supervisor.start_child(ConfluencePhxMirror.Desktop.TaskSupervisor, fn ->
+           send(parent, {:loaded, Mirror.spaces()})
+         end) do
+      {:ok, _pid} ->
+        %{state | refreshing?: true}
 
-    %{state | refreshing?: true}
+      # Nothing was started, so nothing will answer. Saying "still fetching"
+      # forever is the failure that looks like patience.
+      {:error, reason} ->
+        %{state | error: reason, refreshing?: false}
+    end
   end
 end
