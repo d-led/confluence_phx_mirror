@@ -23,21 +23,22 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
   plug Plug.Parsers, parsers: [:urlencoded]
 
   # The mirror itself. Served as files from the folder the exporter wrote, so
-  # what the window reads is byte for byte what the archive contains.
+  # what the window reads is byte for byte what the archive contains. The folder
+  # is a function, not a path: it is resolved per request, because the workspace
+  # folder is something a person can change in the form, and a path read at
+  # compile time is yesterday's answer.
   plug Plug.Static,
     at: "/site",
-    from: Archive.dir(),
+    from: {Archive, :dir, []},
     gzip: false,
     raise_on_missing_assets: false
 
   plug :dispatch
 
+  # The window opens here, configured or not: a tool that hides behind a form may
+  # still have a mirror worth reading, and the folder can be wrong.
   get "/" do
-    if Settings.configured?() do
-      send_resp(conn, 200, Page.home())
-    else
-      conn |> put_resp_header("location", "/setup") |> send_resp(302, "")
-    end
+    send_resp(conn, 200, Page.home())
   end
 
   get "/setup" do
@@ -48,7 +49,8 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
     attrs = %{
       site: conn.params["site"],
       email: conn.params["email"],
-      secret: conn.params["secret"]
+      secret: conn.params["secret"],
+      root: conn.params["root"]
     }
 
     case Settings.configure(attrs) do
@@ -61,7 +63,12 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
         send_resp(
           conn,
           422,
-          Page.setup(%{site: attrs.site, email: attrs.email, error: explain(reason)})
+          Page.setup(%{
+            site: attrs.site,
+            email: attrs.email,
+            root: attrs.root,
+            error: explain(reason)
+          })
         )
     end
   end
@@ -147,10 +154,17 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
   # The pages, as a folder the window can browse. Writing them is the same work
   # the archive does, so it is started and followed rather than waited on.
   get "/site" do
-    cond do
-      Archive.publishing?() -> send_resp(conn, 200, Page.site(:building))
-      Archive.published?() -> send_resp(conn, 200, Page.site(:built))
-      true -> send_resp(conn, 200, Page.site(:absent))
+    case Archive.publish_status() do
+      :publishing ->
+        send_resp(conn, 200, Page.site(:building))
+
+      {:error, message} ->
+        send_resp(conn, 500, Page.site({:error, message}))
+
+      _done_or_idle ->
+        if Archive.published?(),
+          do: send_resp(conn, 200, Page.site(:built)),
+          else: send_resp(conn, 200, Page.site(:absent))
     end
   end
 
@@ -234,4 +248,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   defp explain({:cannot_create, path, reason}),
     do: "The folder #{path} could not be created (#{reason})."
+
+  defp explain({:not_writable, path, reason}),
+    do: "The folder #{path} exists but cannot be written to (#{reason})."
 end
