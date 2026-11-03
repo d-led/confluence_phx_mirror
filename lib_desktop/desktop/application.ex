@@ -33,6 +33,12 @@ defmodule ConfluencePhxMirror.Desktop.Application do
       # starts its children in order, and this one does its work in `start_link`.
       # A fresh install has no tables until it has run.
       ConfluencePhxMirror.Desktop.Setup,
+      # The archive builder: one build at a time, and a file on disk before
+      # anyone downloads it. The server's own, so what the tool hands over is
+      # byte for byte what the deployment hands over — including the supervisor
+      # it starts its work under, which the server's application tree provides.
+      {Task.Supervisor, name: ConfluencePhxMirror.Export.TaskSupervisor},
+      ConfluencePhxMirror.Export.Artifact,
       {Task.Supervisor, name: ConfluencePhxMirror.Desktop.TaskSupervisor},
       # Holds the one mirror run the tool can be doing, so a screen can ask how
       # far along it is.

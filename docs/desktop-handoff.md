@@ -15,6 +15,7 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 | Desktop ingest writes the server's rows | demo space: 37 pages, 1 space, labels/ancestors round-trip as lists |
 | The release boots and serves | `desktop ui: http://127.0.0.1:<port>/`, `Node.alive? == false`, `ensure_all_started` → `:ok` |
 | The tool remembers its site, and reaches it | with `CM_CONFLUENCE_SITE`, `CM_ATL_EMAIL` and `CM_ATL_TOKEN` exported, a boot answers `/state` → `{"missing":["site"],"readiness":"needs"}` and `/` → 302 `/setup`; `POST /setup` → 303 and `ready`; a second boot is still `ready` and `/` → 200; `eval` then shows `api_token` (the value typed in, from the keychain), the recorded `base_url`/`email`, and `:source` = `HttpSource` |
+| The tool exports what it mirrored | `POST /export` → 303, then `/export` says `Ready` and `/export/site.zip` answers 200 `application/zip`, 272 903 bytes; the zip holds 123 files — `index.html` (`<title>dled`), `search.html`, `assets/search-index.js`, `labels/…`, `spaces/MFS/pages/…html` and `.md` — and the same file is on disk under `<workspace>/confluence-mirror-exports/` |
 | Server suite | 1917 passed, 7 excluded, 0 failed (on a clean database, one suite at a time) |
 
 ## What is broken or unfinished
@@ -101,6 +102,14 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
    with `|| true`, leaking a process per launch; it now keeps the PID it started
    (the release script `exec`s the VM, so `$!` is the sidecar) and kills that.
    By hand: `lsof -nP -iTCP:<port> -sTCP:LISTEN -t | xargs kill`.
+8. **The exporter had Postgres-only SQL, in places that only show on SQLite.**
+   `LIMIT NULL` is "no limit" in Postgres and a datatype mismatch in SQLite
+   (`Authorization.readable_spaces/2` emitted it whenever no `:limit` was
+   asked for), and `left(x, n)` does not exist in SQLite at all
+   (`Export.Site.Search`). Both now use what the two engines agree on — no
+   `LIMIT` clause, and `substr/3`. The migration DDL had been made portable;
+   the queries had not, because nothing ran them on the file until the tool
+   could export.
 
 ## Next, in order
 

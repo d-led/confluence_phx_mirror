@@ -71,6 +71,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       <dt>Attachments</dt><dd>#{escape(Settings.blobs())}</dd>
     </dl>
     <p><a href="/spaces">Choose spaces to mirror</a></p>
+    <p><a href="/export">Export a copy</a></p>
     <p><a href="/setup">Change the connection</a></p>
     """)
   end
@@ -115,9 +116,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         <li data-search="#{escape(String.downcase(space.name))} #{escape(String.downcase(space.key))}">
           <div>
             <strong>#{escape(space.name)}</strong>
-            <small>#{escape(space.key)}#{
-          if mirrored > 0, do: " · #{mirrored} pages mirrored", else: " · not mirrored yet"
-        }</small>
+            <small>#{escape(space.key)}#{if mirrored > 0, do: " · #{mirrored} pages mirrored", else: " · not mirrored yet"}</small>
           </div>
           <form method="post" action="/mirror">
             <input type="hidden" name="space" value="#{escape(space.key)}">
@@ -158,20 +157,25 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     # JavaScript off; the script only unhides it as you type.
     # The way out goes at the top. A window with no address bar has only the
     # links it renders, and one at the end of two hundred spaces is not a link.
-    document("Spaces", """
-    <nav class="top"><a href="/">Home</a></nav>
-    <h1>Spaces</h1>
-    <p class="lede">#{known} spaces on #{escape(Settings.site() || "Confluence")}.</p>
-    #{status_banner(Map.get(meta, :run))}
-    #{everything}
-    <form method="get" action="/spaces" class="filter" role="search">
-      <input name="q" type="search" value="#{escape(Map.get(meta, :query, ""))}"
-             placeholder="Filter by name or key" data-filter autofocus>
-    </form>
-    <ul class="spaces">#{rows}</ul>
-    #{truncated}
-    <p class="note" data-empty #{if spaces != [], do: "hidden", else: ""}>Nothing matches that.</p>
-    """, status: Map.get(meta, :status), script: true)
+    document(
+      "Spaces",
+      """
+      <nav class="top"><a href="/">Home</a></nav>
+      <h1>Spaces</h1>
+      <p class="lede">#{known} spaces on #{escape(Settings.site() || "Confluence")}.</p>
+      #{status_banner(Map.get(meta, :run))}
+      #{everything}
+      <form method="get" action="/spaces" class="filter" role="search">
+        <input name="q" type="search" value="#{escape(Map.get(meta, :query, ""))}"
+               placeholder="Filter by name or key" data-filter autofocus>
+      </form>
+      <ul class="spaces">#{rows}</ul>
+      #{truncated}
+      <p class="note" data-empty #{if spaces != [], do: "hidden", else: ""}>Nothing matches that.</p>
+      """,
+      status: Map.get(meta, :status),
+      script: true
+    )
   end
 
   @doc "How the mirror is doing, in the words the run itself reports."
@@ -196,7 +200,8 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     document("Mirrored #{status.label}", """
     <h1>Done</h1>
     <p class="lede">#{escape(status.label)} #{if status.count > 1, do: "are", else: "is"} in the catalogue.</p>
-    <p class="note">Writing the archive comes next.</p>
+    <p class="note">The archive is built from what is here.</p>
+    <p><a href="/export">Export a copy</a></p>
     <p><a href="/spaces">Back to spaces</a></p>
     """)
   end
@@ -214,6 +219,53 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     document("Nothing running", """
     <h1>Nothing is running</h1>
     <p><a href="/spaces">Choose a space</a></p>
+    """)
+  end
+
+  @doc """
+  The archive screen: what is in hand, what is being built, and the press.
+
+  A build takes minutes on a large catalogue, so the page follows it rather than
+  blocking on it — the same bargain the mirror screen makes. Nothing here counts
+  pages: the builder knows how many bytes are on disk, and that is what it says.
+  """
+  @spec export(:absent | {:building, map()} | {:ready, map()}, Path.t()) :: String.t()
+  def export(:absent, _path) do
+    document("Export", """
+    <h1>No copy yet</h1>
+    <p class="lede">A copy is every space in this catalogue as HTML, Markdown and
+    attachments — a folder that opens without this tool.</p>
+    <form method="post" action="/export">
+      <button type="submit">Build the archive</button>
+    </form>
+    <p><a href="/spaces">Back to the spaces</a></p>
+    """)
+  end
+
+  def export({:building, %{bytes: bytes}}, _path) do
+    document(
+      "Preparing…",
+      """
+      <div class="spinner" role="status" aria-label="Preparing"></div>
+      <h1>Preparing the archive</h1>
+      <p class="lede">#{size(bytes)} written so far.</p>
+      <p class="status">This page checks again every second. Nothing is lost if
+      it takes a while.</p>
+      """,
+      refresh: true
+    )
+  end
+
+  def export({:ready, %{bytes: bytes, at: at}}, path) do
+    document("Ready", """
+    <h1>Ready</h1>
+    <p class="lede">#{size(bytes)}, built #{Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")}.</p>
+    <p><a href="/export/site.zip" download>Download the archive</a></p>
+    <p class="status">It is also on disk: <code>#{escape(path)}</code></p>
+    <form method="post" action="/export">
+      <button type="submit">Build it again</button>
+    </form>
+    <p><a href="/">Back</a></p>
     """)
   end
 
@@ -434,4 +486,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   end
 
   defp escape(value) when is_binary(value), do: Plug.HTML.html_escape(value) |> to_string()
+
+  # Bytes as a person reads them. Kilobyte and megabyte because that is what a
+  # browser's download shelf says, so the two agree.
+  defp size(bytes) when bytes < 1024, do: "#{bytes} B"
+  defp size(bytes) when bytes < 1024 * 1024, do: "#{round(bytes / 1024)} kB"
+  defp size(bytes), do: "#{Float.round(bytes / 1024 / 1024, 1)} MB"
 end

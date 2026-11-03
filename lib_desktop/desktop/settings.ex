@@ -210,6 +210,9 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   def apply_runtime_config do
     Application.put_env(@app, :blob_store, LocalStore)
     Application.put_env(@app, :blob_root, blobs())
+    # Archives are built in the workspace too, beside the catalogue they copy:
+    # the folder the home screen names is the folder a person looks in.
+    Application.put_env(@app, :export_tmp_dir, root())
     put_repo_config()
     put_site_config()
     put_source_config()
@@ -317,7 +320,8 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     end
   end
 
-  defp validate_site(attrs) do    case blank(attrs[:site] || attrs["site"]) do
+  defp validate_site(attrs) do
+    case blank(attrs[:site] || attrs["site"]) do
       nil ->
         {:error, :site_required}
 

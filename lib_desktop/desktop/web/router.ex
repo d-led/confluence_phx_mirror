@@ -11,7 +11,8 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   use Plug.Router
 
-  alias ConfluencePhxMirror.Desktop.{Jobs, Mirror, Settings, Spaces, Web.Page}
+  alias ConfluencePhxMirror.Desktop.{Archive, Jobs, Mirror, Settings, Spaces, Web.Page}
+  alias ConfluencePhxMirror.Export
 
   # A site can have a hundred thousand spaces. The screen renders a page of them
   # and says how many it is not showing; nobody scrolls to the hundred
@@ -48,7 +49,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
       {:error, reason} ->
         # 422 rather than a redirect: the browser keeps the form it submitted,
         # and the message is about what it sent.
-        send_resp(conn, 422, Page.setup(%{site: attrs.site, email: attrs.email, error: explain(reason)}))
+        send_resp(
+          conn,
+          422,
+          Page.setup(%{site: attrs.site, email: attrs.email, error: explain(reason)})
+        )
     end
   end
 
@@ -78,7 +83,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
       # Nothing is fetched in the request: no screen waits on Confluence, and a
       # slow site shows what is happening instead of a blank window.
       :loading ->
-        send_resp(conn, 200, Page.loading("Asking #{Settings.site() || "the site"} for its spaces."))
+        send_resp(
+          conn,
+          200,
+          Page.loading("Asking #{Settings.site() || "the site"} for its spaces.")
+        )
 
       {:error, reason} ->
         send_resp(conn, 502, Page.problem(reason))
@@ -126,6 +135,31 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
     send_resp(conn, 200, Page.mirror(Jobs.status()))
   end
 
+  # The archive is a file that leaves the tool, so it is built first and then
+  # sent as a file: a length and ranges are what a download needs to be
+  # resumed, and generating the bytes per request gives neither.
+  get "/export" do
+    send_resp(conn, 200, Page.export(Archive.status(), Archive.path()))
+  end
+
+  post "/export" do
+    _ = Archive.prepare()
+    conn |> put_resp_header("location", "/export") |> send_resp(303, "")
+  end
+
+  get "/export/site.zip" do
+    case Archive.status() do
+      {:ready, %{bytes: bytes}} ->
+        conn
+        |> put_resp_content_type("application/zip")
+        |> put_resp_header("content-disposition", attachment())
+        |> send_file(200, Archive.path(), 0, bytes)
+
+      _not_ready ->
+        send_resp(conn, 404, "The archive has not been built yet.")
+    end
+  end
+
   # What the banner polls. Small and frequent, which is why it is its own route
   # rather than a page.
   get "/status" do
@@ -156,6 +190,12 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
       haystack = String.downcase(space.name) <> " " <> String.downcase(space.key)
       Enum.all?(words, &String.contains?(haystack, &1))
     end)
+  end
+
+  # The name the browser files it under: the site's own name and the moment it
+  # was copied, so two copies of one site are two files rather than a prompt.
+  defp attachment do
+    ~s(attachment; filename="#{Export.site_archive_name()}")
   end
 
   # The reason as a sentence, because the form shows it to a person.
