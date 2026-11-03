@@ -108,6 +108,16 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   end
 
   @doc """
+  Whether a token is already available — in the credential store, or in
+  `CM_ATL_TOKEN`.
+
+  The form asks for a token only when this is false: asking for one the machine
+  already has is how a form teaches people to paste secrets into pages.
+  """
+  @spec secret_available?() :: boolean()
+  def secret_available?, do: secret() != {:error, :not_found}
+
+  @doc """
   Whether this workspace can be used to reach Confluence yet.
 
   `:ready`, or `{:needs, missing}` naming what is absent — so the screen that
@@ -189,8 +199,13 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   def configure(attrs) when is_map(attrs) do
     with {:ok, secret} <- secret(attrs),
          :ok <- store(attrs),
-         :ok <- ensure_root() do
-      Credentials.put(@account, secret)
+         :ok <- ensure_root(),
+         :ok = Credentials.put(@account, secret) do
+      # The token reaches the credential store only here, so the client has to be
+      # told again: `store/1` applied the configuration while the previous secret
+      # was still the only one available, and a connection holding last week's
+      # token fails exactly like one holding none.
+      apply_runtime_config()
     end
   end
 
@@ -332,8 +347,17 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   # about what went wrong.
   defp secret(attrs) do
     case blank(attrs[:secret] || attrs["secret"]) do
-      nil -> {:error, :secret_required}
-      secret -> {:ok, secret}
+      # Blank keeps what the machine already has: the keyring's token, or the one
+      # the environment was started with. Saving then stores it, so the tool no
+      # longer depends on the shell that launched it.
+      nil ->
+        case secret() do
+          {:ok, secret} -> {:ok, secret}
+          {:error, :not_found} -> {:error, :secret_required}
+        end
+
+      secret ->
+        {:ok, secret}
     end
   end
 
