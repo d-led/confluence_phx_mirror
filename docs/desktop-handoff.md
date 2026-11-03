@@ -110,6 +110,12 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
    `LIMIT` clause, and `substr/3`. The migration DDL had been made portable;
    the queries had not, because nothing ran them on the file until the tool
    could export.
+9. **A rate-limit test can race the clock, not the code.** `RateLimit` is Hammer's
+   ETS backend, whose default `:fix_window` is aligned to the wall clock: two
+   deliveries in one test can land either side of a boundary, and then the
+   second counts from zero ("expected 429, got 202"). It failed CI once on a
+   commit with no server change. The webhook tests now ask for a day-wide
+   window — they are about the cap, not about expiry.
 
 ## Next, in order
 
