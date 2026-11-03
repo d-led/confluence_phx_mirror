@@ -370,7 +370,7 @@ defmodule ConfluencePhxMirror.SyncTest do
     end
   end
 
-  describe "people and groups" do
+  describe "identities and groups" do
     test "a people run reads memberships and statuses, and lists no page" do
       assert {:ok, _snapshot} = Sync.run(:snapshot)
       pages = Repo.aggregate(Page, :count)
@@ -378,7 +378,7 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert {:ok, run} = Sync.run(:people)
 
       assert run.mode == "people"
-      assert run.scope == "people and groups"
+      assert run.scope == "identities and groups"
       # Nothing was listed or re-read: the mirror holds the same pages, and the
       # run says it did no page work at all.
       assert Repo.aggregate(Page, :count) == pages

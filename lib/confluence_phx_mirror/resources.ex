@@ -28,6 +28,8 @@ defmodule ConfluencePhxMirror.Resources do
              Ecto.Adapters.Postgres
            )
 
+  @database_label if @adapter == Ecto.Adapters.SQLite3, do: "SQLite", else: "Postgres"
+
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   @doc """
@@ -132,6 +134,16 @@ defmodule ConfluencePhxMirror.Resources do
 
   @doc "How big the database's device is, when the deployment says so."
   def database_capacity, do: Application.get_env(:confluence_phx_mirror, :database_capacity_bytes)
+
+  @doc """
+  What the store is called, for the screen that shows its size.
+
+  The card used to say "Postgres" on a build whose database is a file. Which
+  engine this is, is decided where the adapter is, so the name comes from there
+  too rather than from the screen.
+  """
+  @spec database_label() :: String.t()
+  def database_label, do: @database_label
 
   @doc """
   The machine's memory, and how much of it this VM holds.

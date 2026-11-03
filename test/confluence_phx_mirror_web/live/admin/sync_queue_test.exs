@@ -135,6 +135,45 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncQueueTest do
     assert has_element?(view, "#sync-run-#{run.id} #cancel-sync-#{run.id}")
   end
 
+  test "the strip moves when the run moves, not on the next timer", %{conn: conn} do
+    hold_gate()
+    run = start_running_run(%{"pages" => 3, "phase" => "people"})
+
+    {:ok, view, _html} = live(conn, ~p"/admin")
+    assert view |> element("#sync-phase") |> render() =~ "identities and their groups"
+
+    # What the sync does to its own row, and what a reader sees as a result.
+    Repo.update_all(from(r in ConfluencePhxMirror.Sync.SyncRun, where: r.id == ^run.id),
+      set: [stats: %{"pages" => 9, "phase" => "details"}]
+    )
+
+    Sync.announce(run.id)
+
+    assert view |> element("#sync-phase") |> render() =~ "page bodies"
+    assert render(view) =~ "9"
+  end
+
+  test "an identities run in flight counts members, not pages", %{conn: conn} do
+    hold_gate()
+    run = start_running_run(%{"group_members" => 41, "phase" => "people"}, mode: "people")
+
+    {:ok, view, _html} = live(conn, ~p/\/admin/)
+
+    strip = view |> element("#sync-progress") |> render()
+    assert strip =~ "identities sync"
+    assert strip =~ "reading identities and their groups"
+    assert strip =~ "Members"
+    assert strip =~ "41"
+    refute strip =~ "Pages"
+
+    # It listed no page, so its row says so with a dash, and the number it did
+    # move sits under its name.
+    row = view |> element("#sync-run-#{run.id}") |> render()
+    assert row =~ "identities"
+    assert row =~ "41 members read"
+    assert row =~ "—"
+  end
+
   test "cancelling a running sync records the request", %{conn: conn} do
     hold_gate()
     run = start_running_run(%{"pages" => 10, "changed" => 10, "phase" => "details"})
@@ -156,12 +195,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncQueueTest do
     )
   end
 
-  defp start_running_run(stats) do
+  defp start_running_run(stats, opts \\ []) do
     {:ok, run} =
       %ConfluencePhxMirror.Sync.SyncRun{}
       |> ConfluencePhxMirror.Sync.SyncRun.changeset(%{
         source: "confluence-demo",
-        mode: "snapshot",
+        mode: Keyword.get(opts, :mode, "snapshot"),
         status: "running",
         started_at: DateTime.utc_now() |> DateTime.truncate(:second),
         stats: stats

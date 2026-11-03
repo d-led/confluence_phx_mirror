@@ -124,9 +124,9 @@
             {Time.ago(@last_sync_run.finished_at || @last_sync_run.started_at)}
           </p>
           <p class="text-xs text-base-content/70">
-            {String.capitalize(@last_sync_run.mode)} sync · {@last_sync_run.status} · {@last_sync_run.stats[
-              "pages"
-            ] || 0} pages
+            {ConfluencePhxMirror.Sync.SyncRun.mode_label(@last_sync_run.mode)} sync · {@last_sync_run.status} · {ConfluencePhxMirror.Sync.SyncRun.counted_text(
+              @last_sync_run
+            )}
           </p>
           <p class="text-[11px] text-base-content/70">
             <.local_time at={@last_sync_run.finished_at} />

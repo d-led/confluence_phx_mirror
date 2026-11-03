@@ -54,6 +54,37 @@ defmodule ConfluencePhxMirror.Sync do
   @type mode :: :snapshot | :incremental | :space | :page | :people
   @type report :: {:ok, SyncRun.t()}
 
+  # Screens that watch a run subscribe here. A run's row moves many times a
+  # second while it works, and a screen that polled for it would show every
+  # phase up to a poll interval late.
+  @runs_topic "sync:runs"
+
+  @doc """
+  Tells the calling process when a run starts, moves or ends.
+
+  The message is `{:sync_run_changed, run_id}`: the row is the state, so a
+  reader asks for it again rather than trusting what was pushed.
+  """
+  @spec subscribe_runs() :: :ok | {:error, term()}
+  def subscribe_runs do
+    Phoenix.PubSub.subscribe(ConfluencePhxMirror.PubSub, @runs_topic)
+  end
+
+  @doc """
+  Tells the subscribers of `subscribe_runs/0` that this run's row has changed.
+
+  Anyone who writes a run row outside this module — a migration, a test, the
+  next feature with its own runs — calls this, or the screens watching it go
+  stale until their next heartbeat.
+  """
+  @spec announce(integer() | SyncRun.t()) :: :ok
+  def announce(%SyncRun{id: run_id}), do: announce(run_id)
+
+  def announce(run_id) do
+    Phoenix.PubSub.broadcast(ConfluencePhxMirror.PubSub, @runs_topic, {:sync_run_changed, run_id})
+    :ok
+  end
+
   # ---------------------------------------------------------------------------
   # Public entry points
   # ---------------------------------------------------------------------------
@@ -613,6 +644,8 @@ defmodule ConfluencePhxMirror.Sync do
       Repo.update_all(from(r in SyncRun, where: r.id == ^run_id),
         set: [stats: Map.merge(run.stats || %{}, changes)]
       )
+
+      announce(run_id)
     else
       _no_run -> :ok
     end
@@ -2462,6 +2495,8 @@ defmodule ConfluencePhxMirror.Sync do
       )
     )
 
+    announce(run.id)
+
     run
   end
 
@@ -2486,6 +2521,8 @@ defmodule ConfluencePhxMirror.Sync do
       |> Repo.update()
 
     Audit.log(actor, SyncRun.audit_event_finished(run, trigger: trigger))
+
+    announce(run.id)
 
     # The home page prints the mirror's totals; the reader who arrives after a
     # sync should not be the one who pays for the scans it made stale.
@@ -2592,7 +2629,7 @@ defmodule ConfluencePhxMirror.Sync do
   # can be read without opening the job that asked for it.
   defp scope_of(:space, opts), do: "space #{Keyword.fetch!(opts, :space_key)}"
   defp scope_of(:page, opts), do: "page #{Keyword.fetch!(opts, :confluence_id)}"
-  defp scope_of(:people, _opts), do: "people and groups"
+  defp scope_of(:people, _opts), do: "identities and groups"
   defp scope_of(_mode, _opts), do: "whole site"
 
   defp default_since do
