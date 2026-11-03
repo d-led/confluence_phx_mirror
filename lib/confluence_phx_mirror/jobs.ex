@@ -117,12 +117,19 @@ defmodule ConfluencePhxMirror.Jobs do
     |> Map.new(&{&1.job_id, &1})
   end
 
+  # The newest record per job, in one statement. `distinct: r.job_id` with an
+  # `order_by` is `DISTINCT ON` in Postgres and simply unavailable in SQLite
+  # ("DISTINCT with multiple columns is not supported"), so the newest is named
+  # by a grouped `max(id)` instead — the same row, and portable.
   defp latest_per_job(queryable, job_ids) do
-    from(r in queryable,
-      where: r.job_id in ^job_ids,
-      distinct: r.job_id,
-      order_by: [asc: r.job_id, desc: r.id]
-    )
+    newest =
+      from(r in queryable,
+        where: r.job_id in ^job_ids,
+        group_by: r.job_id,
+        select: max(r.id)
+      )
+
+    from(r in queryable, where: r.job_id in ^job_ids and r.id in subquery(newest))
     |> Repo.all()
   end
 

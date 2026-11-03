@@ -113,6 +113,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
     refute details =~ "badge"
   end
 
+  test "a retried job shows its last attempt, not its first", %{conn: conn} do
+    job = sync_job("MFS") |> with_state("executing")
+    run_of(job, "failed", %{"pages" => 40}, error: "the first attempt died")
+    last = run_of(job, "running", %{"pages" => 90, "phase" => "details"})
+
+    {:ok, view, _html} = live(conn, ~p"/admin/jobs")
+
+    details = view |> element("#job-#{job.id}-details") |> render()
+
+    assert details =~ "/admin/sync-log?run=#{last.id}"
+    refute details =~ "the first attempt died"
+  end
+
   test "the details column says why a job ended badly, in the open", %{conn: conn} do
     job = sync_job("MFS") |> with_state("executing")
 

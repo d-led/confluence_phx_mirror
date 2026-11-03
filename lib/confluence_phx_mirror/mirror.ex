@@ -1649,9 +1649,16 @@ defmodule ConfluencePhxMirror.Mirror do
 
     page
     |> Page.changeset(Map.put(attrs, :space_id, space.id))
+    # `cast/4` reads an empty string as an absent value, and a store may declare
+    # `slug` NOT NULL (a SQLite one does), where an omitted slug is a refused
+    # insert. A title with nothing ASCII in it has the empty segment, which is
+    # what the URLs and `slug_match?/2` already read as "serve by id".
+    |> Ecto.Changeset.put_change(:slug, slug_of(attrs))
     |> revive_page()
     |> Repo.insert_or_update()
   end
+
+  defp slug_of(attrs), do: Map.get(attrs, :slug) || Map.get(attrs, "slug") || ""
 
   @doc "Stores the rendered HTML and the derived search text."
   @spec update_rendered(Page.t(), map()) :: {:ok, Page.t()} | {:error, Ecto.Changeset.t()}
