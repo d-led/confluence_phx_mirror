@@ -21,19 +21,25 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 | The launcher never starts a stale release | `start-desktop.sh` builds `_build/desktop/rel` **and** the window on every run (2.7 s + 4.3 s warm) — see trap 10 |
 | The launcher shows everything it does | no redirect, no `&`, no log file, no `mktemp`: numbered steps with `ok in Ns`, the sidecar run with `exec` so its output is the terminal's, the window's status printed and passed on; `grep` for a redirect or a background job finds none, and `--where` streamed the compiler's own `Compiling 5 files (.ex)` as it ran |
 | The desktop tree is formatted and warning-free | `mix format --check-formatted lib_desktop/…` → 0, `MIX_ENV=desktop mix compile --warnings-as-errors` → 0, five forced modules in **7.7 s** — see trap 14 for what once made the same build 481 s |
+| The tool is type-checked, in its own environment | `MIX_ENV=desktop mix dialyzer` → **Total errors: 0**. It found one real contract bug first (see trap 16). Dialyxir is now a `:desktop` dependency too — `runtime: false`, so the release does not carry it |
+| Every page of the mirror can be left | each served `.html` carries `<a href="/" data-tool-return>`: `index.html` 1, `search.html` 1, `spaces/MFS/index.html` 1; a `.md` in the same folder 0, and the same `index.html` **inside the archive 0** — the served copy is the tool's, the archive stays Confluence's |
+| A refused run lands somewhere that explains it | `POST /mirror` with a run already going → 303 `/mirror` (the run that blocked it), not a silent bounce to the list; `Jobs.start_mirror/3` answers `{:error, :busy | :no_worker | :nothing_to_do}` instead of dropping the result |
+| A task supervisor that refuses says so | `Spaces` and `Jobs` now match `Task.Supervisor.start_child/2`: a refusal becomes an error on the screen, where before the refresh stayed "loading" and the run stayed "running" forever |
+| It is an app you can double-click | `cargo tauri build --bundles app` → `Confluence Export.app`, **50.33 MiB**, carrying the whole release at `Contents/Resources/rel/confluence_phx_mirror` (49 MB). `open` it: the window starts **its own bundled** sidecar on a fresh port, `/` answers "Not connected yet / Still needed: site", and quitting the window stops the sidecar (no port left behind) |
 | Server suite | 1917 passed, 7 excluded, 0 failed (on a clean database, one suite at a time) |
 
 ## What is broken or unfinished
 
 1. **The real Endpoint is not wired into the tool.** An attempt hung inside the
    `:browser` pipeline and was reverted (see "Traps").
-2. **No `.app` yet.** `bundle.active` is `false`; with it on, `cargo build` fails in
-   tauri-build's resource phase with `Permission denied (os error 13)`.
-3. **`lib_desktop/` has never been through dialyzer.** `mix.exs` configures it
-   (`plt_add_apps: [:mix, :ex_unit, :esbuild, :tailwind]`), and CI runs it for
-   `MIX_ENV=test` only, so no PLT exists for `MIX_ENV=desktop` and the tool's own
-   modules are the one tree no type check has seen. The first run will pay for a
-   full PLT build twice, once per environment.
+2. **The `.app` is unsigned.** It runs from the checkout; a copy that travels
+   (download, mail, a DMG) is quarantined by Gatekeeper until it is signed and
+   notarised. That is a shipping step, not a config flag.
+3. **`lib_desktop/` has no unit tests.** The suite runs in `MIX_ENV=test`, which
+   does not compile `lib_desktop`, so the tool is verified by running it (the
+   table above) and by dialyzer, not by a test file. Making it testable means a
+   `:desktop` test environment, or `rustler` in `:test` so the keyring module can
+   compile there — a build-graph change, not a test.
 
 ## What was asked for, and where it stands
 
@@ -51,11 +57,11 @@ here as done is open.
 | "AND WHERE IS THE FUCKING MAIN VIEW???" | **done** — `/site` publishes and serves the mirror |
 | "the confluence url was a local IP" | **done** — the site is only ever what this workspace recorded |
 | "stop all the redirects in start-desktop.sh / don't fail silently" | **done** — no redirect, no `&`, no log file; numbered steps, real statuses |
-| "each screen must have a link to proceed — there's no BACK BUTTON" | **partly** — a bar on every screen but the first-run form; **no way back from a mirrored page into the tool**, and no browser-style Back |
-| "show the screen always; show the folder selection at the beginning; pre-fill the token" | **partly** — written, not verified end to end; the folder field was rendered but ignored by `POST /setup` until 2026-11-03 |
-| "are you swallowing errors?" | **partly** — publish failures reach the screen; `Jobs`, the Spaces refresh and the export path have not been asked |
-| "can you start producing better quality? Use dialyzer" | **open** — no PLT for `MIX_ENV=desktop`; `lib_desktop/` has never been type-checked |
-| "a meaningful desktop app" | **partly** — it mirrors, exports and reads; no `.app`, and the real Endpoint is not wired in |
+| "each screen must have a link to proceed — there's no BACK BUTTON" | **done** — a bar on every screen the tool draws, and every page it serves carries a "← Back to the tool" pill (`data-tool-return`); the archive itself is untouched |
+| "show the screen always; show the folder selection at the beginning; pre-fill the token" | **done** — `/` answers 200 with "Not connected yet / Still needed: site", the form prefills site, account, token and folder, and `POST /setup` now carries the folder through (422 when it cannot be written) |
+| "are you swallowing errors?" | **done** — publish failures are a screen and a log line; `Jobs` and `Spaces` no longer ignore a refused `start_child` (a run that never started used to look like a run in progress); a refused start redirects to the screen that explains it |
+| "can you start producing better quality? Use dialyzer" | **done** — `MIX_ENV=desktop mix dialyzer`: **Total errors: 0**, after it found the `:page` contract bug (trap 16) |
+| "a meaningful desktop app" | **done** for the tool: it mirrors, exports, reads and navigates, and `cargo tauri build --bundles app` produces a 50 MB `Confluence Export.app` that runs with the release inside it. Open: the real Phoenix Endpoint (item 1 below) and signing |
 
 ## Decisions, and why
 
@@ -205,45 +211,49 @@ here as done is open.
     finished. The launcher is honest about the statuses it is given; a build
     stopped by hand never gives it a failing one. Re-run the build after killing
     one, and only kill a build when the build is what is wrong.
+16. **A type can require a field nothing reads.** `Renderer.context` required
+    `:page`, and no line of the renderer ever read it — links come from `:pages`
+    and files from `:attachment_lookup`. Dialyzer believed the contract, which
+    made the tool's `rendered_body/3` a function that `no_return`s, and turned
+    every function below it into "will never be called". Nothing was wrong at
+    run time, which is exactly why only a type check finds it: `:page` is
+    `optional` now, and the tool renders from the source's DTO — before the row
+    exists — with the same markup the server produces.
 
 ## Next, in order
 
-1. **Dialyzer for the tool.** The user asked for it by name ("can you start
-   producing better quality? Use dialyzer") and it is the one quality gate
-   `lib_desktop/` has never passed: `mix.exs` configures dialyzer and CI runs it
-   for `MIX_ENV=test` only, so `MIX_ENV=desktop mix dialyzer` needs its own PLT
-   (`_build/desktop/*.plt`), which does not exist yet. Expect findings around
-   `Page.site/1`'s union, `Settings.configure/1`'s `:ok | {:error, term()}` and
-   `Archive.publish_async/0`'s return.
-2. **The real Endpoint in the tool**, once the tool has the tables its `:browser`
+1. **The real Endpoint in the tool**, once the tool has the tables its `:browser`
    pipeline needs. It hung rather than erroring; the suspicion is the `pool_size: 1`
    SQLite pool, with `AutoAdmin` and `SiteContext` each wanting a connection while
    the request holds one. Read a logged run before changing anything.
-3. **A way back from a mirrored page into the tool.** Every screen the tool draws
-   has the bar; the pages it *serves* are the exporter's and their links never
-   return to it. That is the half of "there's no back button" that is still true.
-4. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
+2. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
    in-process seed) so the same suite can run against the container image.
-5. **The `.app`**: `bundle.active` back on, resources mapped, then
-   `cargo tauri build --bundles app`. Unsigned bundles are quarantined by Gatekeeper,
-   so signing and notarisation are part of shipping, not a config flag.
+3. **Signing and notarisation** for the `.app`, which now builds and runs. Without
+   them a copy that leaves this machine is quarantined by Gatekeeper.
+4. **A test environment for `lib_desktop`**, so the tool's behaviour has tests and
+   not only evidence rows (see "What is broken or unfinished", item 3).
 
 ## Verifying anything, fast
 
 ```sh
 MIX_ENV=dev     mix compile --warnings-as-errors     # server untouched
 MIX_ENV=desktop mix compile --warnings-as-errors     # tool builds
+MIX_ENV=desktop mix dialyzer                         # the tool's types: 0 errors
 mix format --check-formatted                         # includes lib_desktop in its inputs
 pgrep -fl "mix test" | wc -l                          # must be 0, and one mix at a time (trap 14)
 mix test                                              # 1917 / 0
 mix sobelow --exit                                    # security gate
 scripts/start-desktop.sh --where                      # builds both halves, then the workspace
-scripts/start-desktop.sh                              # the app itself
+scripts/start-desktop.sh                              # the debug window from the checkout
+scripts/start-desktop.sh --app                        # the .app, built and opened
 ```
 
 The release step prints `ok in 30–40s` on a machine with nothing else building;
 that is the release copy (49 MB, 2 713 files), not a recompile. The window step
 prints `ok in 1–3s` when nothing changed (trap 12 was 11–15 s, every launch).
+`--app` is `cargo tauri build --bundles app` (six minutes cold, because it is a
+release build of the window with LTO; a minute warm) followed by `open -W`, so
+it returns when the window is closed.
 By hand, if the app is already up: `RELEASE_DISTRIBUTION=none
 _build/desktop/rel/confluence_phx_mirror/bin/confluence_phx_mirror start` prints
 `desktop ui: http://127.0.0.1:<port>/`, and it is stopped by the owner of the
