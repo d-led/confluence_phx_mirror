@@ -218,6 +218,15 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                     <.link navigate={~p"/admin"}><.icon name="hero-cog-6-tooth" class="size-4" />
                     Admin</.link>
                   </li>
+                  <li :if={tool?()}>
+                    <%!-- The desktop tool's own screens (connection, mirroring a
+                    space) are not routes of this application: the app it runs
+                    mounts them beside this one. Nothing renders for a
+                    deployment, because `:desktop_tool` is not set there. --%>
+                    <.link href="/__tool" id="account-tool-link">
+                      <.icon name="hero-window" class="size-4" /> Desktop…
+                    </.link>
+                  </li>
                   <li>
                     <form action={~p"/session"} method="post">
                       <input type="hidden" name="_method" value="delete" />
@@ -521,6 +530,11 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
       _no_ci -> nil
     end
   end
+
+  # Whether this build is the desktop tool, which mounts screens of its own
+  # beside this one. A deployment never sets the key, so nothing in the menu
+  # below moves for it.
+  defp tool?, do: Application.get_env(:confluence_phx_mirror, :desktop_tool, false)
 
   defp brand_initial(name) do
     name

@@ -1,12 +1,19 @@
-defmodule ConfluencePhxMirror.Desktop.Web.Router do
+defmodule ConfluencePhxMirror.Desktop.Web.Tool do
   @moduledoc """
-  The sidecar's few routes: the configuration form, and what the shell asks to
-  decide whether to show it.
+  The tool's own screens, under `/__tool`: the connection, and the run that
+  copies a space into the catalogue.
 
-  Everything here is answered on loopback, for the webview the tool itself
-  opened. There is no session and no login, because there is one reader and the
-  window is the only way in — which is also why the token in the form is written
-  straight to the OS credential store and never echoed back.
+  Everything a reader looks at is the mirror's own — the same LiveViews, the
+  same admin area, at the same paths — and it is served by the endpoint mounted
+  beside this router (see `ConfluencePhxMirror.Desktop.Web.Dispatch`). What is
+  left here is what a single-user tool has and a deployment does not: where its
+  site is and which token reaches it, and a run that goes straight into the
+  catalogue instead of through a queue.
+
+  Everything is answered on loopback, for the webview the tool itself opened.
+  There is no sign-in, because there is one reader and the window is the only
+  way in — which is also why the token in the form is written straight to the
+  OS credential store and never echoed back.
   """
 
   use Plug.Router
@@ -21,31 +28,19 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   plug :match
   plug Plug.Parsers, parsers: [:urlencoded]
-
-  # The mirror itself. Served as files from the folder the exporter wrote, so
-  # what the window reads is byte for byte what the archive contains. The folder
-  # is a function, not a path: it is resolved per request, because the workspace
-  # folder is something a person can change in the form, and a path read at
-  # compile time is yesterday's answer.
-  plug Plug.Static,
-    at: "/site",
-    from: {Archive, :dir, []},
-    gzip: false,
-    raise_on_missing_assets: false
-
   plug :dispatch
 
-  # The window opens here, configured or not: a tool that hides behind a form may
-  # still have a mirror worth reading, and the folder can be wrong.
-  get "/" do
+  # The tool's home: what this workspace is, and the way into the mirror, its
+  # admin area, and the two screens that are this router's own.
+  get "/__tool" do
     send_resp(conn, 200, Page.home())
   end
 
-  get "/setup" do
+  get "/__tool/setup" do
     send_resp(conn, 200, Page.setup(%{}))
   end
 
-  post "/setup" do
+  post "/__tool/setup" do
     attrs = %{
       site: conn.params["site"],
       email: conn.params["email"],
@@ -55,6 +50,8 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
     case Settings.configure(attrs) do
       :ok ->
+        # The connection is what the mirror screens were waiting for, so saving
+        # it lands on the mirror rather than back on the form.
         conn |> put_resp_header("location", "/") |> send_resp(303, "")
 
       {:error, reason} ->
@@ -73,11 +70,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
     end
   end
 
-  get "/state" do
+  get "/__tool/state" do
     send_resp(conn, 200, JSON.encode_to_iodata!(state()))
   end
 
-  get "/spaces" do
+  get "/__tool/spaces" do
     query = String.trim(conn.params["q"] || "")
 
     case Spaces.list() do
@@ -112,11 +109,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   # A run is started and then left alone: the screen it leaves you on follows
   # it, so a mirror that takes an hour does not take an hour of your attention.
-  post "/mirror" do
+  post "/__tool/mirror" do
     started(conn, Jobs.start_mirror([conn.params["space"]], conn.params["space"]))
   end
 
-  post "/mirror_all" do
+  post "/__tool/mirror_all" do
     query = String.trim(conn.params["q"] || "")
 
     case Spaces.list() do
@@ -133,73 +130,35 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
       # Still being fetched: send them back to the screen that shows it, rather
       # than mirroring a list that is not there yet.
       _loading_or_failed ->
-        redirect_to(conn, "/spaces")
+        redirect_to(conn, "/__tool/spaces")
     end
   end
 
   # The live filter. Served rather than inlined: the page is generated HTML, but
   # a script tag pointing at one file is still the only copy of it.
-  get "/assets/app.js" do
+  get "/__tool/assets/app.js" do
     conn
     |> put_resp_content_type("text/javascript")
     |> send_resp(200, Page.script())
   end
 
-  get "/mirror" do
+  get "/__tool/mirror" do
     send_resp(conn, 200, Page.mirror(Jobs.status()))
-  end
-
-  # The pages, as a folder the window can browse. Writing them is the same work
-  # the archive does, so it is started and followed rather than waited on.
-  #
-  # Asking for the mirror is asking to read it, so a copy that exists is served:
-  # a redirect, one hop, no screen in between. A catalogue nobody has written
-  # yet is written now — the first visit waits on the same job every later visit
-  # finds finished — and only a catalogue with no pages at all has nothing to
-  # offer. This is why "Mirror" in the bar lands on content, during a sync or
-  # after one: the published copy is last night's, and it is readable while the
-  # new one is being fetched.
-  get "/site" do
-    case Archive.publish_status() do
-      :publishing ->
-        send_resp(conn, 200, Page.site(:building))
-
-      {:error, message} ->
-        send_resp(conn, 500, Page.site({:error, message}))
-
-      _idle_or_done ->
-        cond do
-          Archive.published?() ->
-            conn |> put_resp_header("location", "/site/index.html") |> send_resp(302, "")
-
-          Mirror.pages?() ->
-            _ = Archive.publish_async()
-            send_resp(conn, 200, Page.site(:building))
-
-          true ->
-            send_resp(conn, 200, Page.site(:absent))
-        end
-    end
-  end
-
-  post "/site" do
-    _ = Archive.publish_async()
-    conn |> put_resp_header("location", "/site") |> send_resp(303, "")
   end
 
   # The archive is a file that leaves the tool, so it is built first and then
   # sent as a file: a length and ranges are what a download needs to be
   # resumed, and generating the bytes per request gives neither.
-  get "/export" do
+  get "/__tool/export" do
     send_resp(conn, 200, Page.export(Archive.status(), Archive.path()))
   end
 
-  post "/export" do
+  post "/__tool/export" do
     _ = Archive.prepare()
-    conn |> put_resp_header("location", "/export") |> send_resp(303, "")
+    conn |> put_resp_header("location", "/__tool/export") |> send_resp(303, "")
   end
 
-  get "/export/site.zip" do
+  get "/__tool/export/site.zip" do
     case Archive.status() do
       {:ready, %{bytes: bytes}} ->
         conn
@@ -214,7 +173,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   # What the banner polls. Small and frequent, which is why it is its own route
   # rather than a page.
-  get "/status" do
+  get "/__tool/status" do
     send_resp(conn, 200, JSON.encode_to_iodata!(Jobs.status()))
   end
 
@@ -222,6 +181,8 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
     send_resp(conn, 404, "not found")
   end
 
+  # What the shell asks to decide whether to show the form: the same question
+  # the first-run redirect asks, answered as data.
   defp state do
     case Settings.readiness() do
       :ready -> %{readiness: "ready", site: Settings.site()}
@@ -232,10 +193,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
   # Where a start leaves the screen. Started: the list, which follows the run.
   # Refused: the run screen, which says which run is going or what stopped it —
   # a redirect that hides the answer is how a button appears to do nothing.
-  defp started(conn, {:ok, :started}), do: redirect_to(conn, "/spaces")
-  defp started(conn, {:error, :busy}), do: redirect_to(conn, "/mirror")
-  defp started(conn, {:error, :no_worker}), do: redirect_to(conn, "/mirror")
-  defp started(conn, {:error, :nothing_to_do}), do: redirect_to(conn, "/spaces")
+  defp started(conn, {:ok, :started}), do: redirect_to(conn, "/__tool/spaces")
+  defp started(conn, {:error, :busy}), do: redirect_to(conn, "/__tool/mirror")
+  defp started(conn, {:error, :no_worker}), do: redirect_to(conn, "/__tool/mirror")
+  defp started(conn, {:error, :nothing_to_do}), do: redirect_to(conn, "/__tool/spaces")
 
   defp redirect_to(conn, path) do
     conn |> put_resp_header("location", path) |> send_resp(303, "")

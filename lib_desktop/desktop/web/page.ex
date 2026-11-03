@@ -58,7 +58,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         Nothing is sent anywhere except the site you name here.
       </p>
       #{error}
-      <form method="post" action="/setup" autocomplete="off">
+      <form method="post" action="/__tool/setup" autocomplete="off">
         <label>
           <span>Site URL</span>
           <input name="site" type="url" required placeholder="https://acme.atlassian.net"
@@ -86,7 +86,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     )
   end
 
-  @doc "The screen the window opens on: what this workspace is, and what to do next."
+  @doc "The tool's home: what this workspace is, and what to do next."
   @spec home() :: String.t()
   def home do
     case Settings.readiness() do
@@ -98,10 +98,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
           <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
           <dt>Attachments</dt><dd>#{escape(Settings.blobs())}</dd>
         </dl>
-        <p><a href="/spaces">Choose spaces to mirror</a></p>
-        <p><a href="/site">Read the mirror</a></p>
-        <p><a href="/export">Export a copy</a></p>
-        <p><a href="/setup">Change the connection</a></p>
+        <p><a href="/">Read the mirror</a></p>
+        <p><a href="/admin">Administration</a></p>
+        <p><a href="/__tool/spaces">Choose spaces to mirror</a></p>
+        <p><a href="/__tool/export">Export a copy</a></p>
+        <p><a href="/__tool/setup">Change the connection</a></p>
         """)
 
       {:needs, missing} ->
@@ -110,9 +111,9 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         <p class="lede">Everything works on what is in the folder below — mirroring
         is what needs a site and a token.</p>
         <p class="error" role="status">Still needed: #{Enum.map_join(missing, ", ", &Atom.to_string/1)}</p>
-        <p><a href="/setup">Connect to Confluence</a></p>
-        <p><a href="/site">Read what is already mirrored</a></p>
-        <p><a href="/export">Export a copy</a></p>
+        <p><a href="/__tool/setup">Connect to Confluence</a></p>
+        <p><a href="/">Read what is already mirrored</a></p>
+        <p><a href="/admin">Administration</a></p>
         <dl>
           <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
         </dl>
@@ -156,12 +157,12 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       Enum.map_join(spaces, "", fn space ->
         mirrored = Map.get(counts, space.key, 0)
 
-        # A space that has been mirrored has pages on disk, so the row is also
-        # the way into them: `/site` serves the published copy, which is the
-        # last finished one — readable while the next is being fetched.
+        # A space that has been mirrored has pages in the catalogue, so the row
+        # is also the way into them: `/spaces/:key` is the mirror's own screen,
+        # over the rows this run wrote.
         read =
           if mirrored > 0 do
-            ~s( <a class="read" href="/site/spaces/#{escape(space.key)}/index.html">Read</a>)
+            ~s( <a class="read" href="/spaces/#{escape(space.key)}">Read</a>)
           else
             ""
           end
@@ -173,7 +174,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
             <small>#{escape(space.key)}#{if mirrored > 0, do: " · #{mirrored} pages mirrored", else: " · not mirrored yet"}</small>
           </div>
           #{read}
-          <form method="post" action="/mirror">
+          <form method="post" action="/__tool/mirror">
             <input type="hidden" name="space" value="#{escape(space.key)}">
             <button type="submit" class="secondary">#{if mirrored > 0, do: "Mirror again", else: "Mirror"}</button>
           </form>
@@ -187,7 +188,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     everything =
       if matching > 0 do
         """
-        <form method="post" action="/mirror_all" class="everything">
+        <form method="post" action="/__tool/mirror_all" class="everything">
           <input type="hidden" name="q" value="#{escape(Map.get(meta, :query, ""))}">
           <button type="submit">Mirror all <span data-count>#{matching}</span> <span data-noun>spaces</span></button>
           <small>One after another, in the order they are listed.</small>
@@ -215,12 +216,12 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     document(
       "Spaces",
       """
-      <nav class="top"><a href="/">Home</a></nav>
+      <nav class="top"><a href="/__tool">Desktop</a></nav>
       <h1>Spaces</h1>
       <p class="lede">#{known} spaces on #{escape(Settings.site() || "Confluence")}.</p>
       #{status_banner(Map.get(meta, :run))}
       #{everything}
-      <form method="get" action="/spaces" class="filter" role="search">
+      <form method="get" action="/__tool/spaces" class="filter" role="search">
         <input name="q" type="search" value="#{escape(Map.get(meta, :query, ""))}"
                placeholder="Filter by name or key" data-filter autofocus>
       </form>
@@ -255,10 +256,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     document("Mirrored #{status.label}", """
     <h1>Done</h1>
     <p class="lede">#{escape(status.label)} #{if status.count > 1, do: "are", else: "is"} in the catalogue.</p>
-    <p class="note">The pages are being written for reading.</p>
-    <p><a href="/site">Read the mirror</a></p>
-    <p><a href="/export">Export a copy</a></p>
-    <p><a href="/spaces">Back to spaces</a></p>
+    <p class="note">The pages are read in the mirror itself.</p>
+    <p><a href="/">Read the mirror</a></p>
+    <p><a href="/__tool/export">Export a copy</a></p>
+    <p><a href="/__tool/spaces">Back to spaces</a></p>
     """)
   end
 
@@ -267,14 +268,14 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     <h1>Mirror stopped</h1>
     <p class="lede">#{escape(status.label)} could not be finished.</p>
     <p class="error" role="alert">#{escape(inspect(status.error))}</p>
-    <p><a href="/spaces">Back to spaces</a></p>
+    <p><a href="/__tool/spaces">Back to spaces</a></p>
     """)
   end
 
   def mirror(_status) do
     document("Nothing running", """
     <h1>Nothing is running</h1>
-    <p><a href="/spaces">Choose a space</a></p>
+    <p><a href="/__tool/spaces">Choose a space</a></p>
     """)
   end
 
@@ -291,10 +292,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     <h1>No copy yet</h1>
     <p class="lede">A copy is every space in this catalogue as HTML, Markdown and
     attachments — a folder that opens without this tool.</p>
-    <form method="post" action="/export">
+    <form method="post" action="/__tool/export">
       <button type="submit">Build the archive</button>
     </form>
-    <p><a href="/spaces">Back to the spaces</a></p>
+    <p><a href="/__tool/spaces">Back to the spaces</a></p>
     """)
   end
 
@@ -316,77 +317,26 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     document("Ready", """
     <h1>Ready</h1>
     <p class="lede">#{size(bytes)}, built #{Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")}.</p>
-    <p><a href="/export/site.zip" download>Download the archive</a></p>
+    <p><a href="/__tool/export/site.zip" download>Download the archive</a></p>
     <p class="status">It is also on disk: <code>#{escape(path)}</code></p>
-    <form method="post" action="/export">
+    <form method="post" action="/__tool/export">
       <button type="submit">Build it again</button>
     </form>
-    <p><a href="/">Back</a></p>
+    <p><a href="/__tool">Back</a></p>
     """)
   end
 
   @doc """
-  The mirror screen: the site itself, or what has to happen before there is one.
-
-  The pages are served from a folder the exporter wrote, so this is the same
-  HTML the archive holds — there is no second renderer to drift from it.
+  The mirror screen after a run: the copy this tool wrote is read in the
+  mirror's own pages, so there is nothing here to rebuild.
   """
-  @spec site(:built | :building | :absent | {:error, String.t()}) :: String.t()
-  def site(:built),
-    do:
-      document("Mirror", """
-      <h1>Read the mirror</h1>
-      <p><a href="/site/index.html">Open the mirror</a></p>
-      <form method="post" action="/site">
-        <button type="submit">Rebuild the pages</button>
-      </form>
-      """)
-
-  def site(:building) do
-    document(
-      "Preparing…",
-      """
-      <div class="spinner" role="status" aria-label="Preparing"></div>
-      <h1>Preparing the mirror</h1>
-      <p class="status">Writing the pages this catalogue holds. This page
-      checks again every second.</p>
-      """,
-      refresh: true
-    )
-  end
-
-  def site(:absent) do
-    document("Mirror", """
-    <h1>Nothing to read yet</h1>
-    <p class="lede">The pages are written from what has been mirrored. Mirror a
-    space first, or write the pages from what is already here.</p>
-    <form method="post" action="/site">
-      <button type="submit">Write the pages</button>
-    </form>
-    <p><a href="/spaces">Choose a space to mirror</a></p>
-    """)
-  end
-
-  def site({:error, message}) do
-    document("The pages could not be written", """
-    <h1>The pages could not be written</h1>
-    <p class="error" role="alert">#{escape(message)}</p>
-    <p class="note">What was here before is untouched.</p>
-    <form method="post" action="/site">
-      <button type="submit">Try again</button>
-    </form>
-    <p><a href="/">Back</a></p>
-    """)
-  end
-
-  @doc "A problem reaching the source."
   @spec problem(term()) :: String.t()
   def problem(reason) do
     document("Confluence could not be reached", """
     <h1>Confluence could not be reached</h1>
     <p class="lede">#{escape(Settings.site() || "The site")} did not answer.</p>
     <p class="error" role="alert">#{escape(inspect(reason))}</p>
-    <p><a href="/spaces">Try again</a></p>
+    <p><a href="/__tool/spaces">Try again</a></p>
     """)
   end
 
@@ -401,10 +351,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   @spec status_banner(map() | nil) :: String.t()
   def status_banner(%{state: :running} = status) do
     """
-    <div class="run" data-run data-status-url="/status">
+    <div class="run" data-run data-status-url="/__tool/status">
       <span class="dot" aria-hidden="true"></span>
       <span data-run-text>#{escape(run_text(status))}</span>
-      <a href="/mirror">details</a>
+      <a href="/__tool/mirror">details</a>
     </div>
     """
   end
@@ -413,7 +363,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     """
     <div class="run error">
       <span data-run-text>Stopped: #{escape(status.label || "the run")}</span>
-      <a href="/mirror">details</a>
+      <a href="/__tool/mirror">details</a>
     </div>
     """
   end
@@ -599,23 +549,23 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     """
   end
 
-  # Where "read the mirror" goes. `/site` decides: the pages themselves when
-  # there is a copy, a build when there is something to build, and the reason
-  # when there is neither — so a link here is never a dead end.
   defp escape(value) when is_binary(value), do: Plug.HTML.html_escape(value) |> to_string()
 
   # Every screen but the first-run form carries the same bar, because every
   # screen but that one can lead somewhere else: a page you cannot leave is how
-  # a tool feels like a dead end.
+  # a tool feels like a dead end. The first two entries leave this router for
+  # the mirror's own screens, which is where the reading and the administration
+  # happen.
   defp nav do
     """
     <nav class="nav">
-      <a href="/">Home</a>
-      <a href="/site">Mirror</a>
-      <a href="/spaces">Spaces</a>
-      <a href="/mirror">Runs</a>
-      <a href="/export">Export</a>
-      <a href="/setup">Connection</a>
+      <a href="/__tool">Desktop</a>
+      <a href="/">Mirror</a>
+      <a href="/admin">Admin</a>
+      <a href="/__tool/spaces">Spaces</a>
+      <a href="/__tool/mirror">Runs</a>
+      <a href="/__tool/export">Export</a>
+      <a href="/__tool/setup">Connection</a>
     </nav>
     """
   end
