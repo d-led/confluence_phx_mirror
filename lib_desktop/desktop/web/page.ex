@@ -27,16 +27,20 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     # still has to be saved for the tool to use it.
     site = escape(assigns[:site] || Settings.site() || Settings.suggested_site() || "")
     email = escape(assigns[:email] || Settings.email() || Settings.suggested_email() || "")
+    folder = escape(assigns[:root] || Settings.root() || "")
 
-    # The token is the one field never filled in: a password in the page source
-    # is a password in a screenshot, a cache and a crash dump. When the machine
-    # already has one — the keyring's, or `CM_ATL_TOKEN`'s — the field is not
-    # asked for at all, and leaving it blank keeps that one.
-    {secret_required, secret_hint} =
-      if Settings.secret_available?() do
-        {"", "A token is already available on this machine — leave this blank to keep it."}
-      else
-        {" required", "Stored in this machine's credential store, never in a file."}
+    # The token is filled in from whatever this machine already has — the
+    # credential store's, or `CM_ATL_TOKEN`'s — because a rotated token has to be
+    # replaced here and a field you cannot see is a field you cannot correct.
+    # It is a password input on a loopback page, which is the trade this tool
+    # makes: one reader, one machine, and no secret typed twice.
+    {secret_required, secret_hint, existing} =
+      case Settings.secret() do
+        {:ok, secret} ->
+          {"", "A token is stored here. Leave it, or replace it.", escape(secret)}
+
+        {:error, _none} ->
+          {" required", "Stored in this machine's credential store, never in a file.", ""}
       end
 
     error =
@@ -67,8 +71,13 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         </label>
         <label>
           <span>API token</span>
-          <input name="secret" type="password"#{secret_required}>
+          <input name="secret" type="password" value="#{existing}"#{secret_required}>
           <small>#{secret_hint}</small>
+        </label>
+        <label>
+          <span>Folder</span>
+          <input name="root" type="text" value="#{folder}" spellcheck="false">
+          <small>Where the catalogue, the attachments and the pages are kept.</small>
         </label>
         <button type="submit">Save and continue</button>
       </form>
@@ -77,21 +86,38 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     )
   end
 
-  @doc "The screen shown once the connection is configured."
+  @doc "The screen the window opens on: what this workspace is, and what to do next."
   @spec home() :: String.t()
   def home do
-    document("Confluence mirror export", """
-    <h1>Ready</h1>
-    <p class="lede">This workspace mirrors <strong>#{escape(Settings.site() || "")}</strong>.</p>
-    <dl>
-      <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
-      <dt>Attachments</dt><dd>#{escape(Settings.blobs())}</dd>
-    </dl>
-    <p><a href="/spaces">Choose spaces to mirror</a></p>
-    <p><a href="/site">Read the mirror</a></p>
-    <p><a href="/export">Export a copy</a></p>
-    <p><a href="/setup">Change the connection</a></p>
-    """)
+    case Settings.readiness() do
+      :ready ->
+        document("Confluence mirror export", """
+        <h1>Ready</h1>
+        <p class="lede">This workspace mirrors <strong>#{escape(Settings.site() || "")}</strong>.</p>
+        <dl>
+          <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
+          <dt>Attachments</dt><dd>#{escape(Settings.blobs())}</dd>
+        </dl>
+        <p><a href="/spaces">Choose spaces to mirror</a></p>
+        <p><a href="/site">Read the mirror</a></p>
+        <p><a href="/export">Export a copy</a></p>
+        <p><a href="/setup">Change the connection</a></p>
+        """)
+
+      {:needs, missing} ->
+        document("Confluence mirror export", """
+        <h1>Not connected yet</h1>
+        <p class="lede">Everything works on what is in the folder below — mirroring
+        is what needs a site and a token.</p>
+        <p class="error" role="status">Still needed: #{Enum.map_join(missing, ", ", &Atom.to_string/1)}</p>
+        <p><a href="/setup">Connect to Confluence</a></p>
+        <p><a href="/site">Read what is already mirrored</a></p>
+        <p><a href="/export">Export a copy</a></p>
+        <dl>
+          <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
+        </dl>
+        """)
+    end
   end
 
   @doc """
@@ -294,7 +320,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   The pages are served from a folder the exporter wrote, so this is the same
   HTML the archive holds — there is no second renderer to drift from it.
   """
-  @spec site(:built | :building | :absent) :: String.t()
+  @spec site(:built | :building | :absent | {:error, String.t()}) :: String.t()
   def site(:built),
     do:
       document("Mirror", """
@@ -327,6 +353,18 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       <button type="submit">Write the pages</button>
     </form>
     <p><a href="/spaces">Choose a space to mirror</a></p>
+    """)
+  end
+
+  def site({:error, message}) do
+    document("The pages could not be written", """
+    <h1>The pages could not be written</h1>
+    <p class="error" role="alert">#{escape(message)}</p>
+    <p class="note">What was here before is untouched.</p>
+    <form method="post" action="/site">
+      <button type="submit">Try again</button>
+    </form>
+    <p><a href="/">Back</a></p>
     """)
   end
 
