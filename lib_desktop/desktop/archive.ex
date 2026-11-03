@@ -17,6 +17,7 @@ defmodule ConfluencePhxMirror.Desktop.Archive do
   """
 
   alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Desktop.Settings
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Export.{Artifact, Zip}
 
@@ -46,6 +47,78 @@ defmodule ConfluencePhxMirror.Desktop.Archive do
   @doc "Where the archive is written."
   @spec path() :: Path.t()
   def path, do: Artifact.path(Export.site_artifact())
+
+  @doc "The folder the browsable copy is written to."
+  @spec dir() :: Path.t()
+  def dir, do: Path.join(Settings.root(), "site")
+
+  @doc "Whether a browsable copy exists."
+  @spec published?() :: boolean()
+  def published?, do: File.exists?(Path.join(dir(), "index.html"))
+
+  @doc "Whether the copy is being written right now."
+  @spec publishing?() :: boolean()
+  def publishing?, do: :persistent_term.get({__MODULE__, :publishing}, false)
+
+  @doc """
+  Writes the mirror as a folder of pages the tool can serve.
+
+  The entries are the archive's own (`Site.archive/3`), written to disk instead
+  of zipped: the window then reads the mirror over loopback, with the same
+  links, search page and labels a downloaded copy has, and there is no second
+  renderer to drift from the one that ships.
+  """
+  @spec publish() :: :ok
+  def publish do
+    directory = dir()
+
+    File.rm_rf!(directory)
+    File.mkdir_p!(directory)
+
+    %Scope{admin?: true}
+    |> Export.site_archive()
+    |> Enum.each(fn
+      {path, data, _at} -> write(directory, path, data)
+      {path, data} -> write(directory, path, data)
+    end)
+
+    :ok
+  end
+
+  @doc """
+  Starts writing the browsable copy, unless it is already being written.
+
+  One writer at a time, because two would write the same files and the last one
+  to finish would win — including when the loser was the one with the newer
+  catalogue.
+  """
+  @spec publish_async() :: :started | :publishing
+  def publish_async do
+    if publishing?() do
+      :publishing
+    else
+      :persistent_term.put({__MODULE__, :publishing}, true)
+
+      {:ok, _pid} =
+        Task.Supervisor.start_child(ConfluencePhxMirror.Desktop.TaskSupervisor, fn ->
+          try do
+            publish()
+          after
+            :persistent_term.put({__MODULE__, :publishing}, false)
+          end
+        end)
+
+      :started
+    end
+  end
+
+  defp write(directory, path, data) do
+    data = if is_function(data, 0), do: data.(), else: data
+    target = Path.join(directory, path)
+
+    File.mkdir_p!(Path.dirname(target))
+    File.write!(target, data)
+  end
 
   # The tool has one reader and no authorisation model of its own: everything in
   # its catalogue is theirs, which is what the server's exporter calls an

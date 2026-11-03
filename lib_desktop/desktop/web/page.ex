@@ -28,38 +28,53 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     site = escape(assigns[:site] || Settings.site() || Settings.suggested_site() || "")
     email = escape(assigns[:email] || Settings.email() || Settings.suggested_email() || "")
 
+    # The token is the one field never filled in: a password in the page source
+    # is a password in a screenshot, a cache and a crash dump. When the machine
+    # already has one — the keyring's, or `CM_ATL_TOKEN`'s — the field is not
+    # asked for at all, and leaving it blank keeps that one.
+    {secret_required, secret_hint} =
+      if Settings.secret_available?() do
+        {"", "A token is already available on this machine — leave this blank to keep it."}
+      else
+        {" required", "Stored in this machine's credential store, never in a file."}
+      end
+
     error =
       case assigns[:error] do
         nil -> ""
         message -> ~s(<p class="error" role="alert">#{escape(message)}</p>)
       end
 
-    document("Set up the mirror", """
-    <h1>Connect to Confluence</h1>
-    <p class="lede">
-      The tool keeps a copy of the pages you choose in a folder on this machine.
-      Nothing is sent anywhere except the site you name here.
-    </p>
-    #{error}
-    <form method="post" action="/setup" autocomplete="off">
-      <label>
-        <span>Site URL</span>
-        <input name="site" type="url" required placeholder="https://acme.atlassian.net"
-               value="#{site}" autofocus>
-      </label>
-      <label>
-        <span>Account e-mail</span>
-        <input name="email" type="email" placeholder="you@acme.com" value="#{email}">
-        <small>Leave blank for a Server/Data Center personal access token.</small>
-      </label>
-      <label>
-        <span>API token</span>
-        <input name="secret" type="password" required>
-        <small>Stored in this machine's credential store, never in a file.</small>
-      </label>
-      <button type="submit">Save and continue</button>
-    </form>
-    """)
+    document(
+      "Set up the mirror",
+      """
+      <h1>Connect to Confluence</h1>
+      <p class="lede">
+        The tool keeps a copy of the pages you choose in a folder on this machine.
+        Nothing is sent anywhere except the site you name here.
+      </p>
+      #{error}
+      <form method="post" action="/setup" autocomplete="off">
+        <label>
+          <span>Site URL</span>
+          <input name="site" type="url" required placeholder="https://acme.atlassian.net"
+                 value="#{site}" autofocus>
+        </label>
+        <label>
+          <span>Account e-mail</span>
+          <input name="email" type="email" placeholder="you@acme.com" value="#{email}">
+          <small>Leave blank for a Server/Data Center personal access token.</small>
+        </label>
+        <label>
+          <span>API token</span>
+          <input name="secret" type="password"#{secret_required}>
+          <small>#{secret_hint}</small>
+        </label>
+        <button type="submit">Save and continue</button>
+      </form>
+      """,
+      nav: false
+    )
   end
 
   @doc "The screen shown once the connection is configured."
@@ -73,6 +88,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       <dt>Attachments</dt><dd>#{escape(Settings.blobs())}</dd>
     </dl>
     <p><a href="/spaces">Choose spaces to mirror</a></p>
+    <p><a href="/site">Read the mirror</a></p>
     <p><a href="/export">Export a copy</a></p>
     <p><a href="/setup">Change the connection</a></p>
     """)
@@ -202,7 +218,8 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     document("Mirrored #{status.label}", """
     <h1>Done</h1>
     <p class="lede">#{escape(status.label)} #{if status.count > 1, do: "are", else: "is"} in the catalogue.</p>
-    <p class="note">The archive is built from what is here.</p>
+    <p class="note">The pages are being written for reading.</p>
+    <p><a href="/site">Read the mirror</a></p>
     <p><a href="/export">Export a copy</a></p>
     <p><a href="/spaces">Back to spaces</a></p>
     """)
@@ -268,6 +285,48 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       <button type="submit">Build it again</button>
     </form>
     <p><a href="/">Back</a></p>
+    """)
+  end
+
+  @doc """
+  The mirror screen: the site itself, or what has to happen before there is one.
+
+  The pages are served from a folder the exporter wrote, so this is the same
+  HTML the archive holds — there is no second renderer to drift from it.
+  """
+  @spec site(:built | :building | :absent) :: String.t()
+  def site(:built),
+    do:
+      document("Mirror", """
+      <h1>Read the mirror</h1>
+      <p><a href="/site/index.html">Open the mirror</a></p>
+      <form method="post" action="/site">
+        <button type="submit">Rebuild the pages</button>
+      </form>
+      """)
+
+  def site(:building) do
+    document(
+      "Preparing…",
+      """
+      <div class="spinner" role="status" aria-label="Preparing"></div>
+      <h1>Preparing the mirror</h1>
+      <p class="status">Writing the pages this catalogue holds. This page
+      checks again every second.</p>
+      """,
+      refresh: true
+    )
+  end
+
+  def site(:absent) do
+    document("Mirror", """
+    <h1>Nothing to read yet</h1>
+    <p class="lede">The pages are written from what has been mirrored. Mirror a
+    space first, or write the pages from what is already here.</p>
+    <form method="post" action="/site">
+      <button type="submit">Write the pages</button>
+    </form>
+    <p><a href="/spaces">Choose a space to mirror</a></p>
     """)
   end
 
@@ -421,6 +480,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
           background: Canvas; color: CanvasText;
         }
         main { width: 100%; max-width: 27rem; }
+        .nav { display: flex; flex-wrap: wrap; gap: .75rem; margin: 0 0 1.5rem;
+               font-size: .8125rem; }
+        .nav a { color: inherit; opacity: .65; text-decoration: none; }
+        .nav a:hover { opacity: 1; text-decoration: underline; }
         h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 .5rem; }
         .lede { margin: 0 0 1.75rem; opacity: .75; }
         .note { opacity: .6; font-size: .875rem; }
@@ -480,7 +543,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
       </style>
     </head>
-    <body><main>#{body}
+    <body><main>#{if opts[:nav] == false, do: "", else: nav()}#{body}
     #{if opts[:status], do: ~s(<p class="status">#{escape(opts[:status])}</p>), else: ""}
     </main></body>
     </html>
@@ -488,6 +551,22 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   end
 
   defp escape(value) when is_binary(value), do: Plug.HTML.html_escape(value) |> to_string()
+
+  # Every screen but the first-run form carries the same bar, because every
+  # screen but that one can lead somewhere else: a page you cannot leave is how
+  # a tool feels like a dead end.
+  defp nav do
+    """
+    <nav class="nav">
+      <a href="/">Home</a>
+      <a href="/site">Mirror</a>
+      <a href="/spaces">Spaces</a>
+      <a href="/mirror">Runs</a>
+      <a href="/export">Export</a>
+      <a href="/setup">Connection</a>
+    </nav>
+    """
+  end
 
   # Bytes as a person reads them. Kilobyte and megabyte because that is what a
   # browser's download shelf says, so the two agree.

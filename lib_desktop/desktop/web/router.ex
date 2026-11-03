@@ -21,6 +21,15 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   plug :match
   plug Plug.Parsers, parsers: [:urlencoded]
+
+  # The mirror itself. Served as files from the folder the exporter wrote, so
+  # what the window reads is byte for byte what the archive contains.
+  plug Plug.Static,
+    at: "/site",
+    from: Archive.dir(),
+    gzip: false,
+    raise_on_missing_assets: false
+
   plug :dispatch
 
   get "/" do
@@ -133,6 +142,21 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
 
   get "/mirror" do
     send_resp(conn, 200, Page.mirror(Jobs.status()))
+  end
+
+  # The pages, as a folder the window can browse. Writing them is the same work
+  # the archive does, so it is started and followed rather than waited on.
+  get "/site" do
+    cond do
+      Archive.publishing?() -> send_resp(conn, 200, Page.site(:building))
+      Archive.published?() -> send_resp(conn, 200, Page.site(:built))
+      true -> send_resp(conn, 200, Page.site(:absent))
+    end
+  end
+
+  post "/site" do
+    _ = Archive.publish_async()
+    conn |> put_resp_header("location", "/site") |> send_resp(303, "")
   end
 
   # The archive is a file that leaves the tool, so it is built first and then

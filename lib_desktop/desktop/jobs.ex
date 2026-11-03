@@ -105,6 +105,10 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
   end
 
   def handle_cast({:finished, :ok}, status) do
+    # What was just mirrored is what a reader wants to open, so the browsable
+    # copy is rewritten now rather than when somebody asks for it.
+    _ = ConfluencePhxMirror.Desktop.Archive.publish_async()
+
     {:noreply, %{status | state: :done}}
   end
 
