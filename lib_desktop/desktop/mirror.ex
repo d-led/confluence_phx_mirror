@@ -43,6 +43,13 @@ defmodule ConfluencePhxMirror.Desktop.Mirror do
     source = Keyword.get(opts, :source, Source.source())
     on_page = Keyword.get(opts, :on_page, fn _done, _total -> :ok end)
 
+    # The choice is recorded where the site-wide sync reads it (`Sync.SpaceScope`),
+    # not only here. Otherwise "mirror this one space" and the overview's "Sync now"
+    # are two different opinions, and the second one — with nothing named — means the
+    # whole site.
+    _ =
+      ConfluencePhxMirror.Sync.SpaceScope.add(space_key, ConfluencePhxMirror.Audit.system_actor())
+
     with {:ok, dto} <- find_space(source, space_key),
          {:ok, space} <- upsert_space(dto),
          {:ok, dtos} <- source.pages(space_key, []),
