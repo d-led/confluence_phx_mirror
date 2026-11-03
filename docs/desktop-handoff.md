@@ -30,16 +30,23 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 
 ## What is broken or unfinished
 
-1. **The real Endpoint is not wired into the tool.** An attempt hung inside the
-   `:browser` pipeline and was reverted (see "Traps").
-2. **The `.app` is unsigned.** It runs from the checkout; a copy that travels
-   (download, mail, a DMG) is quarantined by Gatekeeper until it is signed and
-   notarised. That is a shipping step, not a config flag.
-3. **`lib_desktop/` has no unit tests.** The suite runs in `MIX_ENV=test`, which
-   does not compile `lib_desktop`, so the tool is verified by running it (the
-   table above) and by dialyzer, not by a test file. Making it testable means a
-   `:desktop` test environment, or `rustler` in `:test` so the keyring module can
-   compile there — a build-graph change, not a test.
+1. **No rebuild control.** `GET /site` now redirects into the pages, which left
+   `Page.site(:built)` — the screen that held "Rebuild the pages" — unreachable.
+   `POST /site` still works; nothing offers it. Put it on the home screen.
+2. **The window opens on a status screen, not on the mirror.** `/site` gets you
+   into the content in one hop, but `/` is still "Ready" or "Not connected yet".
+3. **No search, page list or single-page mirror in the tool.** All three exist
+   only inside the exported pages (`/site/search.html`, the space index).
+4. **The real Endpoint is not wired into the tool.** An attempt hung inside the
+   `:browser` pipeline and was reverted (see "Traps"); the suspicion is the
+   `pool_size: 1` SQLite pool.
+5. **The `.app` is unsigned.** It runs from this machine; a copy that travels is
+   quarantined by Gatekeeper until it is signed and notarised.
+6. **`lib_desktop/` has no unit tests**, and CI neither compiles nor dialyses
+   `MIX_ENV=desktop`. The tool is verified by running it and by
+   `MIX_ENV=desktop mix dialyzer` (0 errors), not by a test file.
+7. **The suite is flaky under load.** `DBConnection` checkout timeouts become
+   `OwnershipError`s in six unrelated files; they pass alone. Not fixed.
 
 ## What was asked for, and where it stands
 
@@ -222,16 +229,22 @@ here as done is open.
 
 ## Next, in order
 
-1. **The real Endpoint in the tool**, once the tool has the tables its `:browser`
+1. **Put a rebuild control back**, and put the actions on the content instead of
+   behind it: home links `/site`, `/site` shows the pages, and "Rebuild" lives on
+   the screen the nav can reach (item 1 above — a regression from today).
+2. **Search, page list and single-page mirror in the tool.** These are what
+   "usable" still means: find a page without opening a folder, and mirror one
+   without mirroring a space.
+3. **The real Endpoint in the tool**, once the tool has the tables its `:browser`
    pipeline needs. It hung rather than erroring; the suspicion is the `pool_size: 1`
    SQLite pool, with `AutoAdmin` and `SiteContext` each wanting a connection while
    the request holds one. Read a logged run before changing anything.
-2. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
-   in-process seed) so the same suite can run against the container image.
-3. **Signing and notarisation** for the `.app`, which now builds and runs. Without
-   them a copy that leaves this machine is quarantined by Gatekeeper.
 4. **A test environment for `lib_desktop`**, so the tool's behaviour has tests and
-   not only evidence rows (see "What is broken or unfinished", item 3).
+   not only evidence rows, and a CI leg that compiles and dialyses
+   `MIX_ENV=desktop`.
+5. **Signing and notarisation** for the `.app`, which now builds and runs.
+6. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
+   in-process seed) so the same suite can run against the container image.
 
 ## Verifying anything, fast
 
