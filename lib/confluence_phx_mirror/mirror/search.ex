@@ -27,6 +27,9 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
   @language "simple"
 
+  @no_index "This mirror has no full-text index: search needs the Postgres build. " <>
+              "Browse a space, or open a page from it."
+
   # The same expression as `comments_search_vector_idx` (see the migration): an
   # expression index is only used for an identical expression, so the two must
   # stay in step.
@@ -62,6 +65,10 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   @spec structured(map(), keyword()) ::
           {:ok, [result()], [String.t()]} | {:error, String.t()}
   def structured(params, opts \\ []) do
+    if searchable?(), do: run(params, opts), else: {:error, @no_index}
+  end
+
+  defp run(params, opts) do
     params = Filters.normalise(params)
     q = Filters.compose_text(params)
     field_params = Map.drop(params, ["q", "phrase", "any", "none"])
@@ -387,9 +394,28 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   """
   @spec search(String.t(), keyword()) :: {:ok, [result()]} | {:error, String.t()}
   def search(cql, opts \\ []) do
-    with {:ok, query} <- CQL.parse(cql) do
-      {:ok, execute(query, opts)}
+    if searchable?() do
+      with {:ok, query} <- CQL.parse(cql) do
+        {:ok, execute(query, opts)}
+      end
+    else
+      {:error, @no_index}
     end
+  end
+
+  # This module is SQL over the generated `search_vector` column and the GIN
+  # indexes built around it. A build whose store is a file has neither: SQLite can
+  # do full text, but with an index that has to be created and kept in step by
+  # the sync, which is a feature of its own rather than a translation of this one
+  # (see "Search" in docs/desktop-tool.md). An SQL error in a reader's face is not
+  # an answer, so a question this build cannot answer gets a sentence.
+  #
+  # Read from configuration rather than inferred from the repo, because it is a
+  # property of the store this build was given, and comparing the adapter module
+  # makes the other branch unreachable — which is a compile error under
+  # `--warnings-as-errors` instead of a decision.
+  defp searchable? do
+    Application.get_env(:confluence_phx_mirror, :full_text_search, true)
   end
 
   # Same template as run_text/5: filters arrive as $N parameters and every

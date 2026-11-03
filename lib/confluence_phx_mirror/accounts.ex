@@ -32,6 +32,16 @@ defmodule ConfluencePhxMirror.Accounts do
   # prefix, and no use to anybody holding only the row.
   @token_prefix_length 12
 
+  # How `identity_account_ids` is stored, and therefore how a question *about*
+  # the list is asked: `text[]` with ``&&`` where the database has an array
+  # type, JSON text with `json_each` where it has not. The same compile-time
+  # choice the column type makes (`ConfluencePhxMirror.Schema.JSONList`).
+  @string_list Application.compile_env(
+                 :confluence_phx_mirror,
+                 :string_list_type,
+                 {:array, :string}
+               )
+
   # ---------------------------------------------------------------------------
   # Users
   # ---------------------------------------------------------------------------
@@ -86,11 +96,7 @@ defmodule ConfluencePhxMirror.Accounts do
     if keys == [] do
       %{}
     else
-      from(u in User,
-        where:
-          u.confluence_account_id in ^keys or
-            fragment("? && ?", u.identity_account_ids, ^keys)
-      )
+      from(u in User, where: ^matches_identity(keys))
       |> Repo.all()
       |> Enum.flat_map(fn user ->
         [user.confluence_account_id | user.identity_account_ids || []]
@@ -622,6 +628,33 @@ defmodule ConfluencePhxMirror.Accounts do
     end
   end
 
+  # An account's identity is a column; the ones linked to it are a list. The
+  # list is asked about rather than read, which is the one question whose
+  # spelling depends on how the list is stored — so the spelling is chosen where
+  # the storage is, and only one of the two exists in a build.
+  defp matches_identity(keys) do
+    dynamic([u], u.confluence_account_id in ^keys or ^linked_identity(keys))
+  end
+
+  if @string_list == ConfluencePhxMirror.Schema.JSONList do
+    # `json_each` on the column and on the wanted list: the same overlap, one
+    # row per linked identity, and it takes the list as a parameter rather than
+    # as text spliced into the statement.
+    defp linked_identity(keys) do
+      dynamic(
+        [u],
+        fragment(
+          "EXISTS (SELECT 1 FROM json_each(?) AS linked WHERE linked.value IN (SELECT wanted.value FROM json_each(?) AS wanted))",
+          u.identity_account_ids,
+          ^(keys |> JSON.encode_to_iodata!() |> IO.iodata_to_binary())
+        )
+      )
+    end
+  else
+    defp linked_identity(keys),
+      do: dynamic([u], fragment("? && ?", u.identity_account_ids, ^keys))
+  end
+
   @doc """
   The accounts a Confluence identity is linked to, if any.
 
@@ -632,9 +665,7 @@ defmodule ConfluencePhxMirror.Accounts do
   """
   def accounts_linked_to(account_id) when is_binary(account_id) do
     from(u in User,
-      where:
-        u.confluence_account_id == ^account_id or
-          fragment("? && ?", u.identity_account_ids, ^[account_id]),
+      where: ^matches_identity([account_id]),
       order_by: [asc: u.email]
     )
     |> Repo.all()

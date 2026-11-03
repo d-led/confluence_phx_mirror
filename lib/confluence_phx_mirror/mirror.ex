@@ -79,6 +79,33 @@ defmodule ConfluencePhxMirror.Mirror do
     where(queryable, [s], ilike(s.name, ^pattern) or ilike(s.key, ^pattern))
   end
 
+  @doc """
+  Pages `queryable` at `count` rows, or not at all when no count was asked for.
+
+  `LIMIT NULL` is "no limit" in Postgres and a datatype mismatch in SQLite, and
+  a caller that wants every row is the common case. Not asking is what both
+  engines agree on.
+  """
+  def maybe_limit(queryable, nil), do: queryable
+
+  def maybe_limit(queryable, count) when is_integer(count) and count >= 0,
+    do: maybe_page(queryable, limit: count)
+
+  # A page has two halves, and they travel together: `OFFSET` without `LIMIT` is
+  # legal in Postgres and a syntax error in SQLite, and an offset is only ever
+  # asked for by a caller that is paging. No page asked for is no clause at all.
+  defp maybe_page(queryable, opts) do
+    case Keyword.get(opts, :limit) do
+      nil ->
+        queryable
+
+      count when is_integer(count) and count >= 0 ->
+        queryable
+        |> limit(^count)
+        |> offset(^(Keyword.get(opts, :offset, 0) || 0))
+    end
+  end
+
   # The same narrowing for a list of pages: the title is what an operator reads,
   # and the space key is what they remember.
   defp titled_like(queryable, blank) when blank in [nil, ""], do: queryable
@@ -2064,10 +2091,9 @@ defmodule ConfluencePhxMirror.Mirror do
         join: s in assoc(p, :space),
         where: not is_nil(p.deleted_at) and is_nil(s.deleted_at),
         order_by: [desc: p.deleted_at, asc: p.title],
-        limit: ^Keyword.get(opts, :limit),
-        offset: ^Keyword.get(opts, :offset, 0),
         select: {p, s}
       )
+      |> maybe_page(opts)
 
     query =
       case Keyword.get(opts, :type) do

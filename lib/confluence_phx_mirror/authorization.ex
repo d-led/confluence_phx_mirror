@@ -95,19 +95,11 @@ defmodule ConfluencePhxMirror.Authorization do
       where: is_nil(s.deleted_at),
       order_by: [asc: s.name]
     )
-    |> maybe_limit(Keyword.get(opts, :limit))
+    |> Mirror.maybe_limit(Keyword.get(opts, :limit))
     |> Mirror.named_like(Keyword.get(opts, :query, ""))
     |> restrict_spaces(scope)
     |> Repo.all()
   end
-
-  # `LIMIT NULL` is "no limit" in Postgres and a datatype mismatch in SQLite, and
-  # a caller that wants every row is the common case. Not asking is what both
-  # engines agree on.
-  defp maybe_limit(query, nil), do: query
-
-  defp maybe_limit(query, count) when is_integer(count) and count >= 0,
-    do: limit(query, ^count)
 
   @doc """
   Narrows a `Space` query — built with `as: :space` — to the spaces the reader
