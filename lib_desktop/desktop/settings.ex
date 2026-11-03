@@ -45,11 +45,23 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   It is fixed rather than chosen — see the module doc.
   """
   @spec root() :: Path.t()
-  def root, do: :filename.basedir(:user_data, @app_name)
+  def root, do: read()["root"] || default_root()
 
-  @doc "The file that records which site this workspace mirrors, and as whom."
+  @doc "The folder a workspace uses until somebody names another one."
+  @spec default_root() :: Path.t()
+  def default_root, do: :filename.basedir(:user_data, @app_name)
+
+  @doc """
+  The file that records which site this workspace mirrors, and as whom.
+
+  Its home is the application data directory, not the workspace folder: the file
+  says *where* the workspace is, so it cannot be found by first knowing the
+  workspace. In the default case the two are the same folder and the record sits
+  beside the catalogue; when a folder is chosen, the record stays here and points
+  at it.
+  """
   @spec file() :: Path.t()
-  def file, do: Path.join(root(), @settings)
+  def file, do: Path.join(default_root(), @settings)
 
   @doc "The catalogue."
   @spec database() :: Path.t()
@@ -167,22 +179,67 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   end
 
   @doc """
-  Saves what identifies the site: its URL and the account.
+  Saves what identifies the site: its URL, the account and the folder.
 
-  Neither is a secret, so both live here. An empty `email` means the token is
-  used as a bearer token, which is how Confluence Server/DC personal access
-  tokens work; with an email it is an Atlassian API token.
+  None of these is a secret, so all of them live here. An empty `email` means
+  the token is used as a bearer token, which is how Confluence Server/DC
+  personal access tokens work; with an email it is an Atlassian API token.
+
+  A folder that changed while the tool is running reopens the catalogue there:
+  the repository reads its path once, when it starts.
   """
   @spec store(map()) :: :ok | {:error, term()}
   def store(attrs) when is_map(attrs) do
-    with {:ok, site} <- validate_site(attrs) do
+    with {:ok, site} <- validate_site(attrs),
+         {:ok, folder} <- validate_root(attrs) do
+      before = root()
+
       update(fn settings ->
         settings
         |> Map.put("site", site)
         |> Map.put("email", blank(attrs[:email] || attrs["email"]))
+        |> put_folder(folder)
       end)
 
       apply_runtime_config()
+      if root() != before, do: restart_repo()
+      :ok
+    end
+  end
+
+  # No folder in the form means "the one in force": a field nobody touched must
+  # not move the catalogue.
+  defp put_folder(settings, nil), do: settings
+  defp put_folder(settings, folder), do: Map.put(settings, "root", folder)
+
+  defp validate_root(attrs) do
+    case blank(attrs[:root] || attrs["root"]) do
+      nil ->
+        {:ok, nil}
+
+      path ->
+        expanded = Path.expand(path)
+
+        with :ok <- create(expanded),
+             :ok <- prove_writable(expanded) do
+          {:ok, expanded}
+        end
+    end
+  end
+
+  @doc """
+  Reopens the catalogue in the folder in force now.
+
+  A repo reads its `:database` once, when it starts; this is how a folder chosen
+  in the window takes effect without restarting the tool.
+  """
+  @spec restart_repo() :: {:ok, pid()} | {:error, term()}
+  def restart_repo do
+    supervisor = ConfluencePhxMirror.Desktop.Supervisor
+    repo = ConfluencePhxMirror.Repo
+
+    with :ok <- Supervisor.terminate_child(supervisor, repo) do
+      Supervisor.restart_child(supervisor, repo)
     end
   end
 
@@ -384,6 +441,22 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     case File.mkdir_p(path) do
       :ok -> :ok
       {:error, reason} -> {:error, {:cannot_create, path, reason}}
+    end
+  end
+
+  # A directory can exist and still refuse a write — a read-only volume, somebody
+  # else's folder. Answered once, here, rather than on the first page that will
+  # not save.
+  defp prove_writable(path) do
+    probe = Path.join(path, ".write-test-#{System.unique_integer([:positive])}")
+
+    case File.write(probe, "") do
+      :ok ->
+        File.rm(probe)
+        :ok
+
+      {:error, reason} ->
+        {:error, {:not_writable, path, reason}}
     end
   end
 end
