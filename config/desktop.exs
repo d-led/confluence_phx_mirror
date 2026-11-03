@@ -14,11 +14,7 @@ config :confluence_phx_mirror,
   # The columns Postgres stores as `text[]`: JSON text here. The schemas read
   # these two keys when they compile, so a list column and its storage agree.
   string_list_type: ConfluencePhxMirror.Schema.JSONList,
-  integer_list_type: ConfluencePhxMirror.Schema.JSONList,
-  # Full-text search is SQL over the generated `search_vector` column and the GIN
-  # indexes built around it, and a file has neither. The search screen says so;
-  # an FTS5 index the ingest keeps in step is the work that removes this line.
-  full_text_search: false
+  integer_list_type: ConfluencePhxMirror.Schema.JSONList
 
 # Defaults only. `ConfluencePhxMirror.Desktop.Settings` owns the real answer — the
 # folder is fixed (this one), and the file beside it records only which site the

@@ -131,9 +131,13 @@ here as done is open.
   secret first and re-applies the runtime configuration after, because the token
   reaches the credential store only in that call: applied before it, the client
   keeps whatever it had — the previous token, or none.
-- **Search is FTS5 later.** `Mirror.Search` uses Postgres `tsvector`; it is reached
-  only by `SearchLive` and two API controllers, so it is one module to port, not a
-  thread through the app.
+- **Search is FTS5 on this build.** `Mirror.Search.Lite` is the whole store-
+  specific half: `search/3` still answers CQL with a sentence, and
+  `structured/2` and `text/2` are an FTS5 `MATCH` over a `pages_fts` table kept
+  in step by triggers. `mix test` cannot reach it — `ecto_sqlite3` is a `:desktop`
+  dependency, so the suite has no SQLite driver. `LiteTest` covers the query
+  language (what a reader types becomes `MATCH` syntax); the statement itself is
+  exercised by running the desktop build, which is what the rows above record.
 - **Cypress cannot drive the Tauri window** — it is a native `WKWebView`, not a
   browser. Test the app through `scripts/start-desktop.sh --in-browser` (identical
   routes, same sidecar), and keep one `tauri-driver` smoke test for the window
@@ -264,21 +268,17 @@ here as done is open.
 
 ## Next, in order
 
-1. **Search on the tool's own store.** An FTS5 table over `pages.title` and
-   `pages.body_text`, kept in step by the ingest, and a `Mirror.Search` path that
-   answers from it — so the one screen that now says "no index" answers instead.
-   The route, the LiveView and the filters are already the server's; only the
-   query is missing.
-2. **One sync, not two.** Make `Sync.Gate`'s lease portable (a row updated with
+1. **One sync, not two.** Make `Sync.Gate`'s lease portable (a row updated with
    `UPDATE … RETURNING`, which both engines have, instead of `ON CONFLICT`) and
    let the tool's mirroring run through the server's workers. That would delete
    `Desktop.Mirror` and `Desktop.Jobs` and put `/admin/jobs` in charge — at the
    cost of proving the whole sync path on SQLite first.
-3. **A test environment for `lib_desktop`**, so the tool's behaviour has tests and
+2. **A test environment for `lib_desktop`**, so the tool's behaviour has tests and
    not only evidence rows, and a CI leg that compiles, dialyses and probes
-   `MIX_ENV=desktop` (the probe is cheap: boot it, `GET` the screens).
-4. **Signing and notarisation** for the `.app`, which builds and runs.
-5. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
+   `MIX_ENV=desktop` (the probe is cheap: boot it, `GET` the screens). The same
+   leg is what would put the FTS5 statement itself under test.
+3. **Signing and notarisation** for the `.app`, which builds and runs.
+4. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
    in-process seed) so the same suite can run against the container image.
 
 ## Verifying anything, fast
