@@ -19,6 +19,8 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 | The tool *reads* what it mirrored | `POST /site` → 303, `/site` says `Read the mirror`, `/site/index.html` answers 200 (8 088 bytes: the exporter's own front page), `/site/spaces/MFS/index.html` renders `<title>My first space · dled`, and the search page with its `search-index.js` bundle serves 200 from the same folder |
 | Every screen can be left | `/site`, `/export`, `/mirror`, `/spaces` all carry the same bar (Home · Mirror · Spaces · Runs · Export · Connection); only the first-run form stands alone, because its way on is its own button |
 | The launcher never starts a stale release | `start-desktop.sh` builds `_build/desktop/rel` **and** the window on every run (2.7 s + 4.3 s warm) — see trap 10 |
+| The launcher shows everything it does | no redirect, no `&`, no log file, no `mktemp`: numbered steps with `ok in Ns`, the sidecar run with `exec` so its output is the terminal's, the window's status printed and passed on; `grep` for a redirect or a background job finds none, and `--where` streamed the compiler's own `Compiling 5 files (.ex)` as it ran |
+| The desktop tree is formatted and warning-free | `mix format --check-formatted lib_desktop/…` → 0, `MIX_ENV=desktop mix compile --warnings-as-errors` → 0, five forced modules in **7.7 s** — see trap 14 for what once made the same build 481 s |
 | Server suite | 1917 passed, 7 excluded, 0 failed (on a clean database, one suite at a time) |
 
 ## What is broken or unfinished
@@ -27,11 +29,33 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
    `:browser` pipeline and was reverted (see "Traps").
 2. **No `.app` yet.** `bundle.active` is `false`; with it on, `cargo build` fails in
    tauri-build's resource phase with `Permission denied (os error 13)`.
-3. **`lib_desktop/` is outside the format gate.** `.formatter.exs` inputs are
-   `{config,lib,test}`, so the tool's own modules are credo-checked but never
-   formatted; `Settings.validate_site/1` shows it (a `case` on the same line as
-   the `do`). Adding `lib_desktop/**/*.ex` there is a one-line change and a
-   reformat commit.
+3. **`lib_desktop/` has never been through dialyzer.** `mix.exs` configures it
+   (`plt_add_apps: [:mix, :ex_unit, :esbuild, :tailwind]`), and CI runs it for
+   `MIX_ENV=test` only, so no PLT exists for `MIX_ENV=desktop` and the tool's own
+   modules are the one tree no type check has seen. The first run will pay for a
+   full PLT build twice, once per environment.
+
+## What was asked for, and where it stands
+
+The user's words, in order, and the honest answer to each. Everything not listed
+here as done is open.
+
+| asked | state |
+| --- | --- |
+| "green CI" | **done** — three workflows green on push and PR, sobelow 0 with no skip registry, credo `--strict` 0 |
+| "keep the web version working at all times" | **done** — `lib/` changed only for portable SQL and for moving sobelow findings into `.ex` owners |
+| "minimal additional code, almost no change to the web app" | **done** — the tool is `lib_desktop/`, compiled only for `MIX_ENV=desktop` |
+| "make the start-desktop build! Don't start stale code" | **done** — both halves on every run; trap 10 |
+| "why isn't it prefilling the environment variables as before?" | **done** — the form is prefilled from `CM_*`, and those values are suggestions, not answers |
+| "you forgot the token" | **done** — the secret is stored before the config is re-applied |
+| "AND WHERE IS THE FUCKING MAIN VIEW???" | **done** — `/site` publishes and serves the mirror |
+| "the confluence url was a local IP" | **done** — the site is only ever what this workspace recorded |
+| "stop all the redirects in start-desktop.sh / don't fail silently" | **done** — no redirect, no `&`, no log file; numbered steps, real statuses |
+| "each screen must have a link to proceed — there's no BACK BUTTON" | **partly** — a bar on every screen but the first-run form; **no way back from a mirrored page into the tool**, and no browser-style Back |
+| "show the screen always; show the folder selection at the beginning; pre-fill the token" | **partly** — written, not verified end to end; the folder field was rendered but ignored by `POST /setup` until 2026-11-03 |
+| "are you swallowing errors?" | **partly** — publish failures reach the screen; `Jobs`, the Spaces refresh and the export path have not been asked |
+| "can you start producing better quality? Use dialyzer" | **open** — no PLT for `MIX_ENV=desktop`; `lib_desktop/` has never been type-checked |
+| "a meaningful desktop app" | **partly** — it mirrors, exports and reads; no `.app`, and the real Endpoint is not wired in |
 
 ## Decisions, and why
 
@@ -112,7 +136,10 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
    processes from earlier turns stayed alive and produced flaky failures that
    looked like code bugs. Check `pgrep -fl "mix test"` before running. Two at
    once also break `site_export_link_test.exs` (a build that must be seen half
-   written): it fails under the load and passes alone, 8/8.
+   written): it fails under the load and passes alone, 8/8. The same applies to
+   any two `mix` processes: they serialise on the `_build` lock and the second
+   looks hung, which is how time gets spent debugging a build that was only
+   waiting.
 7. **`bin/… stop` needs a node name.** The sidecar runs with
    `RELEASE_DISTRIBUTION=none` (trap 1), and `stop` is an RPC: it answers
    "Cannot run --rpc-eval if the node is not alive (set --name or --sname)" and
@@ -144,16 +171,60 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
     measured: bundled binary 00:12, `_build` binary 07:29, same size, different
     code. The symptom is fixed code behaving like old code. The script now builds
     both on every run.
+11. **A record cannot live in the folder it records.** `Settings.root/0` read the
+    settings file, `file/0` built its path from `root/0`, and `read/0` read
+    `file/0` — a cycle with no base case, so every call that touched the
+    workspace (`--where`, and the app's own boot) spun forever with no output.
+    The file's home is the application data directory; in the default case that is
+    also the workspace, so the record still sits beside the catalogue, and when a
+    folder is chosen the record stays put and points at it.
+12. **A missing directory is a directory that changed.** `tauri-build` emits
+    `rerun-if-changed` on `src-tauri/capabilities`, which did not exist, so cargo
+    marked the crate dirty on every build: two consecutive `cargo build`s both
+    printed `Compiling confluence-export` (14.4 s, then 10.7 s). Now the folder
+    exists with a capability that grants nothing (the window calls nothing on the
+    Rust side), and the second build is `Finished ... in 1.26s`. This is the
+    involuntarily-invalidated cache: not the launcher, the missing folder.
+13. **A compile-time answer to a runtime question.** `plug Plug.Static, at:
+    "/site", from: Archive.dir()` is not a constant, it is a call made while
+    compiling; and the folder it returns is a workspace value a person can change
+    in the form. `from: {Archive, :dir, []}` (which `Plug.Static` supports) turns
+    it into a per-request call, so the served folder follows the form instead of
+    the build.
+14. **A slow build is usually two builds, not a compiler bug.** A desktop compile
+    took **481 s** with one file "taking more than 10s" forever, and the first
+    reading was a livelock in the compiler. It was not: another project was
+    compiling on the same machine at the same time (the user's words: "I ran the
+    build at the same time — thus the problem"). `mix` processes also serialise on
+    the `_build` lock, so the second one only waits. Before believing a compiler
+    is stuck: `ps -A -o pid,etime,command | grep beam`, and look for another
+    project's `_build` in the command lines.
+15. **A killed build can still report success.** `kill` (SIGTERM) on a `mix`
+    process is caught: the VM shuts down "gracefully", `mix` exits **0**, and the
+    step in `start-desktop.sh` printed `ok in 481s` for a build that had not
+    finished. The launcher is honest about the statuses it is given; a build
+    stopped by hand never gives it a failing one. Re-run the build after killing
+    one, and only kill a build when the build is what is wrong.
 
 ## Next, in order
 
-1. **The real Endpoint in the tool**, once the tool has the tables its `:browser`
+1. **Dialyzer for the tool.** The user asked for it by name ("can you start
+   producing better quality? Use dialyzer") and it is the one quality gate
+   `lib_desktop/` has never passed: `mix.exs` configures dialyzer and CI runs it
+   for `MIX_ENV=test` only, so `MIX_ENV=desktop mix dialyzer` needs its own PLT
+   (`_build/desktop/*.plt`), which does not exist yet. Expect findings around
+   `Page.site/1`'s union, `Settings.configure/1`'s `:ok | {:error, term()}` and
+   `Archive.publish_async/0`'s return.
+2. **The real Endpoint in the tool**, once the tool has the tables its `:browser`
    pipeline needs. It hung rather than erroring; the suspicion is the `pool_size: 1`
    SQLite pool, with `AutoAdmin` and `SiteContext` each wanting a connection while
    the request holds one. Read a logged run before changing anything.
-2. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
+3. **A way back from a mirrored page into the tool.** Every screen the tool draws
+   has the bar; the pages it *serves* are the exporter's and their links never
+   return to it. That is the half of "there's no back button" that is still true.
+4. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
    in-process seed) so the same suite can run against the container image.
-3. **The `.app`**: `bundle.active` back on, resources mapped, then
+5. **The `.app`**: `bundle.active` back on, resources mapped, then
    `cargo tauri build --bundles app`. Unsigned bundles are quarantined by Gatekeeper,
    so signing and notarisation are part of shipping, not a config flag.
 
@@ -162,12 +233,18 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 ```sh
 MIX_ENV=dev     mix compile --warnings-as-errors     # server untouched
 MIX_ENV=desktop mix compile --warnings-as-errors     # tool builds
-pgrep -fl "mix test" | wc -l                          # must be 0
+mix format --check-formatted                         # includes lib_desktop in its inputs
+pgrep -fl "mix test" | wc -l                          # must be 0, and one mix at a time (trap 14)
 mix test                                              # 1917 / 0
 mix sobelow --exit                                    # security gate
-RELEASE_DISTRIBUTION=none _build/desktop/rel/confluence_phx_mirror/bin/confluence_phx_mirror start
-                                                      # must print `desktop ui: …`
-                                                      # and stop it by the port owner (trap 7):
-                                                      # lsof -nP -iTCP:<port> -sTCP:LISTEN -t | xargs kill
+scripts/start-desktop.sh --where                      # builds both halves, then the workspace
 scripts/start-desktop.sh                              # the app itself
 ```
+
+The release step prints `ok in 30–40s` on a machine with nothing else building;
+that is the release copy (49 MB, 2 713 files), not a recompile. The window step
+prints `ok in 1–3s` when nothing changed (trap 12 was 11–15 s, every launch).
+By hand, if the app is already up: `RELEASE_DISTRIBUTION=none
+_build/desktop/rel/confluence_phx_mirror/bin/confluence_phx_mirror start` prints
+`desktop ui: http://127.0.0.1:<port>/`, and it is stopped by the owner of the
+port (trap 7): `lsof -nP -iTCP:<port> -sTCP:LISTEN -t | xargs kill`.
