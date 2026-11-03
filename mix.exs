@@ -136,7 +136,11 @@ defmodule ConfluencePhxMirror.MixProject do
       {:dns_cluster, "~> 0.3.1"},
       {:bandit, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      # `:desktop` too: the tool is a separate compile of this project, and the
+      # one tree no type check had seen was the one that only exists there.
+      # `runtime: false`, so it is a build-time tool in that environment and
+      # never a dependency of the release.
+      {:dialyxir, "~> 1.4", only: [:dev, :test, :desktop], runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:ex_crap, "~> 0.1.1", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false}

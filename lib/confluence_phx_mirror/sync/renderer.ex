@@ -32,8 +32,13 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
           filename: String.t()
         }
 
+  # What a page needs to be rendered: where it came from, where links should
+  # point, and how to resolve a file it does not own. `:page` is accepted and
+  # not read — links come from `:pages`, files from `:attachment_lookup` — so a
+  # caller holding only the source's DTO (the desktop tool, which renders a body
+  # before the row exists) can produce the same markup the server does.
   @type context :: %{
-          required(:page) => ConfluencePhxMirror.Mirror.Page.t(),
+          optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
           required(:space_key) => String.t(),
           required(:base_url) => String.t() | nil,
           optional(:pages) => %{integer() => page_ref()},
