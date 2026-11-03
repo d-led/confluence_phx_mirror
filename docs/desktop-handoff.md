@@ -5,6 +5,12 @@ State of the branch `desktop` (`origin/desktop`, draft PR #3).
 Everything in "What works" is green: `mix lint` passes with **no sobelow
 findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 
+**The window is the mirror.** It opens on the server's own home page and every
+screen behind it is the server's own screen — the directory, a page, the search
+page, `/admin` and the settings page under it — served by the same endpoint,
+mounted in the tool's loopback listener. What is left in `lib_desktop/` is the
+connection, the run that copies a space into the catalogue, and the archive.
+
 ## What works, and how it was proven
 
 | thing | evidence |
@@ -14,38 +20,46 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 | The same 46 build on Postgres | dropped and rebuilt from scratch: 46 migrations, `search_vector` column, 8 GIN indexes |
 | Desktop ingest writes the server's rows | demo space: 37 pages, 1 space, labels/ancestors round-trip as lists |
 | The release boots and serves | `desktop ui: http://127.0.0.1:<port>/`, `Node.alive? == false`, `ensure_all_started` → `:ok` |
-| The tool remembers its site, and reaches it | with `CM_CONFLUENCE_SITE`, `CM_ATL_EMAIL` and `CM_ATL_TOKEN` exported, a boot answers `/state` → `{"missing":["site"],"readiness":"needs"}` and `/` → 302 `/setup`; `POST /setup` → 303 and `ready`; a second boot is still `ready` and `/` → 200; `eval` then shows `api_token` (the value typed in, from the keychain), the recorded `base_url`/`email`, and `:source` = `HttpSource` |
-| The tool exports what it mirrored | `POST /export` → 303, then `/export` says `Ready` and `/export/site.zip` answers 200 `application/zip`, 272 903 bytes; the zip holds 123 files — `index.html` (`<title>dled`), `search.html`, `assets/search-index.js`, `labels/…`, `spaces/MFS/pages/…html` and `.md` — and the same file is on disk under `<workspace>/confluence-mirror-exports/` |
-| The tool *reads* what it mirrored | `POST /site` → 303, `/site` says `Read the mirror`, `/site/index.html` answers 200 (8 088 bytes: the exporter's own front page), `/site/spaces/MFS/index.html` renders `<title>My first space · dled`, and the search page with its `search-index.js` bundle serves 200 from the same folder |
-| Every screen can be left | `/site`, `/export`, `/mirror`, `/spaces` all carry the same bar (Home · Mirror · Spaces · Runs · Export · Connection); only the first-run form stands alone, because its way on is its own button |
+| The tool remembers its site, and reaches it | with `CM_CONFLUENCE_SITE`, `CM_ATL_EMAIL` and `CM_ATL_TOKEN` exported, a boot answers `/__tool/state` → `{"missing":["site"],"readiness":"needs"}` and `/` → the connection form (200, not a redirect); `POST /__tool/setup` → 303 and `ready`; a second boot is still `ready` and `/` → 200, the mirror's home; `eval` then shows `api_token` (the value typed in, from the keychain), the recorded `base_url`/`email`, and `:source` = `HttpSource` |
+| The tool exports what it mirrored | `POST /__tool/export` → 303, then `/__tool/export` says `Ready` and `/__tool/export/site.zip` answers 200 `application/zip`; the zip holds `index.html` (`<title>dled`), `search.html`, `assets/search-index.js`, `labels/…`, `spaces/MFS/pages/…html` and `.md` — and the same file is on disk under the workspace |
+| The tool *reads* what it mirrored | the mirror's own screens do, over the same rows: `/` (44 pages, the space list, the latest changes), `/spaces/MFS` and a page under it — there is no second renderer and no published folder to go stale |
+| Every screen can be left | the server's shell is on every page it serves (brand → `/`, the search box, the space switcher, the theme menu, the account menu), and the tool's own screens carry a bar (Desktop · Mirror · Admin · Spaces · Runs · Export · Connection); only the first-run form stands alone, because its way on is its own button |
 | The launcher never starts a stale release | `start-desktop.sh` builds `_build/desktop/rel` **and** the window on every run (2.7 s + 4.3 s warm) — see trap 10 |
 | The launcher shows everything it does | no redirect, no `&`, no log file, no `mktemp`: numbered steps with `ok in Ns`, the sidecar run with `exec` so its output is the terminal's, the window's status printed and passed on; `grep` for a redirect or a background job finds none, and `--where` streamed the compiler's own `Compiling 5 files (.ex)` as it ran |
 | The desktop tree is formatted and warning-free | `mix format --check-formatted lib_desktop/…` → 0, `MIX_ENV=desktop mix compile --warnings-as-errors` → 0, five forced modules in **7.7 s** — see trap 14 for what once made the same build 481 s |
 | The tool is type-checked, in its own environment | `MIX_ENV=desktop mix dialyzer` → **Total errors: 0**. It found one real contract bug first (see trap 16). Dialyxir is now a `:desktop` dependency too — `runtime: false`, so the release does not carry it |
-| Every page of the mirror can be left | each served `.html` carries `<a href="/" data-tool-return>`: `index.html` 1, `search.html` 1, `spaces/MFS/index.html` 1; a `.md` in the same folder 0, and the same `index.html` **inside the archive 0** — the served copy is the tool's, the archive stays Confluence's |
-| A refused run lands somewhere that explains it | `POST /mirror` with a run already going → 303 `/mirror` (the run that blocked it), not a silent bounce to the list; `Jobs.start_mirror/3` answers `{:error, :busy | :no_worker | :nothing_to_do}` instead of dropping the result |
+| **The window opens on the mirror** | `GET /` answers 200 with the server's home page — heading `dled`, `1 spaces · 44 pages`, the space list and the latest changes — not a status screen |
+| **Every reading screen is the server's** | `/`, `/spaces`, `/spaces/MFS`, `/labels`, `/people`, `/recent`, `/about`, `/profile` all 200, rendered by the server's controllers and LiveViews |
+| **The admin area is the server's, one click away** | `/admin`, `/admin/settings`, `/admin/jobs`, `/admin/mail`, `/admin/webhooks`, `/admin/users`, `/admin/identities`, `/admin/groups`, `/admin/permissions`, `/admin/audit`, `/admin/trash`, `/admin/spaces`, `/admin/upstream`, `/admin/sync-log` — 14/14 answer 200, and the account menu carries the Admin cog because `:auto_admin` makes the one reader an administrator |
+| **LiveView really connects** | in the window's own origin: `liveSocket.isConnected() === true`, `[data-phx-main]` present, 8 hooks registered, and typing in the admin settings filter patches the page (verified over `/live/websocket` → 400 for a plain GET, which is the socket route answering instead of 404) |
+| The tool's own screens are still one origin | `/__tool`, `/__tool/state`, `/__tool/spaces`, `/__tool/mirror`, `/__tool/export` answer 200 under the same port; `/__tool/setup` is what an unconfigured `/` shows |
+| The store's own limits are named, not hit | `Resources.database/0` asks a file for its size; `Mirror.maybe_page/2` omits `LIMIT NULL` and `OFFSET` without `LIMIT`; `Accounts.matches_identity/1` asks a JSON list with `json_each`; and `/search` says *"This mirror has no full-text index: search needs the Postgres build"* instead of raising in a reader's face |
+| The window loads a current bundle | `start-desktop.sh` builds the stylesheet, the scripts and the digest on every run (it used to ship whatever `priv/static` happened to hold — the console said `unknown hook found` for the hooks the shell needs) |
+| A refused run lands somewhere that explains it | `POST /__tool/mirror` with a run already going → 303 `/__tool/mirror` (the run that blocked it), not a silent bounce to the list; `Jobs.start_mirror/3` answers `{:error, :busy | :no_worker | :nothing_to_do}` instead of dropping the result |
 | A task supervisor that refuses says so | `Spaces` and `Jobs` now match `Task.Supervisor.start_child/2`: a refusal becomes an error on the screen, where before the refresh stayed "loading" and the run stayed "running" forever |
 | It is an app you can double-click | `cargo tauri build --bundles app` → `Confluence Export.app`, **50.33 MiB**, carrying the whole release at `Contents/Resources/rel/confluence_phx_mirror` (49 MB). `open` it: the window starts **its own bundled** sidecar on a fresh port, `/` answers "Not connected yet / Still needed: site", and quitting the window stops the sidecar (no port left behind) |
 | Server suite | 1917 passed, 7 excluded, 0 failed (on a clean database, one suite at a time) |
 
-## What is broken or unfinished
+## What is unfinished
 
-1. **No rebuild control.** `GET /site` now redirects into the pages, which left
-   `Page.site(:built)` — the screen that held "Rebuild the pages" — unreachable.
-   `POST /site` still works; nothing offers it. Put it on the home screen.
-2. **The window opens on a status screen, not on the mirror.** `/site` gets you
-   into the content in one hop, but `/` is still "Ready" or "Not connected yet".
-3. **No search, page list or single-page mirror in the tool.** All three exist
-   only inside the exported pages (`/site/search.html`, the space index).
-4. **The real Endpoint is not wired into the tool.** An attempt hung inside the
-   `:browser` pipeline and was reverted (see "Traps"); the suspicion is the
-   `pool_size: 1` SQLite pool.
-5. **The `.app` is unsigned.** It runs from this machine; a copy that travels is
+1. **Search has no index in the tool.** `Mirror.Search` is SQL over a generated
+   `search_vector` column and its GIN indexes; the tool's store is a file with
+   neither. The screen now says so — *"This mirror has no full-text index: search
+   needs the Postgres build"* — instead of raising. Doing it properly means an
+   FTS5 table the sync keeps in step, which is a feature, not a translation.
+2. **Mirroring is the tool's own pipeline.** The server's sync goes through Oban
+   and `Sync.Gate`, whose lease is a Postgres `ON CONFLICT` statement; the tool
+   copies a space straight into the catalogue (`Desktop.Mirror`), which is the
+   path that is proven on SQLite. `/admin/jobs` therefore lists the jobs a
+   deployment would run and stays empty here: the tool's runs are `/__tool`.
+3. **The two `Sync.Scheduler` clocks are not started.** `/admin/settings` still
+   shows the interval; nothing in this build reads it.
+4. **The `.app` is unsigned.** It runs from this machine; a copy that travels is
    quarantined by Gatekeeper until it is signed and notarised.
-6. **`lib_desktop/` has no unit tests**, and CI neither compiles nor dialyses
+5. **`lib_desktop/` has no unit tests**, and CI neither compiles nor dialyses
    `MIX_ENV=desktop`. The tool is verified by running it and by
-   `MIX_ENV=desktop mix dialyzer` (0 errors), not by a test file.
-7. **The suite is flaky under load.** `DBConnection` checkout timeouts become
+   `MIX_ENV=desktop mix dialyzer`, not by a test file.
+6. **The suite is flaky under load.** `DBConnection` checkout timeouts become
    `OwnershipError`s in six unrelated files; they pass alone. Not fixed.
 
 ## What was asked for, and where it stands
@@ -64,11 +78,11 @@ here as done is open.
 | "AND WHERE IS THE FUCKING MAIN VIEW???" | **done** — `/site` publishes and serves the mirror |
 | "the confluence url was a local IP" | **done** — the site is only ever what this workspace recorded |
 | "stop all the redirects in start-desktop.sh / don't fail silently" | **done** — no redirect, no `&`, no log file; numbered steps, real statuses |
-| "each screen must have a link to proceed — there's no BACK BUTTON" | **done** — a bar on every screen the tool draws, and every page it serves carries a "← Back to the tool" pill (`data-tool-return`); the archive itself is untouched |
-| "show the screen always; show the folder selection at the beginning; pre-fill the token" | **done** — `/` answers 200 with "Not connected yet / Still needed: site", the form prefills site, account, token and folder, and `POST /setup` now carries the folder through (422 when it cannot be written) |
+| "each screen must have a link to proceed — there's no BACK BUTTON" | **done** — the server's own shell is on every page the mirror serves (brand, search, switcher, theme, account menu with Admin), and the tool's own screens carry a bar |
+| "show the screen always; show the folder selection at the beginning; pre-fill the token" | **done** — an unconfigured `/` answers 200 with the connection form, the form prefills site, account, token and folder, and `POST /__tool/setup` carries the folder through (422 when it cannot be written) |
 | "are you swallowing errors?" | **done** — publish failures are a screen and a log line; `Jobs` and `Spaces` no longer ignore a refused `start_child` (a run that never started used to look like a run in progress); a refused start redirects to the screen that explains it |
 | "can you start producing better quality? Use dialyzer" | **done** — `MIX_ENV=desktop mix dialyzer`: **Total errors: 0**, after it found the `:page` contract bug (trap 16) |
-| "a meaningful desktop app" | **done** for the tool: it mirrors, exports, reads and navigates, and `cargo tauri build --bundles app` produces a 50 MB `Confluence Export.app` that runs with the release inside it. Open: the real Phoenix Endpoint (item 1 below) and signing |
+| "a meaningful desktop app" | **done** for the tool: it mirrors, exports and navigates — and the reading surface is the whole mirror UI, admin included. Open: search (item 1) and signing |
 
 ## Decisions, and why
 
@@ -99,14 +113,20 @@ here as done is open.
   should not have its URL typed by hand; it just does not count as an answer. The
   token keeps its environment fallback: it is a fallback, not a shadow, because
   the keyring wins when it has one.
-- **The main view is the exported pages, served from disk.** `GET /site`
-  publishes `Site.archive/3` into `<workspace>/site/` and `Plug.Static` serves it,
-  so the window browses exactly the HTML the archive contains — same links, same
-  search page, same labels. The alternative, starting the server's Phoenix
-  Endpoint with its router and LiveViews, is a bigger promise: it would bring
-  sessions, authentication and the admin area into a one-user tool, and it is the
-  piece that hung before. If richer reading (LiveView search, presence) is wanted,
-  that is the change to make, deliberately.
+- **The main view is the server's own.** One listener, two routers: `/__tool`
+  and below is the tool's own, everything else is `ConfluencePhxMirrorWeb.Endpoint`
+  *mounted* (`Endpoint.call/2`), not started — so there is one origin, one cookie
+  jar and one `Host` for the pages, the websocket and the connection form. The
+  alternative it replaces — exporting the mirror to `<workspace>/site/` and
+  serving it with `Plug.Static` — was a second renderer of the same content and a
+  folder that went stale between runs. Sessions, authentication and the admin
+  area came along with the endpoint, and that is the point: `:auto_admin` makes
+  the one reader an administrator, so the cockpit is one click from the mirror.
+- **The endpoint is mounted, not started, because the port is not known until it
+  is.** Bandit owns the listen socket on an ephemeral port and the window reads
+  that port from the sidecar's output; the endpoint's `url` (used for absolute
+  links) is therefore written *before* the supervisor starts, with the port the
+  listener is about to get.
 - **A saved connection takes effect immediately.** `configure/1` stores the
   secret first and re-applies the runtime configuration after, because the token
   reaches the credential store only in that call: applied before it, the client
@@ -203,7 +223,10 @@ here as done is open.
     compiling; and the folder it returns is a workspace value a person can change
     in the form. `from: {Archive, :dir, []}` (which `Plug.Static` supports) turns
     it into a per-request call, so the served folder follows the form instead of
-    the build.
+    the build. The same shape still bites in this tree: `Desktop.Application`
+    writes the endpoint's `:url` **before** the endpoint starts, because the
+    endpoint reads it once — the port the listener is about to get is a runtime
+    answer that a compile-time read would turn into yesterday's.
 14. **A slow build is usually two builds, not a compiler bug.** A desktop compile
     took **481 s** with one file "taking more than 10s" forever, and the first
     reading was a livelock in the compiler. It was not: another project was
@@ -226,24 +249,36 @@ here as done is open.
     run time, which is exactly why only a type check finds it: `:page` is
     `optional` now, and the tool renders from the source's DTO — before the row
     exists — with the same markup the server produces.
+17. **A release ships `priv/static` and never builds it.** The window opened on a
+    correctly rendered page and the console said `unknown hook found` for
+    `Layouts.TopbarMenu`, `HeaderSearchLive.HeaderSearch` and
+    `SpaceSwitcherLive.SpaceSwitcher`: the bundle in `priv/static/assets` was
+    built before those hooks existed, and `mix release` copies whatever is there.
+    Colocated hooks live in the bundle, so a stale bundle is a menu that does not
+    open and a search box that does not appear — with no error on the server. The
+    launcher now installs the toolchain (once), builds Tailwind, both esbuild
+    bundles and the digest on every run. `priv/static/assets/` is gitignored,
+    which is exactly why nobody noticed: the file on disk was from another day
+    and another environment (`_build/dev/phoenix-colocated/…` appears in its
+    source comments).
 
 ## Next, in order
 
-1. **Put a rebuild control back**, and put the actions on the content instead of
-   behind it: home links `/site`, `/site` shows the pages, and "Rebuild" lives on
-   the screen the nav can reach (item 1 above — a regression from today).
-2. **Search, page list and single-page mirror in the tool.** These are what
-   "usable" still means: find a page without opening a folder, and mirror one
-   without mirroring a space.
-3. **The real Endpoint in the tool**, once the tool has the tables its `:browser`
-   pipeline needs. It hung rather than erroring; the suspicion is the `pool_size: 1`
-   SQLite pool, with `AutoAdmin` and `SiteContext` each wanting a connection while
-   the request holds one. Read a logged run before changing anything.
-4. **A test environment for `lib_desktop`**, so the tool's behaviour has tests and
-   not only evidence rows, and a CI leg that compiles and dialyses
-   `MIX_ENV=desktop`.
-5. **Signing and notarisation** for the `.app`, which now builds and runs.
-6. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
+1. **Search on the tool's own store.** An FTS5 table over `pages.title` and
+   `pages.body_text`, kept in step by the ingest, and a `Mirror.Search` path that
+   answers from it — so the one screen that now says "no index" answers instead.
+   The route, the LiveView and the filters are already the server's; only the
+   query is missing.
+2. **One sync, not two.** Make `Sync.Gate`'s lease portable (a row updated with
+   `UPDATE … RETURNING`, which both engines have, instead of `ON CONFLICT`) and
+   let the tool's mirroring run through the server's workers. That would delete
+   `Desktop.Mirror` and `Desktop.Jobs` and put `/admin/jobs` in charge — at the
+   cost of proving the whole sync path on SQLite first.
+3. **A test environment for `lib_desktop`**, so the tool's behaviour has tests and
+   not only evidence rows, and a CI leg that compiles, dialyses and probes
+   `MIX_ENV=desktop` (the probe is cheap: boot it, `GET` the screens).
+4. **Signing and notarisation** for the `.app`, which builds and runs.
+5. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
    in-process seed) so the same suite can run against the container image.
 
 ## Verifying anything, fast
@@ -254,16 +289,18 @@ MIX_ENV=desktop mix compile --warnings-as-errors     # tool builds
 MIX_ENV=desktop mix dialyzer                         # the tool's types: 0 errors
 mix format --check-formatted                         # includes lib_desktop in its inputs
 pgrep -fl "mix test" | wc -l                          # must be 0, and one mix at a time (trap 14)
-mix test                                              # 1917 / 0
+mix test                                              # the whole suite
 mix sobelow --exit                                    # security gate
-scripts/start-desktop.sh --where                      # builds both halves, then the workspace
+scripts/start-desktop.sh --where                      # assets, release and window, then the workspace
 scripts/start-desktop.sh                              # the debug window from the checkout
 scripts/start-desktop.sh --app                        # the .app, built and opened
 ```
 
-The release step prints `ok in 30–40s` on a machine with nothing else building;
-that is the release copy (49 MB, 2 713 files), not a recompile. The window step
-prints `ok in 1–3s` when nothing changed (trap 12 was 11–15 s, every launch).
+The asset steps print about a second each once the toolchain is installed —
+trap 17 is what a skipped one looks like. The release step prints `ok in 30–40s`
+on a machine with nothing else building; that is the release copy (49 MB, 2 713
+files), not a recompile. The window step prints `ok in 1–3s` when nothing changed
+(trap 12 was 11–15 s, every launch).
 `--app` is `cargo tauri build --bundles app` (six minutes cold, because it is a
 release build of the window with LTO; a minute warm) followed by `open -W`, so
 it returns when the window is closed.
@@ -271,3 +308,6 @@ By hand, if the app is already up: `RELEASE_DISTRIBUTION=none
 _build/desktop/rel/confluence_phx_mirror/bin/confluence_phx_mirror start` prints
 `desktop ui: http://127.0.0.1:<port>/`, and it is stopped by the owner of the
 port (trap 7): `lsof -nP -iTCP:<port> -sTCP:LISTEN -t | xargs kill`.
+
+To look at the screens without the window, `MIX_ENV=desktop mix run --no-halt`
+prints the same address and serves the same routes.

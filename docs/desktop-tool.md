@@ -21,13 +21,17 @@ server's expense, the desktop tool takes the harder road.
 | shared, unchanged | `Export.Zip` | streaming archive writer |
 | shared, unchanged | `Blobs.{Key,LocalStore}` | attachments as files |
 | shared, unchanged | `Mirror.{Page,Space,Attachment,Comment}` structs, `Web.Skins`, `Mirror.URLs` | plain data and pure functions |
+| shared, unchanged | `Web.Endpoint`, `Web.Router`, every LiveView, every controller, the admin area | the screens are the server's, served from a mount in the tool's own listener |
 | shared behind a seam | `Export.Site` | reads its rows through `Export.Site.Catalogue` |
 | shared, different adapter | persistence | the server's own schema, migrations and contexts; `{:array, _}` becomes JSON text |
+| shared, different spelling | `Resources.database/0`, `Mirror.maybe_page/2`, `Accounts.matches_identity/1` | a catalogue vs a file; `LIMIT NULL`/`OFFSET` without `LIMIT`; `text[]` overlap vs `json_each` |
 | forked | ingest loop | a small pipeline, not `Sync` |
-| absent | `Mirror.Search`, `Authorization`, `Accounts`, `Oban`, `Endpoint`, admin | the tool has one user, no permissions, no queue, no web layer |
+| absent | `Mirror.Search` | the tool's store has no `search_vector` column, and the screen says so rather than failing |
 
 The expensive part — turning Confluence's HTML into something a static archive
-can serve — is already database-free, and it is shared.
+can serve — is already database-free, and it is shared. So is the whole reading
+surface, because the tool mounts the server's endpoint rather than reimplementing
+it (see "Screens" below).
 
 ## The boundary is the build, not the adapter
 
@@ -80,19 +84,24 @@ The spike is the deliverable of the first day, and it is thrown away.
 ```
 lib_desktop/
   desktop/
-    application.ex          the tree: repo, blobs, rates, one task supervisor
-    repo.ex                 use Ecto.Repo, otp_app: :confluence_phx_mirror
-    supervisor.ex           the ingest pipeline, one run at a time
-    paths.ex                the per-user data directory and everything under it
-    ingest.ex               Source → Renderer → rows
-    ingest/page.ex          one page, end to end
-    ingest/attachment.ex    bytes to the blob store
-    catalogue.ex            Export.Site.Catalogue over SQLite
-    export.ex               Catalogue → Export.Site → zip
+    application.ex          the tree: the server's, less what has no peer here
+    setup.ex                migrations before the first query
+    settings.ex             the site, the account and the folder, from a file
+    credentials.ex          the token, in the OS keychain (NIF, see native/)
+    credentials/keyring.ex  the real store
+    credentials/memory.ex   the test double
+    archive.ex              the export: Export.site_archive → one file
+    jobs.ex                 the one mirror run, so a screen can follow it
+    mirror.ex               Source → Renderer → rows, straight into the catalogue
+    spaces.ex               the source's space list, fetched off the request
+    web/server.ex           the loopback listener, on an ephemeral port
+    web/dispatch.ex         /__tool here, the server's endpoint everywhere else
+    web/tool.ex             the tool's own screens: connection, spaces, run, export
+    web/page.ex             those screens' markup, as strings
 ```
 
-Two modules carry all the risk, and both are small: `Ingest` and `Catalogue`.
-Everything else is configuration.
+Everything under `web/` is small on purpose; the reading surface is not here at
+all, because it is the server's (`lib/confluence_phx_mirror_web/`).
 
 ## Configuration
 
@@ -147,33 +156,93 @@ reconfigures the repo, a `SECRET_KEY_BASE` requirement — will still execute an
 will override the file above. Guard those reads with the environment rather than
 assuming only prod reaches them.
 
+## Screens
+
+There is one origin. `Desktop.Web.Dispatch` answers `/__tool` and everything under
+it from the tool's own small router, and hands every other path to
+`ConfluencePhxMirrorWeb.Endpoint` — mounted, not started, so the window's pages,
+its websocket and the tool's form share a port, a cookie jar and a `Host`.
+
+What that buys is that the window opens on the mirror: `/` is the server's home
+page, `/spaces` its directory, `/admin` its cockpit, `/admin/settings` the same
+settings page an operator changes a theme on. Nothing is re-rendered, so nothing
+can drift.
+
+Two things are the tool's own, and they are the tool's own because a deployment
+does not have them:
+
+| path | what | why not the server's |
+| --- | --- | --- |
+| `/__tool/setup` | where the site is, and the token that reaches it | a release takes these from `CM_*` and `SECRET_KEY_BASE`; the tool has a window to ask in, and stores the secret in the OS keychain |
+| `/__tool/spaces`, `/__tool/mirror` | the space list, and a run that copies a space into the catalogue | the server's sync goes through Oban and a sync gate written in Postgres; the tool's copies straight into the catalogue, which is the path that is proven on SQLite |
+| `/__tool/export` | the archive, as one file | the deployment's is a download from an admin screen; the tool's is a file that lands beside the catalogue |
+
+The admin area is reachable because the tool has one reader and the window is the
+only way in: `:auto_admin` makes that reader an administrator, so `/admin` is one
+click from the mirror. The account menu carries one extra entry (`Desktop…` →
+`/__tool`) when `:desktop_tool` is set, which only `config/desktop.exs` does — for
+a deployment nothing renders and nothing changes.
+
+Unconfigured, `/` answers with the connection form rather than redirecting: a
+first run has one screen worth showing, and the form is a page, not a detour.
+
 ## Boot
 
-`Desktop.Application` is a short list, and it is short on purpose:
+`Desktop.Application` is the server's list, less what has nothing to coordinate
+here:
 
 ```elixir
 children = [
   ConfluencePhxMirror.Repo,
+  ConfluencePhxMirror.Desktop.Setup,          # migrations, before the first query
+  {Phoenix.PubSub, name: ConfluencePhxMirror.PubSub},
+  ConfluencePhxMirror.Mirror.Counters,
+  ConfluencePhxMirror.MetricsHistory,
+  ConfluencePhxMirror.Resources,
+  ConfluencePhxMirrorWeb.Telemetry,
+  ConfluencePhxMirror.Sites.Guard,
+  ConfluencePhxMirror.Mcp.Markdown,
+  ConfluencePhxMirror.SpaceDirectory,
+  {Task.Supervisor, name: ConfluencePhxMirror.Export.TaskSupervisor},
+  ConfluencePhxMirror.Export.Artifact,
+  ConfluencePhxMirrorWeb.Presence,
+  ConfluencePhxMirror.RateLimit,
+  rate_limiter_spec(),
+  ConfluencePhxMirror.Confluence.Traffic,
+  {Oban, Application.fetch_env!(:confluence_phx_mirror, Oban)},
+  ConfluencePhxMirror.Sync.Log,
+  ConfluencePhxMirror.Sync.Runs,
   {Task.Supervisor, name: ConfluencePhxMirror.Desktop.TaskSupervisor},
   ConfluencePhxMirror.Desktop.Jobs,
   ConfluencePhxMirror.Desktop.Spaces,
-  ConfluencePhxMirror.Desktop.Web.Server
+  ConfluencePhxMirrorWeb.Endpoint,            # server: false — the listener is below
+  {ConfluencePhxMirror.Desktop.Web.Server, port: port}
 ]
 ```
+
+Left out, each for a reason: `DNSCluster` (one node, no peers), the two
+`Sync.Scheduler` clocks (the tool mirrors when somebody presses the button), and
+`Sync.StartupPull` (a first run has no credentials yet).
 
 `Blobs.LocalStore` is not in that list because it is not a process: it is a
 plain module that `Blobs.Store` dispatches to through `impl/0`. The desktop build
 only has to point `Store` at it, with a root under the data directory.
 
-No `Oban`, no `Endpoint`, no `DNSCluster`, no `Presence`, no `Counter` caches.
-`RateLimit` and `Traffic` are ETS; `HttpSource` uses them and they start standalone.
+The endpoint runs with `server: false`. It still starts everything it owns — the
+configuration cache, the socket transports, the static manifest, the drainers —
+and `Desktop.Web.Server` accepts the connections and calls `Endpoint.call/2`.
+That is also why the port is chosen before the supervisor starts: the endpoint
+reads its URL once, when it starts, and a screen generating an absolute link
+needs the port the listener will actually get.
 
-The one boot-time wart is `ConfluencePhxMirrorWeb.Skins.validate!/0`, which the
-server calls to fail fast on a misspelt theme name. The archive needs the theme,
-so the desktop app calls it too — but it, and `Settings`/`SiteSettings`, hold
-`:persistent_term` values the server loads from the database. Desktop loads the
-same keys from constants. The spike will say exactly which keys, because the
-compiler will point at each read.
+Oban runs on `Oban.Engines.Lite`, because the store is a file; the queues are one
+process each, because one SQLite connection cannot feed fourteen consumers.
+
+`ConfluencePhxMirrorWeb.Skins.validate!/0` is called first, as the server does,
+so a misspelt skin name stops the boot rather than quietly serving the default.
+After the tree is up the tool does what the server does — load `Settings` and
+`SiteSettings` once, configure the mailer, settle jobs left `executing` by the
+last shutdown.
 
 ## Storage
 
