@@ -85,7 +85,6 @@ where() {
   "$sidecar" eval '
     alias ConfluencePhxMirror.Desktop.Settings
 
-    IO.puts("id:          #{Settings.id()}")
     IO.puts("folder:      #{Settings.root()}")
     IO.puts("catalogue:   #{Settings.database()}")
     IO.puts("attachments: #{Settings.blobs()}")

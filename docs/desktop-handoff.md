@@ -1,8 +1,9 @@
 # Desktop export tool — hand-off
 
-State of the branch `desktop` (`origin/desktop`, draft PR #3, 29 commits ahead of
-`main`). Written after a long session that fixed several things and broke two; both
-of those are recorded here so they are not repeated.
+State of the branch `desktop` (`origin/desktop`, draft PR #3).
+
+Everything in "What works" is green: `mix lint` passes with **no sobelow
+findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 
 ## What works, and how it was proven
 
@@ -13,23 +14,23 @@ of those are recorded here so they are not repeated.
 | The same 46 build on Postgres | dropped and rebuilt from scratch: 46 migrations, `search_vector` column, 8 GIN indexes |
 | Desktop ingest writes the server's rows | demo space: 37 pages, 1 space, labels/ancestors round-trip as lists |
 | The release boots and serves | `desktop ui: http://127.0.0.1:<port>/`, `Node.alive? == false`, `ensure_all_started` → `:ok` |
+| The tool remembers its site, and reaches it | with `CM_CONFLUENCE_SITE`, `CM_ATL_EMAIL` and `CM_ATL_TOKEN` exported, a boot answers `/state` → `{"missing":["site"],"readiness":"needs"}` and `/` → 302 `/setup`; `POST /setup` → 303 and `ready`; a second boot is still `ready` and `/` → 200; `eval` then shows `api_token` (the value typed in, from the keychain), the recorded `base_url`/`email`, and `:source` = `HttpSource` |
 | Server suite | 1917 passed, 7 excluded, 0 failed (on a clean database, one suite at a time) |
 
 ## What is broken or unfinished
 
-1. **CI is red** — `.sobelow-skips` was deleted, so 13 findings that it used to
-   suppress are now reported. See "Sobelow" below.
-2. **3 commits are unpushed** (`03f6c05`, `2a0600f`, `4e14c95`), and
-   `lib/confluence_phx_mirror_web/router.ex` has an uncommitted inline skip.
-3. **Site and email do not persist.** `settings.json` contains only
-   `secret_key_base` — `Settings.store/1` has never run, because three `CM_*`
-   environment variables make `readiness/0` return `:ready`, so the setup form is
-   never the path taken. This is the "I configured ten times and nothing stuck"
-   bug, and it is a design fault, not a typo.
-4. **The real Endpoint is not wired into the tool.** An attempt hung inside the
+1. **The real Endpoint is not wired into the tool.** An attempt hung inside the
    `:browser` pipeline and was reverted (see "Traps").
-5. **No `.app` yet.** `bundle.active` is `false`; with it on, `cargo build` fails in
+2. **No `.app` yet.** `bundle.active` is `false`; with it on, `cargo build` fails in
    tauri-build's resource phase with `Permission denied (os error 13)`.
+3. **`lib_desktop/` is outside the format gate.** `.formatter.exs` inputs are
+   `{config,lib,test}`, so the tool's own modules are credo-checked but never
+   formatted; `Settings.validate_site/1` shows it (a `case` on the same line as
+   the `do`). Adding `lib_desktop/**/*.ex` there is a one-line change and a
+   reformat commit.
+4. **The sidecar is not stopped by `bin/… stop`.** See trap 7: with no node name
+   the command cannot reach the node, and `start-desktop.sh`'s cleanup swallows
+   the failure, so every launch leaves a process behind.
 
 ## Decisions, and why
 
@@ -41,11 +42,22 @@ of those are recorded here so they are not repeated.
   `ConfluencePhxMirror.Migration` holds the six constructs that differ. The
   Postgres-only DDL (generated `tsvector`, `pg_trgm`, `ALTER COLUMN`, the slug
   rewrite) is *guarded*, not translated.
-- **No `settings.json`.** The workspace is fixed and collocated — the database and
-  `blobs/` side by side under `~/Library/Application Support/confluence-export`.
-  Secrets go to the OS keyring under a **constant** key; everything else belongs in
-  the server's `settings` table. Nothing is configured, so nothing can fail to
-  persist.
+- **The folder is fixed, and the site lives in one small file beside it.** The
+  database and `blobs/` sit under `~/Library/Application Support/confluence-export`,
+  and `settings.json` next to them records exactly two things — the site and the
+  account. This replaces "everything else belongs in the server's `settings`
+  table": that table is the *catalogue* of a deployment's audited settings, and
+  its own docs say a value read once at boot (the source, the credentials) is
+  not one of them. Putting the tool's site there would either add a key the
+  server must then ignore or add a desktop-only table to the server's schema.
+  The secret still goes to the OS keyring, now under a constant key, so losing
+  the file costs the address, not the token.
+- **Nothing in the tool falls back to `CM_*` for its site.** A variable in a
+  shell is not something the window can change, and when it satisfies
+  `readiness/0` it makes the form that *would* save a site unreachable — which is
+  how a workspace gets configured ten times and remembers none of it. The token
+  keeps its environment fallback: it is a fallback, not a shadow, because the
+  keyring wins when it has one.
 - **Search is FTS5 later.** `Mirror.Search` uses Postgres `tsvector`; it is reached
   only by `SearchLive` and two API controllers, so it is one module to port, not a
   thread through the app.
@@ -62,10 +74,15 @@ of those are recorded here so they are not repeated.
    stopped before it said where it listens". `rel/env.sh.eex` set
    `RELEASE_DISTRIBUTION=sname` *unconditionally*; it is now a default
    (`${RELEASE_DISTRIBUTION:-sname}`) so `none` is obeyed.
-2. **`.sobelow-skips` is keyed `file:line:hash`.** Inserting 21 lines above a
-   finding invalidates it and fails CI. Twice. Use inline `# sobelow_skip ["Rule"]`
-   on **the line sobelow reports** — for a pipeline, that is `pipeline :api do`,
-   not the `plug` inside it.
+2. **A sobelow skip has three shapes, and only two work.** `.sobelow-skips` is
+   keyed `file:line:hash` — `phash2(type, variable, file, line)` — so inserting a
+   line above a finding invalidates it and fails CI. Twice. Inline
+   `# sobelow_skip ["Rule"]` on **the line sobelow reports** works in `.ex` files
+   only: it is rewritten into a module attribute before parsing, so in a `.heex`
+   template it is inert text and the finding simply moves to the next line
+   (verified). A template finding therefore has to be removed rather than
+   suppressed: give the raw output an owner in an `.ex` module (`skin_style/1`,
+   `confluence_body/1`) and skip that one function.
 3. **Migrations must run before anything queries the catalogue.** `Spaces.init/1`
    asks for spaces as it starts; on a fresh install there were no tables. `Setup`
    is now a child immediately after the repo, does its work in `start_link`, and
@@ -77,30 +94,28 @@ of those are recorded here so they are not repeated.
    resolve parents by `confluence_id` — the server's own rule.
 6. **Never run two suites against one test database.** Backgrounded `mix test`
    processes from earlier turns stayed alive and produced flaky failures that
-   looked like code bugs. Check `pgrep -fl "mix test"` before running.
+   looked like code bugs. Check `pgrep -fl "mix test"` before running. Two at
+   once also break `site_export_link_test.exs` (a build that must be seen half
+   written): it fails under the load and passes alone, 8/8.
+7. **`bin/… stop` needs a node name.** The sidecar runs with
+   `RELEASE_DISTRIBUTION=none` (trap 1), and `stop` is an RPC: it answers
+   "Cannot run --rpc-eval if the node is not alive (set --name or --sname)" and
+   the sidecar keeps running. `start-desktop.sh`'s cleanup calls it with
+   `|| true`, so every launch leaks a process; stop it by the port owner
+   (`lsof -nP -iTCP:<port> -sTCP:LISTEN -t`).
 
 ## Next, in order
 
-1. **Sobelow, to green.** 13 findings, in three classes, all false positives:
-   `Traversal.FileModule` (paths from `Application.app_dir/2`), `XSS.Raw` (HTML
-   `Sync.Renderer` already sanitised), `Config.CSRF` on the read-only API. The
-   `Config.CSRF` one is done and verified — it took the finding count from 14 to
-   13. Apply the same inline form to the rest, running `mix sobelow --exit` after
-   each file. For the six `.heex` sites, first confirm sobelow honours a skip
-   comment inside HEEx; if it does not, that is the one place a registry entry is
-   unavoidable and it must carry a reason.
-2. **Collocated paths.** `Settings.root/0` returns the fixed directory — no file
-   read, no `choose_root/1`. Keyring key becomes a constant.
-3. **Site and email into the database.** They are read at boot for `HttpSource`,
-   which is *before* the repo starts, so they must be read by a step after
-   migrations — the same shape as `Setup`.
-4. **The real Endpoint in the tool**, once the tool has the tables its `:browser`
+1. **The real Endpoint in the tool**, once the tool has the tables its `:browser`
    pipeline needs. It hung rather than erroring; the suspicion is the `pool_size: 1`
    SQLite pool, with `AutoAdmin` and `SiteContext` each wanting a connection while
    the request holds one. Read a logged run before changing anything.
-5. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
+2. **A stop that works.** Give the sidecar a node name derived from the workspace
+   (not the machine), or have the launcher kill the port owner, so a second launch
+   does not leave the first running.
+3. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
    in-process seed) so the same suite can run against the container image.
-6. **The `.app`**: `bundle.active` back on, resources mapped, then
+4. **The `.app`**: `bundle.active` back on, resources mapped, then
    `cargo tauri build --bundles app`. Unsigned bundles are quarantined by Gatekeeper,
    so signing and notarisation are part of shipping, not a config flag.
 
@@ -114,5 +129,7 @@ mix test                                              # 1917 / 0
 mix sobelow --exit                                    # security gate
 RELEASE_DISTRIBUTION=none _build/desktop/rel/confluence_phx_mirror/bin/confluence_phx_mirror start
                                                       # must print `desktop ui: …`
+                                                      # and stop it by the port owner (trap 7):
+                                                      # lsof -nP -iTCP:<port> -sTCP:LISTEN -t | xargs kill
 scripts/start-desktop.sh                              # the app itself
 ```

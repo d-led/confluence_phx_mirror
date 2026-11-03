@@ -42,7 +42,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Router do
     }
 
     case Settings.configure(attrs) do
-      {:ok, _workspace_id} ->
+      :ok ->
         conn |> put_resp_header("location", "/") |> send_resp(303, "")
 
       {:error, reason} ->

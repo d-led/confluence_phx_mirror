@@ -10,9 +10,8 @@ defmodule ConfluencePhxMirror.Desktop.Credentials do
   three encrypt it at rest under the user's own account.
 
   An entry is identified by a *service* and an *account*. The service is this
-  application; the account is the workspace id (see `Desktop.Settings`), not the
-  folder path — a folder that is moved or renamed is the same workspace and its
-  secret must still be found there.
+  application; the account is a constant — one tool on one machine is one
+  workspace — so a lost settings file cannot lose the token with it.
 
   Implementations are chosen by `:desktop_credentials` in the application
   environment: `Keyring` (the default) and `Memory` (the suite).

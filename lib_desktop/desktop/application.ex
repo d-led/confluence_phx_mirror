@@ -19,7 +19,7 @@ defmodule ConfluencePhxMirror.Desktop.Application do
   @impl true
   def start(_type, _args) do
     # Before the repo: the store resolves its root on use, and the repo reads its
-    # path from the settings file as it starts.
+    # path from here as it starts.
     Settings.apply_runtime_config()
 
     # A catalogue written by an earlier build cannot be migrated onto the shared

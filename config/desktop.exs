@@ -17,8 +17,9 @@ config :confluence_phx_mirror,
   integer_list_type: ConfluencePhxMirror.Schema.JSONList
 
 # Defaults only. `ConfluencePhxMirror.Desktop.Settings` owns the real answer — the
-# folder a person picks is written to a settings file and read before the repo
-# starts — so these are what a fresh install uses, and what `mix ecto.*` sees.
+# folder is fixed (this one), and the file beside it records only which site the
+# workspace mirrors — so these are what `mix ecto.*` sees before the tool has
+# started.
 config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
   database: Path.join(data_dir, "catalogue.db"),
   journal_mode: :wal,

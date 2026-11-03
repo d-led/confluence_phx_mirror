@@ -16,8 +16,9 @@ defmodule ConfluencePhxMirror.Desktop.Credentials.Keyring do
 
   use Rustler, otp_app: :confluence_phx_mirror, crate: :confluence_keyring
 
-  # One service for every workspace; the account is the workspace id. The name
-  # is what a person sees in Keychain Access, so it says what made it.
+  # One service for every workspace; the account is a constant (see
+  # `Desktop.Settings`). The service name is what a person sees in Keychain
+  # Access, so it says what made it.
   @service "confluence-export"
 
   @impl true

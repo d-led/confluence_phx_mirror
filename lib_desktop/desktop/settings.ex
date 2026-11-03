@@ -2,22 +2,23 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   @moduledoc """
   What the tool remembers about a workspace, and where it keeps it.
 
-  A workspace is one folder and one Confluence site. The folder holds the
-  catalogue and the attachments; the settings file holds what identifies the
-  workspace — a generated id, the site, the account it signs in as — and never
-  holds the secret. The secret belongs to the OS credential store, keyed by that
-  id (see `ConfluencePhxMirror.Desktop.Credentials`).
+  A workspace is one folder and one Confluence site. The folder is fixed —
+  `root/0`, under the user's application data directory — and it holds the
+  catalogue and the attachments. The settings file beside it records which site
+  that is and which account it signs in as; the secret is not in the file, and
+  belongs to the OS credential store under a constant key (see
+  `ConfluencePhxMirror.Desktop.Credentials`).
 
-  The id is generated once and stored rather than derived from the folder path.
-  A folder that is moved or renamed is still the same workspace, and its
-  credential has to be found again; two folders can point at two different sites
-  and must not share one.
+  Nothing here is chosen at run time. A folder that can be picked is a path that
+  has to be remembered, in a file that can be lost, stale or unreadable — for a
+  decision a person made once. One tool on one machine is one workspace, and the
+  credential store says so too: losing the record costs the site's address, not
+  the token.
 
-  None of this is configuration. `config/*.exs` is read before the application
-  starts and before there is anyone to ask, so it can only hold the default
-  folder. Everything here is read at boot from a settings file in the OS's
-  per-user configuration directory — a fixed place, which is how an app finds
-  the folder it was told about.
+  None of this is configuration either. `config/*.exs` is read before the
+  application starts and before there is anyone to ask; everything here is read
+  at boot from a file in the OS's per-user directory, which is how an app finds
+  what it was told.
   """
 
   require Logger
@@ -30,26 +31,25 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   @app_name "confluence-export"
   @settings "settings.json"
 
+  # One tool, one workspace: the credential store is keyed by a constant, so a
+  # lost settings file cannot lose the token with it.
+  @account "workspace"
+
   # ---------------------------------------------------------------------------
   # Where
   # ---------------------------------------------------------------------------
 
-  @doc "The folder used before anyone has chosen one."
-  @spec default_root() :: Path.t()
-  def default_root, do: :filename.basedir(:user_data, @app_name)
+  @doc """
+  The folder this workspace is kept in: the same one on every machine.
 
-  @doc "The settings file, which does nothing but describe a workspace."
-  @spec file() :: Path.t()
-  def file, do: Path.join(:filename.basedir(:user_config, @app_name), @settings)
-
-  @doc "The folder this workspace is kept in."
+  It is fixed rather than chosen — see the module doc.
+  """
   @spec root() :: Path.t()
-  def root do
-    case read() do
-      %{"root" => root} when is_binary(root) -> root
-      _ -> default_root()
-    end
-  end
+  def root, do: :filename.basedir(:user_data, @app_name)
+
+  @doc "The file that records which site this workspace mirrors, and as whom."
+  @spec file() :: Path.t()
+  def file, do: Path.join(root(), @settings)
 
   @doc "The catalogue."
   @spec database() :: Path.t()
@@ -59,56 +59,25 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   @spec blobs() :: Path.t()
   def blobs, do: Path.join(root(), "blobs")
 
-  @doc """
-  Records `path` as the folder to use from now on.
-
-  It fails rather than guessing. A folder that cannot be created, or that exists
-  and refuses a write — a read-only volume, somebody else's directory — is
-  reported to the person who picked it, instead of surfacing as the first page
-  that will not save.
-  """
-  @spec choose_root(Path.t()) :: :ok | {:error, term()}
-  def choose_root(path) when is_binary(path) do
-    with :ok <- create(path),
-         :ok <- prove_writable(path) do
-      update(fn settings -> Map.put(settings, "root", Path.expand(path)) end)
-      apply_runtime_config()
-    end
-  end
-
   # ---------------------------------------------------------------------------
   # What it mirrors
   # ---------------------------------------------------------------------------
 
   @doc """
-  This workspace's id, generated the first time it is asked for.
-
-  It is the key the credential store uses, so it must survive a folder being
-  moved. Generated with `Ecto.UUID` because it is already a dependency and a
-  random UUID carries no information about the machine or the person.
-  """
-  @spec id() :: String.t()
-  def id do
-    case read() do
-      %{"id" => id} when is_binary(id) -> id
-      _settings -> Map.fetch!(update(&Map.put_new(&1, "id", Ecto.UUID.generate())), "id")
-    end
-  end
-
-  @doc """
   The site this workspace mirrors, as a URL, or `nil`.
 
-  The workspace wins; the environment is what an unconfigured one falls back to.
-  That is how a machine provisioned the way the server is provisioned —
-  `CM_CONFLUENCE_SITE`, `CM_ATL_EMAIL`, `CM_ATL_TOKEN` — opens straight onto the
-  mirror instead of a form asking for what it was already told.
+  Only what this tool recorded. The environment is not consulted: it is not
+  something a person typed into this window, it is not what the window can
+  change, and a `CM_CONFLUENCE_SITE` in a shell makes the form that would have
+  saved a site unreachable — which is how a workspace ends up configured ten
+  times and remembering none of it.
   """
   @spec site() :: String.t() | nil
-  def site, do: read()["site"] || from_env("CM_CONFLUENCE_SITE")
+  def site, do: read()["site"]
 
   @doc "The account it signs in as, or `nil` for a bearer token."
   @spec email() :: String.t() | nil
-  def email, do: read()["email"] || from_env("CM_ATL_EMAIL")
+  def email, do: read()["email"]
 
   @doc "The token, from the credential store, or the environment's when there is none."
   @spec secret() :: {:ok, String.t()} | {:error, :not_found}
@@ -140,8 +109,8 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   @spec configured?() :: boolean()
   def configured?, do: readiness() == :ready
 
-  # The id is read rather than generated: asking whether a workspace is ready
-  # must not be the thing that creates it.
+  # Asking whether a workspace is ready must not be the thing that creates it,
+  # so this only reads.
   defp missing do
     []
     |> require_site()
@@ -159,14 +128,9 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     end
   end
 
-  # The id is read rather than generated: asking whether a workspace is ready
-  # must not be the thing that creates it.
-  defp stored_secret do
-    case read()["id"] do
-      nil -> {:error, :not_found}
-      id -> Credentials.fetch(id)
-    end
-  end
+  # The account is a constant, so asking whether a workspace is ready cannot be
+  # the thing that creates it.
+  defp stored_secret, do: Credentials.fetch(@account)
 
   defp from_env(name) do
     case System.get_env(name) do
@@ -199,30 +163,23 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   First run, and every later change to the connection: a URL, an account and its
   secret, in one call.
 
-  This is the whole of what the UI needs before the tool can sync. The folder is
-  created here rather than when the first page is written, so a credential with
-  nowhere to put the catalogue fails at the moment somebody pressed the button
-  instead of three minutes later.
-
-  The folder is the one already chosen, or — on a first run — `default_root/0`,
-  the per-user application data directory. It is app-owned staging, not the
-  deliverable: the archive a person wants to keep is written where they choose at
-  export time.
+  This is the whole of what the UI needs before the tool can sync. The folder —
+  and the attachments folder under it — is created here rather than when the
+  first page is written, so a credential with nowhere to put the catalogue fails
+  at the moment somebody pressed the button instead of three minutes later.
   """
-  @spec configure(map()) :: {:ok, String.t()} | {:error, term()}
+  @spec configure(map()) :: :ok | {:error, term()}
   def configure(attrs) when is_map(attrs) do
     with {:ok, secret} <- secret(attrs),
          :ok <- store(attrs),
          :ok <- ensure_root() do
-      workspace_id = id()
-      :ok = Credentials.put(workspace_id, secret)
-      {:ok, workspace_id}
+      Credentials.put(@account, secret)
     end
   end
 
-  @doc "Whether this install has been set up."
+  @doc "Whether this install has been set up: whether a site has been recorded."
   @spec first_run?() :: boolean()
-  def first_run?, do: not File.exists?(file())
+  def first_run?, do: is_nil(blank(site()))
 
   @doc "Creates the workspace folder and the attachments folder under it."
   @spec ensure_root() :: :ok | {:error, term()}
@@ -233,7 +190,7 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   @doc "Forgets everything about this workspace, including its secret."
   @spec forget() :: :ok
   def forget do
-    Credentials.delete(id())
+    Credentials.delete(@account)
     File.rm(file())
     :ok
   end
@@ -255,11 +212,11 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     Application.put_env(@app, :blob_root, blobs())
     put_repo_config()
     put_site_config()
+    put_source_config()
     :ok
   end
 
   # The repo reads `:database` when it starts, so the path is written here first.
-  # A folder chosen while the tool is running takes effect in `restart_repo/0`.
   defp put_repo_config do
     current = Application.get_env(@app, ConfluencePhxMirror.Repo, [])
 
@@ -271,45 +228,6 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
       |> Keyword.put_new(:journal_mode, :wal)
       |> Keyword.put_new(:pool_size, 1)
     )
-  end
-
-  @doc """
-  Loads the workspace's secret into the HTTP client's configuration.
-
-  The token is not part of `apply_runtime_config/0` on purpose. It stays in the
-  credential store until something is about to use it, and `end_session/0` takes
-  it back out, so it is present in the application environment only while a run
-  is talking to Confluence rather than for the whole life of the process.
-  """
-  @spec begin_session() :: :ok | {:error, term()}
-  def begin_session do
-    with {:ok, token} <- secret() do
-      put_http_source(api_token: token)
-    end
-  end
-
-  @doc "Removes the secret from the HTTP client's configuration."
-  @spec end_session() :: :ok
-  def end_session do
-    config = Application.get_env(@app, HttpSource, [])
-    Application.put_env(@app, HttpSource, Keyword.delete(config, :api_token))
-  end
-
-  @doc """
-  Reopens the catalogue in the current folder.
-
-  A repo reads its `:database` once, when it starts, so a folder chosen while the
-  app is running takes effect when the repo restarts — which is what this does,
-  through the supervisor that owns it.
-  """
-  @spec restart_repo() :: {:ok, pid()} | {:error, term()}
-  def restart_repo do
-    supervisor = ConfluencePhxMirror.Desktop.Supervisor
-    repo = ConfluencePhxMirror.Repo
-
-    with :ok <- Supervisor.terminate_child(supervisor, repo) do
-      Supervisor.restart_child(supervisor, repo)
-    end
   end
 
   # ---------------------------------------------------------------------------
@@ -347,8 +265,33 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   # Helpers
   # ---------------------------------------------------------------------------
 
+  # The token comes with the rest of the connection. It used to be loaded only
+  # for the length of a run, by a `begin_session/0` that nothing ever called —
+  # and a token nobody loads is a site that answers 401. `HttpSource` reads its
+  # configuration per request, so what is set here is in force for every call
+  # that follows.
   defp put_site_config do
-    put_http_source(base_url: site(), email: email())
+    put_http_source(base_url: site(), email: email(), api_token: token())
+  end
+
+  defp token do
+    case secret() do
+      {:ok, token} -> token
+      {:error, _none} -> nil
+    end
+  end
+
+  # A deployment that named no source falls back to the demo snapshot, which is
+  # the right answer for a mirror nobody has set up. A workspace that knows its
+  # site is not that: reading the demo after a person typed their site would
+  # ignore the only thing they told us. An operator who named a source out loud
+  # keeps it.
+  defp put_source_config do
+    cond do
+      blank(site()) -> :ok
+      System.get_env("CM_SOURCE") -> :ok
+      true -> Application.put_env(@app, :source, HttpSource)
+    end
   end
 
   # Only keys with a value: `HttpSource` reads what is there and falls back to
@@ -396,21 +339,6 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     case File.mkdir_p(path) do
       :ok -> :ok
       {:error, reason} -> {:error, {:cannot_create, path, reason}}
-    end
-  end
-
-  # A directory can exist and still refuse a write. The question is answered
-  # once, here, rather than on the first attachment.
-  defp prove_writable(path) do
-    probe = Path.join(path, ".write-test-#{System.unique_integer([:positive])}")
-
-    case File.write(probe, "") do
-      :ok ->
-        File.rm(probe)
-        :ok
-
-      {:error, reason} ->
-        {:error, {:not_writable, path, reason}}
     end
   end
 end
