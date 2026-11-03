@@ -67,17 +67,12 @@ build_window() {
   echo "window built"
 }
 
-# A release is a copy, not a link: editing `lib_desktop` leaves the built one
-# serving old code until it is rebuilt. Same for the window.
-release_stale() {
-  [[ ! -x "$sidecar" ]] && return 0
-  [[ -n "$(find lib lib_desktop config mix.exs mix.lock -newer "$sidecar" -print -quit 2>/dev/null)" ]]
-}
-
-window_stale() {
-  [[ ! -x "$window" ]] && return 0
-  [[ -n "$(find src-tauri/src src-tauri/Cargo.toml src-tauri/tauri.conf.json -newer "$window" -print -quit 2>/dev/null)" ]]
-}
+# Build every time. There used to be mtime comparisons here to skip a rebuild,
+# and they were wrong in the one way that matters: the window carries its own
+# copy of the release (`bundle.resources` in tauri.conf.json, refreshed by
+# `cargo build`), so an Elixir-only change rebuilt `_build/desktop/rel` and left
+# the window starting the release it had copied hours earlier. A warm build of
+# both is about seven seconds — cheaper than one wrong answer.
 
 # `eval` starts no applications, which is all this needs: reading the workspace
 # touches a settings file and never the catalogue.
@@ -131,16 +126,16 @@ open_in_browser() {
 }
 
 if [[ "$mode" == where ]]; then
-  if release_stale; then build_release; fi
+  build_release
   where
   exit 0
 fi
 
-if [[ "$mode" == rebuild ]]; then
-  build_release
-  build_window || true
-elif release_stale; then
-  build_release
+build_release
+
+if [[ "$mode" == rebuild ]] || [[ "$mode" == open ]]; then
+  built_window=1
+  build_window || built_window=0
 fi
 
 if [[ "$mode" == browser ]]; then
@@ -158,13 +153,11 @@ export CONFLUENCE_EXPORT_SIDECAR="$sidecar"
 # listens. The `--in-browser` path starts the release from this script too.
 export RELEASE_DISTRIBUTION=none
 
-if [[ ! -x "$window" ]] || window_stale; then
-  if ! build_window; then
-    echo "the native window could not be built (is cargo installed?)" >&2
-    echo "opening the tool in a browser window instead" >&2
-    open_in_browser
-    exit 0
-  fi
+if [[ "${built_window:-1}" == 0 ]]; then
+  echo "the native window could not be built (is cargo installed?)" >&2
+  echo "opening the tool in a browser window instead" >&2
+  open_in_browser
+  exit 0
 fi
 
 # `exec` here would replace the shell with the window, so a hang shows nothing
