@@ -311,15 +311,16 @@ defmodule ConfluencePhxMirror.Audit do
 
   defp matching(queryable, word) do
     import Ecto.Query
+    import ConfluencePhxMirror.Query, only: [like_ci: 2]
 
     pattern = pattern(word)
 
     from e in queryable,
       where:
-        ilike(e.action, ^pattern) or ilike(e.actor_label, ^pattern) or
-          ilike(e.actor_name, ^pattern) or ilike(e.actor_email, ^pattern) or
-          ilike(e.actor_account_id, ^pattern) or ilike(e.entity_id, ^pattern) or
-          fragment("?::text ILIKE ?", e.metadata, ^pattern)
+        like_ci(e.action, ^pattern) or like_ci(e.actor_label, ^pattern) or
+          like_ci(e.actor_name, ^pattern) or like_ci(e.actor_email, ^pattern) or
+          like_ci(e.actor_account_id, ^pattern) or like_ci(e.entity_id, ^pattern) or
+          fragment("lower(CAST(? AS TEXT)) LIKE lower(?) ESCAPE '\\'", e.metadata, ^pattern)
   end
 
   defp filter_action(queryable, action) when is_binary(action) and action != "" do

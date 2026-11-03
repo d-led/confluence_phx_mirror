@@ -13,6 +13,7 @@ defmodule ConfluencePhxMirror.Mirror do
   """
 
   import Ecto.Query
+  import ConfluencePhxMirror.Query, only: [like_ci: 2]
 
   alias ConfluencePhxMirror.Mirror.{
     Attachment,
@@ -76,7 +77,7 @@ defmodule ConfluencePhxMirror.Mirror do
   def named_like(queryable, term) do
     pattern = like_pattern(term)
 
-    where(queryable, [s], ilike(s.name, ^pattern) or ilike(s.key, ^pattern))
+    where(queryable, [s], like_ci(s.name, ^pattern) or like_ci(s.key, ^pattern))
   end
 
   @doc """
@@ -113,7 +114,7 @@ defmodule ConfluencePhxMirror.Mirror do
   defp titled_like(queryable, term) do
     pattern = like_pattern(term)
 
-    where(queryable, [p, s], ilike(p.title, ^pattern) or ilike(s.key, ^pattern))
+    where(queryable, [p, s], like_ci(p.title, ^pattern) or like_ci(s.key, ^pattern))
   end
 
   # What a reader types is text, not a pattern: `%` and `_` in it mean the
