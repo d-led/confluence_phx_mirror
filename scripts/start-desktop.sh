@@ -94,16 +94,23 @@ where() {
 }
 
 open_in_browser() {
-  local log url
+  local log url sidecar_pid
   log=$(mktemp -t confluence-export.XXXXXX)
 
+  "$sidecar" start >"$log" 2>&1 &
+  # The release script execs the VM, so this PID is the sidecar itself — and it
+  # is the only way to stop it: `stop` is an RPC, and the sidecar runs with no
+  # node name (see RELEASE_DISTRIBUTION below), so it answers "Cannot run
+  # --rpc-eval if the node is not alive" and leaves the process behind.
+  sidecar_pid=$!
+
   cleanup() {
-    "$sidecar" stop >/dev/null 2>&1 || true
+    if [[ -n "$sidecar_pid" ]]; then
+      kill "$sidecar_pid" 2>/dev/null || true
+    fi
     rm -f "$log"
   }
   trap cleanup EXIT INT TERM
-
-  "$sidecar" start >"$log" 2>&1 &
 
   url=""
   for _ in $(seq 1 150); do

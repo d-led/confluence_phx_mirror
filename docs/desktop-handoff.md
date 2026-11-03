@@ -28,9 +28,6 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
    formatted; `Settings.validate_site/1` shows it (a `case` on the same line as
    the `do`). Adding `lib_desktop/**/*.ex` there is a one-line change and a
    reformat commit.
-4. **The sidecar is not stopped by `bin/… stop`.** See trap 7: with no node name
-   the command cannot reach the node, and `start-desktop.sh`'s cleanup swallows
-   the failure, so every launch leaves a process behind.
 
 ## Decisions, and why
 
@@ -100,9 +97,10 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 7. **`bin/… stop` needs a node name.** The sidecar runs with
    `RELEASE_DISTRIBUTION=none` (trap 1), and `stop` is an RPC: it answers
    "Cannot run --rpc-eval if the node is not alive (set --name or --sname)" and
-   the sidecar keeps running. `start-desktop.sh`'s cleanup calls it with
-   `|| true`, so every launch leaks a process; stop it by the port owner
-   (`lsof -nP -iTCP:<port> -sTCP:LISTEN -t`).
+   the sidecar keeps running. `start-desktop.sh --in-browser` used to call it
+   with `|| true`, leaking a process per launch; it now keeps the PID it started
+   (the release script `exec`s the VM, so `$!` is the sidecar) and kills that.
+   By hand: `lsof -nP -iTCP:<port> -sTCP:LISTEN -t | xargs kill`.
 
 ## Next, in order
 
@@ -110,12 +108,9 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
    pipeline needs. It hung rather than erroring; the suspicion is the `pool_size: 1`
    SQLite pool, with `AutoAdmin` and `SiteContext` each wanting a connection while
    the request holds one. Read a logged run before changing anything.
-2. **A stop that works.** Give the sidecar a node name derived from the workspace
-   (not the machine), or have the launcher kill the port owner, so a second launch
-   does not leave the first running.
-3. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
+2. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
    in-process seed) so the same suite can run against the container image.
-4. **The `.app`**: `bundle.active` back on, resources mapped, then
+3. **The `.app`**: `bundle.active` back on, resources mapped, then
    `cargo tauri build --bundles app`. Unsigned bundles are quarantined by Gatekeeper,
    so signing and notarisation are part of shipping, not a config flag.
 
