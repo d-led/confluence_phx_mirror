@@ -103,6 +103,27 @@ print_workspace() {
   '
 }
 
+run "checking the asset toolchain (installs it once, then finds it)" \
+  env MIX_ENV=desktop mix assets.install --if-missing
+
+# The screens are the server's, so the bundle has to be the server's too: CSS,
+# the LiveView client, and the colocated hooks each screen carries. A release
+# ships whatever `priv/static` holds and never builds it, so these are the steps
+# that decide what the window looks like — and the ones that go stale when they
+# are skipped (a hook nobody bundled is "unknown hook found" in the console, and
+# a menu that does not open).
+run "building the stylesheet" \
+  env MIX_ENV=desktop mix tailwind confluence_phx_mirror --minify
+
+run "building the scripts" \
+  env MIX_ENV=desktop mix esbuild confluence_phx_mirror --minify
+
+run "building the scripts the API docs page loads" \
+  env MIX_ENV=desktop mix esbuild confluence_phx_mirror_swagger --minify
+
+run "digesting the assets (the manifest the screens link through)" \
+  env MIX_ENV=desktop mix phx.digest
+
 run "building the desktop release (a no-change run only reassembles it)" \
   env MIX_ENV=desktop mix release --overwrite
 
