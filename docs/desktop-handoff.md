@@ -16,6 +16,9 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 | The release boots and serves | `desktop ui: http://127.0.0.1:<port>/`, `Node.alive? == false`, `ensure_all_started` → `:ok` |
 | The tool remembers its site, and reaches it | with `CM_CONFLUENCE_SITE`, `CM_ATL_EMAIL` and `CM_ATL_TOKEN` exported, a boot answers `/state` → `{"missing":["site"],"readiness":"needs"}` and `/` → 302 `/setup`; `POST /setup` → 303 and `ready`; a second boot is still `ready` and `/` → 200; `eval` then shows `api_token` (the value typed in, from the keychain), the recorded `base_url`/`email`, and `:source` = `HttpSource` |
 | The tool exports what it mirrored | `POST /export` → 303, then `/export` says `Ready` and `/export/site.zip` answers 200 `application/zip`, 272 903 bytes; the zip holds 123 files — `index.html` (`<title>dled`), `search.html`, `assets/search-index.js`, `labels/…`, `spaces/MFS/pages/…html` and `.md` — and the same file is on disk under `<workspace>/confluence-mirror-exports/` |
+| The tool *reads* what it mirrored | `POST /site` → 303, `/site` says `Read the mirror`, `/site/index.html` answers 200 (8 088 bytes: the exporter's own front page), `/site/spaces/MFS/index.html` renders `<title>My first space · dled`, and the search page with its `search-index.js` bundle serves 200 from the same folder |
+| Every screen can be left | `/site`, `/export`, `/mirror`, `/spaces` all carry the same bar (Home · Mirror · Spaces · Runs · Export · Connection); only the first-run form stands alone, because its way on is its own button |
+| The launcher never starts a stale release | `start-desktop.sh` builds `_build/desktop/rel` **and** the window on every run (2.7 s + 4.3 s warm) — see trap 10 |
 | Server suite | 1917 passed, 7 excluded, 0 failed (on a clean database, one suite at a time) |
 
 ## What is broken or unfinished
@@ -59,6 +62,18 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
   should not have its URL typed by hand; it just does not count as an answer. The
   token keeps its environment fallback: it is a fallback, not a shadow, because
   the keyring wins when it has one.
+- **The main view is the exported pages, served from disk.** `GET /site`
+  publishes `Site.archive/3` into `<workspace>/site/` and `Plug.Static` serves it,
+  so the window browses exactly the HTML the archive contains — same links, same
+  search page, same labels. The alternative, starting the server's Phoenix
+  Endpoint with its router and LiveViews, is a bigger promise: it would bring
+  sessions, authentication and the admin area into a one-user tool, and it is the
+  piece that hung before. If richer reading (LiveView search, presence) is wanted,
+  that is the change to make, deliberately.
+- **A saved connection takes effect immediately.** `configure/1` stores the
+  secret first and re-applies the runtime configuration after, because the token
+  reaches the credential store only in that call: applied before it, the client
+  keeps whatever it had — the previous token, or none.
 - **Search is FTS5 later.** `Mirror.Search` uses Postgres `tsvector`; it is reached
   only by `SearchLive` and two API controllers, so it is one module to port, not a
   thread through the app.
@@ -119,6 +134,16 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
    second counts from zero ("expected 429, got 202"). It failed CI once on a
    commit with no server change. The webhook tests now ask for a day-wide
    window — they are about the cap, not about expiry.
+10. **The window runs its own copy of the release.** `bundle.resources` in
+    `tauri.conf.json` copies `_build/desktop/rel` into
+    `src-tauri/target/debug/rel/` when *cargo* builds, and `main.rs` prefers the
+    bundled copy (`resource_dir()`), or the one named by
+    `CONFLUENCE_EXPORT_SIDECAR`. `start-desktop.sh` compared mtimes against
+    `_build/...` only, so an Elixir-only change rebuilt that release, skipped the
+    cargo step, and the window kept starting the copy it made hours earlier —
+    measured: bundled binary 00:12, `_build` binary 07:29, same size, different
+    code. The symptom is fixed code behaving like old code. The script now builds
+    both on every run.
 
 ## Next, in order
 
