@@ -299,6 +299,26 @@ defmodule ConfluencePhxMirrorWeb.CoreComponents do
   end
 
   @doc """
+  Renders the site's own stylesheet, when the operator has chosen a theme that
+  ships its declarations rather than a compiled stylesheet.
+
+  The CSS is a declaration from configuration (`ConfluencePhxMirrorWeb.Skins`),
+  never anything a request brings — and it only means anything unescaped, since
+  a stylesheet that arrived as text would be a syntax error rather than a style.
+  """
+  attr :css, :string, default: nil
+
+  # Configuration, not a request: see the doc above.
+  # sobelow_skip ["XSS.Raw"]
+  def skin_style(assigns) do
+    ~H"""
+    <style :if={@css not in [nil, ""]}>
+      <%= Phoenix.HTML.raw(@css) %>
+    </style>
+    """
+  end
+
+  @doc """
   Renders a table with generic styling.
 
   ## Examples

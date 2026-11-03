@@ -221,6 +221,9 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
   attr :mirror_url, :string, default: nil
   attr :html_attributes, :map, default: %{}
 
+  # Bodies are sanitised by `Sync.Renderer` before they are stored — scripts and
+  # event handlers are already gone — exactly like the comment bodies below.
+  # sobelow_skip ["XSS.Raw"]
   def page(assigns) do
     ~H"""
     <.shell

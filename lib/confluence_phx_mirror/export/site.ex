@@ -172,6 +172,9 @@ defmodule ConfluencePhxMirror.Export.Site do
     |> Enum.join("\n")
   end
 
+  # `@stylesheet_path` is a constant of this application's build, and the
+  # directory it is read from is the release's own.
+  # sobelow_skip ["Traversal.FileModule"]
   defp compiled_stylesheet do
     case File.read(Application.app_dir(:confluence_phx_mirror, @stylesheet_path)) do
       {:ok, css} -> css
@@ -186,6 +189,9 @@ defmodule ConfluencePhxMirror.Export.Site do
   It travels inside the folder rather than under a URL, so a copy opened from
   `file://` is filed under the same picture as the one on the site.
   """
+  # `@favicon_path` is a constant inside the release, written there by
+  # `scripts/favicon.sh`.
+  # sobelow_skip ["Traversal.FileModule"]
   @spec favicon() :: String.t()
   def favicon do
     case File.read(Application.app_dir(:confluence_phx_mirror, @favicon_path)) do

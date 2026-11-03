@@ -499,6 +499,23 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     """
   end
 
+  @doc """
+  A mirrored page's own HTML.
+
+  The body was sanitised by `ConfluencePhxMirror.Sync.Renderer` before it was
+  stored — active content is already gone — so it is rendered as HTML rather
+  than read as text.
+  """
+  attr :html, :string, required: true
+
+  # Sanitised at ingest; see the doc above.
+  # sobelow_skip ["XSS.Raw"]
+  def confluence_body(assigns) do
+    ~H"""
+    {Phoenix.HTML.raw(@html)}
+    """
+  end
+
   attr :page, :map, required: true
   attr :comments, :list, required: true
 

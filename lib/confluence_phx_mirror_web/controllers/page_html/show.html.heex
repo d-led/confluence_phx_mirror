@@ -167,7 +167,7 @@
     <.label_chips labels={@page.labels} class="mt-2" />
 
     <div :if={not is_nil(@page.body_export)} class="confluence-content mt-4">
-      {Phoenix.HTML.raw(@page.body_export)}
+      <.confluence_body html={@page.body_export} />
     </div>
 
     <%!-- A sync writes a page's row before it renders the body, so during a long
