@@ -70,7 +70,8 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   something a person typed into this window, it is not what the window can
   change, and a `CM_CONFLUENCE_SITE` in a shell makes the form that would have
   saved a site unreachable — which is how a workspace ends up configured ten
-  times and remembering none of it.
+  times and remembering none of it. What the environment says is a *suggestion*
+  for that form (`suggested_site/0`), not an answer to this question.
   """
   @spec site() :: String.t() | nil
   def site, do: read()["site"]
@@ -78,6 +79,22 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   @doc "The account it signs in as, or `nil` for a bearer token."
   @spec email() :: String.t() | nil
   def email, do: read()["email"]
+
+  @doc """
+  The site a first-run form offers, from `CM_CONFLUENCE_SITE`. `nil` when the
+  environment says nothing.
+
+  A suggestion, not an answer: it fills the field so a machine that was
+  provisioned does not have its URL typed by hand, and no more. The workspace is
+  configured when the form is saved — which is also when the value starts to
+  survive a restart.
+  """
+  @spec suggested_site() :: String.t() | nil
+  def suggested_site, do: from_env("CM_CONFLUENCE_SITE")
+
+  @doc "The account a first-run form offers, from `CM_ATL_EMAIL`."
+  @spec suggested_email() :: String.t() | nil
+  def suggested_email, do: from_env("CM_ATL_EMAIL")
 
   @doc "The token, from the credential store, or the environment's when there is none."
   @spec secret() :: {:ok, String.t()} | {:error, :not_found}

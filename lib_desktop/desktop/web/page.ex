@@ -21,10 +21,12 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   """
   @spec setup(map()) :: String.t()
   def setup(assigns \\ %{}) do
-    # What is already known is already filled in: the workspace's own values, or
-    # the environment's on a machine that was provisioned rather than set up.
-    site = escape(assigns[:site] || Settings.site() || "")
-    email = escape(assigns[:email] || Settings.email() || "")
+    # What is already known is already filled in: what this workspace recorded,
+    # and — on a machine that was provisioned rather than set up — what the
+    # environment suggests. Filling the field is all a suggestion does; the form
+    # still has to be saved for the tool to use it.
+    site = escape(assigns[:site] || Settings.site() || Settings.suggested_site() || "")
+    email = escape(assigns[:email] || Settings.email() || Settings.suggested_email() || "")
 
     error =
       case assigns[:error] do

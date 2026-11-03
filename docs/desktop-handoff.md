@@ -53,9 +53,12 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 - **Nothing in the tool falls back to `CM_*` for its site.** A variable in a
   shell is not something the window can change, and when it satisfies
   `readiness/0` it makes the form that *would* save a site unreachable — which is
-  how a workspace gets configured ten times and remembers none of it. The token
-  keeps its environment fallback: it is a fallback, not a shadow, because the
-  keyring wins when it has one.
+  how a workspace gets configured ten times and remembers none of it. The
+  environment is still what the form *offers* (`Settings.suggested_site/0`,
+  `suggested_email/0`, prefilled but not saved), because a provisioned machine
+  should not have its URL typed by hand; it just does not count as an answer. The
+  token keeps its environment fallback: it is a fallback, not a shadow, because
+  the keyring wins when it has one.
 - **Search is FTS5 later.** `Mirror.Search` uses Postgres `tsvector`; it is reached
   only by `SearchLive` and two API controllers, so it is one module to port, not a
   thread through the app.
