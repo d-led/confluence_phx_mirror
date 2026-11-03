@@ -5,6 +5,11 @@ an assistant can search the mirror, walk its space trees and read pages as
 Markdown. No tool call changes anything — content changes only through
 [Sync](site-admin-guide.md#pulling-content).
 
+The mirror also serves **`/mcp`**, a page that says the same thing with this
+installation's own addresses filled in, and the settings for
+[sooperset's `mcp-atlassian`](https://github.com/sooperset/mcp-atlassian) — a
+third-party MCP server that speaks Confluence, and so speaks to a mirror.
+
 ## Connect in two steps
 
 | Step | Local demo | Deployed mirror |

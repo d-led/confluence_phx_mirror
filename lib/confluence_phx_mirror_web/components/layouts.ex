@@ -219,12 +219,12 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                     Admin</.link>
                   </li>
                   <li :if={tool?()}>
-                    <%!-- The desktop tool's own screens (connection, mirroring a
-                    space) are not routes of this application: the app it runs
-                    mounts them beside this one. Nothing renders for a
+                    <%!-- The desktop tool's own screens (connection, the spaces to
+                    keep, the archive) are not routes of this application: the app
+                    it runs mounts them beside this one. Nothing renders for a
                     deployment, because `:desktop_tool` is not set there. --%>
                     <.link href="/__tool" id="account-tool-link">
-                      <.icon name="hero-window" class="size-4" /> Desktop…
+                      <.icon name="hero-wrench-screwdriver" class="size-4" /> Set Up
                     </.link>
                   </li>
                   <li>
@@ -400,6 +400,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
               <span>Source</span>
             </a>
             <a href={~p"/about"} class="hover:text-primary">About</a>
+            <a href={~p"/mcp"} class="hover:text-primary">MCP</a>
             <a
               :if={ConfluencePhxMirrorWeb.Api.OpenApi.enabled?()}
               href={~p"/api/docs"}

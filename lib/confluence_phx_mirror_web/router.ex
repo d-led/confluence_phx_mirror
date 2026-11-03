@@ -138,6 +138,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
     get "/recent", PageController, :recent
     get "/labels/:name", PageController, :label
     get "/about", PageController, :about
+    # How an assistant reads this mirror: the three ways in, with the settings
+    # each one needs typed out. See `McpPageController`.
+    get "/mcp", McpPageController, :show
     get "/theme/:name", ThemeController, :set
 
     get "/session", SessionController, :new
