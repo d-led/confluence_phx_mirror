@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 build_release() {
-  echo "building the desktop release… (a minute, cold)"
+  echo "building the desktop release… (about three seconds warm)"
   if ! MIX_ENV=desktop mix release --overwrite >"$build_log" 2>&1; then
     echo "the release could not be built. Last lines of $build_log:" >&2
     tail -20 "$build_log" >&2
@@ -58,7 +58,7 @@ build_release() {
 }
 
 build_window() {
-  echo "building the window… (cargo, first time is slower)"
+  echo "building the window… (about four seconds warm)"
   if ! cargo build --manifest-path src-tauri/Cargo.toml >"$build_log" 2>&1; then
     echo "the window could not be built. Last lines of $build_log:" >&2
     tail -20 "$build_log" >&2
