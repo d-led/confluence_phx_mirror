@@ -629,6 +629,13 @@ here as done is open.
 
 ## Next, in order
 
+0. **The ExTauri migration** — `docs/ex-tauri-migration.md`. Planned, not started:
+   it replaces the hand-written window shell, `scripts/lib/bundle.sh` and the
+   carrying/bundling half of `scripts/package.sh` with `ex_tauri` + a Burrito
+   single binary, and with it the Windows and Linux packaging that was otherwise
+   to be written by hand. Read it before touching `src-tauri/`; its step S1 is a
+   scratch-clone spike on OTP 29 that decides whether the migration happens at
+   all.
 1. **A test environment for `lib_desktop`**, so the tool's behaviour has tests and
    not only evidence rows, and a CI leg that compiles, dialyses and probes
    `MIX_ENV=desktop` (the probe is cheap: boot it, `GET` the screens). The same
