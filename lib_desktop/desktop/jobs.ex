@@ -59,7 +59,16 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
   @spec start_mirror([String.t()], String.t(), keyword()) ::
           {:ok, :started} | {:error, :busy | :nothing_to_do | :no_worker}
   def start_mirror(space_keys, label, opts \\ []) do
-    GenServer.call(__MODULE__, {:start, space_keys, label, Keyword.get(opts, :source)})
+    GenServer.call(
+      __MODULE__,
+      {:start, space_keys, label, Keyword.get(opts, :source), run_options(opts)}
+    )
+  end
+
+  # What a run is told about itself. `remember: false` is a bulk run: it copies
+  # what the workspace is configured for and does not decide the configuration.
+  defp run_options(opts) do
+    if Keyword.get(opts, :remember, true), do: [], else: [remember: false]
   end
 
   @doc false
@@ -77,15 +86,15 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
   @impl true
   def handle_call(:status, _from, status), do: {:reply, status, status}
 
-  def handle_call({:start, _keys, _label, _source}, _from, %{state: :running} = status) do
+  def handle_call({:start, _keys, _label, _source, _opts}, _from, %{state: :running} = status) do
     {:reply, {:error, :busy}, status}
   end
 
-  def handle_call({:start, [], _label, _source}, _from, status) do
+  def handle_call({:start, [], _label, _source, _opts}, _from, status) do
     {:reply, {:error, :nothing_to_do}, status}
   end
 
-  def handle_call({:start, keys, label, source}, _from, _status) do
+  def handle_call({:start, keys, label, source, opts}, _from, _status) do
     status = %{@idle | state: :running, label: label, count: length(keys)}
 
     # `async_nolink` rather than a bare child: a run that raises never reaches
@@ -94,7 +103,7 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
     # The monitor is what turns a crash into an answer.
     %Task{ref: ref} =
       Task.Supervisor.async_nolink(ConfluencePhxMirror.Desktop.TaskSupervisor, fn ->
-        run(keys, source || Source.source())
+        run(keys, source || Source.source(), opts)
       end)
 
     {:reply, {:ok, :started}, %{status | task: ref}}
@@ -138,14 +147,14 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
 
   # Sequential on purpose: the source is rate limited, and two spaces at once
   # would only make the limit bind sooner.
-  defp run(keys, source) do
+  defp run(keys, source, opts) do
     result =
       keys
       |> Enum.with_index(1)
       |> Enum.reduce_while(:ok, fn {key, index}, :ok ->
         entering(index)
 
-        case Mirror.mirror_space(key, source: source, on_page: &progress/2) do
+        case Mirror.mirror_space(key, [source: source, on_page: &progress/2] ++ opts) do
           {:ok, _space} -> {:cont, :ok}
           {:error, reason} -> {:halt, {:error, {key, reason}}}
         end

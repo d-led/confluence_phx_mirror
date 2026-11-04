@@ -50,13 +50,21 @@ defmodule ConfluencePhxMirror.Mirror do
   def list_spaces(opts \\ []) do
     from(s in Space,
       where: is_nil(s.deleted_at),
-      order_by: [asc: s.name],
-      limit: ^Keyword.get(opts, :limit),
-      offset: ^Keyword.get(opts, :offset, 0)
+      order_by: [asc: s.name]
     )
     |> named_like(Keyword.get(opts, :query, ""))
+    |> paged(Keyword.get(opts, :limit), Keyword.get(opts, :offset, 0))
     |> Repo.all()
   end
+
+  # A window somebody may not have asked for, in the one shape both engines
+  # accept. Postgres reads `LIMIT NULL` as "no limit" and allows `OFFSET` alone;
+  # SQLite rejects the first as a datatype mismatch and the second as a syntax
+  # error — and the tool keeps its catalogue on SQLite, so an unbounded list must
+  # not become a broken one. No limit is no clause at all, offset included: an
+  # offset with nothing to offset from is not a window either engine needs.
+  defp paged(query, nil, _offset), do: query
+  defp paged(query, count, offset), do: query |> limit(^count) |> offset(^offset)
 
   @doc "How many live spaces the directory holds, under the filter it is showing."
   def count_listed_spaces(opts \\ []) do
@@ -1841,8 +1849,6 @@ defmodule ConfluencePhxMirror.Mirror do
         join: s in assoc(p, :space),
         where: is_nil(p.deleted_at) and not is_nil(p.absent_since),
         order_by: [desc: p.absent_since, asc: p.title],
-        limit: ^Keyword.get(opts, :limit),
-        offset: ^Keyword.get(opts, :offset, 0),
         select: {p, s}
       )
 
@@ -1851,6 +1857,7 @@ defmodule ConfluencePhxMirror.Mirror do
       space_id -> where(query, [p, _s], p.space_id == ^space_id)
     end
     |> titled_like(Keyword.get(opts, :query, ""))
+    |> paged(Keyword.get(opts, :limit), Keyword.get(opts, :offset, 0))
     |> Repo.all()
   end
 
@@ -2047,15 +2054,21 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Enum.map(&{&1, trash_space(&1)})
   end
 
-  @doc "Trashes one space with its pages and their comments; returns how many pages."
-  def trash_space(%Space{} = space) do
+  @doc """
+  Trashes one space with its pages and their comments; returns how many pages.
+
+  `reason` says who decided, and it matters later: `"vanished"` is a listing that
+  stopped naming the space, `"manual"` is an operator's decision and survives the
+  next sync (`lift_vanishing/1`).
+  """
+  def trash_space(%Space{} = space, reason \\ "vanished") do
     now = now()
 
     ids =
       from(p in Page, where: p.space_id == ^space.id and is_nil(p.deleted_at), select: p.id)
       |> Repo.all()
 
-    trash_pages(ids, now, "vanished")
+    trash_pages(ids, now, reason)
     discard_space_overlay(space.id)
 
     from(s in Space, where: s.id == ^space.id and is_nil(s.deleted_at))
@@ -2330,10 +2343,10 @@ defmodule ConfluencePhxMirror.Mirror do
       as: :page,
       where: p.parent_id == ^page.id and is_nil(p.deleted_at),
       order_by: [asc: p.title],
-      limit: ^Keyword.get(opts, :limit),
       preload: [:space]
     )
     |> filtered(opts)
+    |> paged(Keyword.get(opts, :limit), Keyword.get(opts, :offset, 0))
     |> Repo.all()
   end
 

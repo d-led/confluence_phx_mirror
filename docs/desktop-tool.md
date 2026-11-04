@@ -383,6 +383,19 @@ It is the case a lost `settings.json` produces, and a window that answered it
 with a crash dump helped nobody: the deployment keeps `on_conflict: :stop` (a
 server has no one to ask), the window passes `on_conflict: :report`.
 
+### Choosing what to mirror
+
+The spaces screen offers three things per row, and they are three different
+questions. **Mirror** copies one space and records that choice in the workspace's
+configured set. **Forget** appears for a space this catalogue holds — pages or no
+pages — and takes it out of that set *and* puts what is here in the trash
+(`Trash.forget/2`), which is the only way to get rid of a space nobody wanted;
+without it a catalogue could hold a space forever with nothing to press. **Mirror
+N configured spaces** is the bulk button, and it copies what the workspace is
+configured for, not the listing: a run over everything used to add every one of
+those keys to the configuration, which is how a workspace set up for one space
+ended up holding — and importing — a hundred others.
+
 ## Storage
 
 The desktop uses the server's schema. There is one set of migrations, in

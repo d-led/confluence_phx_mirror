@@ -20,6 +20,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
 
   alias ConfluencePhxMirror.Desktop.{Archive, Jobs, Mirror, Settings, Spaces, Web.Page}
   alias ConfluencePhxMirror.Export
+  alias ConfluencePhxMirror.Trash
 
   # A site can have a hundred thousand spaces. The screen renders a page of them
   # and says how many it is not showing; nobody scrolls to the hundred
@@ -89,6 +90,22 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
     end
   end
 
+  # Forgetting a space is the one removal this tool offers: the key stops being
+  # mirrored and what is already here goes to the trash, where the holding period
+  # and the mirror's own trash screen still apply. Same act as removing the key
+  # from the configured set in the admin area, with a button — a window has no
+  # `/admin/spaces` to go to, and a catalogue it is no longer configured to keep
+  # used to be something nobody could say anything about.
+  post "/__tool/forget" do
+    case Trash.forget(ConfluencePhxMirror.Audit.system_actor(), conn.params["space"] || "") do
+      {:ok, _removed} ->
+        conn |> put_resp_header("location", "/__tool/spaces") |> send_resp(303, "")
+
+      {:error, reason} ->
+        send_resp(conn, 400, Page.problem(reason))
+    end
+  end
+
   get "/__tool/spaces" do
     query = String.trim(conn.params["q"] || "")
 
@@ -103,6 +120,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
             query: query,
             known: length(spaces),
             matching: length(matching),
+            # What this catalogue holds, which is not the same question as what
+            # the site lists: a space here with no pages is still a space that
+            # can be let go of.
+            held: MapSet.new(ConfluencePhxMirror.Mirror.list_spaces(), & &1.key),
+            configured: length(ConfluencePhxMirror.Sync.SpaceScope.added()),
             status: if(Spaces.state().refreshing?, do: "Refreshing the space list…"),
             run: Jobs.status()
           })
@@ -133,19 +155,36 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
 
     case Spaces.list() do
       {:ok, spaces} ->
-        keys = spaces |> filter(query) |> Enum.map(& &1.key)
+        configured = ConfluencePhxMirror.Sync.SpaceScope.added()
+        keys = spaces |> filter(query) |> Enum.map(& &1.key) |> configured_only(configured)
 
-        label =
-          if query == "",
-            do: "all #{length(keys)} spaces",
-            else: "#{length(keys)} spaces matching #{inspect(query)}"
-
-        started(conn, Jobs.start_mirror(keys, label))
+        started(
+          conn,
+          Jobs.start_mirror(keys, bulk_label(keys, query, configured), remember: false)
+        )
 
       # Still being fetched: send them back to the screen that shows it, rather
       # than mirroring a list that is not there yet.
       _loading_or_failed ->
         redirect_to(conn, "/__tool/spaces")
+    end
+  end
+
+  # A bulk run copies what this workspace is configured for. With nothing
+  # configured that is every space the site lists; with a set, it is that set —
+  # the button is "copy what I asked for", not "copy everything and rewrite what
+  # I asked for", which is how a workspace configured for one space came to hold a
+  # hundred it was never meant to.
+  defp configured_only(keys, []), do: keys
+  defp configured_only(keys, configured), do: Enum.filter(keys, &(&1 in configured))
+
+  defp bulk_label(keys, query, configured) do
+    count = length(keys)
+
+    cond do
+      query != "" -> "#{count} spaces matching #{inspect(query)}"
+      configured == [] -> "all #{count} spaces"
+      true -> "the #{count} configured space#{if count == 1, do: "", else: "s"}"
     end
   end
 

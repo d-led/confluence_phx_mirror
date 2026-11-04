@@ -17,7 +17,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
 
   import ConfluencePhxMirrorWeb.AdminComponents
 
-  alias ConfluencePhxMirror.{Mirror, Settings, SpaceDirectory}
+  alias ConfluencePhxMirror.{Mirror, Settings, SpaceDirectory, Trash}
   alias ConfluencePhxMirror.Sync.SpaceScope
   alias ConfluencePhxMirrorWeb.Admin.{Paging, SettingsRefusal}
   alias ConfluencePhxMirrorWeb.Time
@@ -57,11 +57,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
   end
 
   def handle_event("remove", %{"key" => key}, socket) do
-    change(
-      socket,
-      SpaceScope.remove(key, actor(socket)),
-      "#{key} removed — the next run stops importing it."
-    )
+    # Removing a space is a decision about the mirror, not only about the next
+    # run: what is already here goes to the trash, where the holding period and
+    # the trash screen still apply. Without that, narrowing the set left content
+    # nobody was configured to keep and no way to say so.
+    case Trash.forget(actor(socket), key) do
+      {:ok, %{pages: pages}} -> change(socket, {:ok, :removed}, removed_message(key, pages))
+      {:error, reason} -> change(socket, {:error, reason}, "")
+    end
   end
 
   # Typing narrows what the site lists; picking one adds it. The list comes from
@@ -359,6 +362,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
         "#{key} added. The next run imports #{Enum.join(keys, ", ")}; anything else is trashed."
     end
   end
+
+  defp removed_message(key, 0), do: "#{key} removed — nothing of it was mirrored."
+
+  defp removed_message(key, pages),
+    do: "#{key} removed — #{pages} page(s) moved to the trash."
 
   defp actor(socket), do: {:user, socket.assigns.current_user}
 end

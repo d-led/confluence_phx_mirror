@@ -214,12 +214,18 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   The spaces the source offers, with what the catalogue already holds.
 
   A space that has been mirrored before says how many pages it has, so the
-  button is a choice between "mirror" and "mirror again" rather than a guess.
+  button is a choice between "mirror" and "mirror again" rather than a guess,
+  and a space the catalogue holds gets a second one: **Forget**, which stops
+  mirroring it and moves what is here to the trash. The two questions are not the
+  same — the site listing does not say what this catalogue keeps — so `:held`
+  comes from the catalogue, and a space it holds with no pages still gets the
+  button.
   """
   @spec spaces([map()], %{String.t() => non_neg_integer()}, map()) :: String.t()
   def spaces(spaces, counts, meta \\ %{}) do
     matching = Map.get(meta, :matching, length(spaces))
     known = Map.get(meta, :known, matching)
+    held = Map.get(meta, :held, MapSet.new())
 
     rows =
       Enum.map_join(spaces, "", fn space ->
@@ -235,6 +241,18 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
             ""
           end
 
+        forget =
+          if MapSet.member?(held, space.key) do
+            """
+            <form method="post" action="/__tool/forget">
+              <input type="hidden" name="space" value="#{escape(space.key)}">
+              <button type="submit" class="secondary" title="Stops mirroring it; what is here goes to the trash">Forget</button>
+            </form>
+            """
+          else
+            ""
+          end
+
         """
         <li data-search="#{escape(String.downcase(space.name))} #{escape(String.downcase(space.key))}">
           <div>
@@ -242,6 +260,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
             <small>#{escape(space.key)}#{if mirrored > 0, do: " · #{mirrored} pages mirrored", else: " · not mirrored yet"}</small>
           </div>
           #{read}
+          #{forget}
           <form method="post" action="/__tool/mirror">
             <input type="hidden" name="space" value="#{escape(space.key)}">
             <button type="submit" class="secondary">#{if mirrored > 0, do: "Mirror again", else: "Mirror"}</button>
@@ -255,11 +274,18 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     # of a list they cannot scroll is the whole complaint.
     everything =
       if matching > 0 do
+        # A bulk run copies the spaces this workspace is configured for — all of
+        # them when nothing is configured — so the button counts that, not the
+        # listing. "Mirror all 143" over a setup made for one space is how a
+        # catalogue came to hold a hundred spaces nobody asked for.
+        configured = Map.get(meta, :configured, 0)
+        noun = if configured > 0, do: "configured space", else: "space"
+
         """
         <form method="post" action="/__tool/mirror_all" class="everything">
           <input type="hidden" name="q" value="#{escape(Map.get(meta, :query, ""))}">
-          <button type="submit">Mirror all <span data-count>#{matching}</span> <span data-noun>spaces</span></button>
-          <small>One after another, in the order they are listed.</small>
+          <button type="submit">Mirror <span data-count>#{if configured > 0, do: configured, else: matching}</span> <span data-noun>#{noun}</span></button>
+          <small>#{if configured > 0, do: "The spaces you configured, one after another. Nothing is added to that set.", else: "One after another, in the order they are listed."}</small>
         </form>
         """
       else

@@ -43,21 +43,36 @@ defmodule ConfluencePhxMirror.Desktop.Mirror do
     source = Keyword.get(opts, :source, Source.source())
     on_page = Keyword.get(opts, :on_page, fn _done, _total -> :ok end)
 
-    # The choice is recorded where the site-wide sync reads it (`Sync.SpaceScope`),
-    # not only here. Otherwise "mirror this one space" and the overview's "Sync now"
-    # are two different opinions, and the second one — with nothing named — means the
-    # whole site.
-    _ =
-      ConfluencePhxMirror.Sync.SpaceScope.add(space_key, ConfluencePhxMirror.Audit.system_actor())
-
     with {:ok, dto} <- find_space(source, space_key),
          {:ok, space} <- upsert_space(dto),
+         # Recorded only once the source has confirmed the space exists. A key
+         # nobody has — a typo, a space deleted upstream — used to be recorded
+         # first and asked about afterwards, so a mistyped run left the workspace
+         # configured for a space that is not there, and every later whole-site
+         # sync honoured it.
+         :ok <- record_choice(space_key, opts),
          {:ok, dtos} <- source.pages(space_key, []),
          {:ok, pages} <- write_listing(space, dtos),
          index = index_of(pages, space.key),
          :ok <- write_bodies(source, space, dtos, index, on_page) do
       {:ok, %{space: space, pages: length(dtos)}}
     end
+  end
+
+  # Picking one space is a decision about what this workspace mirrors, and the
+  # choice is recorded where the site-wide sync reads it (`Sync.SpaceScope`):
+  # otherwise "mirror this one space" and the overview's "Sync now" are two
+  # different opinions, and the second one — with nothing named — means the whole
+  # site. A bulk run is not that decision (`remember: false`): copying everything
+  # the site lists used to add every one of those keys to the configuration, which
+  # is how a workspace configured for one space ended up holding — and importing —
+  # a hundred others.
+  defp record_choice(space_key, opts) do
+    if Keyword.get(opts, :remember, true) do
+      _ = Sync.SpaceScope.add(space_key, ConfluencePhxMirror.Audit.system_actor())
+    end
+
+    :ok
   end
 
   @doc "Spaces the source offers, as the picker shows them."

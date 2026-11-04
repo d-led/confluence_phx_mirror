@@ -121,6 +121,15 @@ rather than an answer from the site. A source that suddenly lists no spaces, or
 no pages for a space, never trashes anything: the run is flagged `partial`
 instead.
 
+**Removing a key** from the screen does the same thing at once, rather than
+leaving it to the next run: the key stops being imported and whatever is already
+mirrored goes to the trash (reason `manual`, which a later sync will not lift).
+Otherwise narrowing the set left the mirror holding spaces it was no longer
+configured to keep, and nothing to press to say so. The API's
+`DELETE /api/v1/spaces/:key` is deliberately the narrower act — it changes the
+whitelist and does not touch content — because a settings call from a script
+should not destroy a space.
+
 **Personal spaces are skipped** unless `CM_SYNC_PERSONAL_SPACES=true`. Everyone
 on a Confluence site has one (`~accountid`), it holds their drafts, and it is
 rarely the site an operator means to publish. The rule holds for every kind of
