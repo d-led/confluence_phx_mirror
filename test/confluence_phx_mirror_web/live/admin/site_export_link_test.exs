@@ -104,7 +104,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportLinkTest do
         end
       )
 
-      assert_receive {:half_written, builder}, 2_000
+      # The same patience as `wait_for_archive/0`, and for the same reason: the
+      # build is a spawned process, and a loaded machine is slow to schedule it.
+      assert_receive {:half_written, builder}, 10_000
 
       {:ok, view, _html} = live(conn, ~p"/admin")
 
@@ -159,20 +161,29 @@ defmodule ConfluencePhxMirrorWeb.Admin.SiteExportLinkTest do
     end
   end
 
+  # Waiting for a real build on a real file, in a suite that runs other files at
+  # the same time. The budget only has to exceed the worst case — it returns the
+  # moment the archive is ready — and five seconds did not: this test passed
+  # alone and failed under load, which is a test reporting the machine rather
+  # than the code. A minute of patience costs nothing when the build is quick.
+  @archive_deadline_ms 60_000
+
   defp wait_for_archive do
-    status =
-      Enum.reduce_while(1..200, nil, fn _attempt, _waited ->
-        case Artifact.status(Export.site_artifact()) do
-          {:ready, _} = ready ->
-            {:halt, ready}
+    wait_until_ready(System.monotonic_time(:millisecond) + @archive_deadline_ms)
+  end
 
-          _not_yet ->
-            Process.sleep(25)
-            {:cont, nil}
+  defp wait_until_ready(deadline) do
+    case Artifact.status(Export.site_artifact()) do
+      {:ready, _} = ready ->
+        ready
+
+      _not_yet ->
+        if System.monotonic_time(:millisecond) > deadline do
+          flunk("the archive was never prepared")
+        else
+          Process.sleep(25)
+          wait_until_ready(deadline)
         end
-      end)
-
-    assert status, "the archive was never prepared"
-    status
+    end
   end
 end

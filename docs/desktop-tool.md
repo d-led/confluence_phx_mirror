@@ -141,11 +141,38 @@ submission. The item's account is the address rather than a hash, so it can be
 found and deleted by hand in Keychain Access. A token stored by an older build
 (one entry for the whole machine) moves to its site on the next launch.
 
-**When it does not start, it says so.** If the release behind the window cannot
-be started, the window opens on the reason instead of the app disappearing, and
-the same text — with whatever reached the process's console, one line per
-request — is appended to
-`~/Library/Logs/dev.confluence-export.desktop/sidecar.log`.
+**When it does not start, it says so — in a sentence, not in a log.** The window
+opens on the reason instead of the app disappearing. The shell matches what the
+release said against the handful of situations a person can act on, and leads
+with that one, distinct for each: *Confluence Export is already running* (close
+the other window), *this folder belongs to a different site*, *the folder is in
+use* (a backup, a synced drive), *the saved token could not be read* (unlock the
+keychain), *this copy of the app is incomplete* (download it again), *it stopped
+while starting*, *it is taking longer than it should*, *the window has nothing to
+show*. Nothing else is guessed: an unrecognised failure is reported as the
+general "it stopped" rather than as a cause somebody would act on wrongly.
+
+The release's own output is not thrown away, it is **folded**: *What the app
+said* is one click below, the same text is appended to
+`~/Library/Logs/dev.confluence-export.desktop/sidecar.log`, and the page names
+that file. A technical blob in a person's face is not an explanation; behind a
+summary it is the answer for whoever is debugging.
+
+A launch also has a bound. The waiting page changes its own sentence at five and
+forty seconds, and at sixty the window becomes that failure page rather than
+claiming to be starting for ever — a spinner nobody can end is how a person is
+left guessing. Before the window is pointed at the release's address, the shell
+asks that address to accept a connection; a server that died between announcing
+itself and the first request becomes *the window has nothing to show* instead of
+the webview's own error page.
+
+**One workspace, one copy.** A second copy is refused in words (see *already
+running* above) before it opens anything: two copies would be two servers, two
+job workers and two writers on one `catalogue.db`, and SQLite's answer to that is
+a lock fight rather than a feature. The port the tool prefers is the check — the
+second copy asks the first one who it is (a response header this app sets) and
+stops if the answer is *Confluence Export*, while a port taken by anything else
+still falls back to an OS-assigned one.
 
 **Its own log is a file, not a pipe.** The release also keeps
 `<workspace>/logs/desktop.log` (rotated at 5 MB, three archives), and that is
@@ -517,24 +544,38 @@ code is the one place nobody measures.
 
 ## Packaging
 
-`scripts/package.sh` is the whole build, and it asks for its prerequisites before
-it starts anything: `mix`, `cargo`, `npm` and the Xcode command line tools are
-named if they are absent, while Hex, rebar and the Tauri CLI install themselves
-(`cargo install tauri-cli` — a few minutes, once per machine). The dependencies
-are fetched first, because the asset steps read them, and the release is checked
-by booting the copy that actually sits inside the bundle.
+`scripts/package.sh` is the whole build, on all three platforms, and it asks for
+its prerequisites before it starts anything: `mix`, `cargo` and `npm` are named if
+they are absent (the Xcode command line tools too, on macOS), while Hex, rebar and
+the Tauri CLI install themselves (`cargo install tauri-cli` — a few minutes, once
+per machine). The dependencies are fetched first, because the asset steps read
+them.
 
-`Burrito` compiles the app and the runtime into one binary per target.
+What it writes depends on the platform, because what a person installs does:
 
-`Tauri` is a window and a `Command` sidecar: it starts the binary, reads a port
-and a one-time token from its stdout, and points a webview at
-`http://127.0.0.1:<port>/?token=…`. The same origin the token protects is what
-makes `file://` restrictions irrelevant — the archive is written by the app, not
-viewed in the webview.
+| platform | artifact | where the release lives |
+| --- | --- | --- |
+| macOS | `Confluence Export.app`, zipped with `ditto` | `Contents/Resources/rel` — `resource_dir()` |
+| Linux | `confluence-export-linux.tar.gz`: the window plus `rel/` and a `README.txt` | beside the binary |
+| Windows | a folder: `Confluence Export.exe` plus `rel\` | beside the binary — `resource_dir()` *is* the executable's directory there |
 
-The real packaging risk is not Tauri. It is `exqlite`, a C NIF, under Burrito's
-cross-target build. If it fights, build one binary per OS on that OS in CI:
-same release, three jobs, no QEMU.
+The release is copied in by hand rather than through Tauri's `bundle.resources`:
+Tauri's own copy of that tree (2 700 files, addressed across a `..`) fails in its
+resource phase on this toolchain, and one copy puts it exactly where
+`src-tauri/src/main.rs` looks it up. On Linux and Windows the window is built with
+`--no-bundle` for the same reason — there, the artifact *is* a folder.
+
+Every build ends with the same two gates, on every platform: the release **the
+artifact carries** is booted against a throwaway `HOME` and asked for `/health` and
+`/__tool`, and the artifact's own listing is read to prove it contains both halves.
+A window with no release behind it and a release that cannot serve are the two
+failures that look green from a distance, and each has shipped once.
+
+**Burrito was considered and rejected** (`docs/ex-tauri-migration.md`): it packages
+a release into one file per platform, which would have replaced the copying above,
+but it is being archived on 30 November 2026, its successor does not cover Windows,
+and it cannot build on the OTP this app runs on. `mix release` plus Tauri's own
+bundler needs no third party and gives all three platforms.
 
 The binary must carry built assets — `priv/static/assets/css/app.css` and the
 archive favicon — because there is no npm at runtime.

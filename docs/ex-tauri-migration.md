@@ -1,14 +1,56 @@
 # Hand-off: moving the desktop app onto ExTauri
 
-Status: **spike run, one gate left**. This document is the plan for migrating the
-desktop window from our hand-written Tauri shell to
-[ExTauri](https://github.com/filipecabaco/ex_tauri) (`ex_tauri` 0.7.x, MIT), on
-the `desktop` branch. It records what was verified about ExTauri's source, what
-the Burrito spike already measured, what we would delete, what we would write
-instead, and every gate that has to be green before the old shell is removed.
+Status: **rejected, 2026-11-04.** Recorded as a decision, not a plan. The window
+stays the hand-written Tauri shell this repo already ships, and the Windows and
+Linux bundles get built with `mix release` + Tauri's own bundler.
 
-Read `docs/desktop-tool.md` first for what the app is. Read this one before
-touching `src-tauri/`.
+Read `docs/desktop-tool.md` first for what the app is, then `### Why this was
+rejected` below. The rest of this document keeps the investigation — what
+[ExTauri](https://github.com/filipecabaco/ex_tauri) (`ex_tauri` 0.7.x, MIT) is,
+what the Burrito spike measured, and what the migration would have cost — so that
+the decision can be re-examined on evidence rather than re-litigated, and so that
+its good ideas (single instance, orphan sweep, a per-launch token) can be taken
+without the dependency.
+
+## Why this was rejected
+
+Three facts, in the order they matter:
+
+1. **Burrito is being archived.** `burrito`'s README opens with
+   `⚠️ NOTICE: This repo will be _archived_ on November 30th 2026 ⚠️` — 26 days
+   after this decision. It does not stop working (the Hex package remains
+   installable), but nothing in it will be fixed, and ERTS payloads for new OTP
+   releases stop appearing. ExTauri's production path depends on it:
+   `bundle.externalBin` **is** the Burrito binary.
+2. **Its successor does not cover Windows.** `ampoule`, by the same author and
+   actively developed (0.1.13, commit `cf3c399` on 2026-11-02), packs a release
+   that runs the BEAM as WebAssembly on OTP 28 — on macOS and Linux. ExTauri's
+   own README: *"macOS and Linux (Windows stays on Burrito)"*. So the platform we
+   most needed help with is the one no maintained packager covers.
+3. **It cannot build on our toolchain anyway.** Measured: Burrito downloads ERTS
+   for the exact OTP patch of the build machine from its own CDN, and
+   `OTP-29.1.2` is a 404 (as is Homebrew's `28.5.0.8`). Details in "Spike result".
+
+Our current path is `mix release` + Tauri's bundler, both maintained, and gives
+all three platforms. Trading 385 lines of shell we control for a hard dependency
+on a repository that closes within the month, in exchange for a Windows path it
+does not have, is the wrong trade.
+
+**What we take from the investigation instead** (no dependency needed):
+
+- **Single instance.** Two copies of the tool are two servers, two Oban workers
+  and two writers on one `catalogue.db`. Their shell's answer is a single-instance
+  guard; ours can be the port the tool already prefers — a second copy that finds
+  43100 answered by *our* `/health` refuses to start instead of quietly asking the
+  OS for another port.
+- **The per-launch token** (`ExTauri.Token`), if the loopback surface is ever to
+  be closed to other local processes. Note the trade-off recorded below: `/api/mcp`
+  is a paste-able URL.
+- **The orphan sweep** — lower value here, because our release already stops when
+  the window's pipe closes (see "The window owns the process" in
+  `docs/desktop-tool.md`), which covers quit, crash and `kill -9`.
+
+Revisit only if ampoule gains Windows **and** Burrito's absence stops mattering.
 
 ## Why
 

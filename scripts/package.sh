@@ -4,23 +4,35 @@
 # the first time anyone finds out what it produces.
 #
 #   scripts/package.sh             build the app, prove the release inside it
-#                                  serves, write the zip the workflow uploads
+#                                  serves, write the artifact the workflow
+#                                  uploads
 #   scripts/package.sh --install   …and install that build the way a download
-#                                  installs (~/Applications)
+#                                  installs (~/Applications, macOS only)
 #
-# The artifact is **the application bundle**: `Confluence Export.app`, zipped. It
-# holds the window, the sidecar release with its own Erlang runtime and the icon,
-# so a person unzips it, drags it to `/Applications` and double-clicks. A tarball
-# of loose binaries is not a macOS application, and the bundle is what
-# `scripts/start-desktop.sh --app` already builds and runs.
+# What the artifact is depends on the platform, because what a person installs
+# depends on the platform:
 #
-# The release is signed on the way in (`ElixirKit.Release.codesign/1`), because an
-# application whose innards are unsigned is not launchable when signed, nor
-# notarisation-ready. Without `APPLE_SIGNING_IDENTITY` that signature is ad-hoc:
-# enough to make the mechanics real, not enough to satisfy Gatekeeper — that needs
-# a Developer ID and notarisation, which are their own piece of work.
+#   macOS    `Confluence Export.app`, zipped. It holds the window, the sidecar
+#            release with its own Erlang runtime and the icon, so a person
+#            unzips it, drags it to `/Applications` and double-clicks. A tarball
+#            of loose binaries is not a macOS application.
+#   Linux    `confluence-export-linux.tar.gz`: the window binary, the release in
+#            `rel/`, and a note saying which GTK/WebKit libraries the window
+#            needs. A `.deb` would be nicer and needs a bundle step that copies
+#            the release through Tauri's resource phase — the one thing that
+#            fails on this toolchain (`scripts/lib/bundle.sh`, first paragraph).
+#   Windows  `confluence-export-windows/`: the window `.exe` with `rel\` beside
+#            it. `resource_dir()` on Windows is the executable's own directory,
+#            so a portable folder is a complete install; the workflow's
+#            `upload-artifact` zips it.
 #
-# `.github/workflows/desktop-release.yml` builds the same bundle with the same
+# The macOS release is signed on the way in (`ElixirKit.Release.codesign/1`),
+# because an application whose innards are unsigned is not launchable when
+# signed, nor notarisation-ready. Without `APPLE_SIGNING_IDENTITY` that signature
+# is ad-hoc: enough to make the mechanics real, not enough to satisfy Gatekeeper
+# — that needs a Developer ID and notarisation, which are their own piece of work.
+#
+# `.github/workflows/desktop-release.yml` builds the same artifacts with the same
 # steps; this script is the local half of that promise, not a second opinion
 # about it.
 #
@@ -38,19 +50,51 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# shellcheck source=scripts/lib/bundle.sh
-. scripts/lib/bundle.sh
-
 name=confluence_phx_mirror
 release="_build/desktop/rel/$name"
-sidecar="$PWD/$release/bin/$name"
-app="src-tauri/target/release/bundle/macos/Confluence Export.app"
-# A separate config, merged only here: `bundle.active` in the main one makes the
-# debug window `scripts/start-desktop.sh` opens fail in tauri-build's resource
-# phase, and the debug window has no use for a bundle.
-bundle_config="$PWD/src-tauri/tauri.bundle.conf.json"
 out="_build/desktop/package"
-asset="confluence-export-macos.zip"
+
+# What the platform calls its own packaging. `uname -s` on Windows is the only
+# portable way to ask from a shell: Git Bash on a Windows runner answers
+# `MINGW64_NT-10.0-…`.
+case "$(uname -s)" in
+  Darwin) platform=macos ;;
+  Linux) platform=linux ;;
+  MINGW* | MSYS* | CYGWIN*) platform=windows ;;
+  *)
+    echo "unknown platform: $(uname -s)"
+    exit 69
+    ;;
+esac
+
+# The release's own launcher: `bin/<name>` where there are shebangs, and
+# `bin/<name>.bat` on Windows, where `mix.exs` asks for both flavours
+# (`include_executables_for`). `src-tauri/src/main.rs` looks for the same file.
+if [[ $platform == windows ]]; then
+  launcher="bin/$name.bat"
+  window="src-tauri/target/release/confluence-export.exe"
+else
+  launcher="bin/$name"
+  window="src-tauri/target/release/confluence-export"
+fi
+
+# Where the release has to sit for the *installed* window to find it. macOS is
+# the only platform that needs it copied by hand: `resource_dir()` is
+# `Contents/Resources` there, the executable's own directory on Windows, and
+# `../lib/<name>` on Linux — so a portable folder beside the binary is where the
+# other two look.
+if [[ $platform == macos ]]; then
+  app="src-tauri/target/release/bundle/macos/Confluence Export.app"
+  # A separate config, merged only here: `bundle.active` in the main one makes the
+  # debug window `scripts/start-desktop.sh` opens fail in tauri-build's resource
+  # phase, and the debug window has no use for a bundle.
+  bundle_config="$PWD/src-tauri/tauri.bundle.conf.json"
+  asset="confluence-export-macos.zip"
+  stage="$app/Contents/Resources/rel/$name"
+else
+  stage="$out/confluence-export-$platform/rel/$name"
+  asset=$([[ $platform == linux ]] && echo confluence-export-linux.tar.gz || echo confluence-export-windows)
+fi
 
 install_after=no
 
@@ -58,7 +102,7 @@ usage() {
   echo "scripts/package.sh [--install]"
   echo
   echo "  (no flags)   build, check, and write $out/$asset"
-  echo "  --install    …then install that build into ~/Applications"
+  echo "  --install    …then install that build into ~/Applications (macOS only)"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -141,11 +185,18 @@ boot_check() {
   home=$(mktemp -d)
   log=$(mktemp)
 
-  # The copy inside the bundle, not the one in `_build`: the bundle is what ships,
-  # so the bundle is what gets asked.
-  carried="$app/Contents/Resources/rel/$name/bin/$name"
+  # The copy where the *installed* window looks for it, not the one in
+  # `_build`: that copy is what ships, so that copy is what gets asked — and on
+  # Windows it is the `.bat`, which is the launcher the release ships there.
+  carried="$PWD/$stage/$launcher"
 
-  HOME="$home" RELEASE_DISTRIBUTION=none "$carried" start >"$log" 2>&1 &
+  # `.bat` is not an executable: `CreateProcess` refuses one, so Windows runs it
+  # through `cmd /C` — the same thing `src-tauri/src/main.rs` does.
+  if [[ $platform == windows ]]; then
+    HOME="$home" RELEASE_DISTRIBUTION=none cmd //C "$carried" start >"$log" 2>&1 &
+  else
+    HOME="$home" RELEASE_DISTRIBUTION=none "$carried" start >"$log" 2>&1 &
+  fi
   pid=$!
 
   for _ in $(seq 1 60); do
@@ -178,19 +229,75 @@ boot_check() {
   rm -rf "$home" "$log"
 }
 
-# The release goes where `resource_dir()` looks for it: inside the bundle's
-# `Contents/Resources`, under `rel/`. See `scripts/lib/bundle.sh`.
-embed_release() {
-  local dest="$app/Contents/Resources/rel/$name"
+# The release goes where the installed window looks for it: inside the bundle's
+# `Contents/Resources` under `rel/` on macOS (see `scripts/lib/bundle.sh`), and
+# beside the window binary on the platforms that ship as a folder.
+stage_release() {
+  rm -rf "$stage"
+  mkdir -p "$(dirname "$stage")"
 
-  bundle_embed_release "$app" "$release" "$name"
-  echo "carried $(du -sh "$dest" | cut -f1) into Contents/Resources/rel/$name"
+  if [[ $platform == macos ]]; then
+    # shellcheck source=scripts/lib/bundle.sh
+    . scripts/lib/bundle.sh
+    bundle_embed_release "$app" "$release" "$name"
+  else
+    cp -R "$release" "$stage"
+  fi
+
+  # Without a launcher there, the window starts nothing — and a window that
+  # opens on nothing is worse than a build that fails here.
+  test -x "$stage/$launcher"
+  echo "carried $(du -sh "$stage" | cut -f1) into ${stage#$PWD/}"
+}
+
+# A portable folder is a complete install on Linux and Windows: the window
+# binary, the release beside it in `rel/`, and a note saying what the window
+# needs. The macOS bundle has no use for this — `Contents/MacOS` is already
+# where a bundle's executable goes.
+stage_window() {
+  local destination="$out/confluence-export-$platform"
+
+  mkdir -p "$destination"
+  cp "$window" "$destination/"
+
+  cat >"$destination/README.txt" <<'NOTE'
+Confluence Export — a desktop tool that reads a Confluence site into a folder.
+
+Run the window binary in this folder. It starts its own server and opens it; the
+mirror it serves is the same one the web deployment serves, and the tool's own
+screens live under /__tool.
+
+Where things are kept (the catalogue, the mirrored attachments, the logs):
+  macOS    ~/Library/Application Support/confluence-export
+  Linux    ~/.local/share/confluence-export
+  Windows  %LOCALAPPDATA%\confluence-export
+
+On Linux the window needs GTK 3 and WebKitGTK 4.1 (Debian/Ubuntu:
+  libgtk-3-0 libwebkit2gtk-4.1-0 librsvg2-2 libayatana-appindicator3-1).
+The release in `rel/` needs nothing installed: it carries its own Erlang.
+
+Nothing here is signed. macOS and Windows will both warn the first time; a macOS
+copy that was downloaded needs `xattr -rd com.apple.quarantine` first.
+NOTE
+
+  echo "staged $(du -sh "$destination" | cut -f1) in ${destination#$PWD/}"
 }
 
 assemble() {
   mkdir -p "$out"
   rm -f "$out/$asset"
 
+  case "$platform" in
+    macos) assemble_bundle ;;
+    linux) assemble_tarball ;;
+    # Windows ships as a folder: `upload-artifact` zips it for the workflow, and
+    # a local run has the same folder to zip by hand. Choosing an archive format
+    # here would only add a zip tool to a platform that does not have `tar`.
+    windows) echo "the artifact is $out/confluence-export-windows/" ;;
+  esac
+}
+
+assemble_bundle() {
   # `ditto`, not `zip`: an application bundle is directories, symlinks and
   # extended attributes, and only `ditto -k` (or Finder's own zip) preserves the
   # ones a bundle needs to launch.
@@ -218,6 +325,36 @@ assemble() {
     *)
       echo "the zip carries a window with no release behind it:"
       echo "$listing" | grep "Contents/Resources" | head -20
+      return 1
+      ;;
+  esac
+
+  ls -lh "$out/$asset"
+}
+
+assemble_tarball() {
+  # Paths relative to `$out`, so the archive unpacks to one folder rather than
+  # into whatever directory the person happens to be in.
+  tar -czf "$out/$asset" -C "$out" "confluence-export-linux"
+
+  # The same lesson as the bundle listing: an archive that carries a window and
+  # no release is a download that opens on nothing.
+  local listing
+  listing=$(tar -tzf "$out/$asset")
+  case "$listing" in
+    *"confluence-export-linux/confluence-export"*) ;;
+    *)
+      echo "the tarball does not carry the window:"
+      echo "$listing" | head -20
+      return 1
+      ;;
+  esac
+
+  case "$listing" in
+    *"confluence-export-linux/rel/$name/$launcher"*) ;;
+    *)
+      echo "the tarball carries a window with no release behind it:"
+      echo "$listing" | grep "rel/" | head -20
       return 1
       ;;
   esac
@@ -265,33 +402,59 @@ if [[ ! -f "_build/desktop/lib/$name/priv/native/confluence_keyring.so" ]]; then
     env MIX_ENV=desktop mix compile --force
 fi
 
-run "building the sidecar release, signed (ad-hoc without a certificate)" \
-  env MIX_ENV=desktop CONFLUENCE_SIGN_RELEASE=1 mix release --overwrite
+# Signing is macOS's problem: `ElixirKit.Release.codesign/1` runs `codesign`
+# over 2 700 files so a signed app is not one that refuses to launch, and there
+# is nothing on Linux or Windows for it to sign. Asking for it there would fail
+# the release on a tool that is simply absent.
+if [[ $platform == macos ]]; then
+  run "building the sidecar release, signed (ad-hoc without a certificate)" \
+    env MIX_ENV=desktop CONFLUENCE_SIGN_RELEASE=1 mix release --overwrite
+else
+  run "building the sidecar release" \
+    env MIX_ENV=desktop mix release --overwrite
+fi
 
-# The bundle is built after the release on purpose: the release has to exist
-# before it can go inside, or the app would carry the previous build — the trap
-# that made a window start code from hours earlier.
-run "building the application shell" \
-  cargo tauri build --bundles app --config "$bundle_config"
+# The window is built after the release on purpose: the release has to exist
+# before it can be put beside (or inside) the window, or the build would carry
+# the previous one — the trap that made a window start code from hours earlier.
+if [[ $platform == macos ]]; then
+  run "building the application shell" \
+    cargo tauri build --bundles app --config "$bundle_config"
+else
+  # No bundling: on these platforms the artifact *is* a folder, and letting
+  # Tauri bundle would run its resource copy — the step that fails on this
+  # toolchain (`scripts/lib/bundle.sh`) and that we do not need, because the
+  # release is copied in by hand below.
+  run "building the window" cargo tauri build --no-bundle
+fi
 
-# The release goes in here rather than through `bundle.resources`. Tauri's own
-# copy of this tree (2 700 files, addressed across a `..` in the config) fails in
-# its resource phase with "Permission denied (os error 13)" on this toolchain,
-# and one `ditto` puts it exactly where the shell looks it up:
-# `resource_dir()/rel/confluence_phx_mirror`, which is
-# `Contents/Resources/rel/confluence_phx_mirror` in a macOS app.
-run "carrying the release into the bundle" embed_release
+# The release goes where the installed window looks for it, rather than through
+# `bundle.resources`: Tauri's own copy of this tree (2 700 files, addressed
+# across a `..` in the config) fails in its resource phase with "Permission
+# denied (os error 13)" on this toolchain, and one copy puts it exactly where
+# `src-tauri/src/main.rs` looks it up — `resource_dir()/rel/confluence_phx_mirror`
+# in a bundle, and the directory beside the binary in a portable folder.
+run "carrying the release to where the window looks for it" stage_release
 
-run "booting the release the bundle carries and asking it to serve" boot_check
+if [[ $platform != macos ]]; then
+  run "staging the window and what it needs beside it" stage_window
+fi
+
+run "booting the release the artifact carries and asking it to serve" boot_check
 
 run "assembling the artifact" assemble
 
 if [[ $install_after == yes ]]; then
+  if [[ $platform != macos ]]; then
+    echo "--install writes into ~/Applications and only makes sense on macOS"
+    exit 64
+  fi
+
   run "installing that build the way a download installs" \
     env CONFLUENCE_EXPORT_BASE_URL="file://$PWD/$out" ./install-desktop.sh
 fi
 
 echo
 echo "artifact: $out/$asset"
-echo "uploaded by the workflow as: confluence-export-macos"
+echo "uploaded by the workflow as: confluence-export-$platform"
 [[ $install_after == yes ]] || echo "to install it: scripts/package.sh --install"

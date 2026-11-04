@@ -32,6 +32,12 @@ defmodule ConfluencePhxMirror.MixProject do
     [
       confluence_phx_mirror: [
         steps: release_steps(),
+        # Both flavours of launcher, whichever machine assembles the release.
+        # Mix's default is the *assembling* platform's, and the desktop build
+        # assembles on three — `src-tauri/src/main.rs` starts
+        # `bin/confluence_phx_mirror.bat` on Windows, and a Windows release
+        # without one is a window that starts nothing.
+        include_executables_for: [:unix, :windows],
         entitlements: "#{__DIR__}/src-tauri/App.entitlements"
       ]
     ]

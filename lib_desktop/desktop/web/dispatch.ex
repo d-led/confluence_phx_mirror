@@ -16,18 +16,37 @@ defmodule ConfluencePhxMirror.Desktop.Web.Dispatch do
 
   @behaviour Plug
 
-  import Plug.Conn, only: [put_resp_content_type: 2, send_resp: 3]
+  import Plug.Conn,
+    only: [put_resp_content_type: 2, put_resp_header: 3, register_before_send: 2, send_resp: 3]
 
   alias ConfluencePhxMirror.Desktop.Settings
   alias ConfluencePhxMirror.Desktop.Web.{Page, Tool}
 
   @tool "/__tool"
 
+  # Every response the window's origin sends says which app it came from, so a
+  # copy starting up can tell "the port is taken by something else" from "the
+  # port is taken by *me*" — see `Desktop.Web.Server.choose_port/0`. A response
+  # header rather than a page's text: it is one place, it survives a rewrite of
+  # the markup, and a deployed mirror (which does not serve `/__tool` and never
+  # goes through this module) cannot answer it.
+  @instance_header "x-confluence-export"
+
+  @doc "The header that marks a response as coming from a desktop copy."
+  @spec instance_header() :: String.t()
+  def instance_header, do: @instance_header
+
   @impl true
   def init(opts), do: opts
 
   @impl true
   def call(conn, _opts) do
+    conn
+    |> register_before_send(&put_resp_header(&1, @instance_header, "1"))
+    |> route()
+  end
+
+  defp route(conn) do
     cond do
       tool?(conn.request_path) ->
         Tool.call(conn, [])

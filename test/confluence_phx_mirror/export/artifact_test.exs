@@ -95,7 +95,10 @@ defmodule ConfluencePhxMirror.Export.ArtifactTest do
       assert :started =
                Artifact.prepare("site.zip", server: @server, by: "ops@example.com", build: build)
 
-      assert_receive :half_written, 2_000
+      # The build runs in a process of its own, and a loaded machine is slow to
+      # schedule it. Two seconds was enough alone and not always under load; the
+      # assertion below is what the test is about, not how fast the scheduler is.
+      assert_receive :half_written, 10_000
 
       assert {:busy, "ops@example.com"} =
                Artifact.prepare("site.zip",

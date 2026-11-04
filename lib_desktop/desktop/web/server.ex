@@ -29,17 +29,46 @@ defmodule ConfluencePhxMirror.Desktop.Web.Server do
   @loopback {127, 0, 0, 1}
 
   @doc """
-  The port this launch will try, before anything is bound.
+  The port this launch will try, before anything is bound — or `:already_running`
+  when another copy of this app holds it.
 
   Asked before the endpoint starts, because the endpoint reads its own URL once,
   when it starts: a screen that generates an absolute link — the MCP page and its
   copy-paste block above all — needs the port the listener will actually get.
   """
-  @spec choose_port() :: :inet.port_number()
+  @spec choose_port() :: {:ok, :inet.port_number()} | {:error, :already_running}
   def choose_port do
     port = Settings.port()
 
-    if free?(port), do: port, else: taken(port)
+    cond do
+      free?(port) -> {:ok, port}
+      another_copy?(port) -> {:error, :already_running}
+      true -> {:ok, taken(port)}
+    end
+  end
+
+  # One workspace, one writer. Two copies of the tool are two servers, two Oban
+  # workers and two processes writing one `catalogue.db`, and SQLite's answer to
+  # that is not corruption but a fight — lock timeouts, duplicate jobs, two
+  # exports into one file. So the second copy stops here, before it opens
+  # anything, and says which port the first one has.
+  #
+  # The check is a request, not a lock: the port this copy prefers is already
+  # held by the other one, which is only a *conflict* if what holds it is us. A
+  # port taken by something else is still worth falling back for — that is what
+  # `taken/1` is for, and it is the common case on a developer's machine.
+  defp another_copy?(port) do
+    case Req.get("http://127.0.0.1:#{port}/__tool",
+           retry: false,
+           receive_timeout: 750,
+           connect_options: [timeout: 750]
+         ) do
+      {:ok, %{status: 200, headers: headers}} ->
+        Map.has_key?(headers, ConfluencePhxMirror.Desktop.Web.Dispatch.instance_header())
+
+      _not_answering ->
+        false
+    end
   end
 
   @doc """

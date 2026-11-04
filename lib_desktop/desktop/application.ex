@@ -39,17 +39,54 @@ defmodule ConfluencePhxMirror.Desktop.Application do
     # path from here as it starts.
     Settings.apply_runtime_config()
 
-    # A catalogue written by an earlier build cannot be migrated onto the shared
-    # schema, and the rename this does cannot happen underneath an open
-    # connection — so it happens here, before there is one.
-    Setup.prepare(Settings.database())
+    # Before anything touches the catalogue: a second copy has to be turned away
+    # *here*, not after it has spent five seconds on a lock another copy holds and
+    # then reported that as a crash. The port is a read of the environment and
+    # `settings.json` — nothing the database answers — so asking it first costs
+    # nothing.
+    #
+    # The port is chosen before the endpoint starts for the older reason too: the
+    # endpoint reads its URL once, when it starts, and a screen generated with
+    # yesterday's port in it is a link to nowhere.
+    #
+    # `:already_running` is a refusal, not a crash: another copy of this app holds
+    # the port and the one catalogue behind it, and two writers on one SQLite file
+    # is a fight rather than a feature. It is answered in words here, because the
+    # window shows the release's own output and a crash term is not words.
+    case Server.choose_port() do
+      {:ok, port} ->
+        # A catalogue written by an earlier build cannot be migrated onto the
+        # shared schema, and the rename this does cannot happen underneath an open
+        # connection — so it happens here, before there is one.
+        Setup.prepare(Settings.database())
 
-    # The port is chosen before the endpoint starts, because the endpoint reads
-    # its URL once, when it starts, and a screen generated with yesterday's port
-    # in it is a link to nowhere.
-    port = Server.choose_port()
-    put_endpoint_config(port)
+        put_endpoint_config(port)
+        start_children(port)
 
+      {:error, :already_running} ->
+        IO.puts(:stderr, """
+        Confluence Export is already running: another copy of this app is
+        answering on port #{Settings.port()}.
+
+        One workspace has one catalogue, and two copies would write it at the
+        same time. Close the window of the copy that is already open — the app
+        quits when its window closes — and start this one again.
+
+        If that copy is gone and the port is still answered, something else on
+        this machine is listening there: set CONFLUENCE_EXPORT_PORT, or "port"
+        in settings.json, to another number.
+        """)
+
+        # `halt`, not a failed `start/2`: nothing has been opened yet — no
+        # connection, no migration, no write — so there is nothing to unwind, and
+        # a returned error would raise a supervision failure whose log is a crash
+        # term plus an `erl_crash.dump` beside it. A person needs the paragraph
+        # above; the exit status tells a script the copy did not start.
+        System.halt(1)
+    end
+  end
+
+  defp start_children(port) do
     children = [
       ConfluencePhxMirror.Repo,
       # Straight after the repo and before anything that queries it: a supervisor

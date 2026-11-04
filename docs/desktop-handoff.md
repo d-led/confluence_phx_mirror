@@ -71,10 +71,19 @@ connection, the press that queues a mirror run, and the archive.
    quarantined by Gatekeeper until it is signed and notarised.
 4. **`lib_desktop/` has no unit tests**, and CI neither compiles nor dialyses
    `MIX_ENV=desktop`. The tool is verified by running it and by
-   `MIX_ENV=desktop mix dialyzer`, not by a test file.
-5. **The suite is flaky under load.** `DBConnection` checkout timeouts become
-   `OwnershipError`s in six unrelated files; they pass alone. Not fixed.
-   `Export.ZipTest` also timed out at 60 s once in a full run (load).
+   `MIX_ENV=desktop mix dialyzer`, not by a test file. The window shell has ten
+   Rust tests (`cargo test --manifest-path src-tauri/Cargo.toml`) — failure
+   classification, the failure page, the address check — which is a start, not a
+   suite.
+5. **The suite was flaky under load — two separate causes, both closed.** The
+   `DBConnection`/`OwnershipError` failures were two suites against one test
+   database (trap 6), not the code. The rest was real: three tests waited for a
+   built archive with a five-second budget and one waited two seconds for a
+   spawned process, so each passed alone and failed on a loaded machine — a test
+   reporting the machine. All four are now bounded by a deadline (60 s for an
+   archive, 10 s for a message) that returns the moment the thing is ready.
+   `Export.ZipTest`'s single 60 s timeout in a full run is the same class and has
+   the same remedy if it recurs.
 
 ## What was asked for, and where it stands
 
