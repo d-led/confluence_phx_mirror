@@ -300,6 +300,23 @@ here as done is open.
     Allow* fixes it for good. Two traps in one: the boot path had blocking I/O in
     it, and the only way to see it was to run the *shipped* copy instead of the
     build tree.
+22. **A panic in `setup` is an Apple Event crash, and its reason is invisible.**
+    Every `?` in `start_sidecar` became `Failed to setup app: …`, and because
+    Tauri runs `setup` inside AppKit's launch Apple Event, the panic unwinds
+    through ObjC: `libc++abi: terminating due to uncaught foreign exception`,
+    SIGABRT, and the dialog a person sees is *Confluence Export quit
+    unexpectedly*. The sentence that says what was wrong — `… could not be
+    started: No such file or directory`, `the release stopped before it said
+    where it listens` — went to a stderr that a double-clicked app does not have.
+    Reports from 2 November and 4 November all share that signature, so this had
+    been happening for days. Now a failure is a value: the window opens on the
+    reason, the same line is appended to
+    `~/Library/Logs/dev.confluence-export.desktop/sidecar.log`, and the release's
+    own output goes to that file too (`stderr` inherited into nothing is how a
+    whole boot left no trace). Verified both ways: with
+    `CONFLUENCE_EXPORT_SIDECAR=/nonexistent/sidecar` the window shows the reason
+    and no crash report is written; the shipped zip, extracted to `/tmp/dl`,
+    starts its sidecar, answers `/` in 25 ms, and puts 13 lines in the log.
 
 ## Next, in order
 
@@ -368,3 +385,9 @@ artifact: `desktop ui:` at 0.1 s, `/health` 200, before trap 21 was fixed the
 same run had no listener at all). The first launch of a copy also asks for the
 keychain item `confluence-export`; while that question is up `/` and `/__tool`
 wait for it, which is why `/health` is the one to curl.
+
+When the app itself will not start, the answer is in two places that are not the
+terminal: the window says which step failed, and
+`~/Library/Logs/dev.confluence-export.desktop/sidecar.log` carries the release's
+own output — the migration that refused, the database another copy holds, the
+request log. `os_log` will not have it (trap 22).

@@ -130,6 +130,11 @@ window is already open when the question appears: the token is read after the
 listener has printed the address the window is opened on, not before it, which is
 what makes the question answerable instead of a tool that looks dead.
 
+**When it does not start, it says so.** If the release behind the window cannot
+be started, the window opens on the reason instead of the app disappearing, and
+the same text — with the release's own log, one line per request — is appended to
+`~/Library/Logs/dev.confluence-export.desktop/sidecar.log`.
+
 ## Layout
 
 ```
