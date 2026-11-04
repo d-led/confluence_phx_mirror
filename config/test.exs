@@ -36,12 +36,21 @@ if sqlite? do
   # turns every second test that writes into "Database busy": 147 of the first
   # run's 286 failures were that and nothing else. One test at a time is what the
   # tool's single connection does in production.
+  #
+  # `:immediate` transactions are the second half of that. A deferred `BEGIN`
+  # takes its write lock on the first write, and SQLite does not run the busy
+  # handler for that upgrade — it answers "busy" at once, whatever the
+  # `busy_timeout` says. So a slow runner (two cores, a test with LiveView and
+  # Oban processes of its own) hits it even one test at a time, which is how the
+  # job failed on its second GitHub run. Taking the lock at `BEGIN` is where the
+  # timeout does apply.
   config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
     database: Path.expand("../tmp/test#{System.get_env("MIX_TEST_PARTITION")}.db", __DIR__),
     pool: Ecto.Adapters.SQL.Sandbox,
     pool_size: System.schedulers_online() * 3,
     journal_mode: :wal,
-    busy_timeout: 5_000
+    busy_timeout: 5_000,
+    default_transaction_mode: :immediate
 
   # Oban's default notifier and engine are Postgres's; the tool points both at
   # SQLite (`config/desktop.exs`), and a test run that leaves them alone spends
