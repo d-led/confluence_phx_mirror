@@ -13,8 +13,38 @@ defmodule ConfluencePhxMirror.MixProject do
       package: package(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader],
-      dialyzer: dialyzer()
+      dialyzer: dialyzer(),
+      releases: releases()
     ]
+  end
+
+  # The desktop bundle carries this release inside it, and macOS will not launch
+  # a signed application whose innards are unsigned: Tauri signs the Rust half by
+  # itself, and every BEAM binary, port and escript in the release is the other
+  # half. `ElixirKit.Release.codesign/1` signs them, ad-hoc when no
+  # `APPLE_SIGNING_IDENTITY` is set, which is why this works before anyone has a
+  # certificate.
+  #
+  # Opt-in (`CONFLUENCE_SIGN_RELEASE=1`, set by `scripts/package.sh` and by the
+  # desktop workflow): signing 2 700 files on every `mix release` would tax the
+  # loop it is not needed in, and a Linux server release has nothing to sign.
+  defp releases do
+    [
+      confluence_phx_mirror: [
+        steps: release_steps(),
+        entitlements: "#{__DIR__}/src-tauri/App.entitlements"
+      ]
+    ]
+  end
+
+  defp release_steps do
+    if System.get_env("CONFLUENCE_SIGN_RELEASE") == "1" do
+      # The entitlements the BEAM needs under the hardened runtime: it compiles
+      # code at run time, which is exactly what those switches are for.
+      [:assemble, &ElixirKit.Release.codesign/1]
+    else
+      [:assemble]
+    end
   end
 
   # The type check runs in whatever environment calls it — CI runs the whole
@@ -90,6 +120,11 @@ defmodule ConfluencePhxMirror.MixProject do
       # only, or every server build would need a Rust toolchain for a credential
       # store it does not have.
       {:rustler, "~> 0.38.0", only: :desktop, runtime: false},
+      # Signs the release for macOS (`ElixirKit.Release.codesign/1`), the half
+      # Tauri cannot sign for itself: the Erlang VM and every escript the release
+      # ships. `:desktop` only — the server image is Linux and has nothing to
+      # sign. See `release_steps/0`.
+      {:elixirkit, "~> 0.1", only: :desktop},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.2.0"},

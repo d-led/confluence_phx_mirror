@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The entitlements the Erlang VM needs under the hardened runtime, and the reason
+  a signed build of this app is not just "sign the bundle": the BEAM writes and
+  executes native code at run time (JIT, module loading, the port drivers), which
+  the hardened runtime forbids unless these switches say otherwise.
+
+  `release_steps/0` in `mix.exs` hands this file to the release's signing step,
+  and Tauri applies the same runtime expectations to the app around it.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

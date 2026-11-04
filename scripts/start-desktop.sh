@@ -20,6 +20,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/lib/bundle.sh
+. scripts/lib/bundle.sh
+
 name=confluence_phx_mirror
 release="_build/desktop/rel/$name"
 sidecar="$PWD/$release/bin/$name"
@@ -157,6 +160,12 @@ fi
 if [[ "$mode" == app ]]; then
   run "building the app bundle (a minute warm, six cold — the window is rebuilt in release)" \
     cargo tauri build --bundles app --config "$PWD/$bundle_config"
+
+  # The release inside the bundle is put there here, not by `bundle.resources`:
+  # Tauri's copy of that tree fails in its resource phase on this toolchain. See
+  # `scripts/lib/bundle.sh`.
+  run "carrying the release into the bundle" \
+    bundle_embed_release "$bundle" "$PWD/$release" "$name"
 
   echo
   echo "opening the app. Close its window to come back here; Ctrl-C leaves it running."

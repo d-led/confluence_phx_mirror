@@ -265,6 +265,28 @@ here as done is open.
     which is exactly why nobody noticed: the file on disk was from another day
     and another environment (`_build/dev/phoenix-colocated/…` appears in its
     source comments).
+18. **Tauri will not copy this release into a bundle.** `bundle.resources`
+    addressed `../_build/desktop/rel/confluence_phx_mirror` and the resource
+    phase died with `Permission denied (os error 13)` — no path in the message,
+    no root-owned file, no symlink, 25 GB free, and the same command succeeding
+    with `resources: {}`. Bisected by emptying the config, not by guessing. The
+    release is now copied in with one `ditto` after the shell is built
+    (`scripts/lib/bundle.sh`), into the one place `main.rs` looks for it:
+    `resource_dir()/rel/confluence_phx_mirror`, which is
+    `Contents/Resources/rel/confluence_phx_mirror`. Two scripts build a bundle
+    (`start-desktop.sh --app`, `package.sh`), which is why the copy lives in
+    `scripts/lib/`.
+19. **A check that could only ever fail.** The publishing workflow's boot check
+    asked for `curl "$url/state"`: `/state` belongs to the tool's router under
+    `/__tool`, and the address the release prints ends in a slash, so the request
+    went to `//state`. Running it locally (`scripts/package.sh`) found it in one
+    minute; a tag would have found it after the build. It asks for `/health` and
+    `/__tool` now — both halves, and both real.
+20. **`grep -q` under `pipefail` is a SIGPIPE, not a match.**
+    `unzip -l … | grep -q …` exits 141: `grep` stops at the first match, `unzip`
+    writes into a closed pipe, and `set -o pipefail` reports the writer's death as
+    the pipeline's failure. The listing is compared with a `case` now. Same trap
+    waits in any step that pipes a producer into `grep -q`.
 
 ## Next, in order
 
@@ -277,7 +299,13 @@ here as done is open.
    not only evidence rows, and a CI leg that compiles, dialyses and probes
    `MIX_ENV=desktop` (the probe is cheap: boot it, `GET` the screens). The same
    leg is what would put the FTS5 statement itself under test.
-3. **Signing and notarisation** for the `.app`, which builds and runs.
+3. **Signing and notarisation** for the `.app`. The release half is wired —
+   `CONFLUENCE_SIGN_RELEASE=1` makes `mix release` sign every BEAM binary and
+   escript with `ElixirKit.Release.codesign/1` (ad-hoc without
+   `APPLE_SIGNING_IDENTITY`, a real signature with it), and
+   `src-tauri/App.entitlements` carries the four switches the BEAM needs under
+   the hardened runtime. What is missing is the certificate, and notarisation
+   (`xcrun notarytool`), which needs a paid Apple Developer account.
 4. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
    in-process seed) so the same suite can run against the container image.
 
@@ -294,8 +322,8 @@ mix sobelow --exit                                    # security gate
 scripts/start-desktop.sh --where                      # assets, release and window, then the workspace
 scripts/start-desktop.sh                              # the debug window from the checkout
 scripts/start-desktop.sh --app                        # the .app, built and opened
-scripts/package.sh                                    # what the workflow publishes, built here
-scripts/package.sh --install                          # …and installed the way a download installs
+scripts/package.sh                                    # the .app the workflow publishes, built here
+scripts/package.sh --install                          # …and installed into ~/Applications
 ```
 
 The asset steps print about a second each once the toolchain is installed —

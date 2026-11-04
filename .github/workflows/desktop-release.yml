@@ -1,4 +1,4 @@
-# Publishes the desktop tool: a runnable tarball from every push, and a release
+# Publishes the desktop tool: an installable app from every push, and a release
 # from a version tag.
 #
 #   git tag v1.2.3 && git push origin v1.2.3
@@ -13,25 +13,17 @@
 #
 #   https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-macos.zip
 #
-# The artifact is a **tarball inside that zip** on purpose: an artifact's own zip
-# does not carry file modes, and both the release's `bin/*` scripts and the
-# `start` launcher beside them have to stay executable. The installer untars it
-# for that reason, not out of habit.
+# What it holds is **the application bundle**: `Confluence Export.app`, zipped
+# with `ditto` because a bundle is directories, symlinks and extended attributes
+# and the ones a plain `zip` drops are the ones that stop it launching. The
+# bundle carries the window, the sidecar release (as `bundle.resources`) and the
+# icon, so it runs where this checkout is not — drag it to `/Applications` and
+# double-click.
 #
-# What is attached to a release is a tarball, not a `.app`. That is deliberate
-# and it is temporary: bundling a window, a release and an icon into a signed
-# application is its own piece of work, and a workflow that produces a `.app`
-# nobody has run would be worse than one that produces something honest. Today
-# the tarball holds:
-#
-#   confluence-export          the window, built in release mode
-#   confluence_phx_mirror/     the sidecar release, with its own Erlang runtime
-#   start                      a script that points the window at the sidecar
-#
-# `start` exists because the window looks for its sidecar by a relative path in
-# development and by `CONFLUENCE_EXPORT_SIDECAR` otherwise; a bundle will set
-# that itself, and until there is a bundle the script is what makes the download
-# runnable.
+# It is not signed, so Gatekeeper refuses the first launch of a downloaded copy
+# until somebody right-clicks → Open. Signing and notarisation are their own
+# piece of work, and a workflow that produced a signed-looking app nobody had run
+# would be worse than one that ships an honest unsigned bundle.
 #
 # The build is macOS only for the same reason as the debug workflow: it is the
 # platform the window has actually been run on.
@@ -99,10 +91,33 @@ jobs:
           mix phx.digest
 
       - name: Build the release
+        env:
+          # Signs every BEAM binary and escript in the release — the half Tauri
+          # cannot sign for itself. Ad-hoc without an identity; with
+          # `APPLE_SIGNING_IDENTITY` in the secrets it is a real signature, and
+          # Tauri then signs and notarises the app around it.
+          CONFLUENCE_SIGN_RELEASE: "1"
         run: mix release --overwrite
 
       - name: Build the window
         run: cargo build --release --manifest-path src-tauri/Cargo.toml
+
+      # `cargo tauri` needs the CLI, and a runner starts without it. Cached on
+      # the version it installs, which is the only thing that changes it.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-2-${{ runner.os }}
+
+      - name: Install the Tauri CLI (when the cache misses)
+        run: command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "^2" --locked
+
+      # The application bundle: the window, the release as a resource, and the
+      # icon, in one double-clickable package. `tauri.bundle.conf.json` is
+      # merged here only — `bundle.active` in the main config breaks the debug
+      # window `desktop-debug` builds.
+      - name: Build the application bundle
+        run: cargo tauri build --bundles app --config "$PWD/src-tauri/tauri.bundle.conf.json"
 
       # A release that builds but does not boot is not a release. This is the
       # same check the debug workflow makes, and it runs before anything is
@@ -137,28 +152,28 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp -R _build/desktop/rel/confluence_phx_mirror dist/confluence_phx_mirror
-          cp src-tauri/target/release/confluence-export dist/confluence-export
+          app="src-tauri/target/release/bundle/macos/Confluence Export.app"
 
-          cat >dist/start <<'SCRIPT'
-          #!/bin/sh
-          # Starts the tool. The window runs the sidecar beside it; setting the
-          # path here is what ties the two downloaded pieces together until
-          # there is an application bundle to do it.
-          here=$(cd "$(dirname "$0")" && pwd)
-          export CONFLUENCE_EXPORT_SIDECAR="$here/confluence_phx_mirror/bin/confluence_phx_mirror"
-          exec "$here/confluence-export" "$@"
-          SCRIPT
-          chmod +x dist/start
+          # `ditto`, not `zip`: a bundle is directories, symlinks and extended
+          # attributes, and the ones `zip` drops are the ones that stop it
+          # launching.
+          ditto -c -k --keepParent "$app" dist/confluence-export-macos.zip
 
-          # One name for both jobs: a tag would otherwise assemble a second copy
-          # of the same tree under a different file name.
-          tar -czf dist/confluence-export-macos.tar.gz -C dist .
+          # Prove the promise: the bundle is inside, executable included. The
+          # listing is compared, not piped into `grep -q`: that exits at the first
+          # match, `unzip` takes the SIGPIPE, and `pipefail` reads 141 as a
+          # failure.
+          listing=$(unzip -l dist/confluence-export-macos.zip)
+          case "$listing" in
+            *"Confluence Export.app/Contents/MacOS/confluence-export"*) ;;
+            *) echo "the zip does not carry the bundle"; echo "$listing" | head -20; exit 1 ;;
+          esac
+          ls -lh dist
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: confluence-export-macos
-          path: dist/confluence-export-macos.tar.gz
+          path: dist/confluence-export-macos.zip
           # `nightly.link` serves the newest artifact of a branch, and an
           # installed build should keep working for a while: a week is not long
           # enough for that promise.
@@ -177,14 +192,14 @@ jobs:
         with:
           path: dist
 
-      - name: Attach the tarball to the tag
+      - name: Attach the bundle to the tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
-          asset="confluence-export-${tag}-macos.tar.gz"
-          mv "dist/confluence-export-macos.tar.gz" "$asset"
+          asset="confluence-export-${tag}-macos.zip"
+          mv "dist/confluence-export-macos.zip" "$asset"
           ls -lh "$asset"
 
           gh release view "$tag" >/dev/null 2>&1 ||

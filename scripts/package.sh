@@ -3,27 +3,48 @@
 # Builds what the desktop workflow publishes, here, so that pushing a tag is not
 # the first time anyone finds out what it produces.
 #
-#   scripts/package.sh             build both halves, prove the release serves,
-#                                  write the artifact the workflow uploads
-#   scripts/package.sh --install   …and then install that build the way the
-#                                  published one installs (~/.local/share)
+#   scripts/package.sh             build the app, prove the release inside it
+#                                  serves, write the zip the workflow uploads
+#   scripts/package.sh --install   …and install that build the way a download
+#                                  installs (~/Applications)
 #
-# The artifact is one tarball, `confluence-export-macos.tar.gz`, holding the
-# window, the sidecar release with its own Erlang runtime, and the `start`
-# launcher that ties them together. `.github/workflows/desktop-release.yml`
-# builds the same tree with the same steps; this script is the local half of
-# that promise, not a second opinion about it.
+# The artifact is **the application bundle**: `Confluence Export.app`, zipped. It
+# holds the window, the sidecar release with its own Erlang runtime and the icon,
+# so a person unzips it, drags it to `/Applications` and double-clicks. A tarball
+# of loose binaries is not a macOS application, and the bundle is what
+# `scripts/start-desktop.sh --app` already builds and runs.
+#
+# The release is signed on the way in (`ElixirKit.Release.codesign/1`), because an
+# application whose innards are unsigned is not launchable when signed, nor
+# notarisation-ready. Without `APPLE_SIGNING_IDENTITY` that signature is ad-hoc:
+# enough to make the mechanics real, not enough to satisfy Gatekeeper — that needs
+# a Developer ID and notarisation, which are their own piece of work.
+#
+# `.github/workflows/desktop-release.yml` builds the same bundle with the same
+# steps; this script is the local half of that promise, not a second opinion
+# about it.
+#
+# The store the tool uses is the real one, so this touches it: `mix release`
+# compiles, and the boot check runs that release against a throwaway `HOME` so a
+# tool you have open right now is neither locked nor disturbed.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/lib/bundle.sh
+. scripts/lib/bundle.sh
+
 name=confluence_phx_mirror
 release="_build/desktop/rel/$name"
 sidecar="$PWD/$release/bin/$name"
-window="src-tauri/target/release/confluence-export"
+app="src-tauri/target/release/bundle/macos/Confluence Export.app"
+# A separate config, merged only here: `bundle.active` in the main one makes the
+# debug window `scripts/start-desktop.sh` opens fail in tauri-build's resource
+# phase, and the debug window has no use for a bundle.
+bundle_config="$PWD/src-tauri/tauri.bundle.conf.json"
 out="_build/desktop/package"
-asset="confluence-export-macos.tar.gz"
+asset="confluence-export-macos.zip"
 
 install_after=no
 
@@ -31,7 +52,7 @@ usage() {
   echo "scripts/package.sh [--install]"
   echo
   echo "  (no flags)   build, check, and write $out/$asset"
-  echo "  --install    …then install that build into ~/.local/share/confluence-export"
+  echo "  --install    …then install that build into ~/Applications"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -63,7 +84,7 @@ run() {
 
 # A release that builds but does not boot is not a release, and the workflow
 # refuses to publish one. This is that same check, run before anything is
-# written.
+# written: it starts the very release the bundle carries as its resource.
 #
 # It is the one place in this repository that backgrounds a process, and it has
 # to be: the release only says where it listens once it is running, and the point
@@ -71,11 +92,15 @@ run() {
 # lives under the user's data directory — a check that took the write lock on the
 # catalogue somebody has open would be a check nobody dares run.
 boot_check() {
-  local home log url pid
+  local home log url pid carried
   home=$(mktemp -d)
   log=$(mktemp)
 
-  HOME="$home" RELEASE_DISTRIBUTION=none "$sidecar" start >"$log" 2>&1 &
+  # The copy inside the bundle, not the one in `_build`: the bundle is what ships,
+  # so the bundle is what gets asked.
+  carried="$app/Contents/Resources/rel/$name/bin/$name"
+
+  HOME="$home" RELEASE_DISTRIBUTION=none "$carried" start >"$log" 2>&1 &
   pid=$!
 
   for _ in $(seq 1 60); do
@@ -97,7 +122,7 @@ boot_check() {
   url=${url%/}
 
   # Both halves: the mirror's own health, and the tool's screen, which is the
-  # part this build adds. A release that serves one and not the other is a
+  # part this build adds. A bundle that serves one and not the other is a
   # download that opens on nothing.
   curl -fsS "$url/health" >/dev/null
   curl -fsS "$url/__tool" >/dev/null
@@ -108,33 +133,37 @@ boot_check() {
   rm -rf "$home" "$log"
 }
 
-# The tree the workflow tars: the release, the window, and the launcher that
-# points one at the other.
+# The release goes where `resource_dir()` looks for it: inside the bundle's
+# `Contents/Resources`, under `rel/`. See `scripts/lib/bundle.sh`.
+embed_release() {
+  local dest="$app/Contents/Resources/rel/$name"
+
+  bundle_embed_release "$app" "$release" "$name"
+  echo "carried $(du -sh "$dest" | cut -f1) into Contents/Resources/rel/$name"
+}
+
 assemble() {
   rm -rf "$out"
-  mkdir -p "$out/tree"
-  cp -R "_build/desktop/rel/$name" "$out/tree/$name"
-  cp "$window" "$out/tree/confluence-export"
+  mkdir -p "$out"
 
-  cat >"$out/tree/start" <<'SCRIPT'
-#!/bin/sh
-# Starts the tool. The window runs the sidecar beside it; setting the path here is
-# what ties the two downloaded pieces together until there is an application
-# bundle to do it.
-here=$(cd "$(dirname "$0")" && pwd)
-export CONFLUENCE_EXPORT_SIDECAR="$here/confluence_phx_mirror/bin/confluence_phx_mirror"
-exec "$here/confluence-export" "$@"
-SCRIPT
-  chmod +x "$out/tree/start"
+  # `ditto`, not `zip`: an application bundle is directories, symlinks and
+  # extended attributes, and only `ditto -k` (or Finder's own zip) preserves the
+  # ones a bundle needs to launch.
+  ditto -c -k --keepParent "$app" "$out/$asset"
 
-  # `COPYFILE_DISABLE` keeps macOS's `tar` from writing the `._` files that
-  # otherwise land in an archive made from a checkout.
-  COPYFILE_DISABLE=1 tar -czf "$out/$asset" -C "$out/tree" .
-  rm -rf "$out/tree"
-
-  # The zip is what `nightly.link` hands out; making it here is what lets
-  # `--install` exercise the published path without publishing anything.
-  (cd "$out" && zip -q "${asset%.tar.gz}.zip" "$asset")
+  # Prove the promise: one file, and the bundle is inside it with its executable.
+  # The listing is compared, not piped into `grep -q`: that exits at the first
+  # match, `unzip` takes the SIGPIPE, and `pipefail` reads 141 as a failure.
+  local listing
+  listing=$(unzip -l "$out/$asset")
+  case "$listing" in
+    *"Confluence Export.app/Contents/MacOS/confluence-export"*) ;;
+    *)
+      echo "the zip does not carry the application bundle:"
+      echo "$listing" | head -20
+      return 1
+      ;;
+  esac
 
   ls -lh "$out/$asset"
 }
@@ -145,7 +174,6 @@ SCRIPT
 # console full of "unknown hook found" and a menu that does not open.
 run "checking the asset toolchain (installs it once, then finds it)" \
   env MIX_ENV=desktop mix assets.install --if-missing
-
 run "building the stylesheet" \
   env MIX_ENV=desktop mix tailwind confluence_phx_mirror --minify
 
@@ -158,18 +186,32 @@ run "building the scripts the API docs page loads" \
 run "digesting the assets (the manifest the screens link through)" \
   env MIX_ENV=desktop mix phx.digest
 
-run "building the sidecar release" \
-  env MIX_ENV=desktop mix release --overwrite
+run "fetching the desktop dependencies (a fresh clone has none)" \
+  env MIX_ENV=desktop mix deps.get
 
-run "building the window (release profile)" \
-  cargo build --release --manifest-path src-tauri/Cargo.toml
+run "building the sidecar release, signed (ad-hoc without a certificate)" \
+  env MIX_ENV=desktop CONFLUENCE_SIGN_RELEASE=1 mix release --overwrite
 
-run "booting the release and asking it to serve" boot_check
+# The bundle is built after the release on purpose: the release has to exist
+# before it can go inside, or the app would carry the previous build — the trap
+# that made a window start code from hours earlier.
+run "building the application shell" \
+  cargo tauri build --bundles app --config "$bundle_config"
+
+# The release goes in here rather than through `bundle.resources`. Tauri's own
+# copy of this tree (2 700 files, addressed across a `..` in the config) fails in
+# its resource phase with "Permission denied (os error 13)" on this toolchain,
+# and one `ditto` puts it exactly where the shell looks it up:
+# `resource_dir()/rel/confluence_phx_mirror`, which is
+# `Contents/Resources/rel/confluence_phx_mirror` in a macOS app.
+run "carrying the release into the bundle" embed_release
+
+run "booting the release the bundle carries and asking it to serve" boot_check
 
 run "assembling the artifact" assemble
 
 if [[ $install_after == yes ]]; then
-  run "installing that build the way the published one installs" \
+  run "installing that build the way a download installs" \
     env CONFLUENCE_EXPORT_BASE_URL="file://$PWD/$out" ./install-desktop.sh
 fi
 
