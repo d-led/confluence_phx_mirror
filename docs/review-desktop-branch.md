@@ -90,6 +90,32 @@ Runs `scripts/test-sqlite.sh` beside the Postgres job, not after it.
   job proves flaky on the runner, it can be dropped without touching `lib/`.
 * Not yet proven: the job has not run on GitHub — only locally on macOS arm64.
 
+### `Sync.start_run/5` — a retried job continues its run
+
+An attempt that failed leaves its row; the retry of the same `job_id` resumes it
+(`stats["attempts"]` counts up, the failure moves to `stats["failed_attempts"]`).
+One press is one job is one run — and the failing attempt's log lines stay under
+the run they belong to.
+
+* Could go wrong **on Postgres**: a job re-run much later — a manual retry through
+  `/admin/jobs` a day after the failure — would find the old failed row and
+  continue it, so the run's `started_at` is the first attempt's. Only the newest
+  failed run of that `job_id` is chosen, and Oban ids are not reused, so this
+  cannot cross jobs.
+* Covered by: `test/confluence_phx_mirror/sync/retried_run_test.exs`.
+
+### `Sync.Log.add/3` — a console write cannot fail its caller
+
+`Logger` re-raises a handler's crash, and a handler that writes to a closed pipe
+raises `:badarg` inside whichever process logged — which is how a sync died.
+The write is now a boundary: a line that cannot reach the console still reaches
+the ring.
+
+* Could go wrong: a real `Logger` fault would now be silent. What the screens
+  read is the ring and the run's record, so the loss is a console line.
+* Covered by: `test/confluence_phx_mirror/sync/log_test.exs`
+  (`Test.GoneConsole` raises from `log/2`).
+
 ## 2. What is provably untouched
 
 * **The adapter.** `Repo` reads `Application.compile_env(:confluence_phx_mirror,

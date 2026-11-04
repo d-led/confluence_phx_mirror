@@ -265,7 +265,7 @@ defmodule ConfluencePhxMirror.Sync do
         finish_cancelled(run, actor, trigger)
 
       error ->
-        fail_run(run, Exception.message(error), trigger)
+        fail_run(run, Exception.message(error), __STACKTRACE__, trigger)
 
         Logger.error("sync failed",
           sync_run_id: run.id,
@@ -277,7 +277,7 @@ defmodule ConfluencePhxMirror.Sync do
         reraise error, __STACKTRACE__
     catch
       kind, reason ->
-        fail_run(run, Exception.format(kind, reason, __STACKTRACE__), trigger)
+        fail_run(run, Exception.format(kind, reason, __STACKTRACE__), __STACKTRACE__, trigger)
 
         Logger.error("sync failed",
           sync_run_id: run.id,
@@ -371,8 +371,16 @@ defmodule ConfluencePhxMirror.Sync do
           {exception, stacktrace} when is_exception(exception) ->
             reraise(exception, stacktrace)
 
+          # An Erlang error (a bad argument to a BIF, an `:ets` miss) arrives as
+          # the reason itself with its frames. Raised as it is, it keeps both:
+          # the run's record then says what went wrong and where, instead of
+          # "the sync process exited" around a term `inspect/1` truncated.
+          {reason, stacktrace} when is_list(stacktrace) ->
+            :erlang.raise(:error, reason, stacktrace)
+
           other ->
-            raise "the sync process exited: #{inspect(other)}"
+            raise "the sync process exited: " <>
+                    inspect(other, limit: :infinity, printable_limit: :infinity)
         end
     end
   end
@@ -1334,7 +1342,19 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
-  defp personal_spaces? do
+  @doc """
+  Whether this mirror takes personal (`~account`) spaces.
+
+  Off by default: everyone has one, it holds their drafts, and mirroring it is a
+  decision rather than an accident — `CM_SYNC_PERSONAL_SPACES=true` is that
+  decision. Read here rather than from a copy, because more than the sync asks:
+  a picker must not *offer* what a discovery would skip, and the desktop tool
+  builds its bulk run out of a listing (a copy of this rule in another module is
+  how it came to import personal spaces while a deployment would have skipped
+  them).
+  """
+  @spec personal_spaces?() :: boolean()
+  def personal_spaces? do
     :confluence_phx_mirror
     |> Application.get_env(:sync, [])
     |> Keyword.get(:personal_spaces, false)
@@ -2469,11 +2489,61 @@ defmodule ConfluencePhxMirror.Sync do
 
   # A run says why it happened as well as what it did: the trigger is what a
   # reader asks a sync first, and a run nobody asked for has none to show.
+  #
+  # A retry of the same job continues that job's run rather than opening a
+  # second one: the run is what its log lines hang from, so two rows for one
+  # press read as two syncs to whoever looks at them afterwards, and split the
+  # log in two — the failing attempt's lines land under a run nobody opens.
   defp start_run(source, mode, actor, trigger, opts) do
     # The traffic account covers one run: every call this run makes is counted
     # here and reported when it ends, so a reader never sees yesterday's totals.
     Traffic.reset()
 
+    case resumable_run(opts[:job_id]) do
+      nil -> insert_run(source, mode, actor, trigger, opts)
+      run -> resume_run(run)
+    end
+  end
+
+  defp resumable_run(nil), do: nil
+
+  defp resumable_run(job_id) do
+    import Ecto.Query
+
+    Repo.one(
+      from(run in SyncRun,
+        where: run.job_id == ^job_id and run.status == "failed",
+        order_by: [desc: run.id],
+        limit: 1
+      )
+    )
+  end
+
+  # The failed attempt's own words are kept, because the log that holds them is
+  # a view that may have dropped them by the time anyone asks.
+  defp resume_run(run) do
+    attempts = Map.get(run.stats, "attempts", 1)
+    earlier = Map.get(run.stats, "failed_attempts", [])
+
+    {:ok, run} =
+      run
+      |> SyncRun.changeset(%{
+        status: "running",
+        finished_at: nil,
+        error: nil,
+        stats:
+          run.stats
+          |> Map.put("attempts", attempts + 1)
+          |> Map.put("failed_attempts", earlier ++ List.wrap(run.error))
+      })
+      |> Repo.update()
+
+    announce(run.id)
+
+    run
+  end
+
+  defp insert_run(source, mode, actor, trigger, opts) do
     {:ok, run} =
       %SyncRun{}
       |> SyncRun.changeset(%{
@@ -2483,7 +2553,8 @@ defmodule ConfluencePhxMirror.Sync do
         trigger: trigger,
         job_id: opts[:job_id],
         status: "running",
-        started_at: now()
+        started_at: now(),
+        stats: %{"attempts" => 1}
       })
       |> Repo.insert()
 
@@ -2509,6 +2580,8 @@ defmodule ConfluencePhxMirror.Sync do
       stats
       |> Map.put("total", Mirror.count_pages())
       |> Map.put("errors", normalize_errors(errors))
+      |> Map.put("attempts", Map.get(run.stats, "attempts", 1))
+      |> Map.put("failed_attempts", Map.get(run.stats, "failed_attempts", []))
 
     {:ok, run} =
       run
@@ -2578,10 +2651,18 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp caught_up_clause(_stats), do: []
 
-  defp fail_run(run, message, trigger) do
+  # The message is what the screens print; the frames are what answers "where"
+  # once the log that showed them has rolled over — an Erlang error arrives as a
+  # bare `:badarg`, and its trace is the only thing that names the culprit.
+  defp fail_run(run, message, stacktrace, trigger) do
     {:ok, run} =
       run
-      |> SyncRun.changeset(%{status: "failed", finished_at: now(), error: message})
+      |> SyncRun.changeset(%{
+        status: "failed",
+        finished_at: now(),
+        error: message,
+        stats: Map.put(run.stats, "stacktrace", Exception.format_stacktrace(stacktrace))
+      })
       |> Repo.update()
 
     Log.add(:error, "sync failed: #{message}", sync_run_id: run.id, trigger: trigger)

@@ -484,6 +484,13 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   def describe_error({:unknown_space, key}) when is_binary(key),
     do: "the site has no space called #{key}"
 
+  # A personal space is a request the sync deliberately refuses by default — see
+  # `Sync.personal_spaces?/0`. Said here rather than as "no such space", because
+  # the space exists and the answer is a decision.
+  def describe_error({:personal_space, key}) when is_binary(key),
+    do:
+      "#{key} is somebody's personal space, and this mirror does not take one unless it is configured to (CM_SYNC_PERSONAL_SPACES=true)."
+
   # A start while the space list is being fetched has no key to act on yet. The
   # buttons are drawn disabled in that window; this is the answer for a tab that
   # was rendered before the fetch began.

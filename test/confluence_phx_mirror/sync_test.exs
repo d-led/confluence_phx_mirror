@@ -188,7 +188,8 @@ defmodule ConfluencePhxMirror.SyncTest do
                    (run.stats["details_caught_up"] || 0),
                "in_mirror" => run.stats["total"],
                "attachments" => run.stats["attachments"],
-               "errors" => 0
+               "errors" => 0,
+               "attempts" => 1
              }
 
       assert entry.metadata["scope"] == "whole site"

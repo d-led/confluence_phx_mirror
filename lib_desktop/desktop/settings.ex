@@ -457,6 +457,7 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   """
   @spec apply_runtime_config() :: :ok
   def apply_runtime_config do
+    put_log_file()
     Application.put_env(@app, :blob_store, LocalStore)
     Application.put_env(@app, :blob_root, blobs())
     # Archives are built in the workspace too, beside the catalogue they copy:
@@ -467,6 +468,46 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     put_source_config()
     put_workspace_info()
     :ok
+  end
+
+  # The tool's log is a file it owns, not the pipe it was started on. The window
+  # reads the sidecar's output and stops reading when it closes, and the next
+  # write to a pipe nobody reads raises `:badarg` (`:erlang.display_string`,
+  # cause `:epipe`) *in whichever process logged* — a sync once died that way, in
+  # a page's task, seven frames below anything it had done. The destination is
+  # chosen here and not in `config/desktop.exs` because a release bakes its
+  # config at build time, and this folder belongs to the person running the
+  # tool, not to whoever built it.
+  defp put_log_file do
+    folder = Path.join(root(), "logs")
+    File.mkdir_p(folder)
+
+    with {:ok, handler} <- :logger.get_handler_config(:default) do
+      relocate_log(handler, String.to_charlist(Path.join(folder, "desktop.log")))
+    end
+
+    :ok
+  end
+
+  # `file:` wants a charlist, and the handler will not move house later: its
+  # destination is fixed when it is added, so the handler is replaced by one
+  # that has everything the build gave it except where it writes.
+  defp relocate_log(%{config: %{file: file}}, file), do: :ok
+
+  defp relocate_log(handler, file) do
+    :ok = :logger.remove_handler(:default)
+
+    :logger.add_handler(:default, :logger_std_h, %{
+      level: handler.level,
+      filters: handler.filters,
+      filter_default: handler.filter_default,
+      formatter: handler.formatter,
+      config: %{
+        file: file,
+        max_no_bytes: 5_000_000,
+        max_no_files: 3
+      }
+    })
   end
 
   # What only a desktop tool can say about itself, for the MCP configuration tool

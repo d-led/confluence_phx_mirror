@@ -143,8 +143,19 @@ found and deleted by hand in Keychain Access. A token stored by an older build
 
 **When it does not start, it says so.** If the release behind the window cannot
 be started, the window opens on the reason instead of the app disappearing, and
-the same text — with the release's own log, one line per request — is appended to
+the same text — with whatever reached the process's console, one line per
+request — is appended to
 `~/Library/Logs/dev.confluence-export.desktop/sidecar.log`.
+
+**Its own log is a file, not a pipe.** The release also keeps
+`<workspace>/logs/desktop.log` (rotated at 5 MB, three archives), and that is
+where its `Logger` output goes from boot on. It is not a preference: the
+window's console is a pipe, the shell stops reading it when the window closes,
+and the next write to a pipe nobody reads raises `:badarg`
+(`:erlang.display_string`, cause `:epipe`) **in whichever process logged** — a
+sync once died that way, in a page's task, several frames below anything it had
+done. A file has no reader to lose, and `Sync.Log.add/3` treats the console as
+optional for the same reason.
 
 ## Layout
 

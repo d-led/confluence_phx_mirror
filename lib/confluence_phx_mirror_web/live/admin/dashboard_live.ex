@@ -935,6 +935,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
               <span :if={row.members} class="block text-[11px] text-base-content/70">
                 {row.members} members read
               </span>
+              <%!-- A job tried more than once is still one press: saying so here
+              keeps the run list and the jobs page telling the same story. --%>
+              <span :if={row.attempts > 1} class="block text-[11px] text-warning">
+                attempt {row.attempts}
+              </span>
             </td>
             <td class="text-xs" title={row.scope}>{row.scope}</td>
             <td><span class={["badge badge-sm", status_class(row.status)]}>{row.status}</span></td>
@@ -1201,6 +1206,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       unchanged: "—",
       details: "—",
       members: nil,
+      attempts: job.attempt,
       total: "—",
       attachments: "—",
       error: nil,
@@ -1237,6 +1243,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       members: if(reads_pages?, do: nil, else: SyncRun.members(run)),
       total: numbers.in_mirror,
       attachments: page_number(reads_pages?, numbers.attachments),
+      attempts: numbers.attempts,
       error: run.error,
       job_id: nil,
       dom_id: "sync-run-#{run.id}"

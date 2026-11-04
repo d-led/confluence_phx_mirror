@@ -176,7 +176,11 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
       details: details_read(stats),
       in_mirror: stats["total"] || 0,
       attachments: stats["attachments"] || 0,
-      errors: length(stats["errors"] || [])
+      errors: length(stats["errors"] || []),
+      # One press is one run however many times Oban had to try it: an attempt
+      # that failed and was retried leaves this above 1, and the failures it
+      # survived are kept under `failed_attempts`.
+      attempts: stats["attempts"] || 1
     }
   end
 

@@ -2,6 +2,21 @@
 
 State of the branch `desktop` (`origin/desktop`, draft PR #3).
 
+## Read this first
+
+**Nothing that works on `main` may stop working.** This branch is 100 commits of
+`lib/` plumbing beside a whole second build (`lib_desktop/`), and the deployment
+runs `lib/`. Before anything here is called done: `mix test` green, `mix lint`
+clean, and the SQLite suite green beside it — and where a shared change cannot be
+avoided, its Postgres path is the one that must not move (see §2 of
+`docs/review-desktop-branch.md`).
+
+**The PR is to be merged as soon as it is green, not perfected.** What is left
+is under *Next, in order*, and none of it is a reason to hold the merge: the
+tool is useful now, the deployment is untouched, and every remaining item is
+additive (signing, a `lib_desktop` test environment, a Cypress harness). Review,
+merge, then continue on the next branch.
+
 Everything in "What works" is green: `mix lint` passes with **no sobelow
 findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 
@@ -58,17 +73,8 @@ connection, the press that queues a mirror run, and the archive.
    `MIX_ENV=desktop`. The tool is verified by running it and by
    `MIX_ENV=desktop mix dialyzer`, not by a test file.
 5. **The suite is flaky under load.** `DBConnection` checkout timeouts become
-   `OwnershipError`s in six unrelated files; they pass alone. Not fixed. Two
-   more, both seen once each in full runs and never on Postgres:
-   `Export.ZipTest` timed out at 60 s (load), and
-   `MailTest` "a minute after the last one, the next is allowed again" fails
-   about **1 run in 6** on SQLite with `{:error, :too_soon, 60000}` on the call
-   *after* the ledger row was moved 61 s back and `moved == 1` asserted. The
-   remaining hypotheses are `max(inserted_at)` over two spellings of the same
-   timestamp and `Budget.reserve/1`'s `:already_sent` — which `Mail.deliver/1`
-   maps to `:too_soon` — firing for a key it should not recognise. Not
-   diagnosed; `scripts/test-sqlite.sh test/confluence_phx_mirror/mail_test.exs`
-   reproduces it in a few runs.
+   `OwnershipError`s in six unrelated files; they pass alone. Not fixed.
+   `Export.ZipTest` also timed out at 60 s once in a full run (load).
 
 ## What was asked for, and where it stands
 
@@ -93,6 +99,7 @@ here as done is open.
 | "a meaningful desktop app" | **done** for the tool: it mirrors, exports and navigates — and the reading surface is the whole mirror UI, admin included. Open: search (item 1) and signing |
 | "the app stored the token not bound to the instance URL … what if I stuck a malicious URL there????" | **done** — a token is filed under the site it is for (`workspace:<normalised base URL>`, `SiteUrl.normalize/1`), so it is never *found* for another address; a changed site needs a token of its own (`:secret_required`, nothing saved) instead of inheriting the previous one, an environment token only counts for the site in `CM_CONFLUENCE_SITE`, and the form no longer renders the stored secret into its own HTML |
 | "what are these 2 spaces???? … don't show any FAKE data" / "if spaces are loading, the button must be blocked" | **done** — the list is tagged with the source that produced it and served only while that source is still the configured one (the bundled sample's two spaces can no longer be drawn beside a real site), the boot fetch happens after the workspace knows its site instead of before, every control is drawn disabled while a list is being replaced, and `Jobs.start_mirror/3` refuses a start mid-fetch (`:list_loading`) instead of acting on keys nobody confirmed |
+| "the desktop version again imports private spaces. I thought we configured it to be false by default?" | **done** — it was true, by a different road than the deployment takes: a `~account` space is skipped by *discovery* (`Sync.importable_spaces/1`) but a one-space sync is a request, and the tool's bulk run was a listing turned into one request per key. The list it offers now leaves personal spaces out (`Sync.personal_spaces?/0`, off unless `CM_SYNC_PERSONAL_SPACES=true`), and an action naming one is refused by name with nothing queued |
 | "it started a sync NOT AS A JOB … that could not be canceled! … why are we duplicating functionality?" | **done** — the tool's own copy of the loop is gone. A run is a `SpaceWorker` on the `sync` queue: a row in `oban_jobs`, a row in `sync_runs` (mode, scope, trigger, pages), `/admin/jobs` lists it, `/__tool/mirror` follows it and `/__tool/cancel` is `Sync.cancel/2` (which also empties the queue, so a bulk run stops being a bulk run). Proven in a headless run: press → job + run row; bulk start → two runs, one after the other; cancel → `cancelled` job and `cancelled` run with `cancel_requested_at`; a mistyped key → 409, "the site has no space called NOPE", nothing enqueued |
 
 ## Decisions, and why
@@ -506,6 +513,76 @@ here as done is open.
       seconds for as long as the window was open. Nothing fetches from a request
       now; the fetch belongs to boot, to a saved connection, and to the one retry
       a failure screen makes when it is opened.
+
+32. **A message's name came from a clock.** `Budget.key(:test, user)` ended in
+    `System.system_time(:millisecond)`, and the comment said that "keeps two asks
+    from carrying one name". It does not: two asks answered inside the same
+    millisecond are one name, the ledger reads the second as "this went already",
+    and `Mail.deliver/1` reports that as `:too_soon` — so a person pressing the
+    button twice quickly is told to wait a minute for a message that was never
+    sent. It surfaced as `MailTest`'s minute-window case failing **about one run
+    in six on SQLite**, which is what a fast store makes of a one-millisecond
+    assumption; Postgres, slower per round trip, never lost the race often enough
+    to be seen. The key now ends in a UUID (`Budget.unique_suffix/0`), the
+    millisecond stays in front only so a person reading the ledger can see when,
+    and two tests pin it: 500 asks must give 500 names, for a test message and
+    for each end of a link.
+
+33. **The tool imported personal spaces, and the rule was not wrong — the road
+    was.** `CM_SYNC_PERSONAL_SPACES` is off by default and `Sync.importable_spaces/1`
+    enforces it, *for discovery*: a snapshot lists the site and drops `~account`
+    spaces, because "everyone has one and it holds their drafts". A one-space
+    sync is deliberately exempt — "a request, not a discovery" — and the tool's
+    bulk press was a **listing turned into one request per key**: `mirror_all`
+    took every space the API listed, including the sync account's own personal
+    space, and started a `SpaceWorker` for each. On the deployment the same press
+    is a snapshot, which filters; in the tool it was a hundred requests, none of
+    which asked. Two fixes, both of them the same rule read once:
+    `Sync.personal_spaces?/0` is public now, the list the tool offers leaves
+    personal spaces out unless it says true, and `Jobs.start_mirror/3` refuses a
+    key the site lists as personal with `{:personal_space, key}` — for the tab
+    rendered before the list said so. The lesson generalises: a bulk action built
+    from a listing inherits *none* of the filters a discovery applies, so the
+    filter has to be at the listing too.
+
+34. **A closed pipe killed a sync.** The run that failed with `the sync process
+    exited: {:badarg, [{:erlang, :display_string, …}]}` did not fail at anything
+    it was doing: `Log.add/3` calls `Logger`, the desktop's logger handler writes
+    the line to the process's own console, and the console is a pipe the window
+    reads. When that pipe goes away — the shell's reading thread ends, the
+    terminal is closed — the *next* write raises `:badarg` (cause `:epipe`) **in
+    the process that logged**, which here was a page's task, seven frames below
+    anything the sync had done. Two fixes, because there are two mistakes: the
+    tool's log now goes to a file it owns
+    (`~/Library/Application Support/confluence-export/logs/desktop.log`, rotated
+    at 5 MB × 3) instead of a pipe nobody may be reading, and `Log.add/3` keeps
+    its documented promise — a console that has gone away costs the line, never
+    the sync. `Logger` re-raises a handler's crash, so the second fix is a
+    boundary around the one call that can fail, and a test double
+    (`Test.GoneConsole`) whose `log/2` raises pins it. The report itself stopped
+    hiding the answer too: a child that dies with an Erlang error is re-raised as
+    that error (frames and all) instead of "the sync process exited" around a
+    term `inspect/1` truncated, a failed run keeps its frames in
+    `stats["stacktrace"]`, and `inspect/1` in the remaining branch no longer
+    truncates.
+
+35. **One press was three runs.** Oban retries a failed job three times, and each
+    attempt called `Sync.run/2`, which opened a run of its own — so one press left
+    a failed row and a second row behind it, and the Jobs page (one job, `2/3`)
+    looked like it disagreed with the runs page (two runs). It did not: the job
+    was the same job. But the run row is what a log line hangs from, so the retry
+    also stranded the failing attempt's lines under a run nobody opens — which is
+    where the invisible error went. `start_run/5` now resumes the failed run of
+    the same job (`resume_run/1`): status back to `running`, `error` cleared into
+    `stats["failed_attempts"]`, `stats["attempts"]` counted up, same id, same log.
+
+36. **The log's numbers counted a different log.** `Log.snapshot/0`'s tallies are
+    the whole ring's; the page printed them above a view filtered by run, level
+    and words. So a run whose own lines held no error could read `1 errors`, and
+    the page looked broken rather than filtered. The numbers now come from the
+    lines the page shows (`count_levels/1` over the filtered entries, kept honest
+    as lines arrive and as the ring drops them), and what the filter hides is
+    said out loud: "1 error in the log belongs to another run."
 
 ## Next, in order
 

@@ -126,6 +126,34 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLiveTest do
     refute html =~ "sync-log-run-filter"
   end
 
+  # The numbers sit above the lines, so they have to be the lines' numbers: an
+  # error the filter hides must not leave "1 error" on a page showing none of it,
+  # and it must not vanish either — it has to say where it is.
+  test "the counts are the shown lines' counts, and a hidden error says where it is", %{
+    conn: conn
+  } do
+    Log.add(:info, "pages listed for run 7", sync_run_id: 7)
+    Log.add(:error, "sync failed: run 8 came apart", sync_run_id: 8)
+
+    {:ok, view, html} = live(conn, ~p"/admin/sync-log?run=7")
+
+    assert html =~ "0 errors"
+    assert html =~ "1 error in the log belongs to another run."
+
+    # An error arriving for another run joins the count, still without appearing.
+    write(:error, "sync failed: run 8 again", sync_run_id: 8)
+
+    html = render(view)
+    assert html =~ "2 errors in the log belong to other runs."
+    refute html =~ "run 8 came apart"
+
+    # Showing every run makes the page's numbers the whole log's again.
+    {:ok, _everything, html} = live(conn, ~p"/admin/sync-log")
+
+    assert html =~ "2 errors"
+    refute html =~ "belongs to another run"
+  end
+
   test "a filter decides what arrives after it is set", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/admin/sync-log")
 

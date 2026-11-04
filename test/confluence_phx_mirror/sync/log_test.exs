@@ -72,4 +72,22 @@ defmodule ConfluencePhxMirror.Sync.LogTest do
 
     assert %{entries: [], held: 0, counts: %{info: 0}} = Log.snapshot()
   end
+
+  # The desktop's console is a pipe the window reads, and a pipe nobody reads
+  # raises `:badarg` from the write itself — in whichever process wrote the line.
+  # A sync died that way, several frames below anything it had done.
+  test "a console that has gone away does not fail the process that logged" do
+    :ok =
+      :logger.add_handler(:gone_console, ConfluencePhxMirror.Test.GoneConsole, %{
+        level: :all,
+        config: %{}
+      })
+
+    on_exit(fn -> :logger.remove_handler(:gone_console) end)
+
+    assert :ok = Log.add(:error, "sync failed: the site went away")
+
+    assert [entry] = Log.entries()
+    assert entry.message == "sync failed: the site went away"
+  end
 end

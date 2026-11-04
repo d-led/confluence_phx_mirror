@@ -22,6 +22,7 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
 
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Confluence.Source
+  alias ConfluencePhxMirror.Desktop.Spaces
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.{SpaceWorker, SyncRun}
@@ -62,9 +63,11 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
   nothing moves is worse than one that says "not yet". `:nothing_to_do` is a
   start with no space in it, `:list_loading` is a start while the space list is
   still being fetched (nothing is known about any key yet, so nothing may be
-  acted on), and `{:unknown_space, key}` is a space the site does not list:
-  recording that one would leave the workspace configured for a space that is not
-  there, and running it would invent an empty one.
+  acted on), `{:personal_space, key}` is somebody's `~account` space — the tool
+  does not mirror one unless the deployment takes personal spaces at all — and
+  `{:unknown_space, key}` is a space the site does not list: recording that one
+  would leave the workspace configured for a space that is not there, and running
+  it would invent an empty one.
 
   `remember: false` is a bulk run: it copies what the workspace is configured for
   and does not decide the configuration. A single space *is* that decision, and is
@@ -75,13 +78,19 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
   @spec start_mirror([String.t() | nil], String.t(), keyword()) ::
           {:ok, :started}
           | {:error,
-             :busy | :nothing_to_do | :list_loading | {:unknown_space, String.t()} | term()}
+             :busy
+             | :nothing_to_do
+             | :list_loading
+             | {:personal_space, String.t()}
+             | {:unknown_space, String.t()}
+             | term()}
   def start_mirror(space_keys, _label, opts \\ []) do
     keys = space_keys |> Enum.reject(&blank?/1) |> Enum.uniq()
 
     cond do
       keys == [] -> {:error, :nothing_to_do}
       spaces() == :loading -> {:error, :list_loading}
+      personal = Enum.find(keys, &refused_personal?/1) -> {:error, {:personal_space, personal}}
       unknown = Enum.find(keys, &(not known?(&1))) -> {:error, {:unknown_space, unknown}}
       going?() -> {:error, :busy}
       true -> enqueue(keys, Keyword.get(opts, :remember, true))
@@ -178,6 +187,12 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
       Enum.find_value(results, {:ok, :started}, &error_of/1)
     end
   end
+
+  # Somebody's `~account` space is not a thing this mirror takes unless it was
+  # told to (`Sync.personal_spaces?/0`). The list already leaves one out; this is
+  # the decision, for a tab rendered before that was so, and it reads the sync's
+  # own switch rather than a second copy of the rule.
+  defp refused_personal?(key), do: not Sync.personal_spaces?() and Spaces.personal?(key)
 
   defp error_of({:error, reason}), do: {:error, reason}
   defp error_of(_ok), do: nil

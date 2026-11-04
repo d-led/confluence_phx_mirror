@@ -35,9 +35,19 @@ defmodule ConfluencePhxMirror.Desktop.Spaces do
 
   `:loading` also covers a list that came from a source this workspace is no
   longer configured for: it is not an answer to the question being asked.
+
+  Personal (`~account`) spaces are not in it unless the mirror is configured to
+  take them (`CM_SYNC_PERSONAL_SPACES=true`, `Sync.personal_spaces?/0`). The
+  deployment's picker never offers one, and a listing is what this tool's bulk
+  button counts and enumerates — a personal space in the list was a personal
+  space mirrored by a press meant for the site.
   """
   @spec list() :: listing()
   def list, do: GenServer.call(__MODULE__, :list)
+
+  @doc "Whether the site lists `key` as somebody's personal space."
+  @spec personal?(String.t()) :: boolean()
+  def personal?(key) when is_binary(key), do: GenServer.call(__MODULE__, {:personal?, key})
 
   @doc "Whether a fetch is in flight, and whether a current list is held."
   @spec state() :: %{count: non_neg_integer(), refreshing?: boolean(), loaded?: boolean()}
@@ -63,9 +73,19 @@ defmodule ConfluencePhxMirror.Desktop.Spaces do
   @impl true
   def handle_call(:list, _from, state), do: {:reply, answer(state), state}
 
+  def handle_call({:personal?, key}, _from, state) do
+    personal =
+      case state.spaces do
+        nil -> false
+        spaces -> Enum.any?(spaces, &(&1.key == key and personal_space?(&1)))
+      end
+
+    {:reply, personal, state}
+  end
+
   def handle_call(:state, _from, state) do
     reply = %{
-      count: length(state.spaces || []),
+      count: length(offerable(state.spaces) || []),
       refreshing?: state.refreshing?,
       loaded?: current?(state)
     }
@@ -117,11 +137,23 @@ defmodule ConfluencePhxMirror.Desktop.Spaces do
   # longer configured for is none of the three: it is the old question.
   defp answer(state) do
     cond do
-      state.spaces != nil and state.source == Source.source() -> {:ok, state.spaces}
+      state.spaces != nil and state.source == Source.source() -> {:ok, offerable(state.spaces)}
       state.error != nil and state.source == Source.source() -> {:error, state.error}
       true -> :loading
     end
   end
+
+  # What this window may offer: somebody's personal space is not one of them
+  # unless the mirror is configured to take personal spaces at all.
+  defp offerable(nil), do: nil
+
+  defp offerable(spaces) do
+    if ConfluencePhxMirror.Sync.personal_spaces?(),
+      do: spaces,
+      else: Enum.reject(spaces, &personal_space?/1)
+  end
+
+  defp personal_space?(space), do: Map.get(space, :type) == "personal"
 
   defp start_refresh(%{refreshing?: true} = state), do: state
 
