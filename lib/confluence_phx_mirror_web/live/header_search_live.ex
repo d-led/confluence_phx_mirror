@@ -271,8 +271,11 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLive do
             this.cursor = cursor
             this.walk().forEach((row, index) => {
               const active = index === cursor
+              // One class decides the look, and the stylesheet decides what it
+              // looks like: toggling a background here as well is how the row
+              // ended up with two of them, and the text colour coming from
+              // somewhere else entirely.
               row.classList.toggle("menu-active", active)
-              row.classList.toggle("bg-base-200/70", active)
               // `aria-selected` belongs to an option, not to a link that leaves
               // the list; the link announces itself as current instead.
               if (row.getAttribute("role") === "option") {
