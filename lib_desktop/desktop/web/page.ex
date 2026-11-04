@@ -64,8 +64,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       <form method="post" action="/__tool/setup" autocomplete="off">
         <label>
           <span>Site URL</span>
-          <input name="site" type="url" required placeholder="https://acme.atlassian.net"
+          <input name="site" type="text" required placeholder="acme.atlassian.net"
+                 inputmode="url" autocapitalize="off" spellcheck="false"
                  value="#{site}" autofocus>
+          <small>Leave the <code>https://</code> off if you like — it is assumed.</small>
         </label>
         <label>
           <span>Account e-mail</span>

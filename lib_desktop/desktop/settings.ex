@@ -662,18 +662,19 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     end
   end
 
+  # One rule, in `SiteUrl`: a bare `acme.atlassian.net` is the same site as
+  # `https://acme.atlassian.net`, and what gets *stored* is the canonical
+  # spelling — the HTTP client is handed this string as its base URL, and a
+  # schemeless one is not a URL it can call.
   defp validate_site(attrs) do
     case blank(attrs[:site] || attrs["site"]) do
       nil ->
         {:error, :site_required}
 
       site ->
-        case URI.parse(site) do
-          %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) ->
-            {:ok, String.trim_trailing(site, "/")}
-
-          _ ->
-            {:error, {:invalid_site, site}}
+        case ConfluencePhxMirror.SiteUrl.normalize(site) do
+          nil -> {:error, {:invalid_site, site}}
+          url -> {:ok, url}
         end
     end
   end

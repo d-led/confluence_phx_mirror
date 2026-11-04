@@ -40,13 +40,28 @@ defmodule ConfluencePhxMirror.SiteUrlTest do
       assert SiteUrl.normalize("  https://acme.atlassian.net  ") == "https://acme.atlassian.net"
     end
 
+    test "a bare host is the site, because https is what it can only be" do
+      assert SiteUrl.normalize("acme.atlassian.net") == "https://acme.atlassian.net"
+      assert SiteUrl.normalize("Acme.Atlassian.Net/wiki/") == "https://acme.atlassian.net/wiki"
+      assert SiteUrl.same?("acme.atlassian.net", "https://acme.atlassian.net")
+    end
+
+    test "a bare host with a port is a host and a port, not a scheme" do
+      assert SiteUrl.normalize("acme.example:8443") == "https://acme.example:8443"
+      assert SiteUrl.normalize("http://acme.example:8443") == "http://acme.example:8443"
+    end
+
+    test "a scheme-relative address is the https one" do
+      assert SiteUrl.normalize("//acme.atlassian.net/wiki") == "https://acme.atlassian.net/wiki"
+    end
+
     test "an address that is not a site has no canonical form" do
       assert SiteUrl.normalize(nil) == nil
       assert SiteUrl.normalize("") == nil
       assert SiteUrl.normalize("   ") == nil
-      assert SiteUrl.normalize("acme.atlassian.net") == nil
       assert SiteUrl.normalize("ftp://acme.atlassian.net") == nil
       assert SiteUrl.normalize("javascript:alert(1)") == nil
+      assert SiteUrl.normalize("mailto:ops@acme.com") == nil
     end
   end
 
