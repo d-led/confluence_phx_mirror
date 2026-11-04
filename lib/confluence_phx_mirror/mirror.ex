@@ -13,7 +13,7 @@ defmodule ConfluencePhxMirror.Mirror do
   """
 
   import Ecto.Query
-  import ConfluencePhxMirror.Query, only: [like_ci: 2]
+  import ConfluencePhxMirror.Query, only: [like_ci: 2, paged: 3]
 
   alias ConfluencePhxMirror.Mirror.{
     Attachment,
@@ -56,15 +56,6 @@ defmodule ConfluencePhxMirror.Mirror do
     |> paged(Keyword.get(opts, :limit), Keyword.get(opts, :offset, 0))
     |> Repo.all()
   end
-
-  # A window somebody may not have asked for, in the one shape both engines
-  # accept. Postgres reads `LIMIT NULL` as "no limit" and allows `OFFSET` alone;
-  # SQLite rejects the first as a datatype mismatch and the second as a syntax
-  # error — and the tool keeps its catalogue on SQLite, so an unbounded list must
-  # not become a broken one. No limit is no clause at all, offset included: an
-  # offset with nothing to offset from is not a window either engine needs.
-  defp paged(query, nil, _offset), do: query
-  defp paged(query, count, offset), do: query |> limit(^count) |> offset(^offset)
 
   @doc "How many live spaces the directory holds, under the filter it is showing."
   def count_listed_spaces(opts \\ []) do
@@ -871,7 +862,7 @@ defmodule ConfluencePhxMirror.Mirror do
       where: m.group_key == ^key,
       order_by: [asc: m.display_name, asc: m.subject_key]
     )
-    |> limit_if(Keyword.get(opts, :limit))
+    |> paged(Keyword.get(opts, :limit), 0)
     |> Repo.all()
   end
 
@@ -895,8 +886,7 @@ defmodule ConfluencePhxMirror.Mirror do
     opts
     |> groups_query()
     |> order_by([m], asc: m.group_key)
-    |> limit_if(Keyword.get(opts, :limit))
-    |> offset(^Keyword.get(opts, :offset, 0))
+    |> paged(Keyword.get(opts, :limit), Keyword.get(opts, :offset, 0))
     |> Repo.all()
     |> Enum.map(fn {name, key, members, read_at} ->
       %{
@@ -1323,13 +1313,9 @@ defmodule ConfluencePhxMirror.Mirror do
 
     identities_query(opts)
     |> order_by([i], asc: coalesce(max(i.display_name), i.account_id))
-    |> limit_if(limit)
-    |> offset(^offset)
+    |> paged(limit, offset)
     |> Repo.all()
   end
-
-  defp limit_if(query, nil), do: query
-  defp limit_if(query, limit), do: limit(query, ^limit)
 
   # One row per person, however often the content names them — and everybody the
   # site listed in a group counts as named. A group's membership is how a mirror
@@ -2380,8 +2366,10 @@ defmodule ConfluencePhxMirror.Mirror do
         query
         |> ancestor_depth()
         |> order_by([p], asc: p.title, asc: p.confluence_id)
-        |> offset(^max(Keyword.get(opts, :start, 0), 0))
-        |> limit_rows(Keyword.get(opts, :limit))
+        |> paged(
+          Keyword.get(opts, :limit),
+          max(Keyword.get(opts, :start, 0), 0)
+        )
         |> preload(:space)
         |> Repo.all(),
       total: query |> select([p], count(p.id)) |> Repo.one()
@@ -2530,7 +2518,7 @@ defmodule ConfluencePhxMirror.Mirror do
       space_id
       |> roots_query()
       |> filtered(opts)
-      |> Repo.all()
+      |> all_nodes()
       |> expand([], [], sibling_window(opts))
 
     %{nodes: nodes, truncated?: truncated?}
@@ -2538,7 +2526,7 @@ defmodule ConfluencePhxMirror.Mirror do
 
   def branch_tree(space_id, %Page{} = page, opts) do
     path = (page.ancestors || []) ++ [page.confluence_id]
-    nodes = space_id |> level_rows(page) |> filtered(opts) |> Repo.all()
+    nodes = space_id |> level_rows(page) |> filtered(opts) |> all_nodes()
     by_parent = Enum.group_by(nodes, & &1.parent_id)
 
     {tree, truncated?} = expand(by_parent[nil] || [], by_parent, path, sibling_window(opts))
@@ -2580,7 +2568,7 @@ defmodule ConfluencePhxMirror.Mirror do
     |> navigation_query()
     |> where([p], p.parent_id == ^page.id)
     |> filtered(opts)
-    |> Repo.all()
+    |> all_nodes()
   end
 
   # Only what the sidebar draws: selecting whole rows pulled `body_storage` and
@@ -2603,11 +2591,23 @@ defmodule ConfluencePhxMirror.Mirror do
         slug: p.slug,
         confluence_id: p.confluence_id,
         # Whether the sidebar draws a chevron: a node with nothing below it
-        # should not offer to open.
+        # should not offer to open. `all_nodes/1` turns the answer into a
+        # boolean: Postgres says `true`, SQLite says 1.
         has_children: exists(child)
       }
     )
   end
+
+  defp all_nodes(query) do
+    query
+    |> Repo.all()
+    |> Enum.map(&%{&1 | has_children: to_boolean(&1.has_children)})
+  end
+
+  # `EXISTS` leaves Postgres as a boolean and SQLite as a 0/1 integer; the
+  # chevron, and the JSON the sidebar is drawn from, should not have to know.
+  defp to_boolean(value) when value in [true, 1], do: true
+  defp to_boolean(value) when value in [false, 0], do: false
 
   # `path` is the trail below this level; the level is centred on the node that
   # leads to the current page, and only that node has children to expand.
@@ -3302,12 +3302,18 @@ defmodule ConfluencePhxMirror.Mirror do
     else
       # `labels` is `text[]` on the deployment's Postgres and a JSON array in the
       # tool's SQLite, where "does this array contain" is `json_each` — the same
-      # spelling `Search.Lite` uses for the same column. Without the second half
-      # a page that shows content by label crashed the tool instead of drawing.
+      # spelling `Search.Lite` uses for the same column. Both sides go through
+      # `json_each`: the column because it holds the array, the wanted list
+      # because a list parameter reaches SQLite as JSON text, and `IN (?)` would
+      # compare one element against the whole list.
       where(
         query,
         [p],
-        fragment("EXISTS (SELECT 1 FROM json_each(?) WHERE value IN (?))", p.labels, ^labels)
+        fragment(
+          "EXISTS (SELECT 1 FROM json_each(?) AS page_label WHERE page_label.value IN (SELECT wanted.value FROM json_each(?) AS wanted))",
+          p.labels,
+          ^json_list(labels)
+        )
       )
     end
   end
@@ -3320,14 +3326,17 @@ defmodule ConfluencePhxMirror.Mirror do
         query,
         [p],
         fragment(
-          "(SELECT count(DISTINCT value) FROM json_each(?) WHERE value IN (?)) = ?",
+          "(SELECT count(DISTINCT value) FROM json_each(?) WHERE value IN (SELECT wanted.value FROM json_each(?) AS wanted)) = ?",
           p.labels,
-          ^labels,
+          ^json_list(labels),
           ^length(labels)
         )
       )
     end
   end
+
+  # The list as JSON text, which is what `json_each` parses on this engine.
+  defp json_list(list), do: list |> JSON.encode_to_iodata!() |> IO.iodata_to_binary()
 
   @doc "Replaces the page's extracted `pageproperties` rows."
   def replace_properties(%Page{id: page_id}, properties) do
@@ -3418,7 +3427,7 @@ defmodule ConfluencePhxMirror.Mirror do
   defp order_by(_title), do: [asc: :title]
 
   defp limit_rows(query, nil), do: query
-  defp limit_rows(query, limit), do: limit(query, ^limit)
+  defp limit_rows(query, limit), do: paged(query, limit, 0)
 
   @doc """
   What the mirror holds: spaces, pages, attachments, comments and labels — and

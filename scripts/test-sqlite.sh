@@ -14,22 +14,24 @@
 # has its own build path and its own database file; nothing it writes is the
 # Postgres run's business.
 #
-# It is **not a gate yet**, and that is the honest state of it. What it reports
-# today, in the order it reports it:
+# It is a gate: `.github/workflows/ci.yml` runs it as its own job, beside the
+# Postgres one, on every push and pull request. What it establishes:
 #
-#   * `priv/repo/manual_migrations` — Postgres-shaped on purpose, so the `mix
-#     test` alias applies the schema set alone for this adapter (the same set the
-#     tool's own boot applies);
-#   * ported, and green on both engines: `Mirror.pages_for_labels/2` (`labels @>`
-#     and `&&` → `json_each`) and `Mirror.descendants/2` (`= ANY`, `cardinality`
-#     → `json_each`, `json_array_length`);
-#   * still open: the boot-time pull mirrors an attachment whose `confluence_id`
-#     the schema types `:string` while the column is an integer on this engine —
-#     and whatever sits behind it, which this script exists to show.
+#   * the schema set is applied by the `mix test` alias alone for this adapter
+#     (`priv/repo/manual_migrations` are Postgres-shaped on purpose), which is
+#     the same set the tool's own boot applies;
+#   * `Mirror.pages_for_labels/2`, `Mirror.descendants/2`, the label macros, the
+#     space tree and the mail budget all answer on both engines;
+#   * what the tool genuinely cannot do is marked `:postgres_only` (Postgres
+#     full-text and its query language, the manual migrations, the tablespace
+#     card) and excluded here rather than skipped quietly — see
+#     `test/test_helper.exs`.
 #
-# Make it green, then add it to `.github/workflows/ci.yml` as a second job beside
-# the Postgres one: same suite, two engines, in parallel. Until then the job would
-# be a gate that always fails, which is worse than no gate.
+# The differences it has caught so far, each of which was a bug on one engine
+# and silent on the other: `LIMIT NULL` (a datatype error in SQLite), `OFFSET`
+# without a `LIMIT` (a syntax error), `TRUNCATE`, `now()`, `EXISTS` returning
+# 0/1 instead of a boolean, a list parameter compared whole against one element
+# in `IN`, and a `NOT NULL` that only Postgres was told to drop.
 #
 #   scripts/test-sqlite.sh                     the whole suite
 #   scripts/test-sqlite.sh test/a_test.exs     one file, while porting
@@ -46,4 +48,7 @@ export MIX_ENV=test
 # schema cannot be mistaken for a passing run.
 rm -f tmp/test.db tmp/test.db-wal tmp/test.db-shm
 
-mix test "$@"
+# One test at a time. SQLite allows a single writer, and the suite's concurrency
+# (fine on Postgres) turns into "Database busy" the moment two tests write; this
+# is the same one-writer arrangement the tool itself runs with.
+mix test --max-cases 1 "$@"

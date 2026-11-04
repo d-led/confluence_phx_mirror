@@ -130,11 +130,15 @@ defmodule ConfluencePhxMirror.PauseTest do
   # A job's uniqueness period is counted from its `inserted_at`, and a test will
   # not sit through the minute: it moves the queued job back instead, which is
   # the same queue an event a minute later would have met.
+  #
+  # A second past the window, not exactly onto it: the two engines read "within
+  # the period" at the boundary differently (one asks `>`, the other `>=`), and
+  # the boundary second belongs to neither contract.
   defp age_past_the_uniqueness_window(%Oban.Job{id: id}) do
     job = Repo.get!(Oban.Job, id)
 
     job
-    |> Ecto.Changeset.change(inserted_at: DateTime.add(job.inserted_at, -60, :second))
+    |> Ecto.Changeset.change(inserted_at: DateTime.add(job.inserted_at, -61, :second))
     |> Repo.update!()
   end
 

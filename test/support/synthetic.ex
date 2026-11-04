@@ -19,7 +19,7 @@ defmodule ConfluencePhxMirror.Synthetic do
   """
 
   alias ConfluencePhxMirror.Confluence.SyntheticContent
-  alias ConfluencePhxMirror.Mirror.{Page, Space}
+  alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Link, Page, Space}
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.Renderer
@@ -31,6 +31,10 @@ defmodule ConfluencePhxMirror.Synthetic do
 
   @tables ~w(pages spaces attachments comments links page_properties page_labels labels
              page_restrictions space_permissions)
+
+  # The same tables, deepest first, for engines that empty a mirror by deleting.
+  @delete_order ~w(links comments attachments page_labels page_properties
+                   page_restrictions pages labels space_permissions spaces)
 
   @doc """
   Empties the mirror and fills it with generated content.
@@ -60,7 +64,14 @@ defmodule ConfluencePhxMirror.Synthetic do
   end
 
   defp empty! do
-    Repo.query!("TRUNCATE #{Enum.join(@tables, ", ")} RESTART IDENTITY CASCADE")
+    if ConfluencePhxMirror.Migration.postgres?() do
+      Repo.query!("TRUNCATE #{Enum.join(@tables, ", ")} RESTART IDENTITY CASCADE")
+    else
+      # SQLite has no `TRUNCATE`, and no identity to restart either: the fixture
+      # inserts the ids it has chosen. Deletes run children first, because a
+      # foreign key is a foreign key on both engines.
+      Enum.each(@delete_order, &Repo.query!("DELETE FROM #{&1}"))
+    end
   end
 
   defp insert_spaces(opts, now) do
@@ -88,7 +99,7 @@ defmodule ConfluencePhxMirror.Synthetic do
     1..opts[:spaces]
     |> Enum.flat_map(&pages_of(&1, opts, now))
     |> Enum.chunk_every(@batch_size)
-    |> Enum.each(&Repo.insert_all("pages", &1))
+    |> Enum.each(&Repo.insert_all(Page, &1))
   end
 
   defp pages_of(space_index, opts, now) do
@@ -144,9 +155,9 @@ defmodule ConfluencePhxMirror.Synthetic do
     end
     |> Enum.chunk_every(@batch_size)
     |> Enum.each(fn chunk ->
-      Repo.insert_all("attachments", Enum.map(chunk, &attachment_row(&1, opts, now)))
-      Repo.insert_all("comments", Enum.map(chunk, &comment_row(&1, opts, now)))
-      Repo.insert_all("links", Enum.map(chunk, &link_row(&1, opts, now)))
+      Repo.insert_all(Attachment, Enum.map(chunk, &attachment_row(&1, opts, now)))
+      Repo.insert_all(Comment, Enum.map(chunk, &comment_row(&1, opts, now)))
+      Repo.insert_all(Link, Enum.map(chunk, &link_row(&1, opts, now)))
     end)
   end
 

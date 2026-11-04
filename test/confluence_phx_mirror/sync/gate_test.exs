@@ -210,8 +210,16 @@ defmodule ConfluencePhxMirror.SyncGateTest do
     end
   end
 
+  # The column is a `:utc_datetime`, which both engines store as a naive UTC
+  # timestamp — but a schemaless select returns whatever the driver hands back,
+  # and SQLite hands back its text. Asking for the type puts the two on the same
+  # footing, so the comparison below is about time rather than about formatting.
   defp expires_at(owner) do
-    Repo.one(from g in "sync_gate", where: g.owner == ^owner, select: g.expires_at)
+    Repo.one(
+      from g in "sync_gate",
+        where: g.owner == ^owner,
+        select: type(g.expires_at, :naive_datetime)
+    )
   end
 
   defp insert_run(status) do

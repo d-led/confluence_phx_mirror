@@ -64,8 +64,13 @@ defmodule ConfluencePhxMirror.Accounts do
   def list_users(query \\ nil, opts \\ []) do
     from(u in User, order_by: [asc: u.email])
     |> filter_users(query)
-    |> limit_if(Keyword.get(opts, :limit))
-    |> offset(^(Keyword.get(opts, :offset) || 0))
+    # `limit_if` leaves the limit out when nobody asked for one, and an `OFFSET`
+    # on its own is a syntax error on SQLite — so the two go together or not at
+    # all (`Query.paged/3`).
+    |> ConfluencePhxMirror.Query.paged(
+      Keyword.get(opts, :limit),
+      Keyword.get(opts, :offset) || 0
+    )
     |> Repo.all()
   end
 
@@ -106,9 +111,6 @@ defmodule ConfluencePhxMirror.Accounts do
       |> Map.new()
     end
   end
-
-  defp limit_if(query, nil), do: query
-  defp limit_if(query, limit), do: limit(query, ^limit)
 
   defp filter_users(query, blank) when blank in [nil, ""], do: query
 

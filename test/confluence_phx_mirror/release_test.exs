@@ -12,6 +12,9 @@ defmodule ConfluencePhxMirror.ReleaseTest do
     assert File.dir?(path)
   end
 
+  # The manual migrations are Postgres-shaped on purpose (`priv/repo/manual_migrations`
+  # rewrites Postgres rows); the tool applies the schema set alone.
+  @tag :postgres_only
   test "applies the manual migrations on demand" do
     # The migrator runs DDL outside the per-test sandbox transaction, so it
     # needs the owner's connection.

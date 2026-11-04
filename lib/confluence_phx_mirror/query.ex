@@ -15,6 +15,8 @@ defmodule ConfluencePhxMirror.Query do
   search for `50%` would be a wildcard here and a literal there.
   """
 
+  require Ecto.Query
+
   @doc """
   Case-insensitive `LIKE`, on either engine.
 
@@ -25,5 +27,22 @@ defmodule ConfluencePhxMirror.Query do
     quote do
       fragment("lower(?) LIKE lower(?) ESCAPE '\\'", unquote(field), unquote(pattern))
     end
+  end
+
+  @doc """
+  A window, on either engine.
+
+  Postgres reads `LIMIT NULL` as "no limit" and allows `OFFSET` on its own;
+  SQLite refuses the first as a datatype mismatch and the second as a syntax
+  error. No limit is therefore no clause at all — offset included, because an
+  offset with nothing to offset from is not a window either engine has a use for.
+  """
+  @spec paged(Ecto.Queryable.t(), pos_integer() | nil, non_neg_integer()) :: Ecto.Queryable.t()
+  def paged(query, nil, _offset), do: query
+
+  def paged(query, limit, offset) do
+    query
+    |> Ecto.Query.limit(^limit)
+    |> Ecto.Query.offset(^offset)
   end
 end

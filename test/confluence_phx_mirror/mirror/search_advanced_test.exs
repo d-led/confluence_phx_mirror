@@ -7,6 +7,7 @@ defmodule ConfluencePhxMirror.Mirror.SearchAdvancedTest do
   use ConfluencePhxMirror.DataCase, async: false
 
   @moduletag :empty_mirror
+  @moduletag :postgres_only
 
   import ConfluencePhxMirror.Fixtures
 

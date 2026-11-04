@@ -520,6 +520,9 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert page.body_text =~ "Page properties report"
     end
 
+    # Both macros ask their question as CQL, which the tool's SQLite answers
+    # with a notice instead (`Search.Lite`).
+    @tag :postgres_only
     test "draws the tree, the recent list and the report a page asks for" do
       demo_snapshot!()
 
@@ -538,6 +541,7 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert "Contributors" in texts(document, "p.mirror-dynamic-heading")
     end
 
+    @tag :postgres_only
     test "the product home lists the space's blog posts" do
       demo_snapshot!()
 

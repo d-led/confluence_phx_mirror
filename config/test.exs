@@ -17,15 +17,31 @@ import Config
 sqlite? = System.get_env("CM_TEST_ADAPTER") == "sqlite"
 
 if sqlite? do
-  config :confluence_phx_mirror, repo_adapter: Ecto.Adapters.SQLite3
+  # The same three keys `config/desktop.exs` sets, and for the same reason: the
+  # adapter picks the engine, and the two list types tell every schema that a
+  # column Postgres stores as `text[]` is JSON text here. Leaving them out does
+  # not fail loudly — it builds a schema whose lists are arrays against columns
+  # that are JSON, and the suite then fails in queries rather than in setup.
+  config :confluence_phx_mirror,
+    repo_adapter: Ecto.Adapters.SQLite3,
+    string_list_type: ConfluencePhxMirror.Schema.JSONList,
+    integer_list_type: ConfluencePhxMirror.Schema.JSONList
 
   # A file, not `:memory:`: the sandbox hands each test its own connection out of
   # a pool, and every one of them has to see the same database.
+  #
+  # The pool is there for boot (Oban checks out a connection of its own to verify
+  # its migrations) but only one test runs at a time — `--max-cases 1` in
+  # `scripts/test-sqlite.sh`. SQLite allows a single writer, so a concurrent suite
+  # turns every second test that writes into "Database busy": 147 of the first
+  # run's 286 failures were that and nothing else. One test at a time is what the
+  # tool's single connection does in production.
   config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
     database: Path.expand("../tmp/test#{System.get_env("MIX_TEST_PARTITION")}.db", __DIR__),
     pool: Ecto.Adapters.SQL.Sandbox,
     pool_size: System.schedulers_online() * 3,
-    journal_mode: :wal
+    journal_mode: :wal,
+    busy_timeout: 5_000
 
   # Oban's default notifier and engine are Postgres's; the tool points both at
   # SQLite (`config/desktop.exs`), and a test run that leaves them alone spends

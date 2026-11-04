@@ -9,6 +9,8 @@ defmodule ConfluencePhxMirror.Mirror.Search.CommentsTest do
   """
   use ConfluencePhxMirror.DataCase, async: false
 
+  @moduletag :postgres_only
+
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Mirror.Search

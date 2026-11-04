@@ -1,6 +1,11 @@
 defmodule ConfluencePhxMirror.Mirror.Search.TextTest do
   use ConfluencePhxMirror.DataCase, async: false
 
+  # Words as Postgres tokenises them: stems, prefixes and ranking. The tool's
+  # SQLite answers the same screen with filters, so this runs where the engine
+  # does (see `test/test_helper.exs`).
+  @moduletag :postgres_only
+
   import ConfluencePhxMirror.Fixtures
 
   alias ConfluencePhxMirror.Mirror.Search

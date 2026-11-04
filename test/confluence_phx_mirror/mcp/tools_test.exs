@@ -32,6 +32,7 @@ defmodule ConfluencePhxMirror.Mcp.ToolsTest do
       assert Enum.all?(results, &String.starts_with?(&1["url"], "http"))
     end
 
+    @tag :postgres_only
     test "CQL is understood when the query looks like CQL", %{scope: scope} do
       {:ok, %{structured: %{"results" => results}}} =
         call("confluence_search", %{"query" => "space = ENG AND label = architecture"}, scope)

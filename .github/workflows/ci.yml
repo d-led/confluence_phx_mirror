@@ -178,6 +178,39 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # The same suite on the other engine, beside the one above rather than after
+  # it: the deployment runs Postgres and the desktop tool runs SQLite on the same
+  # code, and the differences between them (`LIMIT NULL`, `OFFSET` alone,
+  # `now()`, `EXISTS` as 0/1, a list parameter in `IN`) are silent on whichever
+  # engine the suite is not running on. No service: SQLite is a file.
+  test-sqlite:
+    name: Suite on SQLite
+    runs-on: ubuntu-24.04
+    # One test at a time (SQLite has a single writer), so the same budget the
+    # Postgres job gets.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        id: beam
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+      # Its own build path and its own database file (`_build/sqlite`,
+      # `tmp/test.db`), which is why the cache key says sqlite: the adapter is
+      # chosen at compile time.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: test-sqlite-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            test-sqlite-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+      - run: mix deps.get
+      - name: Suite (SQLite)
+        run: scripts/test-sqlite.sh
+
   image:
     name: Image, scan, non-root, publish
     needs: [lint, types, test]

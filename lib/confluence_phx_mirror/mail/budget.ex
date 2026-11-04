@@ -54,20 +54,48 @@ defmodule ConfluencePhxMirror.Mail.Budget do
   end
 
   # One statement, so two nodes cannot both believe they took the last slot:
-  # the row is inserted only if the day is still under its limit. The conflict
-  # clause is the other half — a key that is already pending or sent inserts
+  # the row is inserted only if the day is still under its limit. The second
+  # condition is the other half — a key that is already pending or sent inserts
   # nothing, which is what makes a retried job quiet instead of a second message.
+  #
+  # Two statements rather than one, because the placeholder syntax and the
+  # conflict clause are the engine's: `$1` and a partial `ON CONFLICT` on
+  # Postgres, `?` and an explicit `NOT EXISTS` on SQLite. The clock comes from
+  # Elixir either way — `now()` is Postgres's and `datetime('now')` is SQLite's,
+  # and a row read back through `Repo.query!` should carry the same value on both
+  # (a string is not a timestamp struct).
+  # sobelow_skip ["SQL.Query"]
   defp reserve(dedup_key) do
-    case Repo.query!(
-           """
-           INSERT INTO mail_sends (dedup_key, day, state, inserted_at)
-           SELECT $1, current_date, 'pending', now()
-           WHERE (SELECT count(*) FROM mail_sends WHERE day = current_date) < $2
-           ON CONFLICT (dedup_key) WHERE state <> 'failed' DO NOTHING
-           RETURNING id, dedup_key, day, state, error, inserted_at
-           """,
-           [dedup_key, limit()]
-         ) do
+    today = Date.utc_today()
+    at = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    sql =
+      if ConfluencePhxMirror.Migration.postgres?() do
+        """
+        INSERT INTO mail_sends (dedup_key, day, state, inserted_at)
+        SELECT $1, $2, 'pending', $3
+        WHERE (SELECT count(*) FROM mail_sends WHERE day = $2) < $4
+        ON CONFLICT (dedup_key) WHERE state <> 'failed' DO NOTHING
+        RETURNING id, dedup_key, day, state, error, inserted_at
+        """
+      else
+        """
+        INSERT INTO mail_sends (dedup_key, day, state, inserted_at)
+        SELECT ?, ?, 'pending', ?
+        WHERE (SELECT count(*) FROM mail_sends WHERE day = ?) < ?
+          AND NOT EXISTS (
+            SELECT 1 FROM mail_sends WHERE dedup_key = ? AND state <> 'failed'
+          )
+        RETURNING id, dedup_key, day, state, error, inserted_at
+        """
+      end
+
+    params =
+      if ConfluencePhxMirror.Migration.postgres?(),
+        do: [dedup_key, today, at, limit()],
+        else: [dedup_key, today, at, today, limit(), dedup_key]
+
+    case Repo.query!(sql, params) do
       %{num_rows: 1, rows: [[id, key, day, state, error, inserted_at]]} ->
         %Send{
           id: id,
