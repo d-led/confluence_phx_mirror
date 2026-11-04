@@ -263,6 +263,7 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
       # was still the only one available, and a connection holding last week's
       # token fails exactly like one holding none.
       apply_runtime_config()
+      apply_credentials()
     end
   end
 
@@ -294,6 +295,8 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   Called at boot and after a change. `Blobs.Store` resolves its root when it is
   used, not when it is configured, so setting it here is enough; `HttpSource`
   reads its configuration per request.
+
+  The token is deliberately not part of this — see `apply_credentials/0`.
   """
   @spec apply_runtime_config() :: :ok
   def apply_runtime_config do
@@ -303,8 +306,31 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     # the folder the home screen names is the folder a person looks in.
     Application.put_env(@app, :export_tmp_dir, root())
     put_repo_config()
-    put_site_config()
+    put_http_source(base_url: site(), email: email())
     put_source_config()
+    :ok
+  end
+
+  @doc """
+  Hands the client the workspace's token.
+
+  Apart from `apply_runtime_config/0` because reading the token goes through the
+  OS credential store, and that store may put a dialog in front of everything and
+  wait for an answer — macOS asks for the login password when an application it
+  has not seen before reads the item, and *a copy of the tool is an application it
+  has not seen before*, which is how somebody first runs a build they downloaded.
+  At boot that dialog is raised before the window exists, and a tool that is
+  waiting behind it looks like a tool that never started.
+
+  So the call belongs after the listener has printed its address, with the window
+  already on screen to say what is being asked. A token nobody loads is still a
+  site that answers 401, which is why it happens at all: `HttpSource` reads its
+  configuration per request, so what is set here is in force for every call that
+  follows.
+  """
+  @spec apply_credentials() :: :ok
+  def apply_credentials do
+    put_http_source(api_token: token())
     :ok
   end
 
@@ -356,15 +382,6 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
-
-  # The token comes with the rest of the connection. It used to be loaded only
-  # for the length of a run, by a `begin_session/0` that nothing ever called —
-  # and a token nobody loads is a site that answers 401. `HttpSource` reads its
-  # configuration per request, so what is set here is in force for every call
-  # that follows.
-  defp put_site_config do
-    put_http_source(base_url: site(), email: email(), api_token: token())
-  end
 
   defp token do
     case secret() do

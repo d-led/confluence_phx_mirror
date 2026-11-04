@@ -119,6 +119,14 @@ defmodule ConfluencePhxMirror.Desktop.Application do
     ConfluencePhxMirror.Settings.load()
     ConfluencePhxMirror.SiteSettings.load()
     ConfluencePhxMirror.Mailer.configure()
+
+    # The token is read from the OS credential store, which is allowed to ask a
+    # question and wait — macOS does exactly that the first time an application it
+    # does not know reads the item, and a copy in `/Applications` is such an
+    # application. Here, the dialog has a window behind it, because the listener
+    # above has already printed the address the window is opened on.
+    Settings.apply_credentials()
+
     ConfluencePhxMirror.Sync.abandon_abandoned_runs()
   end
 

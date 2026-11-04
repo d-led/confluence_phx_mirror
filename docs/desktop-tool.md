@@ -121,6 +121,15 @@ Where that is needed, and where it is already done:
 * **Built from source:** `scripts/package.sh`, which leaves the app in
   `_build/desktop/package/` — no download, no flag.
 
+**It asks once for the keychain.** The token that signs in to Confluence is kept
+in the login keychain, not in a file, so the first launch of a *copy* — a build
+downloaded, an app dragged to a new folder — gets the system's question about the
+item `confluence-export`, because an ad-hoc signature gives macOS no identity to
+recognise a copy by. Answer *Always Allow* once and it never asks again. The
+window is already open when the question appears: the token is read after the
+listener has printed the address the window is opened on, not before it, which is
+what makes the question answerable instead of a tool that looks dead.
+
 ## Layout
 
 ```

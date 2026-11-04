@@ -120,4 +120,8 @@ echo "The app is ad-hoc signed, which is what macOS needs to run it — but an"
 echo "unsigned app that arrives with the quarantine flag is stopped before any"
 echo "approval dialog, so a copy downloaded in a browser needs this first:"
 echo "  xattr -rd com.apple.quarantine \"$apps/$app\""
+echo
+echo "First launch asks once for access to the keychain item confluence-export:"
+echo "that is where the Confluence token is kept, and macOS does not recognise a"
+echo "copy of an ad-hoc signed app. Answer \"Always Allow\" once."
 echo "$apps/$app"

@@ -287,6 +287,19 @@ here as done is open.
     writes into a closed pipe, and `set -o pipefail` reports the writer's death as
     the pipeline's failure. The listing is compared with a `case` now. Same trap
     waits in any step that pipes a producer into `grep -q`.
+21. **The Keychain is a dialog, and a dialog at boot is a tool that never starts.**
+    Reading the token at boot (`Settings.apply_runtime_config/0` →
+    `Credentials.fetch/1`) blocks the whole application start until somebody
+    answers, and macOS *does* ask — for a copy of the app, because an ad-hoc
+    signature gives the ACL nothing stable to trust it by. Measured on a copy in
+    `/tmp`: the process sat in `SecKeychainFindGenericPassword` for minutes,
+    printed no address, opened no window, and looked exactly like a broken build;
+    the boot check passed because it only asks `/health`, which touches nothing.
+    The token is read in `after_start/0` now — after the listener has printed the
+    address — so the question has a window behind it, and answering *Always
+    Allow* fixes it for good. Two traps in one: the boot path had blocking I/O in
+    it, and the only way to see it was to run the *shipped* copy instead of the
+    build tree.
 
 ## Next, in order
 
