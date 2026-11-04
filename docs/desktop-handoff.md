@@ -358,3 +358,13 @@ port (trap 7): `lsof -nP -iTCP:<port> -sTCP:LISTEN -t | xargs kill`.
 
 To look at the screens without the window, `MIX_ENV=desktop mix run --no-halt`
 prints the same address and serves the same routes.
+
+A **copy** of the app is its own test, and the one a download is: unzip the
+artifact somewhere else, `open -a` the copy, and find the sidecar it started from
+inside *that* copy — `pgrep -fl "<copy>/Contents/Resources/rel"`, then
+`lsof -nP -a -p <beam> -iTCP -sTCP:LISTEN`. It should have a loopback port within
+a second, and `/health` should answer 200 (verified from `/tmp` on the built
+artifact: `desktop ui:` at 0.1 s, `/health` 200, before trap 21 was fixed the
+same run had no listener at all). The first launch of a copy also asks for the
+keychain item `confluence-export`; while that question is up `/` and `/__tool`
+wait for it, which is why `/health` is the one to curl.
