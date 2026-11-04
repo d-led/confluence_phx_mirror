@@ -356,7 +356,28 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     put_repo_config()
     put_http_source(base_url: site(), email: email())
     put_source_config()
+    put_workspace_info()
     :ok
+  end
+
+  # What only a desktop tool can say about itself, for the MCP configuration tool
+  # to include: the folder the catalogue lives in, the address an assistant is
+  # pointed at, the site and the account. A function rather than a map because
+  # the port is known only once the listener has bound, and a screen that moves
+  # the workspace changes the folder while the tool is running. `lib_desktop`
+  # hands it over; `lib` never reaches back into this build.
+  defp put_workspace_info do
+    Application.put_env(@app, :workspace_info, fn ->
+      port = Application.get_env(@app, :desktop_port) || port()
+
+      %{
+        root: root(),
+        site: site(),
+        account: email(),
+        port: port,
+        mcp_url: "http://127.0.0.1:#{port}/api/mcp"
+      }
+    end)
   end
 
   @doc """

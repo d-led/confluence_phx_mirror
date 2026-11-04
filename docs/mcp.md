@@ -153,6 +153,7 @@ here. What follows is what each tool answers.
 | `confluence_list_blog_posts` | mirror | a space's news, newest first |
 | `confluence_get_recent_changes` | mirror | content whose Confluence timestamp is newest — **not** the ingestion order |
 | `confluence_index_status` | mirror | **administrators only**: the last spaces indexed, when each was read, recent sync runs |
+| `confluence_mirror_configuration` | mirror | **administrators only**: the site, the sync intervals, the last successful run, the totals — and, in the desktop tool, the folder the catalogue lives in and the MCP address itself. Never a token |
 
 Two tools sound alike and are not. `confluence_get_recent_changes` answers "what
 changed upstream lately" from Confluence's own timestamps; `confluence_index_status`
@@ -162,7 +163,16 @@ answers "what did the mirror ingest, and when" and is administrator material, li
 ```
 @confluence-mirror what are the last spaces indexed?
 → confluence_index_status
+
+@confluence-mirror-desktop how many spaces do we sync?
+→ confluence_mirror_configuration
 ```
+
+`confluence_mirror_configuration` is the one an assistant needs first: it says
+which site this is, how often it is read, when it last succeeded and what is in
+there, so a follow-up question can be asked against the right installation. The
+desktop tool adds what only it knows — the workspace folder (the one
+`/__tool` will open in Finder for you) and the very address you are talking to.
 
 `page_id` and `parent_id` accept a Confluence content id **or** a page URL
 (`/spaces/ENG/pages/1002/Title`, `?pageId=1002`). Tiny links (`/wiki/x/N4CIO`) need the

@@ -98,6 +98,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
           <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
           <dt>Attachments</dt><dd>#{escape(Settings.blobs())}</dd>
         </dl>
+        #{workspace_actions()}
         <p><a href="/">Read the mirror</a></p>
         <p><a href="/admin">Administration</a></p>
         <p><a href="/__tool/spaces">Choose spaces to mirror</a></p>
@@ -117,7 +118,45 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         <dl>
           <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
         </dl>
+        #{workspace_actions()}
         """)
+    end
+  end
+
+  @doc """
+  Said when the folder could not be opened, with the reason the system gave.
+
+  A screen that says nothing after a button is a button that looks broken, and
+  the folder is the one thing here a person is expected to handle themselves.
+  """
+  @spec folder_problem(String.t()) :: String.t()
+  def folder_problem(reason) do
+    document("Confluence mirror export", """
+    <h1>The folder could not be opened</h1>
+    <p class="error" role="status">#{escape(reason)}</p>
+    <p><a href="/__tool">Back</a></p>
+    """)
+  end
+
+  # The folder is the tool's own state, and Finder is where a person handles it:
+  # deleting it is how somebody starts over, and a delete button in here would be
+  # one click away from an empty mirror with no undo. Opening the folder leaves
+  # the decision where it can be seen.
+  defp workspace_actions do
+    """
+    <form method="post" action="/__tool/open-folder" class="inline">
+      <button type="submit">Show the folder in #{file_manager()}</button>
+    </form>
+    <p class="hint">To start over, quit the app and delete that folder; the next launch
+    makes a new one.</p>
+    """
+  end
+
+  defp file_manager do
+    case :os.type() do
+      {:win32, _} -> "File Explorer"
+      {:unix, :darwin} -> "Finder"
+      {:unix, _} -> "the file manager"
     end
   end
 

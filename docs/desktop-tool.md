@@ -323,6 +323,20 @@ person can read the address the port landed on is the account menu → *Assistan
 `http://127.0.0.1:<port>/api/mcp`, with the `.vscode/mcp.json` block beside it.
 The same page is in the deployment, where the address is the site's own name.
 
+An assistant can read the same facts itself: `confluence_mirror_configuration`
+(administrators only) answers with the site, the intervals, the last successful
+run and the totals, and — because this build contributes it — the workspace
+folder and the address above, taken from the port that was actually granted
+rather than the one that was preferred.
+
+### The folder
+
+The tool's home (`/__tool`) shows where the catalogue lives and has one button
+for it: **Show the folder in Finder** (`open`, `xdg-open` or `explorer`, whichever
+the platform has). It only *reveals* the folder. Deleting the catalogue is how
+somebody starts over, and that is a decision to make with the folder in front of
+you — one click in here would be one click from an empty mirror with no undo.
+
 Oban runs on `Oban.Engines.Lite`, because the store is a file; the queues are one
 process each, because one SQLite connection cannot feed fourteen consumers.
 
@@ -331,6 +345,28 @@ so a misspelt skin name stops the boot rather than quietly serving the default.
 After the tree is up the tool does what the server does — load `Settings` and
 `SiteSettings` once, configure the mailer, settle jobs left `executing` by the
 last shutdown.
+
+### The window owns the process
+
+Closing the window quits the app, and the release goes with it. That is not a
+preference: **there is no tray icon and no menu of ours**, so a process that
+outlives its window is one nobody can reach — except by `kill`, or by noticing
+the next launch could not have the port.
+
+Two things hold that, and they cover different deaths:
+
+- `RunEvent::WindowEvent { event: Destroyed }` for the window called `main` calls
+  `app.exit(0)`, which is the ordinary path: the red button asks, and the app
+  answers by stopping the release in `RunEvent::Exit`.
+- The window starts the release with `CONFLUENCE_EXPORT_DIE_WITH_PARENT=1` and a
+  stdin it owns. `Desktop.Application` then reads that pipe and stops on
+  end-of-file. A force-quit, a crash or a `kill -9` never reaches the first path,
+  but it does close the pipe, and that is the only signal a killed window can
+  still send. It is why a stale release cannot be left holding 43_100.
+
+The variable is opt-in on purpose. `scripts/package.sh` runs the release with an
+inherited stdin, which under CI may already be at end-of-file; a release that
+watched stdin unconditionally would exit immediately and fail the boot check.
 
 ## Storage
 

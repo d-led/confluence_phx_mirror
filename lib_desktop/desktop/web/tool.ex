@@ -74,6 +74,21 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
     send_resp(conn, 200, JSON.encode_to_iodata!(state()))
   end
 
+  # Reveals the workspace in the desktop's own file manager. It is the one place
+  # this app acts on the person's machine, and it only ever *shows* a folder it
+  # already owns: deleting the catalogue is how somebody starts over, and that
+  # decision belongs in Finder, where it can be seen and undone, not behind a
+  # button in here.
+  post "/__tool/open-folder" do
+    case reveal(Settings.root()) do
+      :ok ->
+        conn |> put_resp_header("location", "/__tool") |> send_resp(303, "")
+
+      {:error, reason} ->
+        send_resp(conn, 500, Page.folder_problem(reason))
+    end
+  end
+
   get "/__tool/spaces" do
     query = String.trim(conn.params["q"] || "")
 
@@ -238,4 +253,29 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
 
   defp explain({:not_writable, path, reason}),
     do: "The folder #{path} exists but cannot be written to (#{reason})."
+
+  # `open` on macOS, `xdg-open` on Linux, `explorer` on Windows — the tool's own
+  # machine and a folder it already owns. The folder is created first, because an
+  # empty workspace is still a folder a person may want to look at (and the one
+  # they delete to start over). A failure is reported, not raised: a missing file
+  # manager is not a reason to take the screen down.
+  defp reveal(path) do
+    with :ok <- Settings.ensure_root() do
+      case System.cmd(file_manager(), [path], stderr_to_stdout: true) do
+        {_output, 0} ->
+          :ok
+
+        {output, code} ->
+          {:error, "the folder could not be opened (exit #{code}): #{String.trim(output)}"}
+      end
+    end
+  end
+
+  defp file_manager do
+    case :os.type() do
+      {:win32, _} -> "explorer"
+      {:unix, :darwin} -> "open"
+      {:unix, _} -> "xdg-open"
+    end
+  end
 end
