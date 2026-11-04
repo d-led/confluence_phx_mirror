@@ -1,11 +1,11 @@
 # Hand-off: moving the desktop app onto ExTauri
 
-Status: **not started**. This document is the plan for migrating the desktop
-window from our hand-written Tauri shell to
+Status: **spike run, one gate left**. This document is the plan for migrating the
+desktop window from our hand-written Tauri shell to
 [ExTauri](https://github.com/filipecabaco/ex_tauri) (`ex_tauri` 0.7.x, MIT), on
 the `desktop` branch. It records what was verified about ExTauri's source, what
-we would delete, what we would write instead, and every gate that has to be green
-before the old shell is removed.
+the Burrito spike already measured, what we would delete, what we would write
+instead, and every gate that has to be green before the old shell is removed.
 
 Read `docs/desktop-tool.md` first for what the app is. Read this one before
 touching `src-tauri/`.
@@ -77,17 +77,51 @@ Cloned at `3f8123a` (2026-11-03, tag `v0.7.1`). Facts below are from that tree.
    still says 0.15.2. CI must install exactly 0.16.0. **This machine has
    0.17.0** (`/opt/homebrew/bin/zig`, Homebrew's current `zig`), so
    `mix release` with a Burrito step fails with "Your Zig version does not match
-   the one Burrito requires!" — fetch 0.16.0 from <https://ziglang.org/download/>
-   (or `mise`/`asdf`) and put it in front on `PATH` for the spike. Do not upgrade
-   it to whatever Homebrew has today.
+   the one Burrito requires!". Zig 0.16.0 was fetched from
+   <https://ziglang.org/download/> into `/tmp/zig016` for the spike; CI should use
+   `mlugg/setup-zig@v2.2.1` pinned to `0.16.0`.
 
-8. **OTP 29 is a warning, not a wall.** `lib/ex_tauri.ex:88` warns "ExTauri
-   currently targets OTP 27 … production builds may fail" but continues. The
-   warning is about Burrito's *pre-compiled* ERTS for cross-building; a native
-   build copies the local `erts-<vsn>` (`lib/steps/fetch/init.ex:24`), and a cross
-   build fetches `otp_win64_<version>.exe` from the official erlang/otp releases.
-   We build natively per OS in CI, so this is a spike question, not a blocker —
-   close it in step S1.
+8. **OTP 29 is a warning in ExTauri and a wall in Burrito** — see the spike result
+   below. ExTauri's `lib/ex_tauri.ex:88` only warns when the running OTP is not
+   27; Burrito is what actually fails, and it fails on the exact OTP *patch*
+   version, not the major. `custom_erts` is the only escape, and it wants an
+   unpacked OTP release tree (`erts-X.Y.Z/`, `releases/`, `Install`) — a Homebrew
+   install is not one.
+
+## Spike result (2026-11-04): Burrito cannot wrap this app on OTP 29
+
+Run on macOS arm64, in a scratch clone of this repo (`/tmp/extauri-spike`), with
+Zig 0.16.0 from ziglang.org, and `confluence_export_desktop` as a release with
+`steps: [:assemble, &Burrito.wrap/1]`:
+
+```
+--> Resolving ERTS: {:precompiled, [version: "29.1.2"]}
+--> Downloading https://beam-machine-universal.b-cdn.net/OTP-29.1.2/macos/universal/…
+** (RuntimeError) Failed to fetch …! (Got 404) Perhaps we haven't built a
+   pre-compiled Erlang for this release yet?
+```
+
+What that means, measured:
+
+- Burrito resolves ERTS from its own CDN for the **exact** OTP patch version of
+  the build machine. It does not use the local `erts-*` directory.
+- `OTP-29.1.2` → **404**. `OTP-28.5.0.8` (what Homebrew's `erlang@28` installs) →
+  **404**. `OTP-28.5.0.4`, `28.3.3`, `28.1`, `27.3.4`, `27.2.4`, `27.1.2` → 200.
+- So the desktop release must be built on an OTP patch Burrito has published, and
+  the list is exact: `28.5.0.4` is the newest usable one as of this writing.
+- Nothing in `lib/`, `lib_desktop/` or `mix.exs` is implicated: the release
+  assembles and the step fails before the wrapper is compiled.
+
+Consequence for the plan: **the desktop legs build on OTP 28.5.0.4, the server
+legs stay on 29.** `mix ex_tauri.dev` and `scripts/start-desktop.sh` skip Burrito,
+so day-to-day work is unaffected; only a distributable needs the pinned OTP. That
+is a CI setting (`otp-version: 28.5.0.4`) and, for whoever builds a bundle
+locally, an exact OTP install (asdf/kerl — Homebrew's `erlang@28` is the wrong
+patch).
+
+Still unproven, and the first thing to try next: with `28.5.0.4` installed, does
+`Burrito.wrap/1` compile the Zig wrapper and does the resulting binary boot this
+app? That is step S1 below.
 
 ## Decisions to take before writing code
 
@@ -115,6 +149,11 @@ Cloned at `3f8123a` (2026-11-03, tag `v0.7.1`). Facts below are from that tree.
   asset steps, the boot check and the artifact check, and loses the bundle
   assembly to `mix ex_tauri.build`. The old flow is deleted, not kept behind a
   flag — a second path is how the two drift (`docs/desktop-tool.md`, "Packaging").
+- **D6 — which OTP the desktop builds on.** Measured: `28.5.0.4` is the newest
+  patch Burrito will package; `29.1.2` and `28.5.0.8` are 404. Pin the desktop
+  legs to `28.5.0.4` and leave the server legs on whatever they run today, or
+  postpone the migration until Burrito publishes OTP 29 payloads. Both are
+  defensible; the first is a CI pin, the second is a wait with no date.
 
 ## Steps
 
@@ -126,23 +165,26 @@ migration (`.bat` sidecar, `cmd /C`, Job Object, per-OS Tauri configs,
 `include_executables_for`) is **not** written, and must not be: ExTauri's shell
 and Burrito replace it.
 
-**S1 — the OTP/Burrito spike, in a scratch clone.** This is the one fact that can
-stop the migration, so it goes first, before any file in this repo changes:
+**S1 — finish the Burrito spike.** Half done; see "Spike result" above. What is
+left, and it is the gate for everything else:
 
 ```sh
-git clone --depth 1 https://github.com/filipecabaco/ex_tauri /tmp/ex_tauri_spike
-cd /tmp/ex_tauri_spike/example            # a Phoenix app with SQLite + LiveView
-mix deps.get && MIX_ENV=prod mix release --overwrite
-zig version                               # exactly 0.16.0, or burrito refuses to build
+# an OTP patch Burrito has a payload for — not Homebrew's erlang@28 (28.5.0.8)
+asdf install erlang 28.5.0.4        # or kerl; ~10–15 min
+asdf local erlang 28.5.0.4          # in the spike clone only
+zig version                          # exactly 0.16.0
+MIX_ENV=desktop mix release confluence_export_desktop --overwrite
+burrito_out/confluence_export_desktop_aarch64-apple-darwin
 ```
 
-Wrap an existing release by hand rather than trusting the installer: add
-`[{:burrito, "~> 1.6", runtime: false}]`, a `desktop` release with
-`steps: [:assemble, &Burrito.wrap/1]` and a `burrito: [targets: …]` block, then
-`mix release --overwrite`. Gate: `burrito_out/<name>_aarch64-apple-darwin` exists
-and **runs**, with `PORT=0` it prints its listening address, and `curl` answers.
-If Burrito refuses OTP 29, the migration stops here and the branch keeps the
-hand-written shell — that is the point of doing this in a scratch clone.
+Gate: the binary exists, and with `HOME` pointing at a throwaway directory and
+`PORT=43100` it starts, prints `desktop ui:`, answers `/health`, and stops. If the
+Zig wrapper will not compile or the wrapped binary will not boot this app, the
+migration stops here and the branch keeps the hand-written shell.
+
+Cheaper alternative if a local OTP install is unwanted: put the same three
+commands in a throwaway workflow on `ubuntu-24.04` with `otp-version: 28.5.0.4`,
+and read the log — it is the environment that has to work anyway.
 
 **S2 — dependencies and config, desktop environment only.**
 
@@ -228,8 +270,7 @@ Delete `embed_release/0`, `assemble/0` and the `ditto` zip.
 
 **S8 — workflows.** `desktop-release.yml`: a matrix over
 `macos-latest` / `ubuntu-22.04` / `windows-latest`, each installing Elixir, Rust,
-Zig 0.16.0 (`mlugg/setup-zig@v2.2.1` with `version: 0.16.0`) and `cargo-tauri`, each running
-`scripts/package.sh` and uploading one artifact per OS
+Zig 0.16.0 (`mlugg/setup-zig@v2.2.1` with `version: 0.16.0`) and `cargo-tauri`, each running`scripts/package.sh` and uploading one artifact per OS
 (`confluence-export-macos`, `confluence-export-linux`, `confluence-export-windows`);
 the tag job attaches all three with the tag in the name. `desktop-debug.yml`:
 build the window and boot the release on all three (no bundling), so a Windows
@@ -250,21 +291,24 @@ half-works.
 
 | # | gate | where |
 | --- | --- | --- |
-| 1 | Burrito wraps and runs our release on OTP 29 | S1, scratch clone |
-| 2 | `MIX_ENV=desktop mix compile --warnings-as-errors`; `MIX_ENV=prod mix compile` unchanged | S2 |
-| 3 | listener binds `PORT`; new tests green | S3 |
-| 4 | window close and `kill -9` both stop the release | S4, by hand |
-| 5 | the window renders LiveView under their CSP | S5, by hand |
-| 6 | failure page names the log; the log holds the release's words | S6, by hand |
-| 7 | `scripts/package.sh` on macOS: boot check + artifact check | S7 |
-| 8 | the same script green on Linux and Windows in CI | S8 |
-| 9 | `mix test` (Postgres), `scripts/test-sqlite.sh`, `mix lint`, `mix complexity` | before every commit |
+| 1 | Burrito's CDN has a payload for our OTP patch | **measured: 29.1.2 and 28.5.0.8 are 404; 28.5.0.4 works** |
+| 2 | the Zig wrapper compiles and the wrapped binary boots this app on 28.5.0.4 | S1 |
+| 3 | `MIX_ENV=desktop mix compile --warnings-as-errors`; `MIX_ENV=prod mix compile` unchanged | S2 |
+| 4 | listener binds `PORT`; new tests green | S3 |
+| 5 | window close and `kill -9` both stop the release | S4, by hand |
+| 6 | the window renders LiveView under their CSP | S5, by hand |
+| 7 | failure page names the log; the log holds the release's words | S6, by hand |
+| 8 | `scripts/package.sh` on macOS: boot check + artifact check | S7 |
+| 9 | the same script green on Linux and Windows in CI | S8 |
+| 10 | `mix test` (Postgres), `scripts/test-sqlite.sh`, `mix lint`, `mix complexity` | before every commit |
 
 ## Risks and how each is closed
 
 | risk | closed by |
 | --- | --- |
-| Burrito cannot wrap OTP 29 | S1 — on a scratch clone, before this repo changes |
+| Burrito has no ERTS payload for the OTP we build with | **measured** — desktop legs pin `28.5.0.4`; `29.1.2` and `28.5.0.8` are 404 |
+| the Zig wrapper will not compile, or the wrapped binary will not boot this app | S1 — the remaining half of the spike, before anything else changes |
+| a second OTP in CI drifts from the one the app is developed on | S8 — only the desktop legs pin, and the debug matrix runs the same pin |
 | `mix ex_tauri.install` fights our `src-tauri/` | S5 — port by hand, never run it in place |
 | the window navigates to a port we did not bind | S3 — `PORT` wins and does not fall back |
 | a `kill -9`'d window leaves a release holding the port | S4 — heartbeat, tested by hand on both paths |
