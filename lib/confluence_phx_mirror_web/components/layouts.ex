@@ -214,6 +214,16 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
                       <.icon name="hero-key" class="size-4" /> API tokens
                     </.link>
                   </li>
+                  <%!-- The address an assistant is pointed at. It lives here rather
+                  than only in the console because the desktop tool has no console:
+                  its server is on a loopback port, and the page behind this link
+                  prints the URL the request arrived on — `http://127.0.0.1:43100/api/mcp`
+                  in the window, the deployment's own name in a browser. --%>
+                  <li>
+                    <.link navigate={~p"/mcp"} id="account-mcp-link">
+                      <.icon name="hero-cpu-chip" class="size-4" /> Assistant (MCP)
+                    </.link>
+                  </li>
                   <li :if={@current_admin?}>
                     <.link navigate={~p"/admin"}><.icon name="hero-cog-6-tooth" class="size-4" />
                     Admin</.link>

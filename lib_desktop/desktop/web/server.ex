@@ -2,32 +2,75 @@ defmodule ConfluencePhxMirror.Desktop.Web.Server do
   @moduledoc """
   The loopback listener the tool's window points at.
 
-  It binds `127.0.0.1` on an ephemeral port, so two copies of the tool on one
-  machine never argue over a number and nothing off this machine can reach it.
-  The port is not configuration — it is whatever the OS granted — so it is
-  printed once and kept: the shell reads it from the sidecar's output instead of
-  guessing, which is the only part of the arrangement that has to agree.
+  It binds `127.0.0.1` and *prefers* one number, every launch, because the MCP
+  endpoint is a URL a person pastes into an assistant once: `/api/mcp` on a port
+  that changes per launch is a client that has to be re-pointed every time, which
+  is not configured. The preference is, in order, `CONFLUENCE_EXPORT_PORT`, the
+  `port` key in `settings.json`, and then 43_100 — the last of those is why the
+  number is not 4_000 (a server) or 42_800 (the neighbouring Monty tool).
+
+  A fixed port is also a port a second copy cannot have, so when it is taken — by
+  another copy of this tool or by anything else — the operating system picks one
+  instead and the announcement carries it, rather than the second copy being the
+  one that fails to start.
 
   There is one listener and one origin. The mirror's own endpoint is mounted in
   it (see `ConfluencePhxMirror.Desktop.Web.Dispatch`), so every screen the
-  server serves is served here too, at the same paths — the admin area included
-  — and the tool's own few screens sit beside them under `/__tool`.
+  server serves is served here too, at the same paths — the admin area included,
+  and `/api/mcp` with them — and the tool's own few screens sit beside them under
+  `/__tool`.
   """
 
+  require Logger
+
+  alias ConfluencePhxMirror.Desktop.Settings
   alias ConfluencePhxMirror.Desktop.Web.Dispatch
 
+  @loopback {127, 0, 0, 1}
+
   @doc """
-  A port that is free right now.
+  The port this launch will try, before anything is bound.
 
   Asked before the endpoint starts, because the endpoint reads its own URL once,
-  when it starts: a screen that generates an absolute link needs the port the
-  listener will actually get. The socket is opened and closed rather than held,
-  because Bandit wants to own the listen socket — the window between the two is
-  a loopback port on a machine running one tool.
+  when it starts: a screen that generates an absolute link — the MCP page and its
+  copy-paste block above all — needs the port the listener will actually get.
   """
   @spec choose_port() :: :inet.port_number()
   def choose_port do
-    {:ok, socket} = :gen_tcp.listen(0, ip: {127, 0, 0, 1}, active: false)
+    port = Settings.port()
+
+    if free?(port), do: port, else: taken(port)
+  end
+
+  @doc """
+  Whether a loopback port can be bound right now.
+
+  Asked by opening and closing a socket, which is the only way to know a port is
+  free before the listener that will use it exists. Nothing is held: Bandit owns
+  the listen socket, and the moment between this answer and its bind is a loopback
+  port on a machine running one tool.
+  """
+  @spec free?(:inet.port_number()) :: boolean()
+  def free?(port) do
+    case :gen_tcp.listen(port, ip: @loopback, active: false) do
+      {:ok, socket} ->
+        :ok = :gen_tcp.close(socket)
+        true
+
+      {:error, _reason} ->
+        false
+    end
+  end
+
+  # A second copy has to start somewhere, and the port it wanted is the one thing
+  # it cannot have.
+  defp taken(port) do
+    Logger.warning(
+      "port #{port} is taken; asking the operating system for another one — " <>
+        "the address is announced on stdout and shown behind the account menu"
+    )
+
+    {:ok, socket} = :gen_tcp.listen(0, ip: @loopback, active: false)
     {:ok, port} = :inet.port(socket)
     :ok = :gen_tcp.close(socket)
     port
@@ -46,7 +89,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Server do
   def start_link(opts) do
     port = Keyword.fetch!(opts, :port)
 
-    with {:ok, supervisor} <- Bandit.start_link(plug: Dispatch, port: port, ip: {127, 0, 0, 1}) do
+    with {:ok, supervisor} <- Bandit.start_link(plug: Dispatch, port: port, ip: @loopback) do
       # The one thing that has to agree with the shell: the address, printed once,
       # on stdout, at boot (`src-tauri/src/main.rs` reads this line and nothing
       # else). Everything it says after that is a log.

@@ -17,6 +17,13 @@ third-party MCP server that speaks Confluence, and so speaks to a mirror.
 | 1. point the client at | `http://localhost:4000/api/mcp` | `https://your-mirror-url/api/mcp` |
 | 2. credentials | none (development assumes an administrator) | nothing to paste: the client opens a browser and authorizes itself |
 
+The **desktop tool** serves the same endpoint on its own loopback port,
+`http://127.0.0.1:43100/api/mcp`, and takes no credentials from a process on the
+same machine. 43_100 is what it prefers; `CONFLUENCE_EXPORT_PORT` or the `port`
+key in its `settings.json` changes it, and when another copy already holds the
+port the window says which one it got behind **account menu → Assistant (MCP)**
+— the page whose URL you are reading, with the address filled in.
+
 In VS Code, put the block below in `.vscode/mcp.json` (the file is gitignored).
 The local one is the demo mirror:
 

@@ -71,6 +71,54 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   @spec blobs() :: Path.t()
   def blobs, do: Path.join(root(), "blobs")
 
+  @doc """
+  The port the window's server prefers, overridable without a rebuild.
+
+  `CONFLUENCE_EXPORT_PORT` first — a script or a service names it — then the
+  `port` key in `settings.json`, which is what a person who double-clicks the app
+  can change, because a window has no shell to export anything from. Anything
+  that is not a port number is logged and ignored: refusing to start over a typo
+  would take the tool away from the one person who could fix it.
+
+  A fixed number is the point. The MCP endpoint is a URL an assistant is pointed
+  at once, and an ephemeral port means re-pointing it at every launch.
+  """
+  @spec port() :: :inet.port_number()
+  def port do
+    Enum.find_value(
+      [from_env("CONFLUENCE_EXPORT_PORT"), read()["port"]],
+      default_port(),
+      &to_port/1
+    )
+  end
+
+  @doc """
+  The port used when neither the environment nor the settings file names one.
+
+  43_100 rather than a round number: 4_000 is a server someone started by hand
+  and 42_800 is the neighbouring Monty tool, and a fixed port that collides is
+  the one thing this was meant to avoid.
+  """
+  @spec default_port() :: :inet.port_number()
+  def default_port, do: 43_100
+
+  defp to_port(nil), do: nil
+  defp to_port(port) when is_integer(port) and port > 0 and port < 65_536, do: port
+
+  defp to_port(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {port, ""} -> to_port(port)
+      _not_a_port -> not_a_port(value)
+    end
+  end
+
+  defp to_port(value), do: not_a_port(value)
+
+  defp not_a_port(value) do
+    Logger.warning("ignoring #{inspect(value)} as a port; using #{default_port()}")
+    nil
+  end
+
   # ---------------------------------------------------------------------------
   # What it mirrors
   # ---------------------------------------------------------------------------

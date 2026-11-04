@@ -291,6 +291,38 @@ That is also why the port is chosen before the supervisor starts: the endpoint
 reads its URL once, when it starts, and a screen generating an absolute link
 needs the port the listener will actually get.
 
+### The port
+
+The window's server prefers **43_100**, the same number every launch, and it is
+overridable in two places, in this order:
+
+| how | for |
+| --- | --- |
+| `CONFLUENCE_EXPORT_PORT=43101` | a script, a service, a second copy |
+| `"port": 43101` in `settings.json` | a person who double-clicks the app and has no shell |
+
+43_100 rather than 4_000 (a server someone started by hand) or 42_800 (the
+neighbouring Monty tool). A fixed number is the point: the MCP endpoint is a URL
+an assistant is pointed at **once**, and a port that changes per launch is a
+client re-pointed at every launch. A value that is not a port is logged and
+ignored — refusing to start over a typo would take the tool away from the one
+person who could fix it.
+
+A fixed port is also a port a second copy cannot have, so when it is taken — by
+another copy or by anything else — the operating system picks one instead and the
+announcement carries it:
+
+```
+port 43100 is taken; asking the operating system for another one — the address is
+announced on stdout and shown behind the account menu
+```
+
+That sentence matters because **a window has no stdout**: the only place a
+person can read the address the port landed on is the account menu → *Assistant
+(MCP)*, which opens `/mcp` — a page that prints the URL the request arrived on,
+`http://127.0.0.1:<port>/api/mcp`, with the `.vscode/mcp.json` block beside it.
+The same page is in the deployment, where the address is the site's own name.
+
 Oban runs on `Oban.Engines.Lite`, because the store is a file; the queues are one
 process each, because one SQLite connection cannot feed fourteen consumers.
 
