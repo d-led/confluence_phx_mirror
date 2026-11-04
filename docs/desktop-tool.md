@@ -147,8 +147,8 @@ lib_desktop/
     credentials/keyring.ex  the real store
     credentials/memory.ex   the test double
     archive.ex              the export: Export.site_archive → one file
-    jobs.ex                 the one mirror run, so a screen can follow it
-    mirror.ex               Source → Renderer → rows, straight into the catalogue
+    jobs.ex                 the mirror run as a job: enqueue, read the run, cancel it
+    catalogue.ex            what the window reads from the catalogue (pages per space)
     spaces.ex               the source's space list, fetched off the request
     web/server.ex           the loopback listener, on an ephemeral port
     web/dispatch.ex         /__tool here, the server's endpoint everywhere else
@@ -230,7 +230,8 @@ does not have them:
 | path | what | why not the server's |
 | --- | --- | --- |
 | `/__tool/setup` | where the site is, and the token that reaches it | a release takes these from `CM_*` and `SECRET_KEY_BASE`; the tool has a window to ask in, and stores the secret in the OS keychain |
-| `/__tool/spaces`, `/__tool/mirror` | the space list, and a run that copies a space into the catalogue | the server's sync goes through Oban and a sync gate written in Postgres; the tool's copies straight into the catalogue, which is the path that is proven on SQLite |
+| `/__tool/spaces`, `/__tool/mirror` | the space list, and the press that starts or stops the mirror | a release starts a sync from its admin screens; a window has no admin screen of its own to open, so the press lives here. What it *starts* is the server's: a `SpaceWorker` on the `sync` queue, with a `sync_runs` row and a `Sync.cancel/2` |
+| `/__tool/cancel` | stop what the tool started: the run in flight and the queue behind it | the deployment's cancel is a button on `/admin/jobs`, which a window can reach — this is the same call, with the queue emptied first so a bulk run stops being a bulk run |
 | `/__tool/export` | the archive, as one file | the deployment's is a download from an admin screen; the tool's is a file that lands beside the catalogue |
 
 The admin area is reachable because the tool has one reader and the window is the
@@ -269,7 +270,6 @@ children = [
   ConfluencePhxMirror.Sync.Log,
   ConfluencePhxMirror.Sync.Runs,
   {Task.Supervisor, name: ConfluencePhxMirror.Desktop.TaskSupervisor},
-  ConfluencePhxMirror.Desktop.Jobs,
   ConfluencePhxMirror.Desktop.Spaces,
   ConfluencePhxMirrorWeb.Endpoint,            # server: false — the listener is below
   {ConfluencePhxMirror.Desktop.Web.Server, port: port}

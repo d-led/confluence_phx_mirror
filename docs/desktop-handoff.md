@@ -9,7 +9,7 @@ findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
 screen behind it is the server's own screen — the directory, a page, the search
 page, `/admin` and the settings page under it — served by the same endpoint,
 mounted in the tool's loopback listener. What is left in `lib_desktop/` is the
-connection, the run that copies a space into the catalogue, and the archive.
+connection, the press that queues a mirror run, and the archive.
 
 ## What works, and how it was proven
 
@@ -47,19 +47,14 @@ connection, the run that copies a space into the catalogue, and the archive.
    neither. The screen now says so — *"This mirror has no full-text index: search
    needs the Postgres build"* — instead of raising. Doing it properly means an
    FTS5 table the sync keeps in step, which is a feature, not a translation.
-2. **Mirroring is the tool's own pipeline.** The server's sync goes through Oban
-   and `Sync.Gate`, whose lease is a Postgres `ON CONFLICT` statement; the tool
-   copies a space straight into the catalogue (`Desktop.Mirror`), which is the
-   path that is proven on SQLite. `/admin/jobs` therefore lists the jobs a
-   deployment would run and stays empty here: the tool's runs are `/__tool`.
-3. **The two `Sync.Scheduler` clocks are not started.** `/admin/settings` still
+2. **The two `Sync.Scheduler` clocks are not started.** `/admin/settings` still
    shows the interval; nothing in this build reads it.
-4. **The `.app` is unsigned.** It runs from this machine; a copy that travels is
+3. **The `.app` is unsigned.** It runs from this machine; a copy that travels is
    quarantined by Gatekeeper until it is signed and notarised.
-5. **`lib_desktop/` has no unit tests**, and CI neither compiles nor dialyses
+4. **`lib_desktop/` has no unit tests**, and CI neither compiles nor dialyses
    `MIX_ENV=desktop`. The tool is verified by running it and by
    `MIX_ENV=desktop mix dialyzer`, not by a test file.
-6. **The suite is flaky under load.** `DBConnection` checkout timeouts become
+5. **The suite is flaky under load.** `DBConnection` checkout timeouts become
    `OwnershipError`s in six unrelated files; they pass alone. Not fixed.
 
 ## What was asked for, and where it stands
@@ -83,6 +78,7 @@ here as done is open.
 | "are you swallowing errors?" | **done** — publish failures are a screen and a log line; `Jobs` and `Spaces` no longer ignore a refused `start_child` (a run that never started used to look like a run in progress); a refused start redirects to the screen that explains it |
 | "can you start producing better quality? Use dialyzer" | **done** — `MIX_ENV=desktop mix dialyzer`: **Total errors: 0**, after it found the `:page` contract bug (trap 16) |
 | "a meaningful desktop app" | **done** for the tool: it mirrors, exports and navigates — and the reading surface is the whole mirror UI, admin included. Open: search (item 1) and signing |
+| "it started a sync NOT AS A JOB … that could not be canceled! … why are we duplicating functionality?" | **done** — the tool's own copy of the loop is gone. A run is a `SpaceWorker` on the `sync` queue: a row in `oban_jobs`, a row in `sync_runs` (mode, scope, trigger, pages), `/admin/jobs` lists it, `/__tool/mirror` follows it and `/__tool/cancel` is `Sync.cancel/2` (which also empties the queue, so a bulk run stops being a bulk run). Proven in a headless run: press → job + run row; bulk start → two runs, one after the other; cancel → `cancelled` job and `cancelled` run with `cancel_requested_at`; a mistyped key → 409, "the site has no space called NOPE", nothing enqueued |
 
 ## Decisions, and why
 
@@ -451,16 +447,11 @@ here as done is open.
 
 ## Next, in order
 
-1. **One sync, not two.** Make `Sync.Gate`'s lease portable (a row updated with
-   `UPDATE … RETURNING`, which both engines have, instead of `ON CONFLICT`) and
-   let the tool's mirroring run through the server's workers. That would delete
-   `Desktop.Mirror` and `Desktop.Jobs` and put `/admin/jobs` in charge — at the
-   cost of proving the whole sync path on SQLite first.
-2. **A test environment for `lib_desktop`**, so the tool's behaviour has tests and
+1. **A test environment for `lib_desktop`**, so the tool's behaviour has tests and
    not only evidence rows, and a CI leg that compiles, dialyses and probes
    `MIX_ENV=desktop` (the probe is cheap: boot it, `GET` the screens). The same
    leg is what would put the FTS5 statement itself under test.
-3. **Signing and notarisation** for the `.app`. The release half is wired —
+2. **Signing and notarisation** for the `.app`. The release half is wired —
    `CONFLUENCE_SIGN_RELEASE=1` makes `mix release` sign every BEAM binary and
    escript with `ElixirKit.Release.codesign/1` (ad-hoc without
    `APPLE_SIGNING_IDENTITY`, a real signature with it), and
@@ -471,7 +462,7 @@ here as done is open.
    quarantine flag on the copy it just made, and `docs/desktop-tool.md` gives the
    one-line `xattr` for a copy downloaded in a browser. Anything that promised
    more would need the account, not more code.
-4. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
+3. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
    in-process seed) so the same suite can run against the container image.
 
 ## Verifying anything, fast

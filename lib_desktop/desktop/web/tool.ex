@@ -1,14 +1,19 @@
 defmodule ConfluencePhxMirror.Desktop.Web.Tool do
   @moduledoc """
-  The tool's own screens, under `/__tool`: the connection, and the run that
-  copies a space into the catalogue.
+  The tool's own screens, under `/__tool`: the connection, and the mirror run it
+  queues.
 
   Everything a reader looks at is the mirror's own — the same LiveViews, the
   same admin area, at the same paths — and it is served by the endpoint mounted
   beside this router (see `ConfluencePhxMirror.Desktop.Web.Dispatch`). What is
   left here is what a single-user tool has and a deployment does not: where its
-  site is and which token reaches it, and a run that goes straight into the
-  catalogue instead of through a queue.
+  site is and which token reaches it, and the one press that starts or stops the
+  mirror touching its own catalogue.
+
+  Starting a run is `Sync.enqueue/3` (`ConfluencePhxMirror.Desktop.Jobs`), on the
+  queue this build already runs — so the press produces a job, the job a row in
+  `sync_runs`, and the screen follows that row rather than a task in the web
+  server. Stopping it is `Sync.cancel/2`, which the run honours at its next page.
 
   Everything is answered on loopback, for the webview the tool itself opened.
   There is no sign-in, because there is one reader and the window is the only
@@ -18,7 +23,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
 
   use Plug.Router
 
-  alias ConfluencePhxMirror.Desktop.{Archive, Jobs, Mirror, Settings, Spaces, Web.Page}
+  alias ConfluencePhxMirror.Desktop.{Archive, Catalogue, Jobs, Settings, Spaces, Web.Page}
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Trash
 
@@ -132,7 +137,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
         send_resp(
           conn,
           200,
-          Page.spaces(Enum.take(matching, @page_size), Mirror.page_counts(), %{
+          Page.spaces(Enum.take(matching, @page_size), Catalogue.page_counts(), %{
             query: query,
             known: length(spaces),
             matching: length(matching),
@@ -185,6 +190,14 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
       nil -> started(conn, Jobs.start_mirror([conn.params["space"]], conn.params["space"]))
       _reason -> redirect_to(conn, "/__tool/spaces")
     end
+  end
+
+  # The one control the run screen needs. A run stops at its next page, so the
+  # answer is the run's row, not this request's: the screen reloads and says
+  # what the run says.
+  post "/__tool/cancel" do
+    {:ok, _stopped} = Jobs.cancel()
+    redirect_to(conn, "/__tool/mirror")
   end
 
   post "/__tool/mirror_all" do
@@ -289,8 +302,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
   # a redirect that hides the answer is how a button appears to do nothing.
   defp started(conn, {:ok, :started}), do: redirect_to(conn, "/__tool/spaces")
   defp started(conn, {:error, :busy}), do: redirect_to(conn, "/__tool/mirror")
-  defp started(conn, {:error, :no_worker}), do: redirect_to(conn, "/__tool/mirror")
   defp started(conn, {:error, :nothing_to_do}), do: redirect_to(conn, "/__tool/spaces")
+
+  # Anything else is the tool declining, and a refusal has to be readable where
+  # the press happened: a redirect to the run screen would show whatever ran last.
+  defp started(conn, {:error, reason}), do: send_resp(conn, 409, Page.refused(reason))
 
   defp redirect_to(conn, path) do
     conn |> put_resp_header("location", path) |> send_resp(303, "")

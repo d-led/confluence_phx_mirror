@@ -87,10 +87,9 @@ defmodule ConfluencePhxMirror.Desktop.Application do
       ConfluencePhxMirror.Sync.Log,
       ConfluencePhxMirror.Sync.Runs,
       {Task.Supervisor, name: ConfluencePhxMirror.Desktop.TaskSupervisor},
-      # The one mirror run the tool can be doing, and the space list it chooses
-      # from. Both are the tool's own: they copy a space straight into the
-      # catalogue rather than through a queue.
-      ConfluencePhxMirror.Desktop.Jobs,
+      # The space list the picker chooses from. The mirror run itself is not a
+      # process of its own: it is a job on the `sync` queue below, where it has a
+      # row, a gate and a cancel like any other run.
       ConfluencePhxMirror.Desktop.Spaces,
       # `server: false`: the listener below is the one that accepts connections,
       # and the endpoint is mounted in it. Everything else the endpoint owns —

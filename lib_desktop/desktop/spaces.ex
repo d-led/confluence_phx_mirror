@@ -13,7 +13,7 @@ defmodule ConfluencePhxMirror.Desktop.Spaces do
 
   use GenServer
 
-  alias ConfluencePhxMirror.Desktop.Mirror
+  alias ConfluencePhxMirror.Confluence.Source
 
   @type listing :: {:ok, [map()]} | :loading | {:error, term()}
 
@@ -82,7 +82,7 @@ defmodule ConfluencePhxMirror.Desktop.Spaces do
     parent = self()
 
     case Task.Supervisor.start_child(ConfluencePhxMirror.Desktop.TaskSupervisor, fn ->
-           send(parent, {:loaded, Mirror.spaces()})
+           send(parent, {:loaded, Source.source().spaces([])})
          end) do
       {:ok, _pid} ->
         %{state | refreshing?: true}

@@ -356,16 +356,27 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   @doc "How the mirror is doing, in the words the run itself reports."
   @spec mirror(map()) :: String.t()
   def mirror(%{state: :running} = status) do
-    across =
-      if status.count > 1, do: " · space #{status.index} of #{status.count}", else: ""
-
     document(
       "Mirroring #{status.label}",
       """
-      <h1>Mirroring #{escape(status.label)}#{escape(across)}</h1>
-      <p class="lede">#{status.done} of #{status.total} pages in this space</p>
-      <p class="note">This page follows the run; it is not a progress bar that
-      guesses.</p>
+      <h1>Mirroring #{escape(status.label)}</h1>
+      <p class="lede">#{status.done} pages read#{waiting(status)}</p>
+      <p class="note">This page follows the run itself, not a guess at it.</p>
+      #{cancel_form()}
+      """,
+      current: "/__tool/mirror",
+      refresh: true
+    )
+  end
+
+  def mirror(%{state: :queued} = status) do
+    document(
+      "Waiting to mirror #{status.label}",
+      """
+      <h1>Next in line</h1>
+      <p class="lede">#{waiting(status) |> String.trim_leading(" · ")}</p>
+      <p class="note">The run starts as soon as the one in front of it finishes.</p>
+      #{cancel_form()}
       """,
       current: "/__tool/mirror",
       refresh: true
@@ -377,9 +388,22 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       "Mirrored #{status.label}",
       """
       <h1>Done</h1>
-      <p class="lede">#{escape(status.label)} #{if status.count > 1, do: "are", else: "is"} in the catalogue.</p>
+      <p class="lede">#{escape(status.label)} is in the catalogue — #{status.done} pages read.</p>
       <p class="note">The pages are read in the mirror itself.</p>
       <p><a href="/">Read what was mirrored</a></p>
+      """,
+      current: "/__tool/mirror"
+    )
+  end
+
+  def mirror(%{state: :cancelled} = status) do
+    document(
+      "Mirror stopped",
+      """
+      <h1>Stopped</h1>
+      <p class="lede">#{escape(status.label || "The run")} was cancelled after #{status.done} pages.</p>
+      <p class="note">What was read before the stop is in the catalogue and stays there.</p>
+      <p><a href="/__tool/spaces">Back to spaces</a></p>
       """,
       current: "/__tool/mirror"
     )
@@ -390,7 +414,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       "Mirror stopped",
       """
       <h1>Mirror stopped</h1>
-      <p class="lede">#{escape(status.label)} could not be finished.</p>
+      <p class="lede">#{escape(status.label || "The run")} could not be finished.</p>
       <p class="error" role="alert">#{escape(describe_error(status.error))}</p>
       <p><a href="/__tool/spaces">Back to spaces</a></p>
       """,
@@ -408,6 +432,19 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       current: "/__tool/mirror"
     )
   end
+
+  # Cancel is a plain form: it posts, the run stops at its next page, and the
+  # page that comes back says what the run says. No script decides this.
+  defp cancel_form do
+    """
+    <form method="post" action="/__tool/cancel">
+      <button type="submit" class="secondary">Stop mirroring</button>
+    </form>
+    """
+  end
+
+  defp waiting(%{queued: 0}), do: ""
+  defp waiting(%{queued: queued}), do: " · #{queued} more waiting"
 
   @doc """
   An error term as the sentence the runtime already had.
@@ -504,6 +541,26 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   end
 
   @doc """
+  A start the tool refuses, in the words the reason needs.
+
+  Not a redirect: a press that lands on a screen about some other run is a press
+  that appears to have done nothing, which is the failure this whole page exists
+  to avoid.
+  """
+  @spec refused(term()) :: String.t()
+  def refused(reason) do
+    document(
+      "Not started",
+      """
+      <h1>Not started</h1>
+      <p class="lede">#{escape(describe_error(reason))}</p>
+      <p><a href="/__tool/spaces">Choose a space</a></p>
+      """,
+      current: "/__tool/spaces"
+    )
+  end
+
+  @doc """
   A line saying a run is going, for the screen that started it.
 
   The screen it leaves you on follows the run rather than blocking on it: a
@@ -513,6 +570,16 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   """
   @spec status_banner(map() | nil) :: String.t()
   def status_banner(%{state: :running} = status) do
+    """
+    <div class="run" data-run data-status-url="/__tool/status">
+      <span class="dot" aria-hidden="true"></span>
+      <span data-run-text>#{escape(run_text(status))}</span>
+      <a href="/__tool/mirror">details</a>
+    </div>
+    """
+  end
+
+  def status_banner(%{state: :queued} = status) do
     """
     <div class="run" data-run data-status-url="/__tool/status">
       <span class="dot" aria-hidden="true"></span>
@@ -533,10 +600,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
 
   def status_banner(_status), do: ""
 
-  defp run_text(status) do
-    across = if status.count > 1, do: " · space #{status.index} of #{status.count}", else: ""
-    "Mirroring #{status.label}#{across} · #{status.done} of #{status.total} pages"
-  end
+  defp run_text(%{state: :queued} = status),
+    do: "Waiting to mirror #{status.label}#{waiting(status)}"
+
+  defp run_text(status),
+    do: "Mirroring #{status.label} · #{status.done} pages read#{waiting(status)}"
 
   @doc """
   The one script the tool serves: the live filter, and the run banner's pulse.
@@ -590,6 +658,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       var text = banner.querySelector("[data-run-text]");
       var finished = false;
 
+      function waitingText(status) {
+        return status.queued > 0 ? " · " + status.queued + " more waiting" : "";
+      }
+
       function poll() {
         if (finished) return;
 
@@ -599,8 +671,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
             if (!text) return;
 
             if (status.state === "running") {
-              var across = status.count > 1 ? " · space " + status.index + " of " + status.count : "";
-              text.textContent = "Mirroring " + status.label + across + " · " + status.done + " of " + status.total + " pages";
+              text.textContent = "Mirroring " + status.label + " · " + status.done +
+                " pages read" + waitingText(status);
+            } else if (status.state === "queued") {
+              text.textContent = "Waiting to mirror " + status.label + waitingText(status);
             } else if (status.state === "done") {
               finished = true;
               text.textContent = "Finished " + status.label;
