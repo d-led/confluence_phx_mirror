@@ -27,6 +27,12 @@
 # The store the tool uses is the real one, so this touches it: `mix release`
 # compiles, and the boot check runs that release against a throwaway `HOME` so a
 # tool you have open right now is neither locked nor disturbed.
+#
+# A machine that has never built this asks for four things and is given two of
+# them: `mix`, `cargo`, `npm` and the Xcode command line tools are named if they
+# are missing, while Hex, rebar and the Tauri CLI (`cargo tauri`) install
+# themselves. The point is that the first message a fresh checkout prints is what
+# to install, not a build that fails at its last step.
 
 set -euo pipefail
 
@@ -81,6 +87,45 @@ run() {
   "$@"
   echo "[$steps] ok in $((SECONDS - started))s"
 }
+
+# What a build cannot happen without, asked once here rather than discovered
+# fifteen steps in as "no such file". The two that can install themselves do it
+# below; the rest are a one-line answer about where to get them.
+require() {
+  command -v "$1" >/dev/null 2>&1 && return 0
+  echo "missing: $1 — $2"
+  exit 69
+}
+
+require mix "Elixir and Mix — https://elixir-lang.org/install.html"
+require cargo "the Rust toolchain — https://rustup.rs"
+require npm "Node.js — https://nodejs.org (the stylesheet imports npm packages)"
+
+# rustler compiles the keyring NIF with the system toolchain, and a Mac without
+# the command line tools fails deep inside `mix release` with a linker error.
+if [[ "$(uname -s)" == Darwin ]] && ! xcode-select -p >/dev/null 2>&1; then
+  echo "missing: the Xcode command line tools — xcode-select --install"
+  exit 69
+fi
+
+# Hex and rebar are the package managers the fetch uses, and on a machine that
+# has never built an Elixir project `mix deps.get` stops to ask whether to install
+# them — a prompt inside a script is a hang. Both are no-ops once present.
+run "the Hex package manager (a fresh machine has none)" mix local.hex --force
+run "rebar (same, for the projects that build with it)" mix local.rebar --force
+
+# First, because everything after it reads the dependencies: this used to sit
+# after the asset steps, which cannot run without them.
+run "fetching the dependencies (a fresh clone has none)" \
+  env MIX_ENV=desktop mix deps.get
+
+# `cargo tauri` is the Tauri CLI, its own cargo subcommand. Installing it takes
+# a few minutes once per machine; failing at the last step with "no such
+# command" costs the build that came before it.
+if ! cargo tauri --version >/dev/null 2>&1; then
+  run "installing the Tauri CLI (a fresh machine has none)" \
+    cargo install tauri-cli --version "^2" --locked
+fi
 
 # A release that builds but does not boot is not a release, and the workflow
 # refuses to publish one. This is that same check, run before anything is
@@ -209,9 +254,6 @@ run "building the scripts the API docs page loads" \
 
 run "digesting the assets (the manifest the screens link through)" \
   env MIX_ENV=desktop mix phx.digest
-
-run "fetching the desktop dependencies (a fresh clone has none)" \
-  env MIX_ENV=desktop mix deps.get
 
 # A restored build cache can carry Rustler's stamps without the thing it built:
 # `priv/native/*.so` is what `mix release` copies, `mix compile` has nothing to

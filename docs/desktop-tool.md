@@ -495,6 +495,13 @@ code is the one place nobody measures.
 
 ## Packaging
 
+`scripts/package.sh` is the whole build, and it asks for its prerequisites before
+it starts anything: `mix`, `cargo`, `npm` and the Xcode command line tools are
+named if they are absent, while Hex, rebar and the Tauri CLI install themselves
+(`cargo install tauri-cli` — a few minutes, once per machine). The dependencies
+are fetched first, because the asset steps read them, and the release is checked
+by booting the copy that actually sits inside the bundle.
+
 `Burrito` compiles the app and the runtime into one binary per target.
 
 `Tauri` is a window and a `Command` sidecar: it starts the binary, reads a port
