@@ -411,6 +411,15 @@ here as done is open.
     pass, before a single body was written, and the tool's own message was
     `error {…}`, which explains nothing.
 
+    Two more things fell out of the same report. `Desktop.Jobs` started the run
+    with `Task.Supervisor.start_child/2` and waited for the task to *say* it
+    failed — which a raise never does — so a crashed run left the tool on
+    "Mirroring" and refused every later run with `:busy` until the app was
+    restarted: the second half of "mirroring died". It uses `async_nolink/2`
+    and its `:DOWN` message now, so a death is an answer. And the screen printed
+    `inspect/1` of whatever the run had; `Page.describe_error/1` asks the
+    exception for its own sentence instead.
+
     The fix is in `Mirror.Page.changeset/2` (`keep_empty_segment/1`): the empty
     segment is a value, it is written as one, and `slug_match?/2` plus the URL
     helper render NULL and `""` identically, so a deployment's older NULL rows

@@ -335,7 +335,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     document("Mirror stopped", """
     <h1>Mirror stopped</h1>
     <p class="lede">#{escape(status.label)} could not be finished.</p>
-    <p class="error" role="alert">#{escape(inspect(status.error))}</p>
+    <p class="error" role="alert">#{escape(describe_error(status.error))}</p>
     <p><a href="/__tool/spaces">Back to spaces</a></p>
     """)
   end
@@ -346,6 +346,32 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     <p><a href="/__tool/spaces">Choose a space</a></p>
     """)
   end
+
+  @doc """
+  An error term as the sentence the runtime already had.
+
+  The screen printed `inspect/1`, which is how a mirror that died reported
+  `error {"MFS", %Exqlite.Error{…}}` — true, and no use to anybody standing in
+  front of a window with no console. Anything raised carries its own message; the
+  tuples this tool passes around are unwrapped to reach it; a shape nobody
+  anticipated still says something.
+  """
+  @spec describe_error(term()) :: String.t()
+  def describe_error(%{__exception__: true} = error), do: Exception.message(error)
+
+  def describe_error({%{__exception__: true} = error, _stacktrace}),
+    do: Exception.message(error)
+
+  def describe_error({tag, reason}) when tag in [:error, :exit], do: describe_error(reason)
+
+  def describe_error({:unknown_space, key}) when is_binary(key),
+    do: "the site has no space called #{key}"
+
+  def describe_error({space_key, reason}) when is_binary(space_key),
+    do: "in #{space_key}: #{describe_error(reason)}"
+
+  def describe_error(reason) when is_binary(reason), do: reason
+  def describe_error(reason), do: inspect(reason)
 
   @doc """
   The archive screen: what is in hand, what is being built, and the press.

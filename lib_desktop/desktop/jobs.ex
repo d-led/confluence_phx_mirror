@@ -29,7 +29,8 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
           count: non_neg_integer(),
           done: non_neg_integer(),
           total: non_neg_integer(),
-          error: term()
+          error: term(),
+          task: reference() | nil
         }
 
   @idle %{
@@ -39,7 +40,8 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
     count: 0,
     done: 0,
     total: 0,
-    error: nil
+    error: nil,
+    task: nil
   }
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -86,18 +88,34 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
   def handle_call({:start, keys, label, source}, _from, _status) do
     status = %{@idle | state: :running, label: label, count: length(keys)}
 
-    case Task.Supervisor.start_child(ConfluencePhxMirror.Desktop.TaskSupervisor, fn ->
-           run(keys, source || Source.source())
-         end) do
-      {:ok, _pid} ->
-        {:reply, {:ok, :started}, status}
+    # `async_nolink` rather than a bare child: a run that raises never reaches
+    # `finished/1`, and a screen stuck on "Mirroring" is a tool that refuses
+    # every later run with `:busy` and cannot be used again without a restart.
+    # The monitor is what turns a crash into an answer.
+    %Task{ref: ref} =
+      Task.Supervisor.async_nolink(ConfluencePhxMirror.Desktop.TaskSupervisor, fn ->
+        run(keys, source || Source.source())
+      end)
 
-      # Nothing was started, so nothing will report progress. Left as :running,
-      # the screen would follow a run that does not exist.
-      {:error, reason} ->
-        {:reply, {:error, :no_worker}, %{status | state: :error, error: reason}}
-    end
+    {:reply, {:ok, :started}, %{status | task: ref}}
   end
+
+  # The run's own last word, and then its exit. A run that ended normally has
+  # already said `:done` or `:error` through `finished/1`, so this only clears the
+  # reference; anything else died before it could speak.
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %{task: ref} = status) do
+    status = %{status | task: nil}
+
+    if reason == :normal,
+      do: {:noreply, status},
+      else: {:noreply, %{status | state: :error, error: reason}}
+  end
+
+  # The supervisor sends nothing else, but a GenServer that dies on an unexpected
+  # message is a worse failure than one that ignores it: this process is the only
+  # thing the mirror screen asks about a run.
+  def handle_info(_message, status), do: {:noreply, status}
 
   @impl true
   def handle_cast({:progress, done, total}, status) do
