@@ -19,6 +19,12 @@
 # and run on. Adding a platform is a matrix entry plus its system libraries
 # (Linux needs webkit2gtk; Windows needs nothing beyond the runner), and is
 # worth doing when someone is ready to test the result.
+#
+# **Now three platforms.** The reason to add them here rather than only in the
+# release workflow is speed: this job builds the two halves and boots the
+# release, which is minutes, and a Windows compile error found here costs a
+# branch push instead of a release-size round trip. `desktop-release.yml` runs
+# the same script with packaging on top.
 
 name: desktop-debug
 
@@ -45,8 +51,18 @@ env:
 
 jobs:
   build:
-    name: build (debug)
-    runs-on: macos-latest
+    name: build (debug, ${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS
+          - os: ubuntu-22.04
+            name: Linux
+          - os: windows-latest
+            name: Windows
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -55,6 +71,16 @@ jobs:
         with:
           otp-version: ${{ env.OTP_VERSION }}
           elixir-version: ${{ env.ELIXIR_VERSION }}
+
+      # The window links these; the release in `rel/` needs none of them.
+      - name: Install the window's system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+            libayatana-appindicator3-dev libssl-dev patchelf
 
       # `lib_desktop` is compiled only in this environment, so the cache has to
       # be keyed by it as well as by the lockfile.
@@ -76,11 +102,13 @@ jobs:
       # A restored cache can carry Rustler's stamps without the library it built,
       # and then `mix compile` has nothing to do and the release boots into
       # `on_load_function_failed` on the keyring NIF — which is exactly how this
-      # job failed once. Ask the file, not the stamps.
+      # job failed once. Ask the file, not the stamps. The extension is the
+      # platform's (`confluence_keyring.so` on Unix, `.dll` on Windows).
       - name: Build the release
+        shell: bash
         run: |
           set -euo pipefail
-          [ -f _build/desktop/lib/confluence_phx_mirror/priv/native/confluence_keyring.so ] ||
+          compgen -G "_build/desktop/lib/confluence_phx_mirror/priv/native/confluence_keyring.*" >/dev/null ||
             mix compile --force
           mix release --overwrite
 
@@ -89,13 +117,32 @@ jobs:
 
       # A release that builds but cannot boot is not much of a signal, and boot
       # is where a missing `:persistent_term` or a Swoosh client shows up.
+      #
+      # `bash` on every platform: the release's launcher is `bin/<name>` on Unix
+      # and `bin/<name>.bat` on Windows, and the latter is not an executable —
+      # `CreateProcess` refuses one, so it goes through `cmd /C`.
       - name: Boot the release and check it serves
+        shell: bash
         run: |
           set -euo pipefail
-          bin=_build/desktop/rel/confluence_phx_mirror/bin/confluence_phx_mirror
+          dir=_build/desktop/rel/confluence_phx_mirror/bin
           log=$(mktemp)
-          "$bin" start >"$log" 2>&1 &
-          trap '"$bin" stop >/dev/null 2>&1 || true; cat "$log"' EXIT
+
+          case "$(uname -s)" in
+            MINGW* | MSYS* | CYGWIN*) bin="$dir/confluence_phx_mirror.bat" ;;
+            *) bin="$dir/confluence_phx_mirror" ;;
+          esac
+
+          case "$(uname -s)" in
+            MINGW* | MSYS* | CYGWIN*)
+              RELEASE_DISTRIBUTION=none "$COMSPEC" //C "$bin" start >"$log" 2>&1 &
+              ;;
+            *)
+              RELEASE_DISTRIBUTION=none "$bin" start >"$log" 2>&1 &
+              ;;
+          esac
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; cat "$log"' EXIT
 
           for _ in $(seq 1 60); do
             url=$(sed -n 's/^desktop ui: //p' "$log" | head -1)
@@ -116,9 +163,11 @@ jobs:
           echo
 
       - name: Keep the window binary
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: confluence-export-${{ github.sha }}
-          path: src-tauri/target/debug/confluence-export
+          name: confluence-export-${{ runner.os }}-${{ github.sha }}
+          path: |
+            src-tauri/target/debug/confluence-export
+            src-tauri/target/debug/confluence-export.exe
           if-no-files-found: error
           retention-days: 7
