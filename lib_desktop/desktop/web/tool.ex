@@ -147,6 +147,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
             # can be let go of.
             held: MapSet.new(ConfluencePhxMirror.Mirror.list_spaces(), & &1.key),
             configured: length(ConfluencePhxMirror.Sync.SpaceScope.added()),
+            # Where this list came from, said by the list itself: a screen that
+            # named the configured site while drawing the bundled sample's
+            # spaces is trap 31.
+            where: if(ConfluencePhxMirror.Confluence.Source.demo?(), do: :sample, else: :site),
             # A list being replaced underneath a person is not one to press a
             # button about: every control is drawn disabled until the answer
             # that matters is in hand.

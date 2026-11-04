@@ -324,7 +324,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       "Spaces",
       """
       <h1>Spaces</h1>
-      <p class="lede">#{known} spaces on #{escape(Settings.site() || "Confluence")}.</p>
+      <p class="lede">#{spaces_lede(known, meta)}</p>
       #{status_banner(Map.get(meta, :run))}
       #{everything}
       <form method="get" action="/__tool/spaces" class="filter" role="search">
@@ -340,6 +340,15 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       script: true
     )
   end
+
+  # Where the list came from is the list's own business, not the settings': a
+  # screen that named the configured site while showing the bundled sample's two
+  # spaces is what a person had to ask about.
+  defp spaces_lede(known, %{where: :sample}),
+    do: "#{known} spaces in the bundled sample — this tool is not reading a site yet."
+
+  defp spaces_lede(known, _meta),
+    do: "#{known} spaces on #{escape(Settings.site() || "Confluence")}."
 
   @doc """
   Said when the tool cannot act: what is wrong, and the one screen that fixes it.
