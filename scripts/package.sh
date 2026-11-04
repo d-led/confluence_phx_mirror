@@ -174,6 +174,18 @@ assemble() {
 # console full of "unknown hook found" and a menu that does not open.
 run "checking the asset toolchain (installs it once, then finds it)" \
   env MIX_ENV=desktop mix assets.install --if-missing
+
+# The JavaScript the bundle imports is npm's — `js/code_highlight.js` pulls
+# highlight.js' grammars — and `mix esbuild` only bundles it. `mix
+# assets.install` above fetches the esbuild and tailwind *binaries*, not
+# `assets/node_modules`, so a clone that has never run `npm ci` fails at the
+# first bundle with "Could not resolve highlight.js/lib/languages/diff". The
+# release workflow did exactly that on every run.
+if [[ ! -d assets/node_modules ]]; then
+  run "installing the assets' npm packages (a fresh clone has none)" \
+    env npm --prefix assets ci --no-audit --no-fund
+fi
+
 run "building the stylesheet" \
   env MIX_ENV=desktop mix tailwind confluence_phx_mirror --minify
 

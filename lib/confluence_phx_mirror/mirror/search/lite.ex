@@ -56,12 +56,12 @@ defmodule ConfluencePhxMirror.Mirror.Search.Lite do
     terms = Filters.terms(params["q"])
     expression = match_expression(params)
     excluded = exclusions(params)
-    {filters, values} = filters(params)
+    {clauses, values} = where_clause(params)
 
-    if is_nil(expression) and excluded == [] and filters == "" do
+    if is_nil(expression) and excluded == [] and clauses == "" do
       {:ok, [], terms}
     else
-      case run(expression, excluded, filters, values, terms, opts) do
+      case run(expression, excluded, clauses, values, terms, opts) do
         {:ok, results} -> {:ok, results, terms}
         {:error, message} -> {:error, message}
       end
@@ -215,7 +215,21 @@ defmodule ConfluencePhxMirror.Mirror.Search.Lite do
   defp order(:newest), do: "p.external_updated_at DESC, score"
   defp order(:oldest), do: "p.external_updated_at ASC, score"
 
-  defp filters(params) do
+  @doc """
+  The `AND` clauses the field filters become, and the values to bind to them.
+
+  The statement itself is assembled elsewhere; this is the half a test can see —
+  the search screen's parameters as the SQL they produce, with every value a `?`
+  and nothing from `params` in the string. A parameter this does not know is
+  ignored, not guessed at: the reader UI and this list of fields are written
+  against each other, and a filter nobody implements should read as no filter
+  rather than as a filter on the wrong column.
+
+  Empty clauses come back as `{"", []}`, which is how the caller tells a search
+  with filters from one that has none.
+  """
+  @spec where_clause(map()) :: {String.t(), [term()]}
+  def where_clause(params) do
     params
     |> Enum.reduce({[], []}, fn
       {_key, value}, acc when value in [nil, ""] ->
@@ -342,10 +356,12 @@ defmodule ConfluencePhxMirror.Mirror.Search.Lite do
     ids = Enum.map(rows, fn [id, _score] -> id end)
     scores = Map.new(rows, fn [id, score] -> {id, score} end)
 
-    # `space` is loaded onto the page, not only carried beside it: the search
-    # result component reads `page.space.name`, and a struct whose association is
-    # `NotLoaded` raises where a page would render. The Postgres engine answers
-    # the same shape.
+    results(ids, scores, pages_by_id(ids), terms)
+  end
+
+  # The pages for `ids` in one query, each with the space its result component
+  # reads: a struct whose association is `NotLoaded` raises where a page renders.
+  defp pages_by_id(ids) do
     from(p in Page,
       join: s in assoc(p, :space),
       where: p.id in ^ids,
@@ -353,28 +369,46 @@ defmodule ConfluencePhxMirror.Mirror.Search.Lite do
     )
     |> Repo.all()
     |> Map.new(&{&1.id, &1})
-    |> then(fn found ->
-      Enum.flat_map(ids, fn id ->
-        case Map.fetch(found, id) do
-          # Gone between the index read and this one: a purge that ran in between
-          # is not a reason to fail the search.
-          :error ->
-            []
+  end
 
-          {:ok, page} ->
-            [
-              %{
-                page: page,
-                space: page.space,
-                # `bm25()` is negative and lower-is-better; every other engine in
-                # this application reports a rank that is higher-is-better.
-                rank: -Map.fetch!(scores, id),
-                snippet: Search.snippet(page, terms),
-                comment: nil
-              }
-            ]
-        end
-      end)
+  @doc """
+  Index rows, in rank order, as results.
+
+  Apart from the query that fetches the pages, so what a result holds is
+  assertable without a database: the page and its space, `bm25()`'s negative and
+  lower-is-better score flipped to a rank that is higher-is-better like every
+  other engine's, and the snippet the reader sees.
+
+  A row whose page is gone — a purge between the index read and this one — is
+  dropped rather than failing the search.
+  """
+  @spec results(
+          [non_neg_integer()],
+          %{non_neg_integer() => number()},
+          %{
+            non_neg_integer() => Page.t()
+          },
+          [String.t()]
+        ) :: [Search.result()]
+  def results(ids, scores, pages, terms) do
+    Enum.flat_map(ids, fn id ->
+      case Map.fetch(pages, id) do
+        # Gone between the index read and this one: a purge that ran in between
+        # is not a reason to fail the search.
+        :error ->
+          []
+
+        {:ok, page} ->
+          [
+            %{
+              page: page,
+              space: page.space,
+              rank: -Map.fetch!(scores, id),
+              snippet: Search.snippet(page, terms),
+              comment: nil
+            }
+          ]
+      end
     end)
   end
 end

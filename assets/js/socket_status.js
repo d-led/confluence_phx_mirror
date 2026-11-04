@@ -40,7 +40,8 @@ const hide = () => {
   document.getElementById(bannerId)?.remove();
 };
 
-const connected = () => rootView()?.classList.contains("phx-connected") ?? false;
+const connected = () =>
+  rootView()?.classList.contains("phx-connected") ?? false;
 
 const update = () => {
   if (connected()) return hide();

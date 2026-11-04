@@ -97,7 +97,14 @@ jobs:
 
           [ -n "$url" ] || { echo "the release never said where it listens"; exit 1; }
           echo "serving at $url"
-          curl -fsS "$url/state" || exit 1
+
+          # The address ends in a slash, so `$url/state` is `//state` — a path the
+          # endpoint answers with 404, which is how this step failed on every run
+          # until it was asked for something that exists. `/state` is not the
+          # tool's either: its screens live under `/__tool`. Two halves, then:
+          # the mirror's health, and the tool's own screen.
+          curl -fsS "${url%/}/health" >/dev/null
+          curl -fsS -o /dev/null "${url%/}/__tool"
           echo
 
       - name: Keep the window binary

@@ -27,6 +27,7 @@ author and the original URL.*
 | **see it working** (bundled demo, no credentials) | ~4 min | [See it working](#1-see-it-working) |
 | **mirror a real site anyone can read** (no sign-in) | ~5 min, then the first pull | [Mirror a real site](#2-mirror-a-real-site) |
 | **deploy it** (Fly.io or Kubernetes) | ~20 min | [Deploy it](#3-deploy-it) |
+| **run the desktop app** (macOS, no Docker) | ~2 min | [The desktop app](#the-desktop-app) |
 | run it in production | — | [operations.md](docs/operations.md) |
 | change the code | — | [developers.md](docs/developers.md) |
 
@@ -195,6 +196,36 @@ PHX_SERVER=true DATABASE_URL=… SECRET_KEY_BASE=… bin/confluence_phx_mirror s
 A release that mirrors a real site **refuses to start** with the sign-in-free
 switches on (`MIRROR_AUTO_ADMIN`, `MIRROR_SELF_SIGNUP`, `CM_PROXY_AUTH`) unless
 `MIRROR_ALLOW_UNSAFE_IDENTITY=1` says you meant it.
+
+## The desktop app
+
+The same mirror as one macOS application, with a SQLite catalogue in
+`~/Library/Application Support/confluence-export` instead of Postgres and a
+container: no Docker, no server, no shell. It is the tool for pointing at one
+site and taking a copy of it.
+
+```sh
+# the newest build of a branch, installed into ~/Applications
+curl -fsSL https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.sh | sh
+```
+
+Or take the zip and place it yourself:
+[`confluence-export-macos.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-macos.zip)
+is the newest **successful** run of the `desktop-release` workflow, and a `v*`
+tag attaches the same build to [Releases](https://github.com/d-led/confluence_phx_mirror/releases).
+Unzip it, drag `Confluence Export.app` to `/Applications`, double-click.
+
+It is **not signed**, and cannot be without a paid Apple Developer account: a
+copy that arrived with the quarantine flag is stopped before macOS offers to run
+it, so clear the flag once (`install-desktop.sh` does this for you):
+
+```sh
+xattr -rd com.apple.quarantine "/Applications/Confluence Export.app"
+```
+
+The first launch of a copy also asks once for the keychain item
+`confluence-export`, where the site's token is kept. [The desktop tool](docs/desktop-tool.md)
+has the rest — what it shares with the server, and where it differs.
 
 ## What it does
 

@@ -78,6 +78,17 @@ jobs:
       - name: Fetch dependencies
         run: mix deps.get
 
+      # `mix esbuild` only bundles the JavaScript; the packages it bundles are
+      # npm's — `js/code_highlight.js` imports highlight.js' grammars — and
+      # `mix assets.install` fetches the esbuild and tailwind *binaries*, not
+      # `assets/node_modules`. Without this the bundle build dies on "Could not
+      # resolve \"highlight.js/lib/languages/diff\"", which is what it did on
+      # every run before this step existed. The lockfile pins the versions and
+      # the runner's own Node is enough, as in `ci.yml`.
+      - name: Install the assets' npm packages
+        run: npm ci --no-audit --no-fund
+        working-directory: assets
+
       # A release ships whatever `priv/static` holds and never builds it, and
       # `priv/static/assets` is not in the repository. Built here, or the download
       # opens unstyled, with "unknown hook found" in its console and menus that do
