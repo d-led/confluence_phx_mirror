@@ -317,6 +317,22 @@ here as done is open.
     `CONFLUENCE_EXPORT_SIDECAR=/nonexistent/sidecar` the window shows the reason
     and no crash report is written; the shipped zip, extracted to `/tmp/dl`,
     starts its sidecar, answers `/` in 25 ms, and puts 13 lines in the log.
+23. **A green packaging run published an app with no release inside it.** The
+    first `desktop-release` that ever succeeded uploaded a **2.2 MB** zip —
+    the local artifact is 25 MB — with nothing under `Contents/Resources/rel`,
+    so a person who installed it would get a window that could not start
+    anything, and a "quit unexpectedly" for their trouble. Two copies of the same
+    steps disagreed: the workflow built the bundle and zipped it, but never ran
+    the `ditto` that carries the release in, and its boot check ran
+    `_build/desktop/rel` — the release in the tree, not the one in the bundle.
+    Its artifact assertion wanted `Contents/MacOS/confluence-export`, which a
+    window-only bundle satisfies. The workflow now runs `scripts/package.sh` and
+    uploads what it writes; `package.sh`'s `assemble` also refuses a zip without
+    `Contents/Resources/rel/<app>/bin/<app>`. The lesson is not the missing
+    `ditto` — it is that two implementations of one procedure will be maintained
+    one at a time. Check the artifact, not the badge:
+    `gh run download <id> -n confluence-export-macos -D … && unzip -l … | grep -c
+    Contents/Resources/rel` should count thousands, not zero.
 
 ## Next, in order
 
