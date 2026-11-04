@@ -38,6 +38,18 @@ defmodule ConfluencePhxMirror.DataCase do
   Sets up the sandbox based on the test tags.
   """
   def setup_sandbox(tags) do
+    # SQLite allows one writer, and it does not wait for one: a transaction that
+    # upgrades to a write while another connection holds the lock is answered
+    # "Database busy" at once, whatever `busy_timeout` says. `--max-cases 1` is
+    # not enough, because ExUnit runs a sync module while an async one is still
+    # finishing — so the suite takes the lock itself, for the length of a test,
+    # and only when it is pointed at SQLite. Postgres needs none of this.
+    if Application.get_env(:confluence_phx_mirror, :sqlite_suite) do
+      holder = self()
+      :global.set_lock({:sqlite_suite_writer, holder})
+      on_exit(fn -> :global.del_lock({:sqlite_suite_writer, holder}) end)
+    end
+
     # The cached totals are keyed on the newest write in the mirror, and a
     # rolled-back transaction puts the mirror back to an older version without
     # moving that key; every test starts from an empty cache instead.

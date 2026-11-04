@@ -31,26 +31,17 @@ if sqlite? do
   # a pool, and every one of them has to see the same database.
   #
   # The pool is there for boot (Oban checks out a connection of its own to verify
-  # its migrations) but only one test runs at a time — `--max-cases 1` in
-  # `scripts/test-sqlite.sh`. SQLite allows a single writer, so a concurrent suite
-  # turns every second test that writes into "Database busy": 147 of the first
-  # run's 286 failures were that and nothing else. One test at a time is what the
-  # tool's single connection does in production.
-  #
-  # `:immediate` transactions are the second half of that. A deferred `BEGIN`
-  # takes its write lock on the first write, and SQLite does not run the busy
-  # handler for that upgrade — it answers "busy" at once, whatever the
-  # `busy_timeout` says. So a slow runner (two cores, a test with LiveView and
-  # Oban processes of its own) hits it even one test at a time, which is how the
-  # job failed on its second GitHub run. Taking the lock at `BEGIN` is where the
-  # timeout does apply.
+  # its migrations) but only one test writes at a time — `DataCase.setup_sandbox/1`
+  # takes a lock for the length of a test when this suite runs, because SQLite
+  # allows a single writer and a deferred `BEGIN` does not wait for one (it
+  # answers "Database busy" at once, whatever `busy_timeout` says). One test at a
+  # time is also what the tool's single connection does in production.
   config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
     database: Path.expand("../tmp/test#{System.get_env("MIX_TEST_PARTITION")}.db", __DIR__),
     pool: Ecto.Adapters.SQL.Sandbox,
     pool_size: System.schedulers_online() * 3,
     journal_mode: :wal,
-    busy_timeout: 5_000,
-    default_transaction_mode: :immediate
+    busy_timeout: 5_000
 
   # Oban's default notifier and engine are Postgres's; the tool points both at
   # SQLite (`config/desktop.exs`), and a test run that leaves them alone spends
