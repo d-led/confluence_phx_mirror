@@ -151,9 +151,12 @@ assemble() {
   # ones a bundle needs to launch.
   ditto -c -k --keepParent "$app" "$out/$asset"
 
-  # Prove the promise: one file, and the bundle is inside it with its executable.
-  # The listing is compared, not piped into `grep -q`: that exits at the first
-  # match, `unzip` takes the SIGPIPE, and `pipefail` reads 141 as a failure.
+  # Prove the promise: one file, and the bundle is inside it with **both** halves
+  # — the window and the release it starts. Checking only the window is how a
+  # 2 MB zip with no `Contents/Resources/rel` passed a workflow gate and shipped
+  # an app that could not start anything. The listing is compared, not piped into
+  # `grep -q`: that exits at the first match, `unzip` takes the SIGPIPE, and
+  # `pipefail` reads 141 as a failure.
   local listing
   listing=$(unzip -l "$out/$asset")
   case "$listing" in
@@ -161,6 +164,15 @@ assemble() {
     *)
       echo "the zip does not carry the application bundle:"
       echo "$listing" | head -20
+      return 1
+      ;;
+  esac
+
+  case "$listing" in
+    *"Confluence Export.app/Contents/Resources/rel/$name/bin/$name"*) ;;
+    *)
+      echo "the zip carries a window with no release behind it:"
+      echo "$listing" | grep "Contents/Resources" | head -20
       return 1
       ;;
   esac

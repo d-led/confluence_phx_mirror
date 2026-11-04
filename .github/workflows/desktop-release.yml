@@ -89,30 +89,6 @@ jobs:
         run: npm ci --no-audit --no-fund
         working-directory: assets
 
-      # A release ships whatever `priv/static` holds and never builds it, and
-      # `priv/static/assets` is not in the repository. Built here, or the download
-      # opens unstyled, with "unknown hook found" in its console and menus that do
-      # not open — the same four steps `scripts/package.sh` runs locally.
-      - name: Build the assets
-        run: |
-          mix assets.install --if-missing
-          mix tailwind confluence_phx_mirror --minify
-          mix esbuild confluence_phx_mirror --minify
-          mix esbuild confluence_phx_mirror_swagger --minify
-          mix phx.digest
-
-      - name: Build the release
-        env:
-          # Signs every BEAM binary and escript in the release — the half Tauri
-          # cannot sign for itself. Ad-hoc without an identity; with
-          # `APPLE_SIGNING_IDENTITY` in the secrets it is a real signature, and
-          # Tauri then signs and notarises the app around it.
-          CONFLUENCE_SIGN_RELEASE: "1"
-        run: mix release --overwrite
-
-      - name: Build the window
-        run: cargo build --release --manifest-path src-tauri/Cargo.toml
-
       # `cargo tauri` needs the CLI, and a runner starts without it. Cached on
       # the version it installs, which is the only thing that changes it.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -123,68 +99,21 @@ jobs:
       - name: Install the Tauri CLI (when the cache misses)
         run: command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "^2" --locked
 
-      # The application bundle: the window, the release as a resource, and the
-      # icon, in one double-clickable package. `tauri.bundle.conf.json` is
-      # merged here only — `bundle.active` in the main config breaks the debug
-      # window `desktop-debug` builds.
-      - name: Build the application bundle
-        run: cargo tauri build --bundles app --config "$PWD/src-tauri/tauri.bundle.conf.json"
-
-      # A release that builds but does not boot is not a release. This is the
-      # same check the debug workflow makes, and it runs before anything is
-      # published.
-      - name: Boot the release and check it serves
-        run: |
-          set -euo pipefail
-          bin=_build/desktop/rel/confluence_phx_mirror/bin/confluence_phx_mirror
-          log=$(mktemp)
-          "$bin" start >"$log" 2>&1 &
-          trap '"$bin" stop >/dev/null 2>&1 || true' EXIT
-
-          for _ in $(seq 1 60); do
-            url=$(sed -n 's/^desktop ui: //p' "$log" | head -1)
-            [ -n "$url" ] && break
-            sleep 1
-          done
-
-          [ -n "$url" ] || { echo "the release never said where it listens"; cat "$log"; exit 1; }
-
-          # The address it prints ends with a slash, and `//__tool` is a
-          # different path from `/__tool` — one the endpoint answers with a 404.
-          url=${url%/}
-
-          # Both halves: the mirror's own health, and the tool's screen, which is
-          # the part this build adds. A release that serves one and not the other
-          # is a download that opens on nothing.
-          curl -fsS "$url/health"
-          curl -fsS "$url/__tool"
-
-      - name: Assemble
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          app="src-tauri/target/release/bundle/macos/Confluence Export.app"
-
-          # `ditto`, not `zip`: a bundle is directories, symlinks and extended
-          # attributes, and the ones `zip` drops are the ones that stop it
-          # launching.
-          ditto -c -k --keepParent "$app" dist/confluence-export-macos.zip
-
-          # Prove the promise: the bundle is inside, executable included. The
-          # listing is compared, not piped into `grep -q`: that exits at the first
-          # match, `unzip` takes the SIGPIPE, and `pipefail` reads 141 as a
-          # failure.
-          listing=$(unzip -l dist/confluence-export-macos.zip)
-          case "$listing" in
-            *"Confluence Export.app/Contents/MacOS/confluence-export"*) ;;
-            *) echo "the zip does not carry the bundle"; echo "$listing" | head -20; exit 1 ;;
-          esac
-          ls -lh dist
+      # One script, not a second implementation of it. The steps used to be
+      # spelled out here — assets, release, window, bundle, boot check, zip — and
+      # they drifted: this workflow zipped the window *without* carrying the
+      # release into `Contents/Resources/rel`, and its boot check ran
+      # `_build/desktop/rel` instead of the copy inside the bundle, so a green run
+      # published a 2 MB app whose window could not start anything. `package.sh`
+      # is what a person runs locally, and it does all of it — including whether
+      # the release *the bundle carries* answers `/health` and `/__tool`.
+      - name: Package the application (build, carry the release, boot check, zip)
+        run: scripts/package.sh
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: confluence-export-macos
-          path: dist/confluence-export-macos.zip
+          path: _build/desktop/package/confluence-export-macos.zip
           # `nightly.link` serves the newest artifact of a branch, and an
           # installed build should keep working for a while: a week is not long
           # enough for that promise.
