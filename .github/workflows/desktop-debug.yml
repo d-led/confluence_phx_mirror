@@ -73,8 +73,16 @@ jobs:
       - name: Fetch dependencies
         run: mix deps.get
 
+      # A restored cache can carry Rustler's stamps without the library it built,
+      # and then `mix compile` has nothing to do and the release boots into
+      # `on_load_function_failed` on the keyring NIF — which is exactly how this
+      # job failed once. Ask the file, not the stamps.
       - name: Build the release
-        run: mix release --overwrite
+        run: |
+          set -euo pipefail
+          [ -f _build/desktop/lib/confluence_phx_mirror/priv/native/confluence_keyring.so ] ||
+            mix compile --force
+          mix release --overwrite
 
       - name: Build the window
         run: cargo build --manifest-path src-tauri/Cargo.toml

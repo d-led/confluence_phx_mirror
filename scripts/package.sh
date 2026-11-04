@@ -213,6 +213,16 @@ run "digesting the assets (the manifest the screens link through)" \
 run "fetching the desktop dependencies (a fresh clone has none)" \
   env MIX_ENV=desktop mix deps.get
 
+# A restored build cache can carry Rustler's stamps without the thing it built:
+# `priv/native/*.so` is what `mix release` copies, `mix compile` has nothing to
+# do when the stamps say the crate is current, and the release then dies at boot
+# with `on_load_function_failed` on the keyring module. Ask the file, not the
+# stamps — the same lesson as the artifact that carried no release.
+if [[ ! -f "_build/desktop/lib/$name/priv/native/confluence_keyring.so" ]]; then
+  run "the keyring NIF is missing from the build; compiling it again" \
+    env MIX_ENV=desktop mix compile --force
+fi
+
 run "building the sidecar release, signed (ad-hoc without a certificate)" \
   env MIX_ENV=desktop CONFLUENCE_SIGN_RELEASE=1 mix release --overwrite
 

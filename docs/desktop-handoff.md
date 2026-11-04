@@ -350,6 +350,17 @@ here as done is open.
     preserves timestamps and an old copy looks old. Related: `package.sh`'s
     `assemble` used to `rm -rf` the package directory, deleting the `.app` a
     person may be double-clicking; it removes only the zip now.
+25. **A restored build cache can carry Rustler's stamps without its artifact.**
+    `desktop-debug` failed at the boot check with
+    `on_load_function_failed` on `Desktop.Credentials.Keyring`:
+    `Failed to load NIF library: '…/priv/native/confluence_keyring.so' (no such
+    file)`. Nothing had changed in the crate — the cache had `_build/desktop`
+    with the compile stamps, so `mix compile` had nothing to do, and
+    `mix release` copied a `priv/native` directory with no `.so` in it. Both the
+    workflow and `package.sh` ask the file now — `[ -f
+    _build/desktop/lib/<app>/priv/native/confluence_keyring.so ] || mix compile
+    --force` — for the same reason as traps 23 and 24: a stale artifact is
+    invisible to the thing that was supposed to produce it.
 
 ## Next, in order
 
