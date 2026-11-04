@@ -100,6 +100,7 @@ here as done is open.
 | "the app stored the token not bound to the instance URL … what if I stuck a malicious URL there????" | **done** — a token is filed under the site it is for (`workspace:<normalised base URL>`, `SiteUrl.normalize/1`), so it is never *found* for another address; a changed site needs a token of its own (`:secret_required`, nothing saved) instead of inheriting the previous one, an environment token only counts for the site in `CM_CONFLUENCE_SITE`, and the form no longer renders the stored secret into its own HTML |
 | "what are these 2 spaces???? … don't show any FAKE data" / "if spaces are loading, the button must be blocked" | **done** — the list is tagged with the source that produced it and served only while that source is still the configured one (the bundled sample's two spaces can no longer be drawn beside a real site), the boot fetch happens after the workspace knows its site instead of before, every control is drawn disabled while a list is being replaced, and `Jobs.start_mirror/3` refuses a start mid-fetch (`:list_loading`) instead of acting on keys nobody confirmed |
 | "the desktop version again imports private spaces. I thought we configured it to be false by default?" | **done** — it was true, by a different road than the deployment takes: a `~account` space is skipped by *discovery* (`Sync.importable_spaces/1`) but a one-space sync is a request, and the tool's bulk run was a listing turned into one request per key. The list it offers now leaves personal spaces out (`Sync.personal_spaces?/0`, off unless `CM_SYNC_PERSONAL_SPACES=true`), and an action naming one is refused by name with nothing queued |
+| "the filter for the spaces to sync is again not live. Bad user experience" | **done** — it had never been live: the page passed `script: true` and the filter was served at `/__tool/assets/app.js`, but the document shell emitted no `<script>` tag, so nothing loaded it (`git log -S` found no version that did — trap 38). The shell now emits the tag when a page asks for it, and the file is served `no-store` so a cached copy cannot bring the silent failure back |
 | "it started a sync NOT AS A JOB … that could not be canceled! … why are we duplicating functionality?" | **done** — the tool's own copy of the loop is gone. A run is a `SpaceWorker` on the `sync` queue: a row in `oban_jobs`, a row in `sync_runs` (mode, scope, trigger, pages), `/admin/jobs` lists it, `/__tool/mirror` follows it and `/__tool/cancel` is `Sync.cancel/2` (which also empties the queue, so a bulk run stops being a bulk run). Proven in a headless run: press → job + run row; bulk start → two runs, one after the other; cancel → `cancelled` job and `cancelled` run with `cancel_requested_at`; a mistyped key → 409, "the site has no space called NOPE", nothing enqueued |
 
 ## Decisions, and why
@@ -601,7 +602,22 @@ here as done is open.
     `:unknown` and the sweep skips it. Full detail and risk notes in
     `docs/review-desktop-branch.md` §1.
 
-38. **Still open, and it needs a decision: a page is visible before its
+38. **The tool served its live filter and never loaded it.** The spaces screen
+    passed `script: true`, and `/__tool/assets/app.js` was served — but the
+    document shell in `lib_desktop/desktop/web/page.ex` never emitted a
+    `<script>` tag for it, and `git log -S'assets/app.js'` finds no version of
+    that file which did. So the filter has never listened as you typed; it was
+    submit-only, which is exactly "the filter is not live", twice reported. Two
+    halves now: the shell emits `<script defer src="/__tool/assets/app.js">` when
+    a page asks for it, and the route serves that file with
+    `cache-control: no-store`, because the tool has no version in its URLs and a
+    cached copy is the same silent failure. The lesson generalises: an option a
+    page passes and nothing reads is invisible in review — the check has to be
+    against the *served bytes*, which is how this one was confirmed (the page
+    carries the tag, the input and the `data-search` rows; the script answers 200
+    with `no-store`, the `input` listener and its first `applyFilter()`).
+
+39. **Still open, and it needs a decision: a page is visible before its
     restrictions are known.** The listing pass writes the page row; the detail
     pass reads who may read it; "no rows" means open. So a brand-new restricted
     page exists, with its title and storage body, for up to one run. Closing it
