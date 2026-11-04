@@ -104,13 +104,24 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("the window could not be built")
-        .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
+        .run(|app, event| match event {
+            // There is no tray icon and no menu of ours: a window nobody can see
+            // is an app nobody can quit, still holding the port the next launch
+            // wants. Closing the window closes the app.
+            tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Destroyed,
+                ..
+            } if label == "main" => app.exit(0),
+
+            tauri::RunEvent::Exit => {
                 if let Some(mut child) = app.state::<Sidecar>().0.lock().unwrap().take() {
                     let _ = child.kill();
                     let _ = child.wait();
                 }
             }
+
+            _ => {}
         });
 }
 
@@ -147,6 +158,16 @@ fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String
         // Erlang node", which the shell can only report as a sidecar that never
         // said where it listens.
         .env("RELEASE_DISTRIBUTION", "none")
+        // The release watches this pipe and stops when it closes: a window that
+        // was force-quit or killed never gets to ask its sidecar to stop, and a
+        // server left holding the port is a launch that cannot have it. Only set
+        // for a window — a release started from a shell inherits a stdin that may
+        // already be at end-of-file, and must not exit over it.
+        .env("CONFLUENCE_EXPORT_DIE_WITH_PARENT", "1")
+        // A pipe the window owns: when this process dies, the write end closes
+        // and the release sees end-of-file. That is the only signal a killed
+        // window can still send.
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

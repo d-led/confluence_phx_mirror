@@ -128,6 +128,32 @@ defmodule ConfluencePhxMirror.Desktop.Application do
     Settings.apply_credentials()
 
     ConfluencePhxMirror.Sync.abandon_abandoned_runs()
+
+    watch_parent()
+  end
+
+  # The window owns this process. When its end of the pipe closes — the window was
+  # force-quit, crashed, or killed — there is nothing left to serve and nobody
+  # left to ask it to stop, so it stops itself and gives the port back to the next
+  # launch. Without this a window that died leaves a server holding the port and a
+  # database open, which is a tool that "will not start" the second time.
+  #
+  # Only when the window asked for it: a release started from a shell inherits a
+  # stdin that may already be at end-of-file, and must not exit over it.
+  defp watch_parent do
+    if System.get_env("CONFLUENCE_EXPORT_DIE_WITH_PARENT") == "1" do
+      spawn(fn -> await_end_of_input() end)
+    end
+
+    :ok
+  end
+
+  defp await_end_of_input do
+    case IO.read(:stdio, :line) do
+      :eof -> System.stop(0)
+      {:error, _reason} -> System.stop(0)
+      _a_line_nobody_writes -> await_end_of_input()
+    end
   end
 
   defp rate_limiter_spec do

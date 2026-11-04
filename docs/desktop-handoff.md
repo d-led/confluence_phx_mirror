@@ -360,8 +360,18 @@ here as done is open.
     workflow and `package.sh` ask the file now — `[ -f
     _build/desktop/lib/<app>/priv/native/confluence_keyring.so ] || mix compile
     --force` — for the same reason as traps 23 and 24: a stale artifact is
-    invisible to the thing that was supposed to produce it.
-
+    invisible to the thing that was supposed to produce it.26. **A window closed, and the server it started kept the port.** Nobody
+    notices until the next launch reports `port 43100 is taken` and moves to a
+    number an assistant was never pointed at. There is no tray icon, so a
+    release that outlives its window is a process the person who opened it
+    cannot reach. Two paths now close it, and they are not interchangeable:
+    `WindowEvent::Destroyed` on `main` → `app.exit(0)` covers the red button;
+    the release's own stdin watcher (`CONFLUENCE_EXPORT_DIE_WITH_PARENT=1`,
+    set only by the window) covers everything that never gets to run
+    `RunEvent::Exit` — force-quit, crash, `kill -9`. Testing any of this from a
+    terminal, remember both halves: a `mix run --no-halt` started by hand does
+    not hold 43_100 for the app and does not die with the app either. Kill your
+    own strays before believing a port result.
 ## Next, in order
 
 1. **One sync, not two.** Make `Sync.Gate`'s lease portable (a row updated with

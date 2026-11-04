@@ -49,10 +49,18 @@ defmodule ConfluencePhxMirror.Desktop.Web.Server do
   free before the listener that will use it exists. Nothing is held: Bandit owns
   the listen socket, and the moment between this answer and its bind is a loopback
   port on a machine running one tool.
+
+  `reuseaddr: true` is not a detail to leave out: it is what ThousandIsland asks
+  for, and without it this answers *taken* for a port the listener could have had.
+  The sockets a session leaves behind are in `TIME_WAIT` on 127.0.0.1:43_100 for a
+  minute after the window closes, and a plain `listen/2` refuses them with
+  `:eaddrinuse` — so quitting and immediately reopening the tool used to move it to
+  a random port, which is the one thing a fixed port is for. The option does not
+  weaken the answer: two live listeners on one port need `reuseport`, not this.
   """
   @spec free?(:inet.port_number()) :: boolean()
   def free?(port) do
-    case :gen_tcp.listen(port, ip: @loopback, active: false) do
+    case :gen_tcp.listen(port, ip: @loopback, active: false, reuseaddr: true) do
       {:ok, socket} ->
         :ok = :gen_tcp.close(socket)
         true
@@ -70,7 +78,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Server do
         "the address is announced on stdout and shown behind the account menu"
     )
 
-    {:ok, socket} = :gen_tcp.listen(0, ip: @loopback, active: false)
+    {:ok, socket} = :gen_tcp.listen(0, ip: @loopback, active: false, reuseaddr: true)
     {:ok, port} = :inet.port(socket)
     :ok = :gen_tcp.close(socket)
     port
@@ -90,10 +98,17 @@ defmodule ConfluencePhxMirror.Desktop.Web.Server do
     port = Keyword.fetch!(opts, :port)
 
     with {:ok, supervisor} <- Bandit.start_link(plug: Dispatch, port: port, ip: @loopback) do
+      bound = bound_port(supervisor, port)
+
+      # The port that was actually granted, not the one that was preferred: the
+      # MCP page, the configuration tool and the warning above all speak about the
+      # address a client can reach, and a taken port makes those two different.
+      Application.put_env(:confluence_phx_mirror, :desktop_port, bound)
+
       # The one thing that has to agree with the shell: the address, printed once,
       # on stdout, at boot (`src-tauri/src/main.rs` reads this line and nothing
       # else). Everything it says after that is a log.
-      IO.puts("desktop ui: http://127.0.0.1:#{bound_port(supervisor, port)}/")
+      IO.puts("desktop ui: http://127.0.0.1:#{bound}/")
       {:ok, supervisor}
     end
   end
