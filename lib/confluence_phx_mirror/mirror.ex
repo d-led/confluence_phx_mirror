@@ -2370,25 +2370,47 @@ defmodule ConfluencePhxMirror.Mirror do
     query =
       from(p in Page,
         as: :page,
-        where: is_nil(p.deleted_at),
-        where: fragment("? = ANY(?)", ^id, p.ancestors)
+        where: is_nil(p.deleted_at)
       )
+      |> naming_ancestor(id)
       |> filtered(opts)
 
     %{
       items:
         query
-        |> order_by([p],
-          asc: fragment("cardinality(?)", p.ancestors),
-          asc: p.title,
-          asc: p.confluence_id
-        )
+        |> ancestor_depth()
+        |> order_by([p], asc: p.title, asc: p.confluence_id)
         |> offset(^max(Keyword.get(opts, :start, 0), 0))
         |> limit_rows(Keyword.get(opts, :limit))
         |> preload(:space)
         |> Repo.all(),
       total: query |> select([p], count(p.id)) |> Repo.one()
     }
+  end
+
+  # `ancestors` is the trail denormalised onto each page: an `integer[]` on the
+  # deployment, JSON in the tool's SQLite. `ANY` and `cardinality` are the first
+  # engine's spelling of "names this page" and "how deep"; `json_each` and
+  # `json_array_length` are the second's, and `Search.Lite` already writes them
+  # for the same column.
+  defp naming_ancestor(query, id) do
+    if ConfluencePhxMirror.Migration.postgres?() do
+      where(query, [p], fragment("? = ANY(?)", ^id, p.ancestors))
+    else
+      where(
+        query,
+        [p],
+        fragment("EXISTS (SELECT 1 FROM json_each(?) WHERE value = ?)", p.ancestors, ^id)
+      )
+    end
+  end
+
+  defp ancestor_depth(query) do
+    if ConfluencePhxMirror.Migration.postgres?() do
+      order_by(query, [p], asc: fragment("cardinality(?)", p.ancestors))
+    else
+      order_by(query, [p], asc: fragment("json_array_length(?)", p.ancestors))
+    end
   end
 
   @doc """
@@ -3274,11 +3296,38 @@ defmodule ConfluencePhxMirror.Mirror do
     end
   end
 
-  defp where_labels(query, labels, :any),
-    do: where(query, [p], fragment("? && ?", p.labels, ^labels))
+  defp where_labels(query, labels, :any) do
+    if ConfluencePhxMirror.Migration.postgres?() do
+      where(query, [p], fragment("? && ?", p.labels, ^labels))
+    else
+      # `labels` is `text[]` on the deployment's Postgres and a JSON array in the
+      # tool's SQLite, where "does this array contain" is `json_each` — the same
+      # spelling `Search.Lite` uses for the same column. Without the second half
+      # a page that shows content by label crashed the tool instead of drawing.
+      where(
+        query,
+        [p],
+        fragment("EXISTS (SELECT 1 FROM json_each(?) WHERE value IN (?))", p.labels, ^labels)
+      )
+    end
+  end
 
-  defp where_labels(query, labels, _all),
-    do: where(query, [p], fragment("? @> ?", p.labels, ^labels))
+  defp where_labels(query, labels, _all) do
+    if ConfluencePhxMirror.Migration.postgres?() do
+      where(query, [p], fragment("? @> ?", p.labels, ^labels))
+    else
+      where(
+        query,
+        [p],
+        fragment(
+          "(SELECT count(DISTINCT value) FROM json_each(?) WHERE value IN (?)) = ?",
+          p.labels,
+          ^labels,
+          ^length(labels)
+        )
+      )
+    end
+  end
 
   @doc "Replaces the page's extracted `pageproperties` rows."
   def replace_properties(%Page{id: page_id}, properties) do

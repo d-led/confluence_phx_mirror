@@ -112,10 +112,11 @@ defmodule ConfluencePhxMirror.MixProject do
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
-      # The desktop export tool's store. `only: :desktop` keeps it, and the
-      # driver's C NIF, out of every release the server builds.
-      # See docs/desktop-tool.md.
-      {:ecto_sqlite3, "~> 0.17", only: :desktop},
+      # The desktop export tool's store — and the engine the suite is run against
+      # a second time in CI (`CM_TEST_ADAPTER=sqlite`). `:desktop` and `:test`,
+      # never a release the server builds: the driver's C NIF has no business in
+      # a server image that talks to Postgres. See docs/desktop-tool.md.
+      {:ecto_sqlite3, "~> 0.17", only: [:desktop, :test]},
       # Compiles `native/confluence_keyring` and loads it as a NIF. `:desktop`
       # only, or every server build would need a Rust toolchain for a credential
       # store it does not have.
@@ -197,7 +198,11 @@ defmodule ConfluencePhxMirror.MixProject do
         "ecto.migrate --migrations-path=priv/repo/migrations --migrations-path=priv/repo/manual_migrations",
       "ecto.setup": ["ecto.create", "ecto.migrate_all", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate_all --quiet", "test"],
+      # Both directories on Postgres; the schema set alone on SQLite, where the
+      # manual ones cannot run by nature — they rewrite JSON the way only
+      # Postgres spells it, and the tool's own boot runs the same schema set
+      # (`Desktop.Setup`). See `config/test.exs` for the adapter switch.
+      test: ["ecto.create --quiet", test_migrations(), "test"],
       "assets.setup": ["assets.install --if-missing"],
       "assets.build": [
         "cmd --cd assets npm ci",
@@ -254,5 +259,14 @@ defmodule ConfluencePhxMirror.MixProject do
       # and prints one summary. `mix lint` and `mix cover` stay available alone.
       precommit: ["cmd scripts/quality.sh"]
     ]
+  end
+
+  # Which migrations `mix test` applies. `ecto.migrate_all` reaches into
+  # `priv/repo/manual_migrations`, which are Postgres-shaped on purpose (a JSON
+  # rewrite no other engine has); the SQLite suite runs what the tool runs.
+  defp test_migrations do
+    if System.get_env("CM_TEST_ADAPTER") == "sqlite",
+      do: "ecto.migrate --quiet",
+      else: "ecto.migrate_all --quiet"
   end
 end

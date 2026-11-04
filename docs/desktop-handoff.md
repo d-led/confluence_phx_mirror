@@ -429,6 +429,26 @@ here as done is open.
     absence with `""`. `api_tokens.user_id` has the same Postgres-only relaxation
     and is safe for the opposite reason: the tool issues no service tokens.
 
+29. **One suite, one engine, and five bugs that lived in the gap.** The suite runs
+    on Postgres; the tool runs SQLite on the same code and the same migrations,
+    and CI only ever *booted* the SQLite side. Every difference between the two
+    engines was therefore free to ship: `LIMIT NULL` ("no limit" to Postgres, a
+    datatype error to SQLite), `OFFSET` without `LIMIT` (fine there, a syntax
+    error here), a column Postgres was told to relax that SQLite cannot
+    (`pages.slug`, trap 28), `labels @> ?` and `? && ?`, and `= ANY` /
+    `cardinality` on the ancestors trail. Two are ported now —
+    `Mirror.pages_for_labels/2` and `Mirror.descendants/2` ask `json_each` on this
+    engine, the spelling `Search.Lite` already used — and the whole class is what
+    `scripts/test-sqlite.sh` exists to find.
+
+    That script is not a gate yet: `CM_TEST_ADAPTER=sqlite` compiles the repo with
+    the other adapter (the choice is `Application.compile_env`, so it needs its
+    own build path and its own database file) and the run stops at the first
+    un-ported spot — today, an attachment whose `confluence_id` the schema types
+    `:string` while the column is an integer here. Make it green, then add it to
+    `ci.yml` beside the Postgres job: same suite, two engines, in parallel. A job
+    added before that is a gate that always fails.
+
 ## Next, in order
 
 1. **One sync, not two.** Make `Sync.Gate`'s lease portable (a row updated with

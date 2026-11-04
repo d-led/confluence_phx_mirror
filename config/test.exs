@@ -1,21 +1,62 @@
 import Config
 
-# Configure your database
+# Which engine the suite runs against. Postgres is the deployment's; SQLite is the
+# one the desktop tool keeps its catalogue in, and the two are not interchangeable
+# in ways that matter — `LIMIT NULL` is "no limit" to one and a datatype error to
+# the other, `OFFSET` alone is fine in one and a syntax error in the other, and a
+# column Postgres was told to relax stays `NOT NULL` in SQLite. Each difference
+# has already cost a bug that the other engine's tests could not see, so CI runs
+# the same suite twice.
 #
-# The MIX_TEST_PARTITION environment variable can be used
-# to provide built-in test partitioning in CI environment.
-# Run `mix help test` for more information.
-config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
-  username: "postgres",
-  password: "postgres",
-  hostname: "localhost",
-  database: "confluence_phx_mirror_test#{System.get_env("MIX_TEST_PARTITION")}",
-  pool: Ecto.Adapters.SQL.Sandbox,
-  # The suite is concurrent by design (most files are `async: true`), and every
-  # running test holds an owner connection of its own while its LiveViews and
-  # tasks check out more. Two per scheduler starved the pool: tests queued past
-  # the 15 s checkout and the whole file looked broken.
-  pool_size: System.schedulers_online() * 3
+# The adapter is `Application.compile_env` in `ConfluencePhxMirror.Repo`, so this
+# has to be read at compile time: a second job builds with the variable set, and
+# locally the two runs need separate build paths or a `mix compile --force`:
+#
+#   CM_TEST_ADAPTER=sqlite MIX_BUILD_PATH=_build/sqlite mix test
+#
+sqlite? = System.get_env("CM_TEST_ADAPTER") == "sqlite"
+
+if sqlite? do
+  config :confluence_phx_mirror, repo_adapter: Ecto.Adapters.SQLite3
+
+  # A file, not `:memory:`: the sandbox hands each test its own connection out of
+  # a pool, and every one of them has to see the same database.
+  config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
+    database: Path.expand("../tmp/test#{System.get_env("MIX_TEST_PARTITION")}.db", __DIR__),
+    pool: Ecto.Adapters.SQL.Sandbox,
+    pool_size: System.schedulers_online() * 3,
+    journal_mode: :wal
+
+  # Oban's default notifier and engine are Postgres's; the tool points both at
+  # SQLite (`config/desktop.exs`), and a test run that leaves them alone spends
+  # its time failing to reach a database that is not there.
+  config :confluence_phx_mirror, Oban,
+    testing: :manual,
+    engine: Oban.Engines.Lite,
+    queues: false,
+    plugins: false
+
+  # The tool's own screens are part of what SQLite changes, and they only exist
+  # in the desktop build's source tree.
+  config :confluence_phx_mirror, :sqlite_suite, true
+else
+  # Configure your database
+  #
+  # The MIX_TEST_PARTITION environment variable can be used
+  # to provide built-in test partitioning in CI environment.
+  # Run `mix help test` for more information.
+  config :confluence_phx_mirror, ConfluencePhxMirror.Repo,
+    username: "postgres",
+    password: "postgres",
+    hostname: "localhost",
+    database: "confluence_phx_mirror_test#{System.get_env("MIX_TEST_PARTITION")}",
+    pool: Ecto.Adapters.SQL.Sandbox,
+    # The suite is concurrent by design (most files are `async: true`), and every
+    # running test holds an owner connection of its own while its LiveViews and
+    # tasks check out more. Two per scheduler starved the pool: tests queued past
+    # the 15 s checkout and the whole file looked broken.
+    pool_size: System.schedulers_online() * 3
+end
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
