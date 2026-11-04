@@ -251,7 +251,17 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
       end)
 
       apply_runtime_config()
-      if root() != before, do: restart_repo()
+
+      if root() != before do
+        restart_repo()
+
+        # A folder nobody has used has no schema: the migrations run at boot, for
+        # the folder the tool booted with. Reopening the repo on a new file is not
+        # enough — every query would answer "no such table" and the window would
+        # show a connection error about a site that is perfectly reachable.
+        ConfluencePhxMirror.Desktop.Setup.prepare(database())
+        ConfluencePhxMirror.Desktop.Setup.migrate()
+      end
 
       # A window keeps running when it disagrees with its folder, so the question
       # is asked again whenever the connection changes: saving the right site
@@ -311,13 +321,32 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     with {:ok, secret} <- secret(attrs),
          :ok <- store(attrs),
          :ok <- ensure_root(),
-         :ok = Credentials.put(@account, secret) do
+         :ok <- store_secret(secret) do
       # The token reaches the credential store only here, so the client has to be
       # told again: `store/1` applied the configuration while the previous secret
       # was still the only one available, and a connection holding last week's
       # token fails exactly like one holding none.
       apply_runtime_config()
       apply_credentials()
+
+      # And the space list is asked again. It is fetched at boot and kept, so on a
+      # fresh machine it holds the failure of asking without a token — or, worse,
+      # the two spaces of the bundled demo the tool started on. Either one is a
+      # screen that shows the wrong site until something asks again, and saving
+      # the connection is exactly the moment to ask.
+      ConfluencePhxMirror.Desktop.Spaces.refresh()
+    end
+  end
+
+  # A credential store that refuses is a thing a person can fix — a locked login
+  # keychain, a machine where the tool was never given access — and a refused
+  # write is not a reason to take the window down with a `MatchError`. The site
+  # and folder are already saved by now, so the answer says what did land and
+  # what did not.
+  defp store_secret(secret) do
+    case Credentials.put(@account, secret) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:secret_not_stored, reason}}
     end
   end
 

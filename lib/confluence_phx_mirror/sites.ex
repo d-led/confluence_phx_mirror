@@ -148,14 +148,19 @@ defmodule ConfluencePhxMirror.Sites do
   the answer; nothing is corrupted either way, because reading never mixes sites
   and writing goes through `verify!/0`.
   """
-  @spec check() :: :ok | :no_schema | {:conflict, Site.t(), t()}
+  @spec check() :: :ok | :unrecorded | :no_schema | {:conflict, Site.t(), t()}
   def check do
     configured = current()
 
     case Repo.get(Site, 1) do
+      # Nothing recorded is not a disagreement. A catalogue belongs to a site
+      # once it holds that site's content, so the recording happens on the first
+      # write (`verify!/0`) — not at boot. Recording at boot meant a fresh machine
+      # stamped its empty catalogue with the bundled demo's key, and then refused
+      # the site its owner connected a minute later: the app told a brand-new user
+      # their folder "belongs to demo".
       nil ->
-        record!(configured)
-        :ok
+        :unrecorded
 
       %Site{key: key} when key == configured.key ->
         :ok
@@ -180,6 +185,10 @@ defmodule ConfluencePhxMirror.Sites do
   @spec verify!() :: :ok | :no_schema
   def verify! do
     case check() do
+      :unrecorded ->
+        record!(current())
+        :ok
+
       :ok ->
         :ok
 
@@ -241,7 +250,7 @@ defmodule ConfluencePhxMirror.Sites do
   at a folder that belongs to another site creates one. Called after the
   connection changes, which is the only thing that can change this answer.
   """
-  @spec refresh_conflict() :: :ok | :no_schema
+  @spec refresh_conflict() :: :ok | :unrecorded | :no_schema
   def refresh_conflict do
     case check() do
       {:conflict, recorded, configured} ->

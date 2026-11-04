@@ -29,6 +29,12 @@ defmodule ConfluencePhxMirror.Sites.Guard do
       {:ok, _whatever} ->
         {:ok, %{site: Sites.key()}}
 
+      {:unrecorded, _whatever} ->
+        # A catalogue nothing has been written to yet: there is no site to
+        # disagree with, and stamping one here is what made a fresh machine
+        # claim to belong to the demo.
+        {:ok, %{site: Sites.key()}}
+
       {:no_schema, _whatever} ->
         Logger.warning(
           "mirror_sites is missing; run the migrations before syncing, " <>

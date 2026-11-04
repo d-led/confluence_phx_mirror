@@ -83,7 +83,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         <button type="submit">Save and continue</button>
       </form>
       """,
-      nav: false
+      # The first run is one question and gets the whole window; coming back to
+      # change the connection is a place you are in, and a window has no back
+      # button, so that one keeps the sidebar.
+      nav: not Settings.first_run?(),
+      current: "/__tool/setup"
     )
   end
 
@@ -92,37 +96,39 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   def home do
     case Settings.readiness() do
       :ready ->
-        document("Confluence mirror export", """
-        <h1>Ready</h1>
-        #{site_warning()}
-        <p class="lede">This workspace mirrors <strong>#{escape(Settings.site() || "")}</strong>.</p>
-        <dl>
-          <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
-          <dt>Attachments</dt><dd>#{escape(Settings.blobs())}</dd>
-        </dl>
-        #{workspace_actions()}
-        <p><a href="/">Read the mirror</a></p>
-        <p><a href="/admin">Administration</a></p>
-        <p><a href="/__tool/spaces">Choose spaces to mirror</a></p>
-        <p><a href="/__tool/export">Export a copy</a></p>
-        <p><a href="/__tool/setup">Change the connection</a></p>
-        """)
+        document(
+          "Confluence mirror export",
+          """
+          <h1>Ready</h1>
+          #{site_warning()}
+          <p class="lede">This workspace mirrors <strong>#{escape(Settings.site() || "")}</strong>.</p>
+          <dl>
+            <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
+            <dt>Attachments</dt><dd>#{escape(Settings.blobs())}</dd>
+          </dl>
+          #{workspace_actions()}
+          <p class="note">Next: <a href="/__tool/spaces">choose the spaces to mirror</a>.</p>
+          """,
+          current: "/__tool"
+        )
 
       {:needs, missing} ->
-        document("Confluence mirror export", """
-        <h1>Not connected yet</h1>
-        #{site_warning()}
-        <p class="lede">Everything works on what is in the folder below — mirroring
-        is what needs a site and a token.</p>
-        <p class="error" role="status">Still needed: #{Enum.map_join(missing, ", ", &Atom.to_string/1)}</p>
-        <p><a href="/__tool/setup">Connect to Confluence</a></p>
-        <p><a href="/">Read what is already mirrored</a></p>
-        <p><a href="/admin">Administration</a></p>
-        <dl>
-          <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
-        </dl>
-        #{workspace_actions()}
-        """)
+        document(
+          "Confluence mirror export",
+          """
+          <h1>Not connected yet</h1>
+          #{site_warning()}
+          <p class="lede">Everything works on what is in the folder below — mirroring
+          is what needs a site and a token.</p>
+          <p class="error" role="status">Still needed: #{Enum.map_join(missing, ", ", &Atom.to_string/1)}</p>
+          <dl>
+            <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
+          </dl>
+          #{workspace_actions()}
+          <p class="note">Next: <a href="/__tool/setup">connect to Confluence</a>.</p>
+          """,
+          current: "/__tool"
+        )
     end
   end
 
@@ -305,12 +311,9 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
 
     # The empty note is rendered by the server too, so the answer survives with
     # JavaScript off; the script only unhides it as you type.
-    # The way out goes at the top. A window with no address bar has only the
-    # links it renders, and one at the end of two hundred spaces is not a link.
     document(
       "Spaces",
       """
-      <nav class="top"><a href="/__tool">Desktop</a></nav>
       <h1>Spaces</h1>
       <p class="lede">#{known} spaces on #{escape(Settings.site() || "Confluence")}.</p>
       #{status_banner(Map.get(meta, :run))}
@@ -323,8 +326,30 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       #{truncated}
       <p class="note" data-empty #{if spaces != [], do: "hidden", else: ""}>Nothing matches that.</p>
       """,
+      current: "/__tool/spaces",
       status: Map.get(meta, :status),
       script: true
+    )
+  end
+
+  @doc """
+  Said when the tool cannot act: what is wrong, and the one screen that fixes it.
+
+  The controls are left out rather than drawn disabled — a button that cannot
+  work is a button that teaches people the tool is broken — and the sidebar
+  stays, because the way out of a blocked state is navigation rather than an
+  action.
+  """
+  @spec blocked(String.t()) :: String.t()
+  def blocked(reason) do
+    document(
+      "Not yet",
+      """
+      <h1>Not yet</h1>
+      <p class="lede">#{escape(reason)}</p>
+      <p><a href="/__tool/setup">Open the connection</a></p>
+      """,
+      current: "/__tool/spaces"
     )
   end
 
@@ -342,35 +367,46 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       <p class="note">This page follows the run; it is not a progress bar that
       guesses.</p>
       """,
+      current: "/__tool/mirror",
       refresh: true
     )
   end
 
   def mirror(%{state: :done} = status) do
-    document("Mirrored #{status.label}", """
-    <h1>Done</h1>
-    <p class="lede">#{escape(status.label)} #{if status.count > 1, do: "are", else: "is"} in the catalogue.</p>
-    <p class="note">The pages are read in the mirror itself.</p>
-    <p><a href="/">Read the mirror</a></p>
-    <p><a href="/__tool/export">Export a copy</a></p>
-    <p><a href="/__tool/spaces">Back to spaces</a></p>
-    """)
+    document(
+      "Mirrored #{status.label}",
+      """
+      <h1>Done</h1>
+      <p class="lede">#{escape(status.label)} #{if status.count > 1, do: "are", else: "is"} in the catalogue.</p>
+      <p class="note">The pages are read in the mirror itself.</p>
+      <p><a href="/">Read what was mirrored</a></p>
+      """,
+      current: "/__tool/mirror"
+    )
   end
 
   def mirror(%{state: :error} = status) do
-    document("Mirror stopped", """
-    <h1>Mirror stopped</h1>
-    <p class="lede">#{escape(status.label)} could not be finished.</p>
-    <p class="error" role="alert">#{escape(describe_error(status.error))}</p>
-    <p><a href="/__tool/spaces">Back to spaces</a></p>
-    """)
+    document(
+      "Mirror stopped",
+      """
+      <h1>Mirror stopped</h1>
+      <p class="lede">#{escape(status.label)} could not be finished.</p>
+      <p class="error" role="alert">#{escape(describe_error(status.error))}</p>
+      <p><a href="/__tool/spaces">Back to spaces</a></p>
+      """,
+      current: "/__tool/mirror"
+    )
   end
 
   def mirror(_status) do
-    document("Nothing running", """
-    <h1>Nothing is running</h1>
-    <p><a href="/__tool/spaces">Choose a space</a></p>
-    """)
+    document(
+      "Nothing running",
+      """
+      <h1>Nothing is running</h1>
+      <p><a href="/__tool/spaces">Choose a space</a></p>
+      """,
+      current: "/__tool/mirror"
+    )
   end
 
   @doc """
@@ -408,15 +444,18 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   """
   @spec export(:absent | {:building, map()} | {:ready, map()}, Path.t()) :: String.t()
   def export(:absent, _path) do
-    document("Export", """
-    <h1>No copy yet</h1>
-    <p class="lede">A copy is every space in this catalogue as HTML, Markdown and
-    attachments — a folder that opens without this tool.</p>
-    <form method="post" action="/__tool/export">
-      <button type="submit">Build the archive</button>
-    </form>
-    <p><a href="/__tool/spaces">Back to the spaces</a></p>
-    """)
+    document(
+      "Export",
+      """
+      <h1>No copy yet</h1>
+      <p class="lede">A copy is every space in this catalogue as HTML, Markdown and
+      attachments — a folder that opens without this tool.</p>
+      <form method="post" action="/__tool/export">
+        <button type="submit">Build the archive</button>
+      </form>
+      """,
+      current: "/__tool/export"
+    )
   end
 
   def export({:building, %{bytes: bytes}}, _path) do
@@ -429,21 +468,25 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       <p class="status">This page checks again every second. Nothing is lost if
       it takes a while.</p>
       """,
+      current: "/__tool/export",
       refresh: true
     )
   end
 
   def export({:ready, %{bytes: bytes, at: at}}, path) do
-    document("Ready", """
-    <h1>Ready</h1>
-    <p class="lede">#{size(bytes)}, built #{Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")}.</p>
-    <p><a href="/__tool/export/site.zip" download>Download the archive</a></p>
-    <p class="status">It is also on disk: <code>#{escape(path)}</code></p>
-    <form method="post" action="/__tool/export">
-      <button type="submit">Build it again</button>
-    </form>
-    <p><a href="/__tool">Back</a></p>
-    """)
+    document(
+      "Ready",
+      """
+      <h1>Ready</h1>
+      <p class="lede">#{size(bytes)}, built #{Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")}.</p>
+      <p><a href="/__tool/export/site.zip" download>Download the archive</a></p>
+      <p class="status">It is also on disk: <code>#{escape(path)}</code></p>
+      <form method="post" action="/__tool/export">
+        <button type="submit">Build it again</button>
+      </form>
+      """,
+      current: "/__tool/export"
+    )
   end
 
   @doc """
@@ -590,19 +633,58 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       #{if opts[:refresh], do: ~s(<meta http-equiv="refresh" content="1">), else: ""}
       <title>#{escape(title)}</title>
       <style>
-        :root { color-scheme: light dark; }
+        :root { color-scheme: light dark; --accent: #2f5fe0; --line: rgba(127,127,127,.25); }
         * { box-sizing: border-box; }
         body {
-          margin: 0; min-height: 100vh; display: grid; place-items: center;
-          padding: 2rem 1rem;
+          margin: 0; min-height: 100vh;
+          display: grid; grid-template-columns: 15rem minmax(0, 1fr);
           font: 16px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
           background: Canvas; color: CanvasText;
         }
-        main { width: 100%; max-width: 27rem; }
-        .nav { display: flex; flex-wrap: wrap; gap: .75rem; margin: 0 0 1.5rem;
-               font-size: .8125rem; }
-        .nav a { color: inherit; opacity: .65; text-decoration: none; }
-        .nav a:hover { opacity: 1; text-decoration: underline; }
+        /* The first-run form is one question, so it gets the whole window and
+           no way out of itself. Every other screen is a place you work in. */
+        body.plain { display: block; padding: 2rem 1rem; }
+        body.plain main { max-width: 27rem; margin: 0 auto; }
+        .sidebar {
+          position: sticky; top: 0; align-self: start;
+          height: 100vh; overflow-y: auto;
+          padding: 1.25rem 1rem 2rem;
+          border-right: 1px solid var(--line);
+          font-size: .875rem;
+        }
+        .brand { font-weight: 700; letter-spacing: -0.01em; }
+        .where {
+          margin: .15rem 0 1.5rem; font-size: .75rem; opacity: .55;
+          overflow-wrap: anywhere;
+        }
+        .section { margin: 0 0 1.35rem; }
+        .section > span {
+          display: block; margin: 0 0 .35rem; font-size: .6875rem;
+          text-transform: uppercase; letter-spacing: .07em; opacity: .5;
+        }
+        .sidebar a {
+          display: block; margin: 0 -.5rem; padding: .35rem .5rem;
+          border-radius: .375rem; color: inherit; text-decoration: none;
+          opacity: .78; transition: background .12s ease, opacity .12s ease;
+        }
+        .sidebar a:hover { background: rgba(127,127,127,.13); opacity: 1; }
+        .sidebar a[aria-current="page"] {
+          background: rgba(47,95,224,.12); color: var(--accent);
+          opacity: 1; font-weight: 600;
+        }
+        main { padding: 2.25rem clamp(1rem, 4vw, 3rem); max-width: 54rem; }
+        @media (max-width: 720px) {
+          body { grid-template-columns: 1fr; }
+          .sidebar {
+            position: sticky; height: auto; border-right: 0;
+            border-bottom: 1px solid var(--line); padding-bottom: 1rem;
+          }
+          .where { margin-bottom: .75rem; }
+          .section { display: inline-block; margin: 0 .9rem .3rem 0; }
+          .section > span { display: inline; margin-right: .35rem; }
+          .sidebar a { display: inline-block; margin: 0 .2rem .2rem 0; }
+          main { padding: 1.5rem 1rem; }
+        }
         h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 .5rem; }
         .lede { margin: 0 0 1.75rem; opacity: .75; }
         .note { opacity: .6; font-size: .875rem; }
@@ -614,7 +696,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
           transition: border-color .15s ease, box-shadow .15s ease;
         }
         input:focus {
-          outline: none; border-color: #4f7cff;
+          outline: none; border-color: var(--accent);
           box-shadow: 0 0 0 3px rgba(79,124,255,.25);
         }
         small { display: block; margin-top: .35rem; font-size: .75rem; opacity: .6; }
@@ -634,10 +716,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
              margin: 0 0 1.5rem; font-size: .875rem; }
         dt { font-weight: 600; }
         dd { margin: 0; opacity: .75; overflow-wrap: anywhere; }
-        a { color: #2f5fe0; }
-        nav.top { margin-bottom: 1rem; font-size: .8125rem; }
-        nav.top a { text-decoration: none; opacity: .7; }
-        nav.top a:hover { text-decoration: underline; opacity: 1; }
+        a { color: var(--accent); }
         ul.spaces { list-style: none; margin: 0 0 1.5rem; padding: 0; }
         ul.spaces li { display: flex; align-items: center; justify-content: space-between;
                        gap: 1rem; padding: .75rem 0; border-bottom: 1px solid rgba(127,127,127,.2); }
@@ -662,7 +741,8 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
       </style>
     </head>
-    <body><main>#{if opts[:nav] == false, do: "", else: nav()}#{body}
+    <body#{if opts[:nav] == false, do: ~s( class="plain"), else: ""}>
+    #{if opts[:nav] == false, do: "", else: sidebar(opts[:current])}<main>#{body}
     #{if opts[:status], do: ~s(<p class="status">#{escape(opts[:status])}</p>), else: ""}
     </main></body>
     </html>
@@ -671,24 +751,44 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
 
   defp escape(value) when is_binary(value), do: Plug.HTML.html_escape(value) |> to_string()
 
-  # Every screen but the first-run form carries the same bar, because every
-  # screen but that one can lead somewhere else: a page you cannot leave is how
-  # a tool feels like a dead end. The first two entries leave this router for
-  # the mirror's own screens, which is where the reading and the administration
-  # happen.
-  defp nav do
+  # The bar that stays put. A window with no address bar has only the links it
+  # renders, and a row of them above the content vanishes as soon as the content
+  # scrolls — which is what a person scrolling two hundred spaces found. So the
+  # destinations live in a sidebar that does not move, the screen you are on is
+  # marked, and the workspace it belongs to is named at the top.
+  defp sidebar(current) do
     """
-    <nav class="nav">
-      <a href="/__tool">Desktop</a>
-      <a href="/">Mirror</a>
-      <a href="/admin">Admin</a>
-      <a href="/__tool/spaces">Spaces</a>
-      <a href="/__tool/mirror">Runs</a>
-      <a href="/__tool/export">Export</a>
-      <a href="/__tool/setup">Connection</a>
-    </nav>
+    <aside class="sidebar">
+      <div class="brand">Confluence export</div>
+      <div class="where">#{escape(Settings.site() || "not connected to a site yet")}</div>
+
+      <div class="section">
+        <span>This tool</span>
+        #{entry("/__tool", "Set up", current)}
+        #{entry("/__tool/setup", "Connection", current)}
+      </div>
+
+      <div class="section">
+        <span>Mirror</span>
+        #{entry("/__tool/spaces", "Spaces", current)}
+        #{entry("/__tool/mirror", "Runs", current)}
+        #{entry("/__tool/export", "Export", current)}
+      </div>
+
+      <div class="section">
+        <span>Read</span>
+        #{entry("/", "The mirror", current)}
+        #{entry("/admin", "Administration", current)}
+      </div>
+    </aside>
     """
   end
+
+  defp entry(href, label, href) do
+    ~s(<a href="#{href}" aria-current="page">#{label}</a>)
+  end
+
+  defp entry(href, label, _current), do: ~s(<a href="#{href}">#{label}</a>)
 
   # Bytes as a person reads them. Kilobyte and megabyte because that is what a
   # browser's download shelf says, so the two agree.

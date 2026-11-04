@@ -49,11 +49,16 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
       root: conn.params["root"]
     }
 
+    # A first run has nothing to read, so it continues to the one thing left to
+    # do: choosing spaces. Landing it on the mirror showed an empty catalogue
+    # under the demo's name — the machine had not mirrored anything yet.
+    first_run = Settings.first_run?()
+
     case Settings.configure(attrs) do
       :ok ->
-        # The connection is what the mirror screens were waiting for, so saving
-        # it lands on the mirror rather than back on the form.
-        conn |> put_resp_header("location", "/") |> send_resp(303, "")
+        conn
+        |> put_resp_header("location", if(first_run, do: "/__tool/spaces", else: "/"))
+        |> send_resp(303, "")
 
       {:error, reason} ->
         # 422 rather than a redirect: the browser keeps the form it submitted,
@@ -109,6 +114,17 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
   get "/__tool/spaces" do
     query = String.trim(conn.params["q"] || "")
 
+    # A screen whose controls cannot work says so and stops, rather than listing
+    # spaces that cannot be mirrored and leaving a person to find out by pressing
+    # something. The sidebar still works: the way out of a blocked state is
+    # another screen, and that is navigation rather than a control.
+    case blocked() do
+      nil -> list_spaces(conn, query)
+      reason -> send_resp(conn, 200, Page.blocked(reason))
+    end
+  end
+
+  defp list_spaces(conn, query) do
     case Spaces.list() do
       {:ok, spaces} ->
         matching = filter(spaces, query)
@@ -139,22 +155,46 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
           Page.loading("Asking #{Settings.site() || "the site"} for its spaces.")
         )
 
+      # The failure is kept, so opening the screen again asks a second time rather
+      # than showing yesterday's answer forever — which is what a fresh machine did,
+      # having cached the "no token" failure from boot.
       {:error, reason} ->
+        Spaces.refresh()
         send_resp(conn, 502, Page.problem(reason))
+    end
+  end
+
+  # What stops this tool from working, in the words a person needs.
+  defp blocked do
+    cond do
+      ConfluencePhxMirror.Sites.conflict() ->
+        "This folder belongs to another site. Open the connection and set the tool up for that site."
+
+      not Settings.configured?() ->
+        "This tool is not connected to a site yet. Open the connection and name the site and a token."
+
+      true ->
+        nil
     end
   end
 
   # A run is started and then left alone: the screen it leaves you on follows
   # it, so a mirror that takes an hour does not take an hour of your attention.
   post "/__tool/mirror" do
-    started(conn, Jobs.start_mirror([conn.params["space"]], conn.params["space"]))
+    case blocked() do
+      nil -> started(conn, Jobs.start_mirror([conn.params["space"]], conn.params["space"]))
+      _reason -> redirect_to(conn, "/__tool/spaces")
+    end
   end
 
   post "/__tool/mirror_all" do
     query = String.trim(conn.params["q"] || "")
 
-    case Spaces.list() do
-      {:ok, spaces} ->
+    case {blocked(), Spaces.list()} do
+      {is_blocked, _list} when is_binary(is_blocked) ->
+        redirect_to(conn, "/__tool/spaces")
+
+      {nil, {:ok, spaces}} ->
         configured = ConfluencePhxMirror.Sync.SpaceScope.added()
         keys = spaces |> filter(query) |> Enum.map(& &1.key) |> configured_only(configured)
 
@@ -165,7 +205,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
 
       # Still being fetched: send them back to the screen that shows it, rather
       # than mirroring a list that is not there yet.
-      _loading_or_failed ->
+      {nil, _loading_or_failed} ->
         redirect_to(conn, "/__tool/spaces")
     end
   end
@@ -286,6 +326,12 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
   defp explain(:site_required), do: "A site URL is needed."
   defp explain(:secret_required), do: "A token is needed."
   defp explain({:invalid_site, site}), do: "#{site} is not a URL this tool can use."
+
+  defp explain({:secret_not_stored, reason}) do
+    "The site and folder were saved, but the token could not be stored in this " <>
+      "machine's keychain (#{inspect(reason)}). Unlock the login keychain and save " <>
+      "the connection again."
+  end
 
   defp explain({:cannot_create, path, reason}),
     do: "The folder #{path} could not be created (#{reason})."

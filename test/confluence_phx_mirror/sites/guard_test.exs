@@ -20,7 +20,7 @@ defmodule ConfluencePhxMirror.Sites.GuardTest do
   setup do
     # The folder belongs to the demo snapshot; the deployment is then pointed at
     # a real site, which is the disagreement both tests are about.
-    assert Sites.check() == :ok
+    assert Sites.verify!() == :ok
     TestConfig.put(:source, HttpSource)
     TestConfig.put(HttpSource, base_url: "https://dled.atlassian.net/wiki")
     TestConfig.put(:site_conflict, nil)
