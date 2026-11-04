@@ -98,23 +98,28 @@ open https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/
 
 **It is not signed, and it will not be.** Signing a macOS app that carries an
 Erlang runtime needs a paid Apple Developer account, which this project does not
-have. So the download is a plain unsigned bundle, and macOS objects to the first
-launch of a copy it did not see you make:
+have. That is not the same as unusable: the linker ad-hoc signs every arm64
+binary it produces (`flags=0x20002(adhoc,linker-signed)`), which is what the
+platform requires before it will execute one at all. What blocks a download is
+the **quarantine flag**, and it blocks it early — before any approval dialog,
+which is why right-click → *Open* is not a way through for a bundle that was
+never notarised. Clear the flag:
+
+```sh
+xattr -rd com.apple.quarantine "/Applications/Confluence Export.app"
+```
+
+Where that is needed, and where it is already done:
 
 * **Installed with `install-desktop.sh`:** nothing to do. `curl` does not set the
-  quarantine flag the way a browser does, and the installer clears it anyway
-  before it prints where the app went — on the copy it just installed, and
-  nowhere else.
-* **Downloaded in a browser:** unzip it, drag it to `/Applications`, then either
-  right-click → **Open** once, or clear the flag yourself:
-
-  ```sh
-  xattr -rd com.apple.quarantine "/Applications/Confluence Export.app"
-  ```
-
-  macOS 15 and later removed the right-click bypass for unsigned apps: the
-  System Settings → Privacy & Security → *Open Anyway* button is the equivalent,
-  and the `xattr` line works the same as it always has.
+  flag the way a browser does, and the installer clears it on the copy it just
+  made if it ever arrives with one — on that copy, and nowhere else.
+* **Downloaded in a browser:** unzip it, drag it to `/Applications`, then run the
+  line above. Terminal is not quarantined itself, so it can clear the flag for
+  anything you point it at. (macOS 27 here; the Control-click bypass has been
+  gone since 15, and for a never-notarised app it was never the reliable route.)
+* **Built from source:** `scripts/package.sh`, which leaves the app in
+  `_build/desktop/package/` — no download, no flag.
 
 ## Layout
 

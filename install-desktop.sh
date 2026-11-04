@@ -116,6 +116,8 @@ case ":$PATH:" in
 esac
 echo
 echo "Gatekeeper: $cleared."
-echo "The app is not signed; a browser download of the same zip would need"
-echo "right-click → Open once, or: xattr -rd com.apple.quarantine \"$apps/$app\""
+echo "The app is ad-hoc signed, which is what macOS needs to run it — but an"
+echo "unsigned app that arrives with the quarantine flag is stopped before any"
+echo "approval dialog, so a copy downloaded in a browser needs this first:"
+echo "  xattr -rd com.apple.quarantine \"$apps/$app\""
 echo "$apps/$app"
