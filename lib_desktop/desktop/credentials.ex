@@ -10,8 +10,12 @@ defmodule ConfluencePhxMirror.Desktop.Credentials do
   three encrypt it at rest under the user's own account.
 
   An entry is identified by a *service* and an *account*. The service is this
-  application; the account is a constant — one tool on one machine is one
-  workspace — so a lost settings file cannot lose the token with it.
+  application; the account is the site the token is for, normalised (see
+  `Desktop.Settings.account/1`) — so a lost settings file cannot lose the token
+  with it, and a token stored for one address is never *found* for another. That
+  second half is the security property: the window can be pointed at a different
+  URL, and what stops it from sending the previous site's token there is that it
+  cannot read it.
 
   Implementations are chosen by `:desktop_credentials` in the application
   environment: `Keyring` (the default) and `Memory` (the suite).

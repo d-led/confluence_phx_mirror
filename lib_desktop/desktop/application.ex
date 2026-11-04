@@ -128,7 +128,13 @@ defmodule ConfluencePhxMirror.Desktop.Application do
     # does not know reads the item, and a copy in `/Applications` is such an
     # application. Here, the dialog has a window behind it, because the listener
     # above has already printed the address the window is opened on.
+    Settings.adopt_legacy_secret()
     Settings.apply_credentials()
+
+    # And now the space list, which needs both: the source is the site's only
+    # after the settings are loaded, and asking before that fetched the bundled
+    # sample's spaces and then drew them beside the real site's name.
+    ConfluencePhxMirror.Desktop.Spaces.refresh()
 
     ConfluencePhxMirror.Sync.abandon_abandoned_runs()
 

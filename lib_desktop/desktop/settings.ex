@@ -32,9 +32,61 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   @app_name "confluence-export"
   @settings "settings.json"
 
-  # One tool, one workspace: the credential store is keyed by a constant, so a
-  # lost settings file cannot lose the token with it.
+  # The prefix of every credential-store account. The account itself is the
+  # prefix *and the site* — see `account/1`.
   @account "workspace"
+
+  # What the account was before it carried the site: one entry for the whole
+  # machine, holding the token of whatever site happened to be configured. Only
+  # `adopt_legacy_secret/0` reads it, once, to move the token to that site.
+  @legacy_account "workspace"
+
+  @doc """
+  The credential-store account a token for `site` belongs to.
+
+  A machine is not a site. The same window can be pointed at another URL, and a
+  token for `acme.atlassian.net` must never be the token *found* for, or sent
+  to, whatever address is in the form next — so the account carries the site,
+  normalised (`https://X/wiki/` and `https://x/wiki` are one site, see
+  `ConfluencePhxMirror.SiteUrl`). A token is then only ever found for the
+  address it was stored for: a changed site needs a token of its own, which is
+  the refusal that stops one site's secret from reaching another.
+
+  The account is also what a person sees in Keychain Access, which is why it is
+  the address and not a hash of it.
+  """
+  @spec account(String.t() | nil) :: String.t() | nil
+  def account(site) do
+    case ConfluencePhxMirror.SiteUrl.normalize(site) do
+      nil -> nil
+      url -> @account <> ":" <> url
+    end
+  end
+
+  @doc """
+  Moves a token stored under the old constant account to the site it was for.
+
+  Before the account carried the site, the machine held one token: the one for
+  the site configured at the time, which is the site the settings file names.
+  It is filed under that site now and the old entry is deleted — once, at boot,
+  and only when a site is known. Nothing else can inherit it, and a machine that
+  never had one pays a single `fetch/1` for the answer.
+  """
+  @spec adopt_legacy_secret() :: :ok
+  def adopt_legacy_secret do
+    with site when is_binary(site) <- site(),
+         id when is_binary(id) <- account(site),
+         {:ok, secret} <- Credentials.fetch(@legacy_account) do
+      case Credentials.put(id, secret) do
+        :ok -> Credentials.delete(@legacy_account)
+        {:error, _refused} -> :ok
+      end
+
+      :ok
+    else
+      _no_site_or_no_legacy_token -> :ok
+    end
+  end
 
   # ---------------------------------------------------------------------------
   # Where
@@ -159,14 +211,7 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
 
   @doc "The token, from the credential store, or the environment's when there is none."
   @spec secret() :: {:ok, String.t()} | {:error, :not_found}
-  def secret do
-    with {:error, _none} <- stored_secret() do
-      case from_env("CM_ATL_TOKEN") do
-        nil -> {:error, :not_found}
-        token -> {:ok, token}
-      end
-    end
-  end
+  def secret, do: secret_for(site())
 
   @doc """
   Whether a token is already available — in the credential store, or in
@@ -216,9 +261,35 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
     end
   end
 
-  # The account is a constant, so asking whether a workspace is ready cannot be
-  # the thing that creates it.
-  defp stored_secret, do: Credentials.fetch(@account)
+  # The account a token is filed under carries the site, so asking whether a
+  # workspace is ready cannot be the thing that creates it.
+  defp stored_secret(site) do
+    case account(site) do
+      nil -> {:error, :not_found}
+      id -> Credentials.fetch(id)
+    end
+  end
+
+  defp secret_for(site) do
+    case stored_secret(site) do
+      {:ok, secret} -> {:ok, secret}
+      {:error, _none} -> env_secret(site)
+    end
+  end
+
+  # A token in the environment is the token of the site in the environment. It
+  # arrives with `CM_CONFLUENCE_SITE` and belongs to that address; honouring it
+  # for whatever address a form holds would send a provisioned secret to a site
+  # nobody provisioned, which is the whole of what keying by site prevents.
+  defp env_secret(site) do
+    with env_site when is_binary(env_site) <- suggested_site(),
+         true <- ConfluencePhxMirror.SiteUrl.same?(site, env_site),
+         token when is_binary(token) <- from_env("CM_ATL_TOKEN") do
+      {:ok, token}
+    else
+      _not_this_site -> {:error, :not_found}
+    end
+  end
 
   defp from_env(name) do
     case System.get_env(name) do
@@ -318,10 +389,13 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   """
   @spec configure(map()) :: :ok | {:error, term()}
   def configure(attrs) when is_map(attrs) do
-    with {:ok, secret} <- secret(attrs),
+    # The site first: a token is stored for a site, so the site being saved is
+    # the one whose token this is — not the one that was configured before it.
+    with {:ok, site} <- validate_site(attrs),
+         {:ok, secret} <- secret(attrs, site),
          :ok <- store(attrs),
          :ok <- ensure_root(),
-         :ok <- store_secret(secret) do
+         :ok <- store_secret(site, secret) do
       # The token reaches the credential store only here, so the client has to be
       # told again: `store/1` applied the configuration while the previous secret
       # was still the only one available, and a connection holding last week's
@@ -343,8 +417,8 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   # write is not a reason to take the window down with a `MatchError`. The site
   # and folder are already saved by now, so the answer says what did land and
   # what did not.
-  defp store_secret(secret) do
-    case Credentials.put(@account, secret) do
+  defp store_secret(site, secret) do
+    case Credentials.put(account(site), secret) do
       :ok -> :ok
       {:error, reason} -> {:error, {:secret_not_stored, reason}}
     end
@@ -363,7 +437,7 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   @doc "Forgets everything about this workspace, including its secret."
   @spec forget() :: :ok
   def forget do
-    Credentials.delete(@account)
+    with id when is_binary(id) <- account(site()), do: Credentials.delete(id)
     File.rm(file())
     :ok
   end
@@ -531,15 +605,15 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   # A secret is required, not defaulted: an empty one would be stored and then
   # fail as an authentication error from Confluence, which says the wrong thing
   # about what went wrong.
-  defp secret(attrs) do
+  # The submitted token, or the one this site already has. A blank field is
+  # "keep what is stored *for this address*": changing the site therefore needs
+  # a token of its own, instead of silently carrying the previous site's over.
+  defp secret(attrs, site) do
     case blank(attrs[:secret] || attrs["secret"]) do
-      # Blank keeps what the machine already has: the keyring's token, or the one
-      # the environment was started with. Saving then stores it, so the tool no
-      # longer depends on the shell that launched it.
       nil ->
-        case secret() do
+        case secret_for(site) do
           {:ok, secret} -> {:ok, secret}
-          {:error, :not_found} -> {:error, :secret_required}
+          {:error, _none} -> {:error, :secret_required}
         end
 
       secret ->

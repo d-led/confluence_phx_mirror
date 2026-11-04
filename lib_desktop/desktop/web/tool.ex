@@ -133,6 +133,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
     case Spaces.list() do
       {:ok, spaces} ->
         matching = filter(spaces, query)
+        status = Spaces.state()
 
         send_resp(
           conn,
@@ -146,13 +147,21 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
             # can be let go of.
             held: MapSet.new(ConfluencePhxMirror.Mirror.list_spaces(), & &1.key),
             configured: length(ConfluencePhxMirror.Sync.SpaceScope.added()),
-            status: if(Spaces.state().refreshing?, do: "Refreshing the space list…"),
+            # A list being replaced underneath a person is not one to press a
+            # button about: every control is drawn disabled until the answer
+            # that matters is in hand.
+            loading: status.refreshing?,
+            status: if(status.refreshing?, do: "Asking the site for its space list again…"),
             run: Jobs.status()
           })
         )
 
       # Nothing is fetched in the request: no screen waits on Confluence, and a
-      # slow site shows what is happening instead of a blank window.
+      # slow site shows what is happening instead of a blank window — with no
+      # list and no controls, because there is nothing yet to act on. The fetch
+      # itself belongs to the boot, to a saved connection, or to the retry this
+      # branch's failure case makes once — not to a page that reloads every
+      # second, which asked an unreachable site again on every reload.
       :loading ->
         send_resp(
           conn,
@@ -340,7 +349,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
   # failure worth explaining should fail loudly here rather than be swallowed by
   # a catch-all.
   defp explain(:site_required), do: "A site URL is needed."
-  defp explain(:secret_required), do: "A token is needed."
+
+  defp explain(:secret_required),
+    do:
+      "A token is needed for this site. A token stored for one address is never sent to another."
+
   defp explain({:invalid_site, site}), do: "#{site} is not a URL this tool can use."
 
   defp explain({:secret_not_stored, reason}) do

@@ -130,6 +130,17 @@ window is already open when the question appears: the token is read after the
 listener has printed the address the window is opened on, not before it, which is
 what makes the question answerable instead of a tool that looks dead.
 
+**One token per site, and never one site's token for another.** The keychain item
+is `confluence-export` with the site as its account — `workspace:https://…`, the
+base URL normalised so a trailing slash or a capital letter is the same site — so
+a token is only ever *found* for the address it was stored for. Change the site in
+the connection form and the token field is required: it will not carry the
+previous site's token over, and the field is never prefilled with it, because a
+secret in a page's HTML is a secret in a screenshot and in the browser's next
+submission. The item's account is the address rather than a hash, so it can be
+found and deleted by hand in Keychain Access. A token stored by an older build
+(one entry for the whole machine) moves to its site on the next launch.
+
 **When it does not start, it says so.** If the release behind the window cannot
 be started, the window opens on the reason instead of the app disappearing, and
 the same text — with the release's own log, one line per request — is appended to

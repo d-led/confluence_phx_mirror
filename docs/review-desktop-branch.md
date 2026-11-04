@@ -132,6 +132,49 @@ Proof: a headless run of the tool (sandboxed `HOME`, throwaway catalogue, the
 bundled demo source), inspected through the tool's own HTTP screens and the
 catalogue's `oban_jobs`/`sync_runs` rows.
 
+### The token belongs to the site, not to the machine
+
+Reported after the above: the token was stored under one constant account, and
+the setup form rendered it back into its own `value=` attribute. Change the site
+URL in that form, press save, and a token typed for `acme.atlassian.net` is
+stored again and then sent to whatever address is in the box.
+
+Three changes, because one was not enough:
+
+* the credential-store account carries the site — `workspace:<normalised base
+  URL>`, where `ConfluencePhxMirror.SiteUrl.normalize/1` (new, in `lib/`, unit
+  tested) is the one spelling of an address: case, a trailing slash or a
+  scheme's own port do not make a second site, while a path does. A token is
+  therefore never *found* for an address it was not stored for.
+* the secret is resolved against the site **being saved**, so a blank field means
+  "keep this site's token", and a changed site answers `{:error,
+  :secret_required}` with nothing written — not even the new URL.
+* `CM_ATL_TOKEN` counts only for the site in `CM_CONFLUENCE_SITE`: the two
+  arrive together, and a provisioned token is not a token for a URL a person
+  types.
+
+The form no longer renders the stored secret at all (a secret in a page's HTML is
+a secret in a screenshot, in a cache, and in the next submission); blank keeps
+it, and the hint says a token belongs to the site above it. A token stored under
+the old constant account — this machine's, before the update — is moved to the
+site the settings file names, once, at boot (`Settings.adopt_legacy_secret/0`),
+and the old entry is deleted.
+
+Proven against the real `Settings` code with the in-memory credential store:
+
+    account for A            "workspace:https://acme.example/wiki"
+    account for A + "/"      "workspace:https://acme.example/wiki"   (one site)
+    configure A / TOKEN-A    :ok, secret() == {:ok, "TOKEN-A"}
+    re-save A, blank         :ok, A keeps its token
+    change to B, blank       {:error, :secret_required}
+      site unchanged, A's token unchanged, nothing stored for B
+    B with TOKEN-B           :ok, secret() == {:ok, "TOKEN-B"}
+    back to A, blank         :ok, secret() == {:ok, "TOKEN-A"}
+    forget                   this site's token is gone
+
+No part of this is in the deployment: `SiteUrl` is shared `lib/`, and everything
+else is `lib_desktop/`.
+
 ## 4. On the first deploy, watch
 
 1. `fly logs` for the boot line and for a `Sites` conflict — the one failure that

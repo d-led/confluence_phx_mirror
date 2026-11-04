@@ -30,18 +30,20 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     email = escape(assigns[:email] || Settings.email() || Settings.suggested_email() || "")
     folder = escape(assigns[:root] || Settings.root() || "")
 
-    # The token is filled in from whatever this machine already has — the
-    # credential store's, or `CM_ATL_TOKEN`'s — because a rotated token has to be
-    # replaced here and a field you cannot see is a field you cannot correct.
-    # It is a password input on a loopback page, which is the trade this tool
-    # makes: one reader, one machine, and no secret typed twice.
-    {secret_required, secret_hint, existing} =
+    # Whether a token is already stored for *this* site decides whether the field
+    # is required, and nothing else. The stored value is never rendered: a secret
+    # in a page's HTML is a secret in a screenshot, a cache and every extension
+    # with a content script — and, worse, a token the browser would carry into
+    # whatever address is typed next. Blank means "keep this site's token", and
+    # a changed site has no token to keep.
+    {secret_required, secret_hint} =
       case Settings.secret() do
-        {:ok, secret} ->
-          {"", "A token is stored here. Leave it, or replace it.", escape(secret)}
+        {:ok, _secret} ->
+          {"", "A token is stored for this site. Leave this empty to keep it, or type a new one."}
 
         {:error, _none} ->
-          {" required", "Stored in this machine's credential store, never in a file.", ""}
+          {" required",
+           "Stored in this machine's credential store, never in a file. A token belongs to the site named above."}
       end
 
     error =
@@ -72,7 +74,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         </label>
         <label>
           <span>API token</span>
-          <input name="secret" type="password" value="#{existing}"#{secret_required}>
+          <input name="secret" type="password" value=""#{secret_required} autocomplete="off">
           <small>#{secret_hint}</small>
         </label>
         <label>
@@ -226,12 +228,19 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   same — the site listing does not say what this catalogue keeps — so `:held`
   comes from the catalogue, and a space it holds with no pages still gets the
   button.
+
+  `loading: true` draws the same list with **every control disabled** and a note
+  saying why. A refresh is one round trip, and a person who presses a button
+  during it is pressing a button about a list that is being replaced underneath
+  them — the tool mirrored a sample's two spaces that way once. Nothing is
+  drawn at all when there is no list yet: `loading/1` is that screen.
   """
   @spec spaces([map()], %{String.t() => non_neg_integer()}, map()) :: String.t()
   def spaces(spaces, counts, meta \\ %{}) do
     matching = Map.get(meta, :matching, length(spaces))
     known = Map.get(meta, :known, matching)
     held = Map.get(meta, :held, MapSet.new())
+    blocked = if Map.get(meta, :loading, false), do: " disabled", else: ""
 
     rows =
       Enum.map_join(spaces, "", fn space ->
@@ -252,7 +261,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
             """
             <form method="post" action="/__tool/forget">
               <input type="hidden" name="space" value="#{escape(space.key)}">
-              <button type="submit" class="secondary" title="Stops mirroring it; what is here goes to the trash">Forget</button>
+              <button type="submit" class="secondary"#{blocked} title="Stops mirroring it; what is here goes to the trash">Forget</button>
             </form>
             """
           else
@@ -269,7 +278,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
           #{forget}
           <form method="post" action="/__tool/mirror">
             <input type="hidden" name="space" value="#{escape(space.key)}">
-            <button type="submit" class="secondary">#{if mirrored > 0, do: "Mirror again", else: "Mirror"}</button>
+            <button type="submit" class="secondary"#{blocked}>#{if mirrored > 0, do: "Mirror again", else: "Mirror"}</button>
           </form>
         </li>
         """
@@ -290,7 +299,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         """
         <form method="post" action="/__tool/mirror_all" class="everything">
           <input type="hidden" name="q" value="#{escape(Map.get(meta, :query, ""))}">
-          <button type="submit">Mirror <span data-count>#{if configured > 0, do: configured, else: matching}</span> <span data-noun>#{noun}</span></button>
+          <button type="submit"#{blocked}>Mirror <span data-count>#{if configured > 0, do: configured, else: matching}</span> <span data-noun>#{noun}</span></button>
           <small>#{if configured > 0, do: "The spaces you configured, one after another. Nothing is added to that set.", else: "One after another, in the order they are listed."}</small>
         </form>
         """
@@ -465,6 +474,13 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
 
   def describe_error({:unknown_space, key}) when is_binary(key),
     do: "the site has no space called #{key}"
+
+  # A start while the space list is being fetched has no key to act on yet. The
+  # buttons are drawn disabled in that window; this is the answer for a tab that
+  # was rendered before the fetch began.
+  def describe_error(:list_loading),
+    do:
+      "the space list is still being fetched. Nothing was started — press again once it is here."
 
   def describe_error({space_key, reason}) when is_binary(space_key),
     do: "in #{space_key}: #{describe_error(reason)}"

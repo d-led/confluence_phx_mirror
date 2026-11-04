@@ -58,7 +58,17 @@ connection, the press that queues a mirror run, and the archive.
    `MIX_ENV=desktop`. The tool is verified by running it and by
    `MIX_ENV=desktop mix dialyzer`, not by a test file.
 5. **The suite is flaky under load.** `DBConnection` checkout timeouts become
-   `OwnershipError`s in six unrelated files; they pass alone. Not fixed.
+   `OwnershipError`s in six unrelated files; they pass alone. Not fixed. Two
+   more, both seen once each in full runs and never on Postgres:
+   `Export.ZipTest` timed out at 60 s (load), and
+   `MailTest` "a minute after the last one, the next is allowed again" fails
+   about **1 run in 6** on SQLite with `{:error, :too_soon, 60000}` on the call
+   *after* the ledger row was moved 61 s back and `moved == 1` asserted. The
+   remaining hypotheses are `max(inserted_at)` over two spellings of the same
+   timestamp and `Budget.reserve/1`'s `:already_sent` — which `Mail.deliver/1`
+   maps to `:too_soon` — firing for a key it should not recognise. Not
+   diagnosed; `scripts/test-sqlite.sh test/confluence_phx_mirror/mail_test.exs`
+   reproduces it in a few runs.
 
 ## What was asked for, and where it stands
 
@@ -77,10 +87,12 @@ here as done is open.
 | "the confluence url was a local IP" | **done** — the site is only ever what this workspace recorded |
 | "stop all the redirects in start-desktop.sh / don't fail silently" | **done** — no redirect, no `&`, no log file; numbered steps, real statuses |
 | "each screen must have a link to proceed — there's no BACK BUTTON" | **done** — the server's own shell is on every page the mirror serves (brand, search, switcher, theme, account menu with Admin), and the tool's own screens carry a bar |
-| "show the screen always; show the folder selection at the beginning; pre-fill the token" | **done** — an unconfigured `/` answers 200 with the connection form, the form prefills site, account, token and folder, and `POST /__tool/setup` carries the folder through (422 when it cannot be written) |
+| "show the screen always; show the folder selection at the beginning; pre-fill the token" | **done** — an unconfigured `/` answers 200 with the connection form, the form prefills site, account and folder, and `POST /__tool/setup` carries the folder through (422 when it cannot be written). The token is the exception since trap 30: the field is empty and says a token is stored, because a prefilled secret next to an editable URL is a secret one edit away from another site |
 | "are you swallowing errors?" | **done** — publish failures are a screen and a log line; `Jobs` and `Spaces` no longer ignore a refused `start_child` (a run that never started used to look like a run in progress); a refused start redirects to the screen that explains it |
 | "can you start producing better quality? Use dialyzer" | **done** — `MIX_ENV=desktop mix dialyzer`: **Total errors: 0**, after it found the `:page` contract bug (trap 16) |
 | "a meaningful desktop app" | **done** for the tool: it mirrors, exports and navigates — and the reading surface is the whole mirror UI, admin included. Open: search (item 1) and signing |
+| "the app stored the token not bound to the instance URL … what if I stuck a malicious URL there????" | **done** — a token is filed under the site it is for (`workspace:<normalised base URL>`, `SiteUrl.normalize/1`), so it is never *found* for another address; a changed site needs a token of its own (`:secret_required`, nothing saved) instead of inheriting the previous one, an environment token only counts for the site in `CM_CONFLUENCE_SITE`, and the form no longer renders the stored secret into its own HTML |
+| "what are these 2 spaces???? … don't show any FAKE data" / "if spaces are loading, the button must be blocked" | **done** — the list is tagged with the source that produced it and served only while that source is still the configured one (the bundled sample's two spaces can no longer be drawn beside a real site), the boot fetch happens after the workspace knows its site instead of before, every control is drawn disabled while a list is being replaced, and `Jobs.start_mirror/3` refuses a start mid-fetch (`:list_loading`) instead of acting on keys nobody confirmed |
 | "it started a sync NOT AS A JOB … that could not be canceled! … why are we duplicating functionality?" | **done** — the tool's own copy of the loop is gone. A run is a `SpaceWorker` on the `sync` queue: a row in `oban_jobs`, a row in `sync_runs` (mode, scope, trigger, pages), `/admin/jobs` lists it, `/__tool/mirror` follows it and `/__tool/cancel` is `Sync.cancel/2` (which also empties the queue, so a bulk run stops being a bulk run). Proven in a headless run: press → job + run row; bulk start → two runs, one after the other; cancel → `cancelled` job and `cancelled` run with `cancel_requested_at`; a mistyped key → 409, "the site has no space called NOPE", nothing enqueued |
 
 ## Decisions, and why
@@ -440,13 +452,60 @@ here as done is open.
     engine, the spelling `Search.Lite` already used — and the whole class is what
     `scripts/test-sqlite.sh` exists to find.
 
-    That script is not a gate yet: `CM_TEST_ADAPTER=sqlite` compiles the repo with
-    the other adapter (the choice is `Application.compile_env`, so it needs its
-    own build path and its own database file) and the run stops at the first
-    un-ported spot — today, an attachment whose `confluence_id` the schema types
-    `:string` while the column is an integer here. Make it green, then add it to
-    `ci.yml` beside the Postgres job: same suite, two engines, in parallel. A job
-    added before that is a gate that always fails.
+    That script is a gate now: `CM_TEST_ADAPTER=sqlite` compiles the repo with the
+    other adapter (the choice is `Application.compile_env`, so it needs its own
+    build path and its own database file) and `ci.yml` runs it as a second job
+    beside the Postgres one. What it took to get green is the list above, plus
+    `TRUNCATE` in a fixture, `now()` in the mail ledger, `api_tokens.user_id`'s
+    `ALTER COLUMN`, `EXISTS` arriving as 1 rather than `true`, and a JSON list
+    compared whole against one element in `IN`. What the tool genuinely cannot
+    do is marked `:postgres_only` and excluded there, not skipped quietly.
+
+30. **A token was stored for the machine, not for the site.** The credential
+    store's account was the constant `"workspace"`, and the setup form rendered
+    the stored secret back into its own HTML. Together those two meant: change
+    the site URL in the form, press save, and the token typed for
+    `acme.atlassian.net` is stored again — and then sent to whatever address is
+    in the box. The form had been prefilling a secret *for one address* into a
+    field beside *another* address.
+
+    Three changes, because one was not enough. The account carries the site
+    (`"workspace:" <> SiteUrl.normalize(url)`, trap-worthy in itself: a trailing
+    slash must not make a second site), so a token is never *found* for an
+    address it was not stored for. The secret is resolved against the site being
+    saved, so a blank field means "keep `this` site's token" and a changed site
+    answers `{:error, :secret_required}` with nothing written. And the token in
+    the environment counts only for the site in `CM_CONFLUENCE_SITE` — the two
+    arrive together, and a provisioned token is not a token for a URL somebody
+    types. The form now renders an empty field and says whether a token is
+    stored; a secret in a page's HTML is a secret in a screenshot, in a cache,
+    and in the browser's next submission.
+
+31. **Two spaces nobody owned, on a site that had them neither.** The spaces
+    screen showed *Engineering Handbook* and *Product Hub* beside
+    `https://dled.atlassian.net` — the two spaces of the bundled sample — and a
+    live button offering to mirror them, which mirrored the sample's keys against
+    the real site. The sample is not a bug: the tool boots on it so first run has
+    something to draw. What was a bug is that three separate things had to be
+    right and none were:
+
+    * `Desktop.Spaces` fetched at `init`, which runs before
+      `Desktop.Application.after_start/0` has loaded the settings — so the fetch
+      read `Source.source/0` while it was still the sample, and the answer was
+      the sample's two spaces. The boot fetch moved to `after_start`, after the
+      credentials, and there is a check for it: a list is served only while
+      `Source.source/0` is still the source that produced it (`Spaces.current?/1`),
+      so a site change makes the old answer `:loading` rather than authoritative.
+    * every control was live during the wait, so a press meant "mirror whatever
+      is on screen", which was the sample. Buttons are drawn disabled while a
+      list is being replaced, and `Jobs.start_mirror/3` refuses mid-fetch with
+      `:list_loading` — a disabled button has to be backed by a server that says
+      the same thing.
+    * the waiting screen refreshed itself every second *and* refreshed the list
+      from the request, so an unreachable site was asked again every couple of
+      seconds for as long as the window was open. Nothing fetches from a request
+      now; the fetch belongs to boot, to a saved connection, and to the one retry
+      a failure screen makes when it is opened.
 
 ## Next, in order
 

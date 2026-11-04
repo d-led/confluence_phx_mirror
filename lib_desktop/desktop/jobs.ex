@@ -60,9 +60,11 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
   Answers `{:error, :busy}` while a run is going or jobs are waiting — a second
   start would only queue behind the first, and a button that says "started" while
   nothing moves is worse than one that says "not yet". `:nothing_to_do` is a
-  start with no space in it, and `{:unknown_space, key}` is a space the site does
-  not list: recording that one would leave the workspace configured for a space
-  that is not there, and running it would invent an empty one.
+  start with no space in it, `:list_loading` is a start while the space list is
+  still being fetched (nothing is known about any key yet, so nothing may be
+  acted on), and `{:unknown_space, key}` is a space the site does not list:
+  recording that one would leave the workspace configured for a space that is not
+  there, and running it would invent an empty one.
 
   `remember: false` is a bulk run: it copies what the workspace is configured for
   and does not decide the configuration. A single space *is* that decision, and is
@@ -72,12 +74,14 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
   """
   @spec start_mirror([String.t() | nil], String.t(), keyword()) ::
           {:ok, :started}
-          | {:error, :busy | :nothing_to_do | {:unknown_space, String.t()} | term()}
+          | {:error,
+             :busy | :nothing_to_do | :list_loading | {:unknown_space, String.t()} | term()}
   def start_mirror(space_keys, _label, opts \\ []) do
     keys = space_keys |> Enum.reject(&blank?/1) |> Enum.uniq()
 
     cond do
       keys == [] -> {:error, :nothing_to_do}
+      spaces() == :loading -> {:error, :list_loading}
       unknown = Enum.find(keys, &(not known?(&1))) -> {:error, {:unknown_space, unknown}}
       going?() -> {:error, :busy}
       true -> enqueue(keys, Keyword.get(opts, :remember, true))
@@ -147,7 +151,7 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
   defp known?(key) do
     case spaces() do
       {:ok, spaces} -> Enum.any?(spaces, &(&1.key == key))
-      {:error, _reason} -> false
+      _not_known_yet -> false
     end
   end
 
