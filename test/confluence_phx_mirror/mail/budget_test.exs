@@ -8,6 +8,8 @@ defmodule ConfluencePhxMirror.Mail.BudgetTest do
 
   use ConfluencePhxMirror.DataCase, async: false
 
+  import ConfluencePhxMirror.Fixtures
+
   alias ConfluencePhxMirror.Mail.Budget
   alias ConfluencePhxMirror.Mail.Send
   alias ConfluencePhxMirror.Settings
@@ -30,6 +32,27 @@ defmodule ConfluencePhxMirror.Mail.BudgetTest do
 
     assert {:ok, _} = Budget.claim("watcher:1")
     assert Budget.remaining() == 1
+  end
+
+  # A name is what the ledger deduplicates on, so two *different* messages must
+  # never share one. A clock does not promise that: a store fast enough to answer
+  # inside a millisecond produced the same name twice, the second ask was reported
+  # as "already sent", and `mail_test.exs`'s minute-window case failed about once
+  # in six runs because of it.
+  test "two asks for a test message never carry one name, however fast they come" do
+    reader = user_fixture()
+
+    names = for _ask <- 1..500, do: Budget.key(:test, reader)
+
+    assert length(Enum.uniq(names)) == 500
+  end
+
+  test "two ends of a link never carry one name either" do
+    reader = user_fixture()
+
+    names = for _event <- 1..500, do: Budget.key(:identity_link, reader, "acc-1", :account)
+
+    assert length(Enum.uniq(names)) == 500
   end
 
   test "the day runs out, and says how long until it does not" do

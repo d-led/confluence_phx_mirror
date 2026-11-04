@@ -167,18 +167,19 @@ defmodule ConfluencePhxMirror.Mail.Budget do
 
   def key(:welcome, %ConfluencePhxMirror.Accounts.User{id: id}), do: "welcome:#{id}"
 
-  # A reader asks for a test message; every ask is its own message. The
-  # millisecond keeps two asks from carrying one name, which the ledger would
-  # read as "this one went already" — the minute between them is a window the
-  # caller measures (see `ConfluencePhxMirror.Mail.send_test/1`).
+  # A reader asks for a test message; every ask is its own message. The name has
+  # to be unique on its own — see `unique_suffix/0`: a clock can repeat, and the
+  # ledger would read the second ask as "this one went already". The minute
+  # between two asks is a window the caller measures (see
+  # `ConfluencePhxMirror.Mail.send_test/1`).
   def key(:test, %ConfluencePhxMirror.Accounts.User{id: id}),
-    do: "test:#{id}:#{System.system_time(:millisecond)}"
+    do: "test:#{id}:#{unique_suffix()}"
 
   # A link is one event with two ends, and each end that has an address gets its
   # own message: the side names which one, so neither takes the other's name in
-  # the ledger. The event's own moment keeps the key unique — the same identity
-  # can be unlinked and linked again, and the second time is news too — while a
-  # request that arrives twice finds the identity already linked and never gets
+  # the ledger. The same identity can be unlinked and linked again and the second
+  # time is news too, so the name carries a suffix nothing else will take — while
+  # a request that arrives twice finds the identity already linked and never gets
   # as far as a message.
   @spec key(
           :identity_link,
@@ -188,7 +189,16 @@ defmodule ConfluencePhxMirror.Mail.Budget do
         ) ::
           String.t()
   def key(:identity_link, %ConfluencePhxMirror.Accounts.User{id: id}, account_id, side),
-    do: "identity_link:#{id}:#{account_id}:#{side}:#{System.system_time(:millisecond)}"
+    do: "identity_link:#{id}:#{account_id}:#{side}:#{unique_suffix()}"
+
+  # Two messages must never carry one name, and a clock does not promise that:
+  # two asks in the same millisecond collided, and the ledger then read the
+  # second as "this one went already" — `mail_test.exs`'s minute-window case
+  # caught it about once in six runs on a store fast enough to answer inside a
+  # millisecond. The millisecond stays in front because a person reading the
+  # ledger wants to see when; the UUID is what makes the name unique, across
+  # nodes as well as within one.
+  defp unique_suffix, do: "#{System.system_time(:millisecond)}:#{Ecto.UUID.generate()}"
 
   @doc "How many messages have been handed over today, refusals included."
   @spec used() :: non_neg_integer()
