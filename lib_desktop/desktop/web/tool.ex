@@ -256,9 +256,15 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
 
   # The live filter. Served rather than inlined: the page is generated HTML, but
   # a script tag pointing at one file is still the only copy of it.
+  #
+  # `no-store`, because the tool has no version in its URLs: a cached copy of
+  # this file is a screen whose filter silently stops typing, which is exactly
+  # how it was reported ("the filter is not live"). Two kilobytes is not worth
+  # that.
   get "/__tool/assets/app.js" do
     conn
     |> put_resp_content_type("text/javascript")
+    |> put_resp_header("cache-control", "no-store")
     |> send_resp(200, Page.script())
   end
 

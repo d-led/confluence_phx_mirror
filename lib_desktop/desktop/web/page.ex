@@ -850,7 +850,9 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     <body#{if opts[:nav] == false, do: ~s( class="plain"), else: ""}>
     #{if opts[:nav] == false, do: "", else: sidebar(opts[:current])}<main>#{body}
     #{if opts[:status], do: ~s(<p class="status">#{escape(opts[:status])}</p>), else: ""}
-    </main></body>
+    </main>
+    #{if opts[:script], do: ~s(<script defer src="/__tool/assets/app.js"></script>), else: ""}
+    </body>
     </html>
     """
   end
