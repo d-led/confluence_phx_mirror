@@ -1,8 +1,24 @@
-# Publishes the desktop tool when a version tag is pushed.
+# Publishes the desktop tool: a runnable tarball from every push, and a release
+# from a version tag.
 #
 #   git tag v1.2.3 && git push origin v1.2.3
 #
-# What is attached to the release is a tarball, not a `.app`. That is deliberate
+# Every push builds one too, kept for 90 days, because the newest build of a
+# branch is what somebody installs — there is no release to wait for:
+#
+#   curl -fsSL https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.sh | sh
+#
+# The script reads the newest artifact through `nightly.link`, which serves
+# `<workflow>/<branch>/<artifact>.zip` for the last successful run:
+#
+#   https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-macos.zip
+#
+# The artifact is a **tarball inside that zip** on purpose: an artifact's own zip
+# does not carry file modes, and both the release's `bin/*` scripts and the
+# `start` launcher beside them have to stay executable. The installer untars it
+# for that reason, not out of habit.
+#
+# What is attached to a release is a tarball, not a `.app`. That is deliberate
 # and it is temporary: bundling a window, a release and an icon into a signed
 # application is its own piece of work, and a workflow that produces a `.app`
 # nobody has run would be worse than one that produces something honest. Today
@@ -24,16 +40,20 @@ name: desktop-release
 
 on:
   push:
+    # Every branch, `main` included: the newest build of a branch is installable,
+    # and a build that only happens on a tag is a build nobody has run.
+    branches: ["**"]
     tags: ["v*.*.*"]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: desktop-release-${{ github.ref }}
-  # Never cancel a release build: a half-uploaded asset is worse than a slow one.
-  cancel-in-progress: false
+  # A superseded branch build is wasted work; a half-uploaded release is worse
+  # than a slow one, so a tag is never cancelled.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   MIX_ENV: desktop
@@ -41,8 +61,8 @@ env:
   OTP_VERSION: "29.1.2"
 
 jobs:
-  release:
-    name: release (macOS)
+  package:
+    name: package (macOS)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -110,17 +130,44 @@ jobs:
           SCRIPT
           chmod +x dist/start
 
-          tar -czf "confluence-export-${GITHUB_REF_NAME}-macos.tar.gz" -C dist .
+          # One name for both jobs: a tag would otherwise assemble a second copy
+          # of the same tree under a different file name.
+          tar -czf dist/confluence-export-macos.tar.gz -C dist .
 
-      - name: Publish
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: confluence-export-macos
+          path: dist/confluence-export-macos.tar.gz
+          # `nightly.link` serves the newest artifact of a branch, and an
+          # installed build should keep working for a while: a week is not long
+          # enough for that promise.
+          retention-days: 90
+          if-no-files-found: error
+
+  release:
+    name: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v8.0.0
+        with:
+          path: dist
+
+      - name: Attach the tarball to the tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
           asset="confluence-export-${tag}-macos.tar.gz"
+          mv "dist/confluence-export-macos.tar.gz" "$asset"
+          ls -lh "$asset"
 
           gh release view "$tag" >/dev/null 2>&1 ||
-            gh release create "$tag" --title "$tag" --generate-notes
+            gh release create "$tag" --title "$tag" --generate-notes \
+              --repo "$GITHUB_REPOSITORY"
 
-          gh release upload "$tag" "$asset" --clobber
+          gh release upload "$tag" "$asset" --clobber --repo "$GITHUB_REPOSITORY"
