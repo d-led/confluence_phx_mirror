@@ -7,6 +7,7 @@ defmodule ConfluencePhxMirror.MixProject do
       version: "0.1.0",
       elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
+      test_paths: test_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
@@ -105,6 +106,14 @@ defmodule ConfluencePhxMirror.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(:desktop), do: ["lib", "lib_desktop"]
   defp elixirc_paths(_), do: ["lib"]
+
+  # The tool's tests live in their own directory, and in the desktop environment
+  # they are the *only* ones: `mix test` loads `<path>/test_helper.exs`, and the
+  # server's helper starts a sandbox for a repo the tool does not run in these
+  # tests. Two environments, two suites, one command each — `mix test` for the
+  # server, `scripts/test-desktop.sh` for the tool.
+  defp test_paths(:desktop), do: ["test_desktop"]
+  defp test_paths(_), do: ["test"]
 
   defp application_module(:desktop), do: ConfluencePhxMirror.Desktop.Application
   defp application_module(_), do: ConfluencePhxMirror.Application
@@ -270,9 +279,24 @@ defmodule ConfluencePhxMirror.MixProject do
   # Which migrations `mix test` applies. `ecto.migrate_all` reaches into
   # `priv/repo/manual_migrations`, which are Postgres-shaped on purpose (a JSON
   # rewrite no other engine has); the SQLite suite runs what the tool runs.
+  # Which migrations a test run applies.
+  #
+  # The deployment's Postgres has two sets: `priv/repo/migrations` and the
+  # hand-run `priv/repo/manual_migrations` (statements somebody decides to run,
+  # like the one that moves a value out of a `jsonb` column). SQLite has only the
+  # first — the manual ones are written in Postgres's jsonb operators, and the
+  # tool's own boot applies the same single set (`Desktop.Setup`). A desktop test
+  # run that applied both failed on the first statement of a migration the app
+  # never runs, which is the sort of thing a test environment exists to tell you:
+  # the alias and the boot were disagreeing about which migrations a workspace
+  # has.
   defp test_migrations do
-    if System.get_env("CM_TEST_ADAPTER") == "sqlite",
-      do: "ecto.migrate --quiet",
-      else: "ecto.migrate_all --quiet"
+    if sqlite_store?(), do: "ecto.migrate --quiet", else: "ecto.migrate_all --quiet"
+  end
+
+  # SQLite is the store either because the second CI leg asks for it, or because
+  # this is the desktop environment, where it is the only adapter there is.
+  defp sqlite_store? do
+    System.get_env("CM_TEST_ADAPTER") == "sqlite" or Mix.env() == :desktop
   end
 end

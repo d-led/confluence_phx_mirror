@@ -69,12 +69,15 @@ connection, the press that queues a mirror run, and the archive.
    shows the interval; nothing in this build reads it.
 3. **The `.app` is unsigned.** It runs from this machine; a copy that travels is
    quarantined by Gatekeeper until it is signed and notarised.
-4. **`lib_desktop/` has no unit tests**, and CI neither compiles nor dialyses
-   `MIX_ENV=desktop`. The tool is verified by running it and by
-   `MIX_ENV=desktop mix dialyzer`, not by a test file. The window shell has ten
-   Rust tests (`cargo test --manifest-path src-tauri/Cargo.toml`) — failure
-   classification, the failure page, the address check — which is a start, not a
-   suite.
+4. **The tool now has a test home, and CI has a leg that uses it** — but the
+   suite is six tests, not a suite. `scripts/test-desktop.sh` runs `MIX_ENV=desktop
+   mix test --no-start` against `test_desktop/` with a throwaway `HOME`; it covers
+   the router's instance marker, the port decision that makes the app single-
+   instance, and the screens' answer to a missing file. The `Desktop tool` job in
+   `ci.yml` compiles the tool with warnings-as-errors, dialyses it and runs both
+   suites, and the window shell has ten Rust tests of its own. What is still
+   untested is the bulk of `lib_desktop/`: settings, credentials, the space list,
+   jobs, the archive. Adding a test is now a file, not a harness.
 5. **The suite was flaky under load — two separate causes, both closed.** The
    `DBConnection`/`OwnershipError` failures were two suites against one test
    database (trap 6), not the code. The rest was real: three tests waited for a

@@ -146,7 +146,13 @@ jobs:
           path: ~/.cargo/bin/cargo-tauri
           key: tauri-cli-2-${{ runner.os }}
 
+      # `bash` explicitly: the Windows runner's default shell is PowerShell,
+      # where `> /dev/null` does not mean "throw the output away" — it means
+      # "write a file called null beside the workspace", and this step failed with
+      # `Could not find a part of the path 'D:\dev\null'` on every Windows run
+      # until it said so.
       - name: Install the Tauri CLI (when the cache misses)
+        shell: bash
         run: command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "^2" --locked
 
       # One script, not a second implementation of it. The steps used to be

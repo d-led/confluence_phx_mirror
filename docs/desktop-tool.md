@@ -523,9 +523,22 @@ done so an interrupted run resumes rather than restarts.
 
 Three layers, and the middle one is the reason this design is cheap:
 
-**Desktop unit tests** — `test_desktop/`, their own alias, their own SQLite
-database in a temp dir. The schema, the upserts, the resume behaviour, the
-`substr` excerpt.
+**Desktop unit tests** — `test_desktop/`, run by `scripts/test-desktop.sh`:
+`MIX_ENV=desktop mix test --no-start`, its own test path (`test_paths/1` in
+`mix.exs` keeps the server's helper out of it), and a throwaway `HOME` so the
+suite never reads or writes the catalogue somebody has open. What is there today
+is the part that is a *contract* rather than a feature: the marker header a
+second copy uses to recognise the first, the port decision that makes the app
+single-instance, and the screens' answer to a missing file. `--no-start` keeps
+those tests about logic: the two applications the code calls into (`bandit` for a
+real socket, `req` for the probe) are started by the test helper, and nothing else
+is.
+
+The same suite has two hosts: `scripts/test-desktop.sh` locally, and the `Desktop
+tool` job in `ci.yml`, which also compiles the tool with warnings-as-errors and
+dialyses it. The window shell is tested separately
+(`cargo test --manifest-path src-tauri/Cargo.toml`): failure classification, the
+failure page, and the address check.
 
 **The parity test** — the one that matters:
 
