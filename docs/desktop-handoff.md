@@ -294,6 +294,8 @@ mix sobelow --exit                                    # security gate
 scripts/start-desktop.sh --where                      # assets, release and window, then the workspace
 scripts/start-desktop.sh                              # the debug window from the checkout
 scripts/start-desktop.sh --app                        # the .app, built and opened
+scripts/package.sh                                    # what the workflow publishes, built here
+scripts/package.sh --install                          # …and installed the way a download installs
 ```
 
 The asset steps print about a second each once the toolchain is installed —

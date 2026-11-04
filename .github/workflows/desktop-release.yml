@@ -86,6 +86,18 @@ jobs:
       - name: Fetch dependencies
         run: mix deps.get
 
+      # A release ships whatever `priv/static` holds and never builds it, and
+      # `priv/static/assets` is not in the repository. Built here, or the download
+      # opens unstyled, with "unknown hook found" in its console and menus that do
+      # not open — the same four steps `scripts/package.sh` runs locally.
+      - name: Build the assets
+        run: |
+          mix assets.install --if-missing
+          mix tailwind confluence_phx_mirror --minify
+          mix esbuild confluence_phx_mirror --minify
+          mix esbuild confluence_phx_mirror_swagger --minify
+          mix phx.digest
+
       - name: Build the release
         run: mix release --overwrite
 
@@ -110,7 +122,16 @@ jobs:
           done
 
           [ -n "$url" ] || { echo "the release never said where it listens"; cat "$log"; exit 1; }
-          curl -fsS "$url/state"
+
+          # The address it prints ends with a slash, and `//__tool` is a
+          # different path from `/__tool` — one the endpoint answers with a 404.
+          url=${url%/}
+
+          # Both halves: the mirror's own health, and the tool's screen, which is
+          # the part this build adds. A release that serves one and not the other
+          # is a download that opens on nothing.
+          curl -fsS "$url/health"
+          curl -fsS "$url/__tool"
 
       - name: Assemble
         run: |
