@@ -333,6 +333,23 @@ here as done is open.
     one at a time. Check the artifact, not the badge:
     `gh run download <id> -n confluence-export-macos -D … && unzip -l … | grep -c
     Contents/Resources/rel` should count thousands, not zero.
+24. **A stale bundle refuses a real catalogue, saying `configured for "demo"`.**
+    `Sites.Guard` compares what the catalogue records with what the build is
+    configured for, and on 4 November two launches died on it: *this database
+    belongs to the site "dled_atlassian_net" … but the mirror is configured for
+    "demo"*. A current release reads `settings.json`, finds the site and selects
+    the HTTP source; `put_source_config/0` — the line that does it — arrived on
+    **3 November** (`1606935`), while `Settings.site/0` existed from 2 November.
+    A release built before that has the recording but not the wiring, so it
+    falls back to the demo snapshot and refuses the catalogue the same app had
+    just filled. The fix is to install a build that includes the wiring, not to
+    delete the catalogue. To tell which release a bundle carries, without
+    launching it: `md5 -q "<app>/Contents/Resources/rel/<name>/lib/<name>-*\
+    /ebin/Elixir.ConfluencePhxMirror.Desktop.Settings.beam"` and compare it with
+    `_build/desktop/rel/…` — and `ls -l` the `rel` directory, because `ditto`
+    preserves timestamps and an old copy looks old. Related: `package.sh`'s
+    `assemble` used to `rm -rf` the package directory, deleting the `.app` a
+    person may be double-clicking; it removes only the zip now.
 
 ## Next, in order
 

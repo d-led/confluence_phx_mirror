@@ -143,8 +143,8 @@ embed_release() {
 }
 
 assemble() {
-  rm -rf "$out"
   mkdir -p "$out"
+  rm -f "$out/$asset"
 
   # `ditto`, not `zip`: an application bundle is directories, symlinks and
   # extended attributes, and only `ditto -k` (or Finder's own zip) preserves the
