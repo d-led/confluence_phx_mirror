@@ -304,8 +304,12 @@ here as done is open.
    escript with `ElixirKit.Release.codesign/1` (ad-hoc without
    `APPLE_SIGNING_IDENTITY`, a real signature with it), and
    `src-tauri/App.entitlements` carries the four switches the BEAM needs under
-   the hardened runtime. What is missing is the certificate, and notarisation
-   (`xcrun notarytool`), which needs a paid Apple Developer account.
+   the hardened runtime. It stops there on purpose: **this project has no Apple
+   Developer account**, so nothing here will be notarised, and the install path
+   is what removes the friction instead — `install-desktop.sh` clears the
+   quarantine flag on the copy it just made, and `docs/desktop-tool.md` gives the
+   one-line `xattr` for a copy downloaded in a browser. Anything that promised
+   more would need the account, not more code.
 4. **Cypress harness** against `--in-browser`, with a demo *connector* (HTTP, not an
    in-process seed) so the same suite can run against the container image.
 

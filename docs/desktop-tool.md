@@ -79,6 +79,43 @@ call time rather than through a seam. Do not guess this list; produce it.
 
 The spike is the deliverable of the first day, and it is thrown away.
 
+## Getting it
+
+The app is published as `Confluence Export.app`, zipped, by
+`.github/workflows/desktop-release.yml`: every push builds one, kept 90 days, and
+a `v*` tag attaches the same build to a release. Three ways in:
+
+```sh
+# the newest build of a branch, installed into ~/Applications
+curl -fsSL https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.sh | sh
+
+# from a checkout: the same build, written to _build/desktop/package/
+scripts/package.sh
+
+# or, if you would rather not run a downloader's script
+open https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-macos.zip
+```
+
+**It is not signed, and it will not be.** Signing a macOS app that carries an
+Erlang runtime needs a paid Apple Developer account, which this project does not
+have. So the download is a plain unsigned bundle, and macOS objects to the first
+launch of a copy it did not see you make:
+
+* **Installed with `install-desktop.sh`:** nothing to do. `curl` does not set the
+  quarantine flag the way a browser does, and the installer clears it anyway
+  before it prints where the app went — on the copy it just installed, and
+  nowhere else.
+* **Downloaded in a browser:** unzip it, drag it to `/Applications`, then either
+  right-click → **Open** once, or clear the flag yourself:
+
+  ```sh
+  xattr -rd com.apple.quarantine "/Applications/Confluence Export.app"
+  ```
+
+  macOS 15 and later removed the right-click bypass for unsigned apps: the
+  System Settings → Privacy & Security → *Open Anyway* button is the equivalent,
+  and the `xattr` line works the same as it always has.
+
 ## Layout
 
 ```

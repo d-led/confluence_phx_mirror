@@ -86,6 +86,18 @@ mkdir -p "$apps" "$bin_dir"
 rm -rf "${apps:?}/$app"
 ditto "$work/unpacked/$app" "$apps/$app"
 
+# The app is not signed, so a copy that arrived with the quarantine flag — one
+# fetched by a browser, or from a file that already carried it — is refused on
+# its first launch. The flag is cleared here, on the copy this script just made
+# and nowhere else, because a person who asked for this install has asked for
+# this app to run; doing it to anything else would be a different act.
+if xattr -p com.apple.quarantine "$apps/$app" >/dev/null 2>&1; then
+  xattr -dr com.apple.quarantine "$apps/$app"
+  cleared="cleared the quarantine flag it arrived with"
+else
+  cleared="nothing to clear: it never carried a quarantine flag"
+fi
+
 # A launcher, so the tool starts from a terminal too. `open -a` is what a bundle
 # needs: running the executable inside it directly skips the activation its
 # window expects.
@@ -103,5 +115,7 @@ case ":$PATH:" in
   *) echo "Add $bin_dir to PATH to run it by name." ;;
 esac
 echo
-echo "The app is unsigned: the first launch needs right-click → Open (once)."
+echo "Gatekeeper: $cleared."
+echo "The app is not signed; a browser download of the same zip would need"
+echo "right-click → Open once, or: xattr -rd com.apple.quarantine \"$apps/$app\""
 echo "$apps/$app"
