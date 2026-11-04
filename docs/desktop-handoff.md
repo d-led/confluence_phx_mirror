@@ -360,7 +360,9 @@ here as done is open.
     workflow and `package.sh` ask the file now — `[ -f
     _build/desktop/lib/<app>/priv/native/confluence_keyring.so ] || mix compile
     --force` — for the same reason as traps 23 and 24: a stale artifact is
-    invisible to the thing that was supposed to produce it.26. **A window closed, and the server it started kept the port.** Nobody
+    invisible to the thing that was supposed to produce it.
+
+26. **A window closed, and the server it started kept the port.** Nobody
     notices until the next launch reports `port 43100 is taken` and moves to a
     number an assistant was never pointed at. There is no tray icon, so a
     release that outlives its window is a process the person who opened it
@@ -372,6 +374,30 @@ here as done is open.
     terminal, remember both halves: a `mix run --no-halt` started by hand does
     not hold 43_100 for the app and does not die with the app either. Kill your
     own strays before believing a port result.
+
+27. **The window refused to start on its own folder, saying `configured for
+    "demo"` — and a terminal never did.** `Settings.put_source_config/0` read
+    `cond do blank(site()) -> :ok`. `blank/1` is not a predicate: it returns the
+    *value*, so the branch matched for every site ever configured and the tool
+    stayed on the demo snapshot. It reached a real site only because
+    `config/runtime.exs` picks `HttpSource` when `CM_CONFLUENCE_SITE`,
+    `CM_ATL_EMAIL` and `CM_ATL_TOKEN` are all exported — which every shell of
+    this repo has (they are in `~/.zshrc`) and a double-clicked app has not.
+    Hence the shape of the report: works from a terminal, dead from Finder.
+    Repro without a window: `env -i HOME="$HOME" PATH=/usr/bin:/bin <release>
+    start`. The fix is `present?/1` beside `blank/1`; the general lesson is that
+    a helper named like a question has to answer one.
+
+    The same report asked for the app not to die of it, which is the second half
+    of this trap: `Sites.Guard` raised out of `init/1`, so a disagreement
+    produced an Erlang crash dump and a window that never opened. A window now
+    passes `on_conflict: :report`: it logs, keeps the answer (`Sites.conflict/0`)
+    where the tool's home page shows it, and starts. Nothing is corrupted by
+    that — reading never mixes sites, and syncing still goes through
+    `Sites.verify!/0` per run, which is where mixing would happen. A deployment
+    keeps the default, `:stop`: a server with nobody to ask must not start
+    half-configured.
+
 ## Next, in order
 
 1. **One sync, not two.** Make `Sync.Gate`'s lease portable (a row updated with

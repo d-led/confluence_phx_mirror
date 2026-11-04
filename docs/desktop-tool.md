@@ -368,6 +368,21 @@ The variable is opt-in on purpose. `scripts/package.sh` runs the release with an
 inherited stdin, which under CI may already be at end-of-file; a release that
 watched stdin unconditionally would exit immediately and fail the boot check.
 
+### When the folder and the configuration disagree
+
+The tool does not die of it. A mirror holds one site, so a folder that belongs to
+one site and a configuration naming another is refused — every sync goes through
+`Sites.verify!/0`, and that is where the refusal lives, because reading cannot
+mix two sites and writing can. The boot check reports instead: the disagreement
+is logged, kept in `Sites.conflict/0`, and shown at the top of the tool's home
+page with both names and the way out (*change the connection*, or start over in a
+folder of its own). Saving the connection asks again, so the warning goes away
+without a restart.
+
+It is the case a lost `settings.json` produces, and a window that answered it
+with a crash dump helped nobody: the deployment keeps `on_conflict: :stop` (a
+server has no one to ask), the window passes `on_conflict: :report`.
+
 ## Storage
 
 The desktop uses the server's schema. There is one set of migrations, in

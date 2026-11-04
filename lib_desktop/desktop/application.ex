@@ -64,7 +64,11 @@ defmodule ConfluencePhxMirror.Desktop.Application do
       ConfluencePhxMirror.MetricsHistory,
       ConfluencePhxMirror.Resources,
       ConfluencePhxMirrorWeb.Telemetry,
-      ConfluencePhxMirror.Sites.Guard,
+      # A window has a person in front of it and no console, so a disagreement
+      # with its folder is reported and shown rather than raised: what a crash
+      # dump explains to nobody is which site the folder belongs to. Syncing
+      # still refuses per run, and `Sync` is where `verify!/0` is called.
+      {ConfluencePhxMirror.Sites.Guard, on_conflict: :report},
       ConfluencePhxMirror.Mcp.Markdown,
       ConfluencePhxMirror.SpaceDirectory,
       # The archive builder: one build at a time, and a file on disk before

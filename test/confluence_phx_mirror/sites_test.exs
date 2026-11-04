@@ -51,6 +51,27 @@ defmodule ConfluencePhxMirror.SitesTest do
     end
   end
 
+  describe "asking before deciding" do
+    test "an empty database records the site it is asked about" do
+      assert Sites.check() == :ok
+      assert Repo.get!(ConfluencePhxMirror.Sites.Site, 1).key == "demo"
+    end
+
+    test "a database that already belongs to this site agrees" do
+      assert Sites.check() == :ok
+      assert Sites.check() == :ok
+    end
+
+    test "a database of another site is reported, with both names" do
+      assert Sites.check() == :ok
+      with_site("https://dled.atlassian.net/wiki")
+
+      assert {:conflict, recorded, configured} = Sites.check()
+      assert recorded.key == "demo"
+      assert configured.key == "dled_atlassian_net"
+    end
+  end
+
   # Pretends the deployment is configured for a real Confluence site.
   defp with_site(url) do
     TestConfig.put(:source, HttpSource)

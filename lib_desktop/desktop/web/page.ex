@@ -11,6 +11,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   """
 
   alias ConfluencePhxMirror.Desktop.Settings
+  alias ConfluencePhxMirror.Sites
 
   @doc """
   The configuration form.
@@ -93,6 +94,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       :ready ->
         document("Confluence mirror export", """
         <h1>Ready</h1>
+        #{site_warning()}
         <p class="lede">This workspace mirrors <strong>#{escape(Settings.site() || "")}</strong>.</p>
         <dl>
           <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
@@ -109,6 +111,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       {:needs, missing} ->
         document("Confluence mirror export", """
         <h1>Not connected yet</h1>
+        #{site_warning()}
         <p class="lede">Everything works on what is in the folder below — mirroring
         is what needs a site and a token.</p>
         <p class="error" role="status">Still needed: #{Enum.map_join(missing, ", ", &Atom.to_string/1)}</p>
@@ -122,6 +125,32 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         """)
     end
   end
+
+  # A folder that belongs to one site and an app set up for another is what a
+  # lost settings file looks like. It is not a reason to die — reads are safe,
+  # because nothing is written — but it is not something to leave unsaid either:
+  # the tool would show the folder's content under the wrong name and refuse
+  # every sync for a reason the person cannot guess.
+  defp site_warning do
+    case Sites.conflict() do
+      nil ->
+        ""
+
+      %{recorded: recorded, recorded_url: url, configured: configured} ->
+        """
+        <div class="error" role="alert">
+          <strong>This folder belongs to #{escape(recorded)}#{address(url)}, but the
+          tool is set up for #{escape(configured)}.</strong>
+          Reading works; mirroring is refused until the two agree, because one
+          catalogue cannot hold two sites. Set the connection up for
+          #{escape(recorded)} below, or start over in a folder of its own.
+        </div>
+        """
+    end
+  end
+
+  defp address(nil), do: ""
+  defp address(url), do: " (#{escape(url)})"
 
   @doc """
   Said when the folder could not be opened, with the reason the system gave.

@@ -26,6 +26,7 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   alias ConfluencePhxMirror.Blobs.LocalStore
   alias ConfluencePhxMirror.Confluence.HttpSource
   alias ConfluencePhxMirror.Desktop.Credentials
+  alias ConfluencePhxMirror.Sites
 
   @app :confluence_phx_mirror
   @app_name "confluence-export"
@@ -251,6 +252,11 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
 
       apply_runtime_config()
       if root() != before, do: restart_repo()
+
+      # A window keeps running when it disagrees with its folder, so the question
+      # is asked again whenever the connection changes: saving the right site
+      # clears the warning without a restart.
+      Sites.refresh_conflict()
       :ok
     end
   end
@@ -464,10 +470,18 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
   # site is not that: reading the demo after a person typed their site would
   # ignore the only thing they told us. An operator who named a source out loud
   # keeps it.
+  #
+  # `present?/1` and not `blank/1`: this is a question, and `blank/1` answers with
+  # the *value* — so `cond do blank(site()) -> :ok` was true for every site ever
+  # configured, and the tool stayed on the demo snapshot. It only ever reached a
+  # real site because `config/runtime.exs` picks `HttpSource` when
+  # `CM_CONFLUENCE_SITE`, `CM_ATL_EMAIL` and `CM_ATL_TOKEN` are all exported —
+  # which a window started by double-clicking has not got, and the app then
+  # refused to start on a folder that belonged to its own site.
   defp put_source_config do
     cond do
-      blank(site()) -> :ok
-      System.get_env("CM_SOURCE") -> :ok
+      not present?(site()) -> :ok
+      present?(System.get_env("CM_SOURCE")) -> :ok
       true -> Application.put_env(@app, :source, HttpSource)
     end
   end
@@ -522,6 +536,12 @@ defmodule ConfluencePhxMirror.Desktop.Settings do
 
   defp blank(nil), do: nil
   defp blank(value) when is_binary(value), do: if(String.trim(value) == "", do: nil, else: value)
+
+  # A question about a value, where `blank/1` is the value itself. Two different
+  # jobs: `blank(attrs[:root])` wants nil-or-the-path, `present?(site())` wants a
+  # yes or a no. Using `blank/1` as a condition reads as one and behaves as the
+  # other, which is a bug that hides until the environment stops covering it.
+  defp present?(value), do: blank(value) != nil
 
   defp create(path) do
     case File.mkdir_p(path) do
