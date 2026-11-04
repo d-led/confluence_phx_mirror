@@ -398,6 +398,28 @@ here as done is open.
     keeps the default, `:stop`: a server with nobody to ask must not start
     half-configured.
 
+28. **Mirroring died on the first page with a Cyrillic title**, with
+    `** (Exqlite.Error) NOT NULL constraint failed: pages.slug` and no window
+    explanation beyond "failed". The two engines disagree about one column:
+    `SlugTitlesLikeConfluence` drops `NOT NULL` on `pages.slug` for Postgres —
+    a title with no ASCII words in it has no segment, and Confluence serves
+    those pages by id — and skips the DDL on SQLite, on the reasoning that the
+    tool's ingest "writes the new rule as it goes". It writes the new rule and
+    gets an *empty* segment, which `cast/3` then reads as "no value" and drops,
+    so the insert asked for NULL on a column that refuses it. Every Cyrillic or
+    CJK page — most of this user's test spaces — stopped the run at the listing
+    pass, before a single body was written, and the tool's own message was
+    `error {…}`, which explains nothing.
+
+    The fix is in `Mirror.Page.changeset/2` (`keep_empty_segment/1`): the empty
+    segment is a value, it is written as one, and `slug_match?/2` plus the URL
+    helper render NULL and `""` identically, so a deployment's older NULL rows
+    keep working. Do not "fix" it by relaxing the column on SQLite: nothing in
+    SQLite relaxes a column without rebuilding the table, and rebuilding a user's
+    catalogue at boot to make a cosmetic difference is worse than spelling the
+    absence with `""`. `api_tokens.user_id` has the same Postgres-only relaxation
+    and is safe for the opposite reason: the tool issues no service tokens.
+
 ## Next, in order
 
 1. **One sync, not two.** Make `Sync.Gate`'s lease portable (a row updated with

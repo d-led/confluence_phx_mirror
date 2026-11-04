@@ -120,6 +120,22 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     |> validate_inclusion(:type, @types)
     |> validate_inclusion(:status, @statuses)
     |> unique_constraint(:confluence_id)
+    |> keep_empty_segment()
+  end
+
+  # `cast/3` reads `""` as "no value" and drops it, which left the insert writing
+  # NULL — and the tool's catalogue cannot hold one: SQLite has no `ALTER COLUMN`,
+  # so the `DROP NOT NULL` the deployment ran on this column
+  # (`SlugTitlesLikeConfluence`) never happened there, and every page with a
+  # Cyrillic, CJK or punctuation-only title failed at insert with `NOT NULL
+  # constraint failed: pages.slug`. The empty segment is a value like any other,
+  # and the two spellings of it are the same to every reader: `slug_match?/2`
+  # renders NULL as `""`, and a URL is built from either identically. So the
+  # column carries `""` and a deployment's older NULL rows keep working.
+  defp keep_empty_segment(changeset) do
+    if Ecto.Changeset.get_field(changeset, :slug) in [nil, ""],
+      do: Ecto.Changeset.put_change(changeset, :slug, ""),
+      else: changeset
   end
 
   @doc """

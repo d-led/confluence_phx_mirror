@@ -79,4 +79,33 @@ defmodule ConfluencePhxMirror.Mirror.PageSlugTest do
       assert URLs.blog_post_path("MFS", 2, "") == "/spaces/MFS/blog/2"
     end
   end
+
+  describe "the row a title becomes" do
+    test "a title with no ASCII words keeps an empty segment, never a missing one" do
+      # The tool's catalogue cannot hold a missing slug — SQLite has no
+      # `ALTER COLUMN`, so the column stayed `NOT NULL` there and a Cyrillic page
+      # failed at insert. Every reader treats the absence as `""`, so that is
+      # what the row carries.
+      assert slug_of("Обзор проекта") == ""
+    end
+
+    test "a title with words keeps the segment Confluence would use" do
+      assert slug_of("API /v2: changelog") == "API+v2+changelog"
+    end
+  end
+
+  # The mapping a sync uses, end to end: title in, `slugify/1`, and the changeset
+  # the row is written with.
+  defp slug_of(title) do
+    %Page{}
+    |> Page.changeset(%{
+      confluence_id: 1,
+      space_id: 1,
+      type: "page",
+      status: "current",
+      title: title,
+      slug: Page.slugify(title)
+    })
+    |> Ecto.Changeset.get_field(:slug)
+  end
 end
