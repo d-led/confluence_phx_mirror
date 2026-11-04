@@ -2,11 +2,12 @@
 # anything, so it is opt-in: `mix test --only scale` (see `scale_test.exs`).
 #
 # `:postgres_only` marks what the tool cannot do, as opposed to what it does
-# differently. The deployment answers search as a query language and hands the
-# work to Postgres's full-text index; the tool answers the same screen with
-# filters, and there is no index to ask. Those tests describe the deployment's
-# behaviour, so the SQLite job does not run them — and says so, rather than
-# skipping quietly.
+# differently. The deployment answers search through the CQL its reader UI speaks,
+# matches comments too, and recalls a fragment from inside a word; the tool has
+# its own index (FTS5, `Search.Lite`), which takes filters rather than a query
+# language, indexes a page's own title and body, and ranks by `bm25`. Those tests
+# describe the deployment's search, so the SQLite job does not run them — and
+# says so, rather than skipping quietly.
 exclude =
   if Application.get_env(:confluence_phx_mirror, :sqlite_suite) do
     [:scale, :postgres_only]

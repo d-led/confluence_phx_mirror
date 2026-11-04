@@ -1,9 +1,10 @@
 defmodule ConfluencePhxMirror.Mirror.SearchTest do
   use ConfluencePhxMirror.DataCase, async: false
 
-  # The deployment's search: Postgres full-text and its query language. The tool
-  # answers the same screen with filters (`Search.Lite`) and has neither an index
-  # nor a parser, so this runs where the engine does (see `test/test_helper.exs`).
+  # The deployment's search: the CQL its reader UI speaks, comment hits, and
+  # ranking over a `tsvector`. The tool has an index of its own (`Search.Lite`,
+  # FTS5) but no query-language parser, so this runs where the engine does —
+  # see `test/test_helper.exs`.
   @moduletag :postgres_only
 
   import ConfluencePhxMirror.Fixtures

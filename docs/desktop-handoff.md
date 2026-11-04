@@ -33,7 +33,7 @@ connection, the press that queues a mirror run, and the archive.
 | **The admin area is the server's, one click away** | `/admin`, `/admin/settings`, `/admin/jobs`, `/admin/mail`, `/admin/webhooks`, `/admin/users`, `/admin/identities`, `/admin/groups`, `/admin/permissions`, `/admin/audit`, `/admin/trash`, `/admin/spaces`, `/admin/upstream`, `/admin/sync-log` — 14/14 answer 200, and the account menu carries the Admin cog because `:auto_admin` makes the one reader an administrator |
 | **LiveView really connects** | in the window's own origin: `liveSocket.isConnected() === true`, `[data-phx-main]` present, 8 hooks registered, and typing in the admin settings filter patches the page (verified over `/live/websocket` → 400 for a plain GET, which is the socket route answering instead of 404) |
 | The tool's own screens are still one origin | `/__tool`, `/__tool/state`, `/__tool/spaces`, `/__tool/mirror`, `/__tool/export` answer 200 under the same port; `/__tool/setup` is what an unconfigured `/` shows |
-| The store's own limits are named, not hit | `Resources.database/0` asks a file for its size; `Mirror.maybe_page/2` omits `LIMIT NULL` and `OFFSET` without `LIMIT`; `Accounts.matches_identity/1` asks a JSON list with `json_each`; and `/search` says *"This mirror has no full-text index: search needs the Postgres build"* instead of raising in a reader's face |
+| The store's own limits are named, not hit | `Resources.database/0` asks a file for its size; `Mirror.maybe_page/2` omits `LIMIT NULL` and `OFFSET` without `LIMIT`; `Accounts.matches_identity/1` asks a JSON list with `json_each`; and `/search` answers a CQL query with a sentence — *"this mirror answers searches as filters, not as CQL"* — instead of raising in a reader's face |
 | The window loads a current bundle | `start-desktop.sh` builds the stylesheet, the scripts and the digest on every run (it used to ship whatever `priv/static` happened to hold — the console said `unknown hook found` for the hooks the shell needs) |
 | A refused run lands somewhere that explains it | `POST /__tool/mirror` with a run already going → 303 `/__tool/mirror` (the run that blocked it), not a silent bounce to the list; `Jobs.start_mirror/3` answers `{:error, :busy | :no_worker | :nothing_to_do}` instead of dropping the result |
 | A task supervisor that refuses says so | `Spaces` and `Jobs` now match `Task.Supervisor.start_child/2`: a refusal becomes an error on the screen, where before the refresh stayed "loading" and the run stayed "running" forever |
@@ -42,11 +42,14 @@ connection, the press that queues a mirror run, and the archive.
 
 ## What is unfinished
 
-1. **Search has no index in the tool.** `Mirror.Search` is SQL over a generated
-   `search_vector` column and its GIN indexes; the tool's store is a file with
-   neither. The screen now says so — *"This mirror has no full-text index: search
-   needs the Postgres build"* — instead of raising. Doing it properly means an
-   FTS5 table the sync keeps in step, which is a feature, not a translation.
+1. **The query language, and comments as hits.** The tool has an index — an FTS5
+   table the triggers keep in step with `pages`, ranked by `bm25`
+   (`Mirror.Search.Lite`) — so the search *box* works and answers filters. What
+   it does not have is CQL, the language the Confluence-compatible API speaks:
+   a query that looks like CQL is answered with a sentence saying so. It also
+   indexes a page's own title and body, where the deployment also matches
+   comments. Both are features, not translations, and `:postgres_only` in
+   `test/test_helper.exs` is where the difference is written down.
 2. **The two `Sync.Scheduler` clocks are not started.** `/admin/settings` still
    shows the interval; nothing in this build reads it.
 3. **The `.app` is unsigned.** It runs from this machine; a copy that travels is
