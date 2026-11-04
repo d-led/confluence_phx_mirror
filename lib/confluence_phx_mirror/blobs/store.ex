@@ -13,6 +13,13 @@ defmodule ConfluencePhxMirror.Blobs.Store do
 
   @type key :: String.t()
 
+  @typedoc """
+  When a blob was last written, in POSIX seconds — or `:unknown` when the store
+  cannot tell. Unknown is not zero: a sweep decides by age, and "old enough to
+  delete" is the one answer it must never guess.
+  """
+  @type written_at :: non_neg_integer() | :unknown
+
   @callback put(key(), binary(), keyword()) :: {:ok, key()} | {:error, term()}
   @callback read(key(), keyword()) :: {:ok, binary()} | {:error, term()}
   @callback delete(key(), keyword()) :: :ok | {:error, term()}
@@ -27,7 +34,7 @@ defmodule ConfluencePhxMirror.Blobs.Store do
   is optional: a store that cannot answer leaves it out, and nothing is ever
   deleted on a guess.
   """
-  @callback list(keyword()) :: [{key(), non_neg_integer()}]
+  @callback list(keyword()) :: [{key(), written_at()}]
 
   @optional_callbacks list: 1
 

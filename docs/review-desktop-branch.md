@@ -116,6 +116,56 @@ the ring.
 * Covered by: `test/confluence_phx_mirror/sync/log_test.exs`
   (`Test.GoneConsole` raises from `log/2`).
 
+### `Sync`: three errors that were being swallowed (audit)
+
+Found by reading every `rescue`/`catch`/error-to-value branch in `lib/`:
+
+* **A page's read restrictions that could not be read became "no restrictions".**
+  `apply_restrictions/2` had `{:error, _reason} -> :ok`, and an empty
+  `page_restrictions` set means *anyone signed in may read the page*. A transient
+  failure (rate limit, 5xx) therefore finished a restricted page as an open one,
+  and the details mark said it was done. The page is now left alone — its old
+  restrictions stay, its details are not written, and it stays in the backlog
+  for the next run — and the run records the page and the reason.
+  * Could go wrong: a source that answers `{:error, …}` for pages it *can* serve
+    would now leave those pages without details. `HttpSource` returns
+    `{:ok, []}` for a page with no restrictions, so the two are distinguishable.
+  * Covered by: `test/confluence_phx_mirror/sync/page_failure_test.exs`.
+* **One crashing page killed the whole run, and the record could not say which.**
+  The detail pass fans pages out to linked tasks, so a raise in one killed the
+  run's process (`{:exit, reason}` never reached the reduce), and the branch that
+  would have recorded it wrote `page: nil`. Each page's work is now wrapped: a
+  crash is that page's error, with its frames (`stats["errors"]["trace"]`), and
+  the run goes on.
+  * Could go wrong: a systemic failure (a broken store, no disk) now surfaces as
+    one error per page instead of one failed run — noisier, but the run reports
+    `partial` rather than dying, and the count is visible.
+  * Covered by: the same file (a source whose comments call raises).
+* **A blob whose age could not be read was "age zero", which is 1970** — the
+  sweep deletes by age, so an unreadable timestamp made a file a candidate. The
+  store reports `:unknown` and the sweep skips it.
+  * Covered by: `test/confluence_phx_mirror/blobs/unreadable_age_test.exs`.
+
+Checked and deliberately left alone: `attachment_controller` collapsing every
+lookup failure to 404 (that is what a 404 is for), `build_info` reading a broken
+JSON file as "no build information", and the space picker's typeahead answering
+`[]` when a keystroke finds nothing — the screen already hides the form and
+reports an unreachable site when the listing itself fails, so a second error
+branch there would be dead code.
+
+### Still open: a page is visible before its restrictions are known
+
+A page's **row** is written by the listing pass, before the detail pass reads who
+may read it, and "no `page_restrictions` rows" means open. So for a brand-new
+restricted page the run leaves a window — one run — in which the page exists with
+title and storage body but no restrictions. The audit above narrows that window
+to "until its details land" (it is retried, and no body is rendered while
+`details_synced_at` is nil), but closing it properly needs the visibility rule to
+say "restrictions not read yet ⇒ not readable": a `restrictions_synced_at`
+column, a backfill from `details_synced_at` so existing pages do not vanish, and
+the authorization check to refuse `:unknown`. That is a migration touching every
+page's visibility and is not part of this branch.
+
 ## 2. What is provably untouched
 
 * **The adapter.** `Repo` reads `Application.compile_env(:confluence_phx_mirror,

@@ -584,6 +584,33 @@ here as done is open.
     as lines arrive and as the ring drops them), and what the filter hides is
     said out loud: "1 error in the log belongs to another run."
 
+37. **Three errors were being turned into values, and one of them was a security
+    decision.** A sweep of every `rescue`/`catch`/`error -> value` branch in
+    `lib/` found: (a) `apply_restrictions/2` answered `{:error, _} -> :ok`, and
+    an empty `page_restrictions` set means *anyone signed in may read the page*
+    — so a failed restriction read finished a restricted page as an open one,
+    permanently, because the details mark said it was done; the page is now left
+    alone (old restrictions stay, details are not written, it stays in the
+    backlog) and the run names it; (b) the detail pass fans pages out to *linked*
+    tasks, so one page that raised killed the whole run — the `{:exit, reason}`
+    branch that was meant to catch it never ran, and it would have recorded
+    `page: nil` anyway; each page's work is now wrapped, so a crash is that
+    page's error, with frames in `stats["errors"][\"trace\"]`, and the run
+    carries on; (c) a blob whose `File.stat` failed reported mtime `0` — 1970 —
+    which every sweep calls old enough to delete; the store now reports
+    `:unknown` and the sweep skips it. Full detail and risk notes in
+    `docs/review-desktop-branch.md` §1.
+
+38. **Still open, and it needs a decision: a page is visible before its
+    restrictions are known.** The listing pass writes the page row; the detail
+    pass reads who may read it; "no rows" means open. So a brand-new restricted
+    page exists, with its title and storage body, for up to one run. Closing it
+    properly means the visibility rule has to say "restrictions not read yet ⇒
+    not readable" — a `restrictions_synced_at` column, a backfill from
+    `details_synced_at` so nothing vanishes on deploy, and `Authorization`
+    refusing an unknown answer. That is a migration touching every page's
+    visibility, so it is not in this branch.
+
 ## Next, in order
 
 1. **A test environment for `lib_desktop`**, so the tool's behaviour has tests and

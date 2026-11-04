@@ -1,6 +1,8 @@
 defmodule ConfluencePhxMirrorWeb.HealthController do
   @moduledoc "Liveness/readiness probe with a database check and sync freshness."
 
+  require Logger
+
   use ConfluencePhxMirrorWeb, :controller
 
   alias ConfluencePhxMirror.Confluence.Source
@@ -31,6 +33,11 @@ defmodule ConfluencePhxMirrorWeb.HealthController do
     Repo.query!("SELECT 1")
     "ok"
   rescue
-    _ -> "unavailable"
+    # The answer is for a health check, so it stays one word — but a database
+    # that is down is an incident, and an incident nobody can read the cause of
+    # is an incident twice.
+    error ->
+      Logger.error("health check: the database did not answer: #{Exception.message(error)}")
+      "unavailable"
   end
 end

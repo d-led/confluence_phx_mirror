@@ -2001,22 +2001,65 @@ defmodule ConfluencePhxMirror.Sync do
        }, []}
 
     entries
-    |> Task.async_stream(&render_entry(source, &1, index, opts),
+    |> Task.async_stream(&render_entry_safely(source, &1, index, opts),
       max_concurrency: concurrency(),
       timeout: :infinity,
-      ordered: false
+      # In the order the entries were given, so a task that died can still be
+      # named: an exit carries no identity of its own, and "a page failed" with
+      # no page is a report nobody can act on.
+      ordered: true
     )
+    |> Enum.zip(entries)
     |> Enum.reduce(initial, fn
-      {:ok, {:ok, page_stats, entry_errors}}, {stats, errors} ->
+      {{:ok, {:ok, page_stats, entry_errors}}, _entry}, {stats, errors} ->
         {merge_stats(stats, page_stats), errors ++ entry_errors}
 
-      {:ok, {:error, reason, dto}}, {stats, errors} ->
+      {{:ok, {:error, reason, dto}}, _entry}, {stats, errors} ->
         Log.add(:warn, "page failed: #{dto.title}", page: dto.id, reason: format_error(reason))
         {stats, [error("page", dto.id, reason) | errors]}
 
-      {:exit, reason}, {stats, errors} ->
-        {stats, [error("page", nil, {:exit, inspect(reason)}) | errors]}
+      {{:ok, {:crashed, exception, stacktrace, dto}}, _entry}, {stats, errors} ->
+        Log.add(:warn, "page failed: #{dto.title}",
+          page: dto.id,
+          reason: Exception.message(exception)
+        )
+
+        {stats,
+         [
+           error(
+             "page",
+             dto.id,
+             "the page crashed: #{Exception.message(exception)}",
+             Exception.format_stacktrace(stacktrace)
+           )
+           | errors
+         ]}
+
+      # A stop is not a failure of the page it landed in: it is the run ending.
+      {{:exit, {%Cancelled{}, _stacktrace}}, _entry}, _work ->
+        raise Cancelled
+
+      {{:exit, reason}, entry}, {stats, errors} ->
+        Log.add(:warn, "page failed: #{entry.dto.title}",
+          page: entry.dto.id,
+          reason: format_error(reason)
+        )
+
+        {stats, [error("page", entry.dto.id, {:exit, format_error(reason)}) | errors]}
     end)
+  end
+
+  # One page's crash is one page's error, because the next page has nothing to
+  # do with it: the tasks these pages run in are linked to this process, so
+  # without this a single raise — a renderer bug, a malformed body — took the
+  # whole run with it, and the record could not even say which page. A
+  # `Cancelled` is not a crash: it is the run ending, and it must take the run
+  # with it.
+  defp render_entry_safely(source, entry, index, opts) do
+    render_entry(source, entry, index, opts)
+  rescue
+    error in Cancelled -> reraise(error, __STACKTRACE__)
+    error -> {:crashed, error, __STACKTRACE__, entry.dto}
   end
 
   # Detail work is network-bound (one attachments and one comments call per
@@ -2024,11 +2067,26 @@ defmodule ConfluencePhxMirror.Sync do
   # paces the requests.
   defp concurrency, do: Settings.sync_concurrency()
 
-  defp render_entry(source, %{space: space, dto: dto, page: page, change: change}, index, opts) do
+  defp render_entry(source, %{dto: dto, page: page} = entry, index, opts) do
     check_cancelled!(opts)
 
+    case fetch_restrictions(source, page) do
+      # Nothing is written, so the page keeps the restrictions it already had:
+      # a page stored as "open" because the answer was lost is the one mistake
+      # a mirror must not make.
+      {:error, reason} -> {:error, {:restrictions, reason}, dto}
+      read -> render_page(source, entry, index, opts, read)
+    end
+  end
+
+  defp render_page(
+         source,
+         %{space: space, dto: dto, page: page, change: change},
+         index,
+         opts,
+         restrictions
+       ) do
     {attachments, attachment_errors} = mirror_attachments(source, space, page)
-    restrictions = fetch_restrictions(source, page)
     attachment_map = Map.new(attachments, &attachment_ref(space, page, &1))
 
     context = %{
@@ -2075,7 +2133,6 @@ defmodule ConfluencePhxMirror.Sync do
          "notifications" => notifications
        },
        attachment_errors ++
-         restriction_errors(restrictions, page) ++
          comments.errors ++ notification_errors}
     else
       {:error, reason} -> {:error, reason, dto}
@@ -2127,6 +2184,10 @@ defmodule ConfluencePhxMirror.Sync do
   # A page's read restrictions decide access before its space does, so they are
   # synced per page; a source that cannot read them says nothing at all. The
   # read happens before the page's transaction; the write is inside it.
+  #
+  # "Cannot read them" and "there are none" are different answers and must not
+  # share a shape: `{:ok, []}` is Confluence saying anyone may read the page, and
+  # a failure written as an empty list would make a restricted page public.
   defp fetch_restrictions(source, page) do
     if function_exported?(source, :restrictions, 2) do
       source.restrictions(page.confluence_id, [])
@@ -2136,17 +2197,11 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   defp apply_restrictions(_page, :unsupported), do: :ok
-  defp apply_restrictions(_page, {:error, _reason}), do: :ok
 
   defp apply_restrictions(page, {:ok, restrictions}) do
     must!(Mirror.replace_page_restrictions(page, restrictions))
     :ok
   end
-
-  defp restriction_errors({:error, reason}, page),
-    do: [error("page", page.confluence_id, {:restrictions, reason})]
-
-  defp restriction_errors(_read, _page), do: []
 
   # Dynamic macros are resolved from the mirror, so the stored body and its
   # search text both contain what a reader actually sees.
@@ -2689,10 +2744,19 @@ defmodule ConfluencePhxMirror.Sync do
     errors
     |> Enum.map(fn err ->
       %{"scope" => err.scope, "id" => err.id, "reason" => format_error(err.reason)}
+      |> Map.merge(trace_of(err))
     end)
   end
 
+  # A page that crashed rather than answered keeps its frames: the message says
+  # what, and the trace says where — the same pair a failed run records.
+  defp trace_of(%{trace: trace}) when is_binary(trace), do: %{"trace" => trace}
+  defp trace_of(_error), do: %{}
+
   defp error(scope, id, reason), do: %{scope: scope, id: id, reason: reason}
+
+  defp error(scope, id, reason, trace),
+    do: %{scope: scope, id: id, reason: reason, trace: trace}
 
   defp format_error(nil), do: nil
   defp format_error(%{reason: reason}), do: format_error(reason)
