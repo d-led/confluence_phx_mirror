@@ -123,13 +123,13 @@ wide as the page listing it. Applying that once in
 Resolved today: `content-by-label`, `page-properties-report` (Confluence's key is
 `detailssummary`), `toc`, `children`, `pagetree`, `recently-updated`,
 `attachments`, `content-report-table`, `include`, `excerpt-include`, `excerpt`,
-`blog-posts`, `contributors`, `labels-list` and `user-profile` — plus `html`,
-whose answer is its own body, read from the storage because the export view only
-leaves a picture of the macro. What is left is not a renderer away:
+`blog-posts`, `contributors`, `labels-list`, `user-profile`, `tasks-report` and
+`decision-report` — plus `html`, whose answer is its own body, read from the
+storage because the export view only leaves a picture of the macro. What is left
+is not a renderer away:
 
 | Macro | Data it needs | Why it is not drawn |
 | --- | --- | --- |
-| `tasks-report`, `decision-report` | the tasks and decisions inside every page's body | a report is a scan of the space's bodies at every expansion. It wants an index built while pages are rendered — a feature of its own, not a renderer. A page already shows its own tasks inline |
 | `jira`, `jiraissues`, `jirachart` | issue data | needs Jira credentials: out of scope for a mirror |
 | `livesearch`, `gadget`, `widget` | a client, or a third-party app | impossible statically |
 | Forge/Connect app macros | the app | a placeholder is the honest answer, and the body is kept |
@@ -137,6 +137,17 @@ leaves a picture of the macro. What is left is not a renderer away:
 `blog-posts` is one query the port already had: `type = blogpost`, ordered by
 `created`, with the `space`/`label` filters `recently-updated` also asks for —
 `Sync.DynamicContent.Listing` writes those filters once for both.
+
+`tasks-report` and `decision-report` are the two whose data sits *inside* pages
+rather than in a table of their own: a task is an item of an `inline-task-list`,
+a decision an item of a `decision-list`. So the report reads bodies — but only the
+bodies that could answer, because the query asks for the pages whose stored body
+mentions the list Confluence draws the items with. That is a body scan, and an
+index built while pages are rendered would be faster; what makes the scan enough
+is that a macro is resolved **at sync time**, once per page, not per request, and
+that the port caps it at two hundred bodies and answers "too large to report in
+one pass" past that. A report that quietly stopped halfway would be worse than
+the sentence.
 
 `contributors` is the one macro whose data the mirror plainly does not have:
 Confluence names *every* editor of a page, and a sync reads one author — the one

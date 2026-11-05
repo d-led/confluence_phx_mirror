@@ -540,16 +540,17 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     end
 
     test "a macro the mirror cannot draw is named in words a reader knows" do
-      # The widget said "The tasks-report macro" — the key rather than the thing
-      # — because the label map knew Confluence's older spelling of it.
+      # The widget used to say "The tasks-report macro" — the key rather than the
+      # thing — because the label map knew a spelling Confluence does not store.
+      # That macro is drawn now, so the claim is pinned on one that still is not.
       html = """
-      <img class="wysiwyg-unknown-macro" src="/wiki/plugins/servlet/confluence/placeholder/unknown-macro?name=tasks-report" />
+      <img class="wysiwyg-unknown-macro" src="/wiki/plugins/servlet/confluence/placeholder/unknown-macro?name=jira" />
       """
 
       result = Renderer.render(html, context())
 
-      assert result.html =~ "A tasks report"
-      refute result.html =~ "tasks-report"
+      assert result.html =~ "A Jira issues search"
+      refute result.html =~ "the jira macro"
     end
   end
 
