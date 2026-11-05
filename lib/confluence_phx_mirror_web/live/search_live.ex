@@ -27,6 +27,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
   alias ConfluencePhxMirror.Catalog
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.Search
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Settings
 
   # How many results a reader page shows; an administrator can change it.
@@ -58,6 +59,7 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
     # filters inside that space.
     spaces = Mirror.list_spaces(limit: @space_window)
     scope = socket.assigns.current_scope
+    identities? = Publishing.identities?(scope)
     label_catalog = Catalog.label_counts(scope, limit: @label_window)
     label_highlights = Catalog.label_counts(scope, limit: @label_strip, order: :popular)
 
@@ -91,7 +93,10 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
        page_title: "Search",
        spaces: spaces,
        spaces_more?: Mirror.stats().spaces > length(spaces),
-       authors: Mirror.authors(limit: @author_window),
+       # A stranger is offered no names to filter by, because the mirror will
+       # not print them: the author menu lists the deployment's people.
+       authors: if(identities?, do: Mirror.authors(limit: @author_window), else: []),
+       identities?: identities?,
        label_catalog: label_catalog,
        label_highlights: label_highlights,
        recent_pages: Mirror.recent_pages(6),
@@ -678,7 +683,12 @@ defmodule ConfluencePhxMirrorWeb.SearchLive do
         </p>
 
         <div :if={@results != []} class="mt-2 space-y-4">
-          <.search_hit :for={result <- @results} result={result} terms={@terms} />
+          <.search_hit
+            :for={result <- @results}
+            result={result}
+            terms={@terms}
+            identities?={@identities?}
+          />
         </div>
 
         <.empty_state

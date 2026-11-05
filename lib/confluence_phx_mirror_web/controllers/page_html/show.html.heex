@@ -16,7 +16,7 @@
   rail?={true}
 >
   <:rail>
-    <.rail_section title="Reading now" icon="hero-users">
+    <.rail_section :if={@identities?} title="Reading now" icon="hero-users">
       {live_render(@conn, ConfluencePhxMirrorWeb.PagePresenceLive,
         session: %{"presence_page" => @page.confluence_id}
       )}
@@ -28,7 +28,7 @@
         <.kv :if={@kind == :blog} label="Kind" value="Blog post" />
         <.kv label="Confluence id" value={@page.confluence_id} />
         <.kv label="Version" value={"v#{@page.version_number}"} />
-        <.kv label="Author" value={@page.author_name || "unknown"} />
+        <.kv :if={@identities?} label="Author" value={@page.author_name || "unknown"} />
         <.kv label="Created">
           <.local_time at={@page.external_created_at} format={:date} />
         </.kv>
@@ -128,11 +128,16 @@
         <.badges status={@page.status} type={@page.type} subtype={@page.subtype} />
       </:badges>
       <:meta>
-        <.page_meta page={@page} admin?={@admin?} resync_path={@resync_path}>
+        <.page_meta
+          page={@page}
+          admin?={@admin?}
+          resync_path={@resync_path}
+          identities?={@identities?}
+        >
           <%!-- The rail carries the readers of this page, and it is hidden on a
           narrow screen; the count stays, as an icon and a number after the
           sync stamp. --%>
-          <:presence>
+          <:presence :if={@identities?}>
             {live_render(@conn, ConfluencePhxMirrorWeb.PagePresenceLive,
               session: %{
                 "presence_page" => @page.confluence_id,
@@ -224,7 +229,12 @@
     <%!-- A deployment that does not publish comments does not draw the section
     at all: "no comments on the original page" would be a statement about the
     page, and this is a statement about the deployment. --%>
-    <.comment_thread :if={@comments?} page={@page} comments={@comments} />
+    <.comment_thread
+      :if={@comments?}
+      page={@page}
+      comments={@comments}
+      identities?={@identities?}
+    />
   </article>
 
   <%!-- A sync can replace this page while it is being read. The notice is an

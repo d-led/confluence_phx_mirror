@@ -44,7 +44,7 @@
       <div class="flex flex-wrap gap-3 text-xs font-medium text-primary">
         <a href={~p"/spaces"} class="hover:underline">All spaces →</a>
         <a href={~p"/labels"} class="hover:underline">Labels →</a>
-        <a href={~p"/people"} class="hover:underline">People →</a>
+        <a :if={@identities?} href={~p"/people"} class="hover:underline">People →</a>
         <a href={~p"/recent"} class="hover:underline">Recently updated →</a>
       </div>
     </div>

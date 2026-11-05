@@ -38,10 +38,11 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    # The people directory is a list of names, so a deployment that publishes no
-    # names has no such directory: sending the reader home is the honest answer
-    # the router cannot give a LiveView.
-    if socket.assigns.live_action == :people and Publishing.anonymise_contributors?() do
+    # The people directory is a list of names, so a reader who may not be shown
+    # names has no such directory: sending them home is the honest answer the
+    # router cannot give a LiveView.
+    if socket.assigns.live_action == :people and
+         not Publishing.identities?(Scope.from_assigns(socket.assigns)) do
       {:ok, redirect(socket, to: "/")}
     else
       catalog(socket)
@@ -54,6 +55,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
     {:ok,
      assign(socket,
        kind: socket.assigns.live_action,
+       identities?: Publishing.identities?(Scope.from_assigns(socket.assigns)),
        q: "",
        offset: 0,
        items: [],
@@ -186,6 +188,7 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
         items={@items}
         space={@space}
         sort={@sort}
+        identities?={@identities?}
       />
       <.catalog_pager
         more?={@more?}

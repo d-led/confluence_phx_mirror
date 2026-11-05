@@ -279,6 +279,10 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     default: false,
     doc: "an administrator sees the resync action; a reader never does"
 
+  attr :identities?, :boolean,
+    required: true,
+    doc: "whether this reader may be shown who wrote the page"
+
   attr :resync_path, :string, default: nil
 
   slot :presence,
@@ -291,7 +295,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   def page_meta(assigns) do
     assigns =
       assigns
-      |> assign(:byline, Publishing.byline(assigns.page.author_name))
+      |> assign(:byline, Publishing.byline(assigns.page.author_name, assigns.identities?))
       |> assign(:author_path, author_path(assigns.page))
 
     ~H"""
@@ -575,6 +579,10 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   attr :page, :map, required: true
   attr :comments, :list, required: true
 
+  attr :identities?, :boolean,
+    required: true,
+    doc: "whether this reader may be shown who commented"
+
   # Comment bodies go through Sync.Renderer, which strips scripts and event
   # handlers before they are stored, exactly like page bodies.
   # sobelow_skip ["XSS.Raw"]
@@ -582,13 +590,13 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     roots = Enum.filter(assigns.comments, &is_nil(&1.parent_id))
     replies = Enum.group_by(Enum.reject(assigns.comments, &is_nil(&1.parent_id)), & &1.parent_id)
 
-    # A deployment that publishes no names publishes none here either: the
+    # A reader who may not be shown names is shown none here either: the
     # initials bubble is the name, spelled shorter.
     assigns =
       assign(assigns,
         roots: roots,
         replies: replies,
-        authors?: not Publishing.anonymise_contributors?()
+        authors?: assigns.identities?
       )
 
     ~H"""
@@ -696,6 +704,10 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   attr :result, :map, required: true
   attr :terms, :list, default: []
 
+  attr :identities?, :boolean,
+    required: true,
+    doc: "whether this reader may be shown who commented"
+
   def search_hit(assigns) do
     ~H"""
     <article
@@ -723,7 +735,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
         class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-base-content/70"
       >
         <.icon name="hero-chat-bubble-left-right" class="size-3" />
-        <span>Comment by {Publishing.byline(@result.comment.author_name) || "Anonymous"}</span>
+        <span>Comment by {Publishing.byline(@result.comment.author_name, @identities?) || "Anonymous"}</span>
         <span aria-hidden="true">·</span>
         <span>{Time.ago(@result.comment.external_created_at)}</span>
       </p>

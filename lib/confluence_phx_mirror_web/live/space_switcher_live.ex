@@ -26,6 +26,7 @@ defmodule ConfluencePhxMirrorWeb.SpaceSwitcherLive do
 
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Authorization
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirrorWeb.LiveUserAuth
 
   # A menu, not a directory: `/spaces` is where the whole list lives.
@@ -146,7 +147,7 @@ defmodule ConfluencePhxMirrorWeb.SpaceSwitcherLive do
               <.icon name="hero-tag" class="size-4" /> Labels
             </.link>
           </li>
-          <li>
+          <li :if={Publishing.identities?(@scope)}>
             <.link navigate={~p"/people"} class="gap-2">
               <.icon name="hero-users" class="size-4" /> People
             </.link>

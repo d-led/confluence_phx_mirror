@@ -19,12 +19,12 @@ defmodule ConfluencePhxMirrorWeb.PeopleController do
   @list_page 25
 
   def show(conn, %{"account_id" => account_id} = params) do
-    if Publishing.anonymise_contributors?() do
-      # The page is a byline with the mirror's content attached to it, so a
-      # deployment that publishes no names publishes none of these either.
-      NotFound.call(conn, "This mirror does not publish its contributors.")
-    else
+    if Publishing.identities?(Scope.from_assigns(conn.assigns)) do
       render_author(conn, account_id, params)
+    else
+      # The page is a byline with the mirror's content attached to it, so a
+      # reader who may not be shown names may not be shown these either.
+      NotFound.call(conn, "This mirror does not publish its contributors.")
     end
   end
 
@@ -69,7 +69,10 @@ defmodule ConfluencePhxMirrorWeb.PeopleController do
   # path reaches the file system unescaped.
   # sobelow_skip ["Traversal.SendFile"]
   def avatar(conn, %{"account_id" => account_id}) do
-    person = unless Publishing.anonymise_contributors?(), do: Mirror.find_person(account_id)
+    person =
+      if Publishing.identities?(Scope.from_assigns(conn.assigns)),
+        do: Mirror.find_person(account_id)
+
     path = person && person.avatar_blob_key && LocalStore.absolute_path(person.avatar_blob_key)
 
     if path && File.regular?(path) do

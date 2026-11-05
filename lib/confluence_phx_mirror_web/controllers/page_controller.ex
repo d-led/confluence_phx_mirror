@@ -52,6 +52,7 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       recent_pages: changes,
       labels: Catalog.label_counts(scope(conn), limit: @label_cards),
       stats: Mirror.stats(),
+      identities?: Publishing.identities?(scope(conn)),
       last_webhook: List.first(Webhooks.recent(1))
     )
   end
@@ -298,6 +299,9 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       attachments: Mirror.attachments(page),
       comments?: not Publishing.exclude_comments?(),
       comments: page |> Mirror.comments() |> Enum.map(&with_emoticons/1),
+      # One answer for the whole page: a stranger may read a public page, and
+      # then it names nobody — byline, comment authors, profiles, presence.
+      identities?: Publishing.identities?(scope(conn)),
       backlinks: Mirror.backlinks(page, filter: filter),
       outgoing_links: Mirror.outgoing_links(page, filter: filter),
       admin?: Scope.admin?(scope(conn)),
