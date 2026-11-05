@@ -505,6 +505,20 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert result.html =~ ~s(data-macro="user-profile")
       assert result.html =~ ~s(data-user="557058:abc")
     end
+
+    test "an html macro is the markup it holds, shown through the sanitiser" do
+      html = """
+      <ac:structured-macro ac:name="html">
+        <ac:plain-text-body><![CDATA[<p class="note">raw <b>html</b></p><script>alert(1)</script>]]></ac:plain-text-body>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ ~s(<p class="note">raw <b>html</b></p>)
+      refute result.html =~ "<script"
+      refute result.html =~ "does not draw this macro"
+    end
   end
 
   defp page do

@@ -68,7 +68,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     include finds the page it was pointed at instead of naming none.
   # 12: a user profile names its person and their pages instead of staying the
   #     widget for a macro Confluence will not expand for a reader.
-  def revision, do: 12
+  # 13: an html macro shows the markup it holds, through the sanitiser, instead of
+  #     the widget — the body it wraps was being dropped with the placeholder.
+  def revision, do: 13
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -151,6 +153,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       |> remove_unsafe_elements()
       |> drop_undeclared_macro_chrome(context)
       |> Adf.repair(context)
+      |> expand_raw_html()
 
     # Links are collected *before* rewriting, while hrefs still carry the
     # Confluence identity the link table needs.
@@ -195,6 +198,45 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp remove_unsafe_elements(nodes) do
     Enum.reduce(@unsafe_elements, nodes, &Floki.filter_out(&2, &1))
+  end
+
+  # Confluence's HTML macro *is* its body: the author hands the renderer markup
+  # and the site shows it. The mirror shows it too — the author wrote it on this
+  # page — but through the mirror's own sanitiser, because the markup is not the
+  # mirror's. The body is CDATA, so it arrives as one text run and has to be
+  # parsed again; that happens here, before the attribute pass, so the spliced
+  # nodes are sanitised like every other node, and the elements the sanitiser
+  # refuses are dropped now because `remove_unsafe_elements/1` has already run
+  # over the document by this point.
+  @raw_html_macros ~w(html)
+
+  defp expand_raw_html(nodes) do
+    Floki.traverse_and_update(nodes, fn
+      {"ac:structured-macro", attrs, children} = node ->
+        if raw_html?(attrs),
+          do: children |> raw_html_body() |> remove_unsafe_elements(),
+          else: node
+
+      other ->
+        other
+    end)
+  end
+
+  defp raw_html?(attrs) do
+    case attribute(attrs, "ac:name") do
+      name when is_binary(name) -> String.downcase(String.trim(name)) in @raw_html_macros
+      _no_name -> false
+    end
+  end
+
+  defp raw_html_body(children) do
+    children
+    |> Enum.flat_map(fn
+      {"ac:plain-text-body", _attrs, text} -> [Floki.text(text)]
+      _other -> []
+    end)
+    |> Enum.join()
+    |> Floki.parse_fragment!()
   end
 
   # What a family of macro chrome is allowed to draw. `export_view` is HTML, and
