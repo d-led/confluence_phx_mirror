@@ -126,11 +126,16 @@ defmodule ConfluencePhxMirror.Publishing do
 
   Use `byline/1` where there is no reader — a file written for nobody in
   particular — and `byline/2` for a page, a comment or a list somebody is
-  looking at.
+  looking at. The boolean form is the answer to `identities?/1`, for a component
+  that was handed the decision rather than the reader.
   """
-  @spec byline(term(), Scope.t()) :: String.t() | nil
+  @spec byline(term(), Scope.t() | boolean()) :: String.t() | nil
   def byline(name, %Scope{} = scope) do
-    if identities?(scope), do: byline(name)
+    byline(name, identities?(scope))
+  end
+
+  def byline(name, identities?) when is_boolean(identities?) do
+    if identities?, do: byline(name)
   end
 
   # A stranger is the reader with no account on a public deployment: the same

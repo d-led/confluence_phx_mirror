@@ -206,16 +206,23 @@ defmodule ConfluencePhxMirror.Authorization do
 
   defp deny_pages_off_the_list_to_strangers(query, %Scope{} = scope) do
     if stranger?(scope) and Publishing.public_spaces() != [] do
-      where(query, [p], p.space_id in subquery(listed_space_ids()))
+      # `parent_as` rather than the query's own binding: the same restriction
+      # narrows a `Link` query too, where the page is a join, not the row being
+      # filtered.
+      keys = Publishing.public_spaces()
+
+      where(
+        query,
+        exists(
+          from(s in Space,
+            where: s.id == parent_as(:page).space_id and fragment("upper(?)", s.key) in ^keys,
+            select: 1
+          )
+        )
+      )
     else
       query
     end
-  end
-
-  defp listed_space_ids do
-    keys = Publishing.public_spaces()
-
-    from(s in Space, where: fragment("upper(?)", s.key) in ^keys, select: s.id)
   end
 
   # The same question as the two queries above, for a space already in hand.
