@@ -135,20 +135,30 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         "Architecture Overview",
         architecture_body(),
         ~w(architecture design),
-        version: 16,
-        message: "Record the decisions and the open work",
+        version: 17,
+        message: "Declare the macros whose chrome the page draws",
         updated_at: ~U[2026-10-20 08:10:00Z],
         storage:
           properties_storage(
             architecture_body(),
-            [{"Owner", "Platform"}, {"Status", "Active"}]
+            [{"Owner", "Platform"}, {"Status", "Active"}],
+            code: 1,
+            expand: 1,
+            panel: 1
           )
       ),
       page(1003, "ENG", 1001, "Macros Gallery", macros_body(), ~w(macros demo),
-        version: 5,
-        message: "Show every macro the mirror draws",
+        version: 6,
+        message: "Declare the macros whose chrome the page draws",
         updated_at: ~U[2026-10-17 16:45:00Z],
-        storage: properties_storage(macros_body(), [{"Owner", "Docs"}, {"Status", "Review"}])
+        storage:
+          properties_storage(macros_body(), [{"Owner", "Docs"}, {"Status", "Review"}],
+            panel: 6,
+            code: 2,
+            status: 4,
+            expand: 1,
+            toc: 1
+          )
       ),
       page(1004, "ENG", 1000, "Search and CQL", search_body(), ~w(search howto),
         version: 6,
@@ -715,13 +725,29 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     }
   end
 
-  defp properties_storage(storage, rows) do
+  # A page declares, in its storage, every macro whose chrome its export view
+  # draws. The renderer lets a family of chrome draw only as many blocks as the
+  # page declares (`Sync.Renderer.drop_undeclared_macro_chrome/2`), because HTML
+  # cannot tell a macro from a paragraph pasted to look like one — so a storage
+  # that declares nothing loses every panel and code frame and keeps the words.
+  # A page written by Confluence carries those declarations; a demo page built
+  # from raw HTML has to write them down.
+  defp declarations(counts) do
+    counts
+    |> Enum.flat_map(fn {name, times} -> List.duplicate(declaration(name), times) end)
+    |> Enum.join("")
+  end
+
+  defp declaration(name), do: ~s(<ac:structured-macro ac:name="#{name}"></ac:structured-macro>)
+
+  defp properties_storage(storage, rows, declared) do
     table =
       Enum.map_join(rows, fn {key, value} ->
         "<tr><th class=\"confluenceTh\">#{key}</th><td class=\"confluenceTd\">#{value}</td></tr>"
       end)
 
     storage <>
+      declarations(declared) <>
       """
       <ac:structured-macro ac:name="pageproperties" ac:schema-version="1">
         <ac:rich-text-body>
