@@ -166,6 +166,20 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       {tag, _attrs, _children} when tag in @live_only_elements ->
         unavailable("this embedded content", context)
 
+      # Confluence's `unknown-macro` placeholder is a *picture of a macro*, drawn
+      # by the site under the reader's own session. Copied into a mirror it is a
+      # broken image where a macro used to be — and in a window with no session it
+      # is a blank box — so it becomes the same widget the renderer uses for a
+      # macro it cannot draw, naming the macro the placeholder named.
+      {"img", attrs, _children} = node ->
+        case placeholder_macro(attrs) do
+          nil ->
+            node
+
+          name ->
+            MacroPlaceholder.widget(name, label: label(name), url: external_url(context))
+        end
+
       {"ac:structured-macro", attrs, children} = node ->
         case List.keyfind(attrs, "ac:name", 0) do
           {"ac:name", name} when name in @body_is_the_answer ->
@@ -190,6 +204,30 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   end
 
   defp macro_label(name), do: Map.get(@macro_labels, name, "the #{name} macro")
+
+  # Which macro a Confluence placeholder image stood for, or nil for an ordinary
+  # picture. The name is in the query (`…/placeholder/unknown-macro?name=…`), and
+  # the class says the same thing when the URL has been rewritten.
+  defp placeholder_macro(attrs) do
+    src = attrs |> List.keyfind("src", 0) |> src_or_empty()
+
+    if has_class?(attrs, "wysiwyg-unknown-macro") or
+         String.contains?(src, "placeholder/unknown-macro") do
+      placeholder_macro_name(src)
+    end
+  end
+
+  defp src_or_empty({_key, value}), do: value
+  defp src_or_empty(nil), do: ""
+
+  defp placeholder_macro_name(src) do
+    with [_all, query] <- String.split(src, "?", parts: 2),
+         %{"name" => name} when name != "" <- URI.decode_query(query) do
+      name
+    else
+      _no_name -> "unknown"
+    end
+  end
 
   # A macro the mirror cannot draw still has content. Most of these are
   # containers — a tab whose body holds the page somebody wrote — so the widget
@@ -450,7 +488,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
         {:external, "#"}
 
       page_id = page_id_from_path(href) ->
-        page_link(page_id, context)
+        page_link(page_id, fragment(href), context)
 
       attachment = attachment_from_path(href) ->
         attachment_link(attachment, href, context)
@@ -460,15 +498,32 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     end
   end
 
-  defp page_link(confluence_id, context) do
+  defp page_link(confluence_id, fragment, context) do
     case get_in(context, [:pages, confluence_id]) do
       %{space_key: space_key, confluence_id: id, slug: slug} ->
-        {:internal, URLs.page_path(space_key, id, slug)}
+        {:internal, with_fragment(URLs.page_path(space_key, id, slug), fragment)}
 
       nil ->
-        {:external, absolutise("/pages/viewpage.action?pageId=#{confluence_id}", context)}
+        {:external,
+         absolutise("/pages/viewpage.action?pageId=#{confluence_id}", context)
+         |> with_fragment(fragment)}
     end
   end
+
+  # A link to a page can name a place inside it, and a table of contents is a page
+  # full of exactly that. The fragment is kept verbatim because the ids it names
+  # are the ones the export already put on its headings (`Title-Heading`);
+  # dropping it turns every entry into a link back to the page the reader is
+  # already reading, where nothing appears to happen when it is pressed.
+  defp fragment(href) do
+    case String.split(href, "#", parts: 2) do
+      [_path, fragment] when fragment != "" -> fragment
+      _no_fragment -> nil
+    end
+  end
+
+  defp with_fragment(path, nil), do: path
+  defp with_fragment(path, fragment), do: path <> "#" <> fragment
 
   # Confluence's download path names the content the file hangs off, and that is
   # not always the page: a screenshot pasted into a comment is

@@ -63,6 +63,48 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert Renderer.render(~s(<a href="#details">Details</a>), context()).html =~
                ~s(href="#details")
     end
+
+    test "keeps the place a link to another page names" do
+      # A table of contents is a page full of these. Without the fragment every
+      # entry links back to the page the reader is already on, and pressing one
+      # looks like nothing happening.
+      html =
+        ~s(<a href="/wiki/spaces/ENG/pages/101/Architecture+Overview#Design">Design</a>)
+
+      assert Renderer.render(html, context()).html =~
+               ~s(href="/spaces/ENG/pages/101/Architecture+Overview#Design")
+    end
+
+    test "keeps the place a link to an unmirrored page names" do
+      html = ~s(<a href="/wiki/spaces/ENG/pages/999/Hidden#Notes">Notes</a>)
+
+      assert Renderer.render(html, context()).html =~
+               ~s(href="https://dled.atlassian.net/pages/viewpage.action?pageId=999#Notes")
+    end
+  end
+
+  describe "macros the site only draws for a signed-in reader" do
+    test "an unknown-macro placeholder becomes a sentence, not a broken image" do
+      # Confluence's placeholder is a picture served by the site under the
+      # reader's session; copied into a mirror it is a broken image where a macro
+      # was, and a blank box in a window that is not signed in.
+      html =
+        ~s(<img class="wysiwyg-unknown-macro" ) <>
+          ~s(src="https://dled.atlassian.net/wiki/plugins/servlet/confluence/placeholder/unknown-macro?name=pageproperties&amp;locale=en_US&amp;version=2" />)
+
+      rendered = Renderer.render(html, context()).html
+
+      refute rendered =~ "<img"
+      refute rendered =~ "unknown-macro"
+      assert rendered =~ "mirror-macro-placeholder"
+      assert rendered =~ "pageproperties"
+    end
+
+    test "an ordinary picture is still a picture" do
+      html = ~s(<img src="https://example.test/photo.png" />)
+
+      assert Renderer.render(html, context()).html =~ "https://example.test/photo.png"
+    end
   end
 
   describe "attachments" do
