@@ -1353,11 +1353,10 @@ html.whiteboard-viewer-open {
   margin: 1rem 0;
 }
 
+/* A cell is a column, not a panel: Confluence draws none of them with a frame,
+   and a frame here turns an empty column — which is an ordinary thing to have —
+   into a bordered empty box that reads as a macro that failed. */
 .confluence-content .contentLayout2 .cell {
-  border: 1px solid var(--color-base-300);
-  border-radius: 0.6rem;
-  padding: 0.75rem 0.9rem;
-  background: var(--color-base-100);
   min-width: 0;
 }
 
