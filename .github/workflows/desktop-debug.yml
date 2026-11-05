@@ -30,9 +30,11 @@ name: desktop-debug
 
 on:
   push:
-    # Every branch, `main` included: a desktop build that only runs on feature
-    # branches stops being built exactly when a change lands.
-    branches: ["**"]
+    # `main` only, and only once: this was `["**"]` like the release workflow,
+    # which built the same three platforms twice on every push to main — once as
+    # a debug build and once as a release. A pull request or a manual dispatch
+    # is where a branch build belongs.
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

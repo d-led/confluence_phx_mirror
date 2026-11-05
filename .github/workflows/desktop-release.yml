@@ -54,9 +54,13 @@ name: desktop-release
 
 on:
   push:
-    # Every branch, `main` included: the newest build of a branch is installable,
-    # and a build that only happens on a tag is a build nobody has run.
-    branches: ["**"]
+    # `main` and tags, not every branch. `["**"]` meant a three-platform build
+    # — macOS, Linux and Windows, each with cargo, the release and an installer —
+    # for every branch pushed to this repository, dependabot's included, and the
+    # bill arrived long before anybody looked at what it bought. A branch that
+    # needs an installable build asks for one with `workflow_dispatch`, which is
+    # what it always was: a deliberate act.
+    branches: [main]
     tags: ["v*.*.*"]
   workflow_dispatch:
 
