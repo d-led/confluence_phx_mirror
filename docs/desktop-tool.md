@@ -743,6 +743,35 @@ on Windows the way the window does (`cmd //c call` with a `cygpath -w` path), an
 `cargo test` of the window runs on the Windows runner too, where those `cfg`
 branches are compiled at all.
 
+### What a Windows install depends on
+
+Everything above is a defect that was fixed. These are the dependencies that
+stay, stated so a failure has a name:
+
+* **WebView2.** The window is the system's WebView2 runtime, not a bundled
+  engine. Windows 11 ships it; a Windows 10 machine may not, so the installer
+  downloads the bootstrapper at install time (`"webviewInstallMode"` with
+  `downloadBootstrapper` and `silent`, now written into
+  `tauri.bundle.windows.json` rather than inherited from a default) — which
+  needs the internet **once**, at install. On an air-gapped fleet, switch that
+  to `offlineInstaller` and accept roughly 120 MB more in the installer; there
+  is no third option, and an install that fails this way says nothing about the
+  mirror.
+* **An unsigned binary.** SmartScreen calls it an unrecognised app; the
+  installer is not signed either. This is a decision, not an oversight, and the
+  README says so where a person will read it.
+* **A writable data folder — per user.** The catalogue, the attachments and the
+  settings live under the application-data directory
+  (`:filename.basedir(:user_data, …)`), never beside the executable, so an
+  install under `Program Files` is fine and two Windows accounts get two
+  mirrors.
+* **Nothing else.** A port already held is named as *already running* rather
+  than waited out; a release that dies after the window opened turns the window
+  into the failure page with a filled-in report link; a launcher that never
+  starts says so in 250 ms instead of leaving "taking longer than usual" on
+  screen. Those three are the shapes a missing dependency or a quarantined
+  sidecar take, and each has a sentence rather than a blank window.
+
 `cygpath` is MSYS's, not ours: it translates the shell's path into the one `cmd`
 understands, and it is present exactly where this script can run on Windows at
 all — a bash is Git for Windows, and `cygpath` ships beside it. The script asks for
