@@ -198,6 +198,8 @@ none is named: [routes-auth.md](routes-auth.md#admission-may-this-identity-have-
 
 For a mirror put on the internet as a documentation site. All of these are off:
 a mirror behind its proxy publishes to the people it admitted.
+[authorization.md](authorization.md) is the one-screen version of how this and
+the permission rule fit together.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

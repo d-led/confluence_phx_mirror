@@ -1,5 +1,8 @@
 # Routes, who may reach them, and what they may see
 
+**In a hurry?** [authorization.md](authorization.md) is the one-screen version:
+the rule in five lines, the deployment table, and the seams.
+
 Three questions, answered by three different things, and they must not be
 confused with each other:
 
@@ -199,10 +202,19 @@ The shell still offers a *Sign in* button to that visitor
 deployment: a nudge, not a wall, and the one piece of chrome a public site
 should drop.
 
-**Two audiences in one instance** — staff behind the proxy, the internet on one
-unauthenticated path — is designed but not built:
-[public-surface.md](public-surface.md) is the argument, the threat model, the
-route allowlist and the cost.
+**Two audiences in one instance** comes in two shapes, and only one is built:
+
+* **by space** — `CM_PUBLIC_SPACES` on a deployment whose reader paths already
+  let anonymous requests through. A stranger reads the listed spaces and nothing
+  else, and the listed ones are anonymised by themselves
+  ([configuration.md](configuration.md#publishing)). This is the shape a mirror
+  with "most spaces internal, a few meant for the world" wants, and it needs no
+  change to the proxy.
+* **by path** — staff behind the proxy, the internet on one unauthenticated
+  path, one app. Still designed and not built:
+  [public-surface.md](public-surface.md) is the argument, the threat model, the
+  route allowlist and the cost. Its first half is what has since shipped there;
+  the path split is the part still open.
 
 ### The rule a public site narrows
 

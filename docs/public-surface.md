@@ -1,8 +1,26 @@
 # The public surface: one instance, two audiences
 
-**Status: proposal, nothing implemented.** This file is the argument and the
-plan; no route, setting or screen described here exists at HEAD. Where a claim
-about today's code decides the design, the file it was checked in is named.
+**Status: the audience half is built; the path half is still a proposal.**
+
+Since this was written, the question *"which of our spaces may the internet
+read?"* was answered and shipped: `CM_PUBLIC_SPACES=ENG,OPS` narrows
+`CM_PUBLIC_SITE` to a subset of spaces, a page outside the list is the 404 an
+unknown page gets, and a listed space is anonymised by itself — bylines, comment
+authors, presence, `/people` and profile links, and the stored body's
+`contributors`/`user-profile` macros. That is
+[configuration.md](configuration.md#publishing) and
+[design-notes.md](design-notes.md#public-by-the-space-not-by-the-site), and it
+means the *reason* most deployments wanted a second audience is gone.
+
+What is still unbuilt here is the rest, and it is only needed by a deployment
+that must keep **one proxy** and one app while splitting *paths*: `Scope.surface`,
+the `/public` prefix, the URL layer that would have to rewrite every link
+including the ones inside stored bodies, the proxy's skip list, and the optional
+per-surface redaction (which `CM_PUBLIC_SPACES` now does per page instead).
+
+The rest of this file is that argument, unchanged. Where a claim about today's
+code decides the design, the file it was checked in is named; the two that moved
+are marked in the table below.
 
 ## The ask
 
@@ -32,6 +50,7 @@ The audience question is solved. A reader with no account is already a reader:
 | the anonymous subject the sync mirrors from `anonymousAccess` | `Authorization`, `space_permissions` |
 | the rule that keeps silence from meaning "everyone" | `Publishing.public_site?/0` and `Authorization.stranger?/1` |
 | redaction seams, each one place | `Publishing.byline/1`, `Publishing.exclude_comments?/0` |
+| per-page redaction, and the list of spaces | `Publishing.identities?/1`, `identities_in_space?/1`, `CM_PUBLIC_SPACES` — **built since this was written** |
 | exports narrowed by the reader | `Export`, pinned by `test/…_web/controllers/access_test.exs` |
 | a whole deployment that works this way today | `CM_PUBLIC_SITE=true` |
 
