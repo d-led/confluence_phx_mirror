@@ -530,6 +530,11 @@ fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String
             .unwrap_or_else(|| "the directory this window was started in".to_string())
     ));
 
+    // And on stdout, where a smoke test that captured this process can read it:
+    // the sink's file is the *window's* log, and a check that only prints the
+    // release's log cannot see it.
+    println!("window: launching {}", describe(&command));
+
     if !path.exists() {
         return Err(Failure {
             trouble: Trouble::MissingRelease,
@@ -542,6 +547,7 @@ fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String
         // with the operating system's own words and nobody able to see them.
         Sink::new(log.as_ref(), Arc::clone(shared))
             .line(&format!("the launcher could not be started: {error}"));
+        println!("window: the release could not be started: {error}");
 
         Failure {
             // A launcher that exists and cannot run is a broken install, not a
@@ -551,6 +557,8 @@ fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String
             log: log_path.clone(),
         }
     })?;
+
+    println!("window: the release is running; waiting for its address");
 
     // Both halves of what the release says are read, and both go where a person
     // can find them: the log file, and the page that will explain the failure.

@@ -123,6 +123,15 @@ else
 fi
 tool_log="$workspace/logs/desktop.log"
 
+# The window keeps its own log beside its own identity rather than in the tool's
+# workspace, and Tauri names that directory after the bundle identifier.
+BUNDLE_ID="dev.confluence-export.desktop"
+if [[ $platform == windows ]]; then
+  app_data=$(cygpath -u "${LOCALAPPDATA:-$HOME/AppData/Local}")
+else
+  app_data="$home"
+fi
+
 "${launch[@]}" >"$log" 2>&1 &
 pid=$!
 
@@ -152,6 +161,21 @@ fail() {
   else
     echo "--- the tool wrote no log at $tool_log" >&2
   fi
+
+  # The window's *own* log: the release's output as the window read it, which is
+  # where a launch that never became a server leaves its reason. Tauri names the
+  # directory after the bundle identifier, so the few shapes it can have are
+  # asked for by name rather than searched for across an entire profile.
+  local window_log
+  for window_log in \
+    "$app_data/Library/Logs/$BUNDLE_ID/sidecar.log" \
+    "$app_data/.local/share/$BUNDLE_ID/logs/sidecar.log" \
+    "$app_data/$BUNDLE_ID/logs/sidecar.log"; do
+    if [[ -f $window_log ]]; then
+      echo "--- the window's own log ($window_log):" >&2
+      cat "$window_log" >&2
+    fi
+  done
 
   stop
   exit 1
