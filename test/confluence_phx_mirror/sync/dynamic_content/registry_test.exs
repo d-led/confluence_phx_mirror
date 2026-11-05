@@ -24,6 +24,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
 
   test "the names the mirror draws are Confluence's own ac:name keys" do
     assert Registry.macros() == [
+             "anchor",
              "attachments",
              "blog-posts",
              "children",
@@ -38,6 +39,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
              "native-embed:database",
              "native-embed:whiteboard",
              "pagetree",
+             "profile-picture",
              "recently-updated",
              "tasks-report",
              "toc",

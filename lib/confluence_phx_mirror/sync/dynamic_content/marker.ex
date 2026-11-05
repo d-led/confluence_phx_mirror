@@ -60,6 +60,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Marker do
   end
 
   # `minLevel` -> `min-level`, unless the mirror has a word of its own for it.
+  #
+  # A parameter with no name of its own is the macro's *subject* — `anchor`
+  # writes the name it marks in one — so it reaches the marker as `data-name`
+  # rather than as the bare `data-` a faithful transliteration would produce.
+  defp attribute(""), do: "name"
+
   defp attribute(name) do
     Map.get(
       @renamed,

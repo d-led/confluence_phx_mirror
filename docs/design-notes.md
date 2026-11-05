@@ -120,11 +120,12 @@ into the page for everybody, so everything a macro lists must be at least as
 wide as the page listing it. Applying that once in
 `Sync.DynamicContent.Source.Mirror` means a macro written next year inherits it.
 
-Resolved today: `content-by-label`, `page-properties-report` (Confluence's key is
+Resolved today: `content-by-label` (and the editor's `contentbylabel`), `page-properties-report` (Confluence's key is
 `detailssummary`), `toc`, `children`, `pagetree`, `recently-updated`,
 `attachments`, `content-report-table`, `include`, `excerpt-include`, `excerpt`,
-`blog-posts`, `contributors`, `labels-list`, `user-profile`, `tasks-report` and
-`decision-report` — plus `html`, whose answer is its own body, read from the
+`blog-posts`, `contributors`, `labels-list`, `user-profile`, `tasks-report`,
+`decision-report`, `anchor` and `profile-picture` — plus `html`, whose answer is
+its own body, read from the
 storage because the export view only leaves a picture of the macro. What is left
 is not a renderer away:
 

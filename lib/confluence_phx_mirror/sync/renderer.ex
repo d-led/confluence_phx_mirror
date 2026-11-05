@@ -84,7 +84,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     the one copy served to every reader is the stranger's copy.
   # 22: a macro the mirror cannot draw shows what it carried — its own text or
   #     the body it wrapped — instead of dropping it behind the note.
-  def revision, do: 22
+  # 23: `anchor` and `profile-picture` are drawn: the first records the name a
+  #     `#link` lands on, the second serves the face the mirror keeps.
+  def revision, do: 23
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

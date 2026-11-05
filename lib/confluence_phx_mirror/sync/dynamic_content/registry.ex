@@ -21,6 +21,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
   alias ConfluencePhxMirror.Sync.DynamicContent.Renderers
 
   @renderers %{
+    "anchor" => Renderers.Anchor,
     "attachments" => Renderers.Attachments,
     "blog-posts" => Renderers.BlogPosts,
     "children" => Renderers.Children,
@@ -35,6 +36,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "native-embed:database" => Renderers.NativeEmbed,
     "native-embed:whiteboard" => Renderers.NativeEmbed,
     "pagetree" => Renderers.PageTree,
+    "profile-picture" => Renderers.ProfilePicture,
     "recently-updated" => Renderers.RecentlyUpdated,
     "tasks-report" => Renderers.TasksReport,
     "toc" => Renderers.Toc,

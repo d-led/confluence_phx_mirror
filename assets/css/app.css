@@ -1497,14 +1497,36 @@ html.whiteboard-viewer-open {
   font-weight: 500;
 }
 
+/* A name a `#link` lands on, and one person's face ---------------------- */
+
+/* The anchor draws nothing of its own: it is the id, and the browser needs no
+   room for it. */
+.confluence-content .mirror-anchor {
+  display: block;
+  height: 0;
+  scroll-margin-top: 4rem;
+}
+
+.confluence-content .mirror-profile-picture {
+  display: inline-block;
+  margin: 0.25rem 0;
+  line-height: 0;
+}
+
+.confluence-content .mirror-avatar {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  object-fit: cover;
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+}
+
 /* Task lists ----------------------------------------------------------- */
 
 .confluence-content .inline-task-list {
   list-style: none;
   padding-left: 0;
-}
-
-.confluence-content .inline-task-list li {
+}.confluence-content .inline-task-list li {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
