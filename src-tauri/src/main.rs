@@ -304,7 +304,7 @@ fn splash_window(app: &tauri::App) -> Result<WebviewWindow, Box<dyn std::error::
             // to. On a site that bounces the browser between the login and the
             // page, that is a window that reloads until Confluence answers "too
             // many requests", which is the whole of what the person sees.
-            .on_navigation(leaves_for_the_browser)
+            .on_navigation(may_load_here)
             .build()?,
     )
 }
@@ -314,7 +314,7 @@ fn splash_window(app: &tauri::App) -> Result<WebviewWindow, Box<dyn std::error::
 /// system browser opened a console window on Windows (`cmd /C start` without
 /// `CREATE_NO_WINDOW`) and a second copy of the page in the default browser,
 /// which is a worse failure than the link simply not being followed.
-fn leaves_for_the_browser(target: &tauri::Url) -> bool {
+fn may_load_here(target: &tauri::Url) -> bool {
     is_own_page(target)
 }
 
