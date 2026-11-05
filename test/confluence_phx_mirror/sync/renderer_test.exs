@@ -519,6 +519,25 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       refute result.html =~ "<script"
       refute result.html =~ "does not draw this macro"
     end
+
+    test "an html macro the export only pictures is drawn from its storage" do
+      # What the site actually sends: no macro element at all, a picture of one.
+      html = """
+      <p>before</p>
+      <img class="wysiwyg-unknown-macro" src="/wiki/plugins/servlet/confluence/placeholder/unknown-macro?name=html" />
+      <p>after</p>
+      """
+
+      storage = """
+      <ac:structured-macro ac:name="html"><ac:plain-text-body><![CDATA[<p>raw <b>html</b></p>]]></ac:plain-text-body></ac:structured-macro>
+      """
+
+      result = Renderer.render(html, Map.put(context(), :storage, storage))
+
+      assert result.html =~ "<p>raw <b>html</b></p>"
+      refute result.html =~ "does not draw this macro"
+      refute result.html =~ "unknown-macro"
+    end
   end
 
   defp page do

@@ -153,7 +153,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       |> remove_unsafe_elements()
       |> drop_undeclared_macro_chrome(context)
       |> Adf.repair(context)
-      |> expand_raw_html()
+      |> expand_raw_html(context)
 
     # Links are collected *before* rewriting, while hrefs still carry the
     # Confluence identity the link table needs.
@@ -201,43 +201,83 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   end
 
   # Confluence's HTML macro *is* its body: the author hands the renderer markup
-  # and the site shows it. The mirror shows it too — the author wrote it on this
-  # page — but through the mirror's own sanitiser, because the markup is not the
-  # mirror's. The body is CDATA, so it arrives as one text run and has to be
-  # parsed again; that happens here, before the attribute pass, so the spliced
-  # nodes are sanitised like every other node, and the elements the sanitiser
-  # refuses are dropped now because `remove_unsafe_elements/1` has already run
-  # over the document by this point.
+  # and the site draws it. Two things make that awkward.
+  #
+  # The export view does not carry the macro at all — it leaves a picture of one —
+  # so the markup is read from the storage, where the page declares it, and matched
+  # to the picture in reading order, the way a panel's icon already is. And the
+  # markup is the author's, not the mirror's, so it goes through the same sanitiser
+  # as the rest of the page: spliced here, before the attribute pass, because by
+  # the time a macro is drawn that pass has already run.
   @raw_html_macros ~w(html)
 
-  defp expand_raw_html(nodes) do
-    Floki.traverse_and_update(nodes, fn
-      {"ac:structured-macro", attrs, children} = node ->
-        if raw_html?(attrs),
-          do: children |> raw_html_body() |> remove_unsafe_elements(),
-          else: node
-
-      other ->
-        other
-    end)
+  defp expand_raw_html(nodes, context) do
+    {expanded, _unused} = splice_raw_html(nodes, raw_html_bodies(context))
+    expanded
   end
 
-  defp raw_html?(attrs) do
-    case attribute(attrs, "ac:name") do
-      name when is_binary(name) -> String.downcase(String.trim(name)) in @raw_html_macros
-      _no_name -> false
+  # One body per declaration, in reading order.
+  defp raw_html_bodies(%{storage: storage}) when is_binary(storage) do
+    storage
+    |> Floki.parse_fragment!()
+    |> elements()
+    |> Enum.filter(&raw_html?/1)
+    |> Enum.map(fn {_tag, _attrs, children} -> plain_text_body(children) end)
+  end
+
+  defp raw_html_bodies(_context), do: []
+
+  defp splice_raw_html(nodes, bodies), do: Enum.flat_map_reduce(nodes, bodies, &splice_node/2)
+
+  defp splice_node({"ac:structured-macro", attrs, children}, bodies) do
+    if raw_html_macro?(attribute(attrs, "ac:name")) do
+      drawn_body(bodies, children)
+    else
+      {children, rest} = splice_raw_html(children, bodies)
+      {[{"ac:structured-macro", attrs, children}], rest}
     end
   end
 
-  defp raw_html_body(children) do
+  defp splice_node({"img", attrs, _children} = node, bodies) do
+    if raw_html_macro?(placeholder_macro(attrs)),
+      do: drawn_body(bodies, []),
+      else: {[node], bodies}
+  end
+
+  defp splice_node({tag, attrs, children}, bodies) do
+    {children, rest} = splice_raw_html(children, bodies)
+    {[{tag, attrs, children}], rest}
+  end
+
+  defp splice_node(other, bodies), do: {[other], bodies}
+
+  # The declared body first; an element that carries its own is the fallback, for
+  # a source whose export view did expand the macro after all.
+  defp drawn_body([body | rest], _children), do: {drawn(body), rest}
+  defp drawn_body([], children), do: {drawn(plain_text_body(children)), []}
+
+  defp drawn(body) do
+    body |> Floki.parse_fragment!() |> remove_unsafe_elements()
+  end
+
+  defp plain_text_body(children) do
     children
     |> Enum.flat_map(fn
       {"ac:plain-text-body", _attrs, text} -> [Floki.text(text)]
       _other -> []
     end)
     |> Enum.join()
-    |> Floki.parse_fragment!()
   end
+
+  defp raw_html?({"ac:structured-macro", attrs, _children}),
+    do: raw_html_macro?(attribute(attrs, "ac:name"))
+
+  defp raw_html?(_element), do: false
+
+  defp raw_html_macro?(name) when is_binary(name),
+    do: String.downcase(String.trim(name)) in @raw_html_macros
+
+  defp raw_html_macro?(_name), do: false
 
   # What a family of macro chrome is allowed to draw. `export_view` is HTML, and
   # HTML cannot tell a macro from a paragraph pasted to look like one: Confluence
