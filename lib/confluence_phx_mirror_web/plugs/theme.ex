@@ -21,7 +21,10 @@ defmodule ConfluencePhxMirrorWeb.Plugs.Theme do
     conn
     |> assign(:theme, theme)
     |> assign(:variant, variant)
-    |> assign(:theme_attrs, Skins.attributes(theme, variant))
+    # `data-variant` is the reader's choice, not the palette: the theme menu
+    # marks the entry they are on from this attribute, so a cached page cannot
+    # disagree with the menu.
+    |> assign(:theme_attrs, Map.put(Skins.attributes(theme, variant), "data-variant", variant))
     |> assign(:skin_css, Skins.style())
   end
 

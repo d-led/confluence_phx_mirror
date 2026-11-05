@@ -295,6 +295,28 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     assert again.resp_body == ""
   end
 
+  test "a copy drawn in one variant is not handed back to another", %{conn: conn} do
+    light =
+      conn
+      |> put_req_cookie("mirror_theme", "light")
+      |> get("/spaces/ENG/pages/1002/Architecture+Overview")
+
+    assert [etag] = get_resp_header(light, "etag")
+
+    # The palette is painted on `<html>`, so a copy cached in one variant is not
+    # the page this reader asked for: switching the theme must not revalidate to
+    # a 304 and leave the old colours on screen — which is what it did.
+    dark =
+      light
+      |> recycle()
+      |> put_req_cookie("mirror_theme", "dark")
+      |> put_req_header("if-none-match", etag)
+      |> get("/spaces/ENG/pages/1002/Architecture+Overview")
+
+    assert dark.status == 200
+    assert html_response(dark, 200) =~ ~s(data-variant="dark")
+  end
+
   test "a notice is said once and never handed back by a cache", %{conn: conn} do
     conn = conn |> log_in_admin() |> post("/spaces/ENG/pages/1002/resync")
     assert redirected_to(conn) == "/spaces/ENG/pages/1002/Architecture+Overview"

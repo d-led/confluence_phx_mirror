@@ -343,6 +343,23 @@
   color: var(--color-base-content);
 }
 
+/* The variant the reader is on says so. `data-variant` is on `<html>`, so the
+   menu carries no state of its own — a page served from the cache marks the
+   same entry the page was drawn for, and the two cannot disagree. */
+html[data-variant="system"] #theme-menu a[href="/theme/system"],
+html[data-variant="light"] #theme-menu a[href="/theme/light"],
+html[data-variant="dark"] #theme-menu a[href="/theme/dark"] {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+html[data-variant="system"] #theme-menu a[href="/theme/system"]::after,
+html[data-variant="light"] #theme-menu a[href="/theme/light"]::after,
+html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
+  content: "✓";
+  margin-left: auto;
+}
+
 /* A cell Confluence coloured keeps its colour as `data-highlight-colour` and is
    painted by Confluence's own stylesheet. Matching the attribute here does the
    same, and does it for bodies mirrored before the rule existed: nothing has to

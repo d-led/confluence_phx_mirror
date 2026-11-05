@@ -236,8 +236,13 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   # cached copy is only ever offered back to the viewer it was rendered for.
   defp page_etag(conn, page, kind) do
     viewer = if Scope.admin?(scope(conn)), do: "admin", else: "reader"
+    # The variant is part of the tag: the palette is painted on `<html>`, so a
+    # copy drawn in one variant is not the copy this reader asked for — and
+    # without it, switching the theme revalidated to a 304 and the browser kept
+    # the old colours.
+    variant = conn.assigns[:variant] || "system"
 
-    ~s("#{page.confluence_id}-#{page.version_number}-#{kind}-#{viewer}-#{DateTime.to_unix(page.updated_at)}")
+    ~s("#{page.confluence_id}-#{page.version_number}-#{kind}-#{viewer}-#{variant}-#{DateTime.to_unix(page.updated_at)}")
   end
 
   defp put_reader_cache(conn, etag) do
