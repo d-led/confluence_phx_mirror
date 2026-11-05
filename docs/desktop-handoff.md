@@ -58,12 +58,12 @@ connection, the press that queues a mirror run, and the archive.
 
 ## What is unfinished
 
-0. **The Linux build installs and does not start.** The artifact's release dies at
-   boot on Debian 12 and Ubuntu 22.04 (`prim_tty:isatty/1` → `user_drv` →
-   `application_start_failure`), while the Linux leg's own boot check serves on
-   the runner. Evidence, the two things to try, and why the installer is not
-   implicated: `docs/desktop-tool.md` §"Linux: it installs, and it does not start
-   yet". macOS is unaffected.
+0. **An emulated container is not a Linux test bed.** Running the Linux artifact
+   under Docker with `--platform linux/amd64` on an Apple-silicon machine dies at
+   boot in OTP's `prim_tty` NIF; the same file serves on the x86_64 runner, which
+   is why the release workflow now unpacks the artifact and boots it there. The
+   detail, and the crash, are in `docs/desktop-tool.md` §"Linux, and why an
+   emulated container lies about it".
 
 1. **The query language, and comments as hits.** The tool has an index — an FTS5
    table the triggers keep in step with `pages`, ranked by `bm25`

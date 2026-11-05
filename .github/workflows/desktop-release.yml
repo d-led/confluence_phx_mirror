@@ -187,18 +187,16 @@ jobs:
         shell: bash
         run: scripts/package.sh
 
-      # A probe, not a gate, and written down as one because of what it is for:
-      # the Linux build installs and its release dies at boot on Debian 12 and
-      # Ubuntu 22.04 — `prim_tty:isatty/1` → `user_drv` → `application_start_failure`
-      # (`docs/desktop-tool.md`, "Linux: it installs, and it does not start yet")
-      # — while the boot check inside `scripts/package.sh` serves on this runner
-      # for the same tree. The difference is not understood, so this unpacks what
-      # a person downloads and starts it the way the window does, and prints what
-      # happened. It stops failing the build only once the answer is in the log
-      # and the packaging is fixed.
-      - name: Probe — boot the unpacked artifact, as the window would (diagnostic)
+      # What a person actually runs: the artifact, unpacked, with the release
+      # inside it started the way the window starts one. `scripts/package.sh`
+      # boots the staging folder; this boots the tarball, which is the only shape
+      # tested on the machine it ships to. It is not redundant with that check —
+      # an amd64 container on an Apple-silicon machine fails this boot in OTP's
+      # `prim_tty` NIF while the staging folder serves, so the two disagree about
+      # exactly the thing worth knowing (`docs/desktop-tool.md`, "Linux, and why
+      # an emulated container lies about it").
+      - name: Boot the unpacked artifact, as the window would
         if: runner.os == 'Linux'
-        continue-on-error: true
         shell: bash
         run: |
           set -uo pipefail
@@ -219,12 +217,16 @@ jobs:
             sleep 1
           done
 
-          if [ -n "$url" ]; then
-            echo "the unpacked artifact serves ${url%/}"
-          else
-            echo "::warning::the unpacked artifact never announced a port — what it said:"
+          if [ -z "$url" ]; then
+            echo "the unpacked artifact never announced a port — what it said:"
             head -25 "$log"
+            kill "$pid" 2>/dev/null || true
+            exit 1
           fi
+
+          echo "the unpacked artifact serves ${url%/}"
+          curl -fsS "${url%/}/health" >/dev/null
+          curl -fsS "${url%/}/__tool" >/dev/null
 
           kill "$pid" 2>/dev/null || true
           wait "$pid" 2>/dev/null || true
