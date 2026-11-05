@@ -235,8 +235,16 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   # A page carries an administrator-only action and a tree of only the pages
   # this reader may open, so the tag names the viewer as well as the version: a
   # cached copy is only ever offered back to the viewer it was rendered for.
+  # Three shapes are drawn from one row — an administrator's, a reader's, and the
+  # one a stranger gets, which names nobody — and each needs its own tag.
   defp page_etag(conn, page, kind) do
-    viewer = if Scope.admin?(scope(conn)), do: "admin", else: "reader"
+    viewer =
+      cond do
+        Scope.admin?(scope(conn)) -> "admin"
+        Publishing.identities?(scope(conn)) -> "reader"
+        true -> "anonymous"
+      end
+
     # The variant is part of the tag: the palette is painted on `<html>`, so a
     # copy drawn in one variant is not the copy this reader asked for — and
     # without it, switching the theme revalidated to a 304 and the browser kept

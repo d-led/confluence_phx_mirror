@@ -66,6 +66,21 @@ defmodule ConfluencePhxMirrorWeb.PublicSpaceIdentityTest do
     assert {:error, {:redirect, %{to: "/"}}} = live(conn, ~p"/people")
   end
 
+  # `cache-control: private` keeps a copy in one browser, but the tag is what a
+  # revalidation compares: without it, a stranger's revalidation of a page that
+  # named nobody would be answered with the reader's copy of it.
+  test "the stranger's copy and the reader's copy carry different tags", %{conn: conn, page: page} do
+    path = page_path("OPENBOOK", page)
+
+    stranger_tag = conn |> get(path) |> etag()
+    reader_tag = conn |> log_in(user_fixture()) |> get(path) |> etag()
+
+    assert stranger_tag
+    refute stranger_tag == reader_tag
+  end
+
+  defp etag(conn), do: conn |> get_resp_header("etag") |> List.first()
+
   defp page_path(space_key, page) do
     URLs.page_path(space_key, page.confluence_id, page.slug)
   end
