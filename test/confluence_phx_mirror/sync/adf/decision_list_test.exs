@@ -57,10 +57,8 @@ defmodule ConfluencePhxMirror.Sync.Adf.DecisionListTest do
   end
 
   defp items(states) do
-    states
-    |> Enum.map(fn state ->
+    Enum.map_join(states, fn state ->
       ~s(<ac:adf-node type="decision-list"><ac:adf-node type="decision-item"><ac:adf-attribute key="state">#{state}</ac:adf-attribute><ac:adf-content>x</ac:adf-content></ac:adf-node></ac:adf-node>)
     end)
-    |> Enum.join()
   end
 end

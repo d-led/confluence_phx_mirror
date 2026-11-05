@@ -20,8 +20,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   """
 
   alias ConfluencePhxMirror.Mirror.URLs
-  alias ConfluencePhxMirror.Sync.DynamicContent.Marker
   alias ConfluencePhxMirror.Sync.{Adf, Emoticons, MacroPlaceholder, VendorMacros}
+  alias ConfluencePhxMirror.Sync.DynamicContent.Marker
 
   @type page_ref :: %{space_key: String.t(), confluence_id: integer(), slug: String.t()}
 

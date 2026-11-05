@@ -453,10 +453,15 @@
   position: relative;
   margin: 1rem 0;
   padding: 0.7rem 0.95rem 0.7rem 2.7rem;
-  border: 1px solid color-mix(in oklab, var(--information-macro-tone) 30%, transparent);
+  border: 1px solid
+    color-mix(in oklab, var(--information-macro-tone) 30%, transparent);
   border-left: 3px solid var(--information-macro-tone);
   border-radius: 0.5rem;
-  background: color-mix(in oklab, var(--information-macro-tone) 8%, transparent);
+  background: color-mix(
+    in oklab,
+    var(--information-macro-tone) 8%,
+    transparent
+  );
 }
 
 .confluence-content .confluence-information-macro-tip {
@@ -498,15 +503,21 @@
   content: "i";
 }
 
-.confluence-content .confluence-information-macro-tip .confluence-information-macro-icon::before {
+.confluence-content
+  .confluence-information-macro-tip
+  .confluence-information-macro-icon::before {
   content: "✓";
 }
 
-.confluence-content .confluence-information-macro-warning .confluence-information-macro-icon::before {
+.confluence-content
+  .confluence-information-macro-warning
+  .confluence-information-macro-icon::before {
   content: "!";
 }
 
-.confluence-content .confluence-information-macro-error .confluence-information-macro-icon::before {
+.confluence-content
+  .confluence-information-macro-error
+  .confluence-information-macro-icon::before {
   content: "✕";
 }
 
