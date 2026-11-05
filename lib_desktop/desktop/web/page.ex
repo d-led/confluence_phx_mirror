@@ -899,14 +899,45 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     """
   end
 
-  # The one line that says a window drew this screen. It is here, in the shell
-  # every tool page is built from, because the claim is about the document and
-  # not about what any one screen does: the window is the only thing that runs a
-  # page's script, so this is the difference between "the server served HTML" and
-  # "somebody is looking at it" (see `ConfluencePhxMirror.Desktop.Web.Paint`).
+  # The one line that says what a window can see. It is here, in the shell every
+  # tool page is built from, because the claim is about the document and not about
+  # any one screen: the window is the only thing that runs a page's script, so
+  # this is the difference between "the server served HTML" and "somebody is
+  # looking at it" (see `ConfluencePhxMirror.Desktop.Web.Paint`).
+  #
+  # It reports the *live document*, not the markup the server sent. A path alone
+  # would let a window that drew an empty page pass — `/` is the setup form on a
+  # fresh workspace and the mirror's home on a configured one — so the boxes a
+  # person types into, the heading above them and the word on the button are what
+  # is read here, from the DOM that the webview built.
+  #
+  # Visible box, not every input: a page keeps hidden fields for its own script,
+  # and counting those would let a screen with nothing to type into pass.
   defp painted do
     ~S"""
-    <script>fetch("/__tool/painted?path=" + encodeURIComponent(location.pathname), {method: "POST"});</script>
+    <script>
+    (function () {
+      function label(el) { return el.name || el.id || el.type; }
+
+      var fields = Array.prototype.slice
+        .call(document.querySelectorAll("input, select, textarea"))
+        .filter(function (el) { return el.getClientRects().length > 0; })
+        .map(label);
+
+      function reading(selector) {
+        var found = document.querySelector(selector);
+        return found ? found.textContent.trim() : "";
+      }
+
+      var query = "path=" + encodeURIComponent(location.pathname) +
+        "&title=" + encodeURIComponent(document.title || "") +
+        "&heading=" + encodeURIComponent(reading("h1")) +
+        "&fields=" + encodeURIComponent(fields.join(",")) +
+        "&button=" + encodeURIComponent(reading("button"));
+
+      fetch("/__tool/painted?" + query, { method: "POST" });
+    })();
+    </script>
     """
   end
 

@@ -96,7 +96,14 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
   # apart reports the wrong one.
   post "/__tool/painted" do
     conn = fetch_query_params(conn)
-    Paint.drawn(conn.query_params["path"] || "/")
+
+    Paint.drawn(%{
+      path: conn.query_params["path"],
+      title: conn.query_params["title"],
+      heading: conn.query_params["heading"],
+      fields: String.split(conn.query_params["fields"] || "", ","),
+      button: conn.query_params["button"]
+    })
 
     send_resp(conn, 204, "")
   end
@@ -106,12 +113,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
       nil ->
         send_resp(conn, 503, "no window has drawn a screen yet\n")
 
-      {at, path} ->
-        send_resp(
-          conn,
-          200,
-          "painted #{path} at #{DateTime.to_iso8601(at)}\n"
-        )
+      seen ->
+        conn
+        |> put_resp_content_type("text/plain")
+        |> send_resp(200, Paint.describe(seen))
     end
   end
 

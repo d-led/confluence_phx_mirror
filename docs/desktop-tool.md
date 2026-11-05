@@ -667,16 +667,33 @@ hypothetical gap: the window once judged its own splash page an outside link,
 opened a console window and the default browser instead of the tool, and every
 server-level check stayed green.
 
-So the tool's pages report what they drew. Every screen under `/__tool` carries
-one line of script that posts the path it painted to `/__tool/painted` (see
-`ConfluencePhxMirror.Desktop.Web.Paint`), and only a window runs a page's script.
+So the tool's pages report what they built. Every screen under `/__tool` carries
+one line of script that reads the live document — the heading, the boxes a person
+can type into, the word on the button — and posts it to `/__tool/painted` (see
+`ConfluencePhxMirror.Desktop.Web.Paint`); only a window runs a page's script, and
+only a built DOM has boxes with rectangles. A path on its own would not be enough
+to be worth having: `/` is the setup form on a fresh workspace and the mirror's
+home on a configured one, so "the window drew `/`" is also true of a window
+showing nothing anybody could fill in.
+
 The smoke test starts the executable that ships, with a scratch `HOME` and a port
-of its own, asks `/health` first — "the window never started its server" — and
-then the paint report — "the server is up and no window drew a screen", which is
-the shape that shipped. It asserts structure, not pixels: a screenshot of a
-person's desktop is not something a test should take, and a Linux runner has no
-screen to photograph. The first picture this repository takes of a window will be
-a webview screenshot over CDP on Windows, where WebView2 exposes one.
+of its own, asks `/health` first — "the window never started its server" — then
+the report, and then requires the setup form to be on screen: a heading, and a
+box each for the site, the e-mail, the token and the folder. Its own output is
+the report itself, so a CI log says what the window looked like:
+
+```
+painted / at 2026-11-05T12:44:47.562271Z
+title: Set up the mirror
+heading: Connect to Confluence
+fields: site,email,secret,root
+button: Save and continue
+```
+
+It asserts structure, not pixels: a screenshot of a person's desktop is not
+something a test should take, and a Linux runner has no screen to photograph. The
+first picture this repository takes of a window will be a webview screenshot over
+CDP on Windows, where WebView2 exposes one.
 
 Two things it cannot cover, and they are worth knowing rather than fixing by
 pretending: macOS has no WebDriver for WKWebView at all (so `tauri-driver`-style

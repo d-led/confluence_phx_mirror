@@ -9,11 +9,12 @@
 # own splash page a foreign link, opened a console and a browser instead of the
 # tool, and every one of those checks stayed green.
 #
-# So this starts the executable that ships and waits for it to say it **drew** a
-# screen. The tool's pages carry one line of script reporting the path they
-# painted (see `ConfluencePhxMirror.Desktop.Web.Paint`), and only a window runs a
-# page's script — which is the whole difference between "a server is listening"
-# and "somebody can see it".
+# So this starts the executable that ships and waits for it to say what it **sees**:
+# the tool's pages report the document they built — heading, the boxes a person
+# types into, the word on the button — and only a window builds one (see
+# `ConfluencePhxMirror.Desktop.Web.Paint`). A fresh workspace lands on the setup
+# form, so that is the screen this checks for: a path alone would pass a window
+# showing nothing anybody could fill in.#
 #
 #   scripts/smoke-window.sh [--window PATH] [--port N] [--seconds N]
 #
@@ -145,7 +146,23 @@ if [[ -z $painted ]]; then
   fail "the server is up but no window drew a screen — it opened on nothing"
 fi
 
-echo "the window ${painted}"
+printf '%s\n' "$painted"
+
+heading=$(printf '%s\n' "$painted" | sed -n 's/^heading: //p')
+fields=$(printf '%s\n' "$painted" | sed -n 's/^fields: //p')
+
+[[ -n $heading ]] || fail "the window drew a screen with no heading on it"
+
+# The setup form, box by box. A page that loads without them is not the screen
+# this build promises a first launch: it is a window showing something inert.
+for box in site email secret root; do
+  case ",$fields," in
+    *",$box,"*) ;;
+    *) fail "the window drew a screen but its setup form has no '$box' box (it saw: ${fields:-none})" ;;
+  esac
+done
+
+echo "the window shows \"$heading\" with the setup form's boxes: $fields"
 
 stop
 exit 0
