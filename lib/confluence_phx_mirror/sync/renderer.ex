@@ -37,6 +37,20 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # not read — links come from `:pages`, files from `:attachment_lookup` — so a
   # caller holding only the source's DTO (the desktop tool, which renders a body
   # before the row exists) can produce the same markup the server does.
+  @doc """
+  Which rules drew a body.
+
+  A page is re-read when Confluence's version moves, and never otherwise — but
+  a rule that decides how a body is *drawn* can change while the page it drew
+  has not changed at all. This number is stored on the page, so raising it
+  re-reads every page once, on the next sync, instead of waiting for somebody
+  to edit each one.
+
+  Raise it whenever the output changes for a body that is already mirrored.
+  """
+  @spec revision() :: pos_integer()
+  def revision, do: 1
+
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
           required(:space_key) => String.t(),
@@ -173,6 +187,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # so each family may draw as many blocks as the storage declares macros that
   # produce it, in reading order. Past that, the wrapper goes and the words
   # inside it stay, which is exactly what Confluence shows.
+  # Not listed: `excerpt-macro`. An excerpt is not decoration — another page
+  # includes it, and the marker is how `DynamicContent.Include` finds the words
+  # to include, so removing it would break a page that consumes this one.
   @chrome_families [
     {"confluence-information-macro", ["tip", "note", "info", "warning"]},
     {"code", ["code", "noformat"]},
@@ -180,8 +197,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     {"aui-lozenge", ["status"]},
     {"status-macro", ["status"]},
     {"expand-container", ["expand"]},
-    {"toc-macro", ["toc"]},
-    {"excerpt-macro", ["excerpt"]}
+    {"toc-macro", ["toc"]}
   ]
 
   @macro_declaration ~r/<ac:structured-macro\b[^>]*\bac:name\s*=\s*"([^"]+)"/i
@@ -196,16 +212,14 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     "status" => "status",
     "codeBlock" => "code",
     "expand" => "expand",
-    "expandable" => "expand",
-    "excerpt" => "excerpt"
+    "expandable" => "expand"
   }
 
   # The inside of a chrome block: these carry no meaning of their own and only
   # appear within a family, so they go when their wrapper goes.
   @chrome_parts ~w(panelContent panelHeader codeContent codeHeader pdl
                    confluence-information-macro-body confluence-information-macro-icon
-                   expand-content expand-control expand-control-icon expand-control-text
-                   excerpt-content toc-macro) ++ []
+                   expand-content expand-control expand-control-icon expand-control-text) ++ []
 
   defp drop_undeclared_macro_chrome(nodes, context) do
     case declared_macros(context) do

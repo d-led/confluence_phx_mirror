@@ -328,6 +328,26 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert run.stats["comments"] == 0
       assert run.stats["links"] == 0
     end
+
+    test "a page drawn by an older renderer is read again, though nothing about it moved" do
+      # A rule that decides how a body is drawn can change while the page it
+      # drew has not: without the revision the fix would reach only the pages
+      # edited after it, and every other copy would stay wrong forever.
+      demo_snapshot!()
+      {:ok, _first} = Sync.run(:snapshot)
+
+      page = Repo.get_by!(Page, confluence_id: 1002)
+      {:ok, _reset} = page |> Ecto.Changeset.change(render_revision: 0) |> Repo.update()
+
+      assert {:ok, run} = Sync.run(:snapshot)
+
+      refreshed = Repo.get_by!(Page, confluence_id: 1002)
+
+      assert refreshed.render_revision == Sync.Renderer.revision()
+      # The same body, drawn again by the same rules, is the same bytes.
+      assert refreshed.body_export == page.body_export
+      assert run.stats["unchanged"] == 39
+    end
   end
 
   describe "spaces the mirror has not read" do

@@ -45,6 +45,8 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     field :author_account_id, :string
     field :body_storage, :string
     field :body_export, :string
+    # Which renderer drew `body_export`; see `Sync.Renderer.revision/0`.
+    field :render_revision, :integer, default: 0
     field :body_text, :string
     field :labels, @string_list, default: []
     field :ancestors, @integer_list, default: []
@@ -100,6 +102,7 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     :body_storage,
     :body_export,
     :body_text,
+    :render_revision,
     :labels,
     :ancestors,
     :version_number,

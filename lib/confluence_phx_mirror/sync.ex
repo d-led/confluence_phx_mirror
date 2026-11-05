@@ -1840,17 +1840,19 @@ defmodule ConfluencePhxMirror.Sync do
       where: p.confluence_id in ^ids,
       select:
         {p.confluence_id, p.version_number, p.title, p.type, not is_nil(p.body_export),
-         p.deleted_at, p.deleted_reason, p.absent_since, p.subtype, p.synced_at}
+         p.deleted_at, p.deleted_reason, p.absent_since, p.subtype, p.synced_at,
+         p.render_revision}
     )
     |> Repo.all()
     |> Map.new(fn {id, version, title, type, rendered?, deleted_at, reason, absent_since, subtype,
-                   synced_at} ->
+                   synced_at, render_revision} ->
       current? = is_nil(absent_since) and (is_nil(deleted_at) or reason == "manual")
-      {id, light(version, title, type, rendered?, current?, subtype, synced_at)}
+
+      {id, light(version, title, type, rendered?, current?, subtype, synced_at, render_revision)}
     end)
   end
 
-  defp light(version, title, type, rendered?, current?, subtype, synced_at) do
+  defp light(version, title, type, rendered?, current?, subtype, synced_at, render_revision) do
     %{
       version_number: version,
       title: title,
@@ -1858,7 +1860,8 @@ defmodule ConfluencePhxMirror.Sync do
       rendered?: rendered?,
       current?: current?,
       subtype: subtype,
-      synced_at: synced_at
+      synced_at: synced_at,
+      render_revision: render_revision
     }
   end
 
@@ -1870,7 +1873,8 @@ defmodule ConfluencePhxMirror.Sync do
       not is_nil(page.body_export),
       is_nil(page.absent_since) and (is_nil(page.deleted_at) or page.deleted_reason == "manual"),
       page.subtype,
-      page.synced_at
+      page.synced_at,
+      page.render_revision
     )
   end
 
@@ -1922,6 +1926,9 @@ defmodule ConfluencePhxMirror.Sync do
       previous.title != attrs.title -> :updated
       previous.type != attrs.type -> :updated
       not previous.rendered? -> :updated
+      # The page did not change; the rules that draw it did. Without this a
+      # corrected renderer reaches only the pages edited after it.
+      previous.render_revision != attrs.render_revision -> :updated
       # A page we hold as absent, or as vanished, is behind the site whatever its
       # version says. Confluence does not bump a version when it restores a page
       # from its trash, and nothing else would ever write that page again — the
@@ -1952,6 +1959,7 @@ defmodule ConfluencePhxMirror.Sync do
       author_name: dto.version.by.display_name,
       author_account_id: dto.version.by.account_id,
       body_storage: dto.body.storage,
+      render_revision: Renderer.revision(),
       ancestors: dto.ancestors,
       version_number: dto.version.number,
       version_message: dto.version.message,
