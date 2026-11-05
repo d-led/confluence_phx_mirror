@@ -313,13 +313,65 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
           ~s(<span class="aui-icon aui-icon-small aui-iconfont-approve confluence-information-macro-icon"></span>) <>
           ~s(<div class="confluence-information-macro-body"><p>Read this first.</p></div></div>)
 
-      result = Renderer.render(html, context())
+      result =
+        Renderer.render(
+          html,
+          Map.put(
+            context(),
+            :storage,
+            ~s(<ac:structured-macro ac:name="tip"></ac:structured-macro>)
+          )
+        )
 
       assert result.html =~
                ~s(class="confluence-information-macro confluence-information-macro-tip")
 
       assert result.html =~ ~s(class="confluence-information-macro-body")
       assert result.html =~ "Read this first."
+    end
+
+    # Confluence keeps pasted markup in a page's storage but draws the page from
+    # the editor's document, where that markup is prose. A mirror that trusts
+    # export_view draws a panel the site never showed.
+    @pasted_chrome ~s(<p>Before.</p><div class="panel"><div class="panelContent"><p>Pasted panel.</p></div></div>)
+
+    test "chrome the page does not declare is unwrapped, and its words are kept" do
+      result = Renderer.render(@pasted_chrome, Map.put(context(), :storage, "<p>Before.</p>"))
+
+      refute result.html =~ ~s(class="panel)
+      refute result.html =~ "panelContent"
+      assert result.html =~ "<p>Pasted panel.</p>"
+    end
+
+    test "the words of unwrapped chrome stay searchable" do
+      result = Renderer.render(@pasted_chrome, Map.put(context(), :storage, "<p>Before.</p>"))
+
+      assert result.text =~ "Pasted panel."
+    end
+
+    test "chrome is earned by a declaration of the macro that draws it" do
+      storage = ~s(<ac:structured-macro ac:name="panel"></ac:structured-macro>)
+
+      result = Renderer.render(@pasted_chrome, Map.put(context(), :storage, storage))
+
+      assert result.html =~ ~s(class="panel")
+    end
+
+    test "chrome is earned one block per declaration, in reading order" do
+      html = ~s(<div class="panel"><p>First.</p></div><div class="panel"><p>Second.</p></div>)
+      storage = ~s(<ac:structured-macro ac:name="panel"></ac:structured-macro>)
+
+      result = Renderer.render(html, Map.put(context(), :storage, storage))
+
+      assert result.html =~ ~s(<div class="panel"><p>First.</p></div>)
+      refute result.html =~ ~s(<div class="panel"><p>Second.)
+      assert result.html =~ "Second."
+    end
+
+    test "chrome is left alone when there is no storage to judge it by" do
+      result = Renderer.render(@pasted_chrome, context())
+
+      assert result.html =~ ~s(class="panel")
     end
 
     test "a vendor layout macro is drawn instead of apologised for" do

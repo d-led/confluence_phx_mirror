@@ -41,6 +41,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
           required(:space_key) => String.t(),
           required(:base_url) => String.t() | nil,
+          optional(:storage) => String.t() | nil,
           optional(:pages) => %{integer() => page_ref()},
           optional(:attachments) => %{{integer(), String.t()} => attachment_ref()},
           optional(:attachment_lookup) => (integer(), String.t() -> attachment_ref() | nil)
@@ -115,6 +116,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       |> mark_spaces()
       |> Floki.parse_fragment!()
       |> remove_unsafe_elements()
+      |> drop_undeclared_macro_chrome(context)
 
     # Links are collected *before* rewriting, while hrefs still carry the
     # Confluence identity the link table needs.
@@ -159,6 +161,124 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp remove_unsafe_elements(nodes) do
     Enum.reduce(@unsafe_elements, nodes, &Floki.filter_out(&2, &1))
+  end
+
+  # What a family of macro chrome is allowed to draw. `export_view` is HTML, and
+  # HTML cannot tell a macro from a paragraph pasted to look like one: Confluence
+  # keeps such markup in the page's storage, refuses to *render* it — its page
+  # comes from the editor's document, where that markup is prose — and a mirror
+  # that trusts the HTML draws a panel the site never showed.
+  #
+  # The storage is where a macro is declared (`ac:structured-macro ac:name=…`),
+  # so each family may draw as many blocks as the storage declares macros that
+  # produce it, in reading order. Past that, the wrapper goes and the words
+  # inside it stay, which is exactly what Confluence shows.
+  @chrome_families [
+    {"confluence-information-macro", ["tip", "note", "info", "warning"]},
+    {"code", ["code", "noformat"]},
+    {"panel", ["panel"]},
+    {"aui-lozenge", ["status"]},
+    {"status-macro", ["status"]},
+    {"expand-container", ["expand"]},
+    {"toc-macro", ["toc"]},
+    {"excerpt-macro", ["excerpt"]}
+  ]
+
+  @macro_declaration ~r/<ac:structured-macro\b[^>]*\bac:name\s*=\s*"([^"]+)"/i
+
+  # The inside of a chrome block: these carry no meaning of their own and only
+  # appear within a family, so they go when their wrapper goes.
+  @chrome_parts ~w(panelContent panelHeader codeContent codeHeader pdl
+                   confluence-information-macro-body confluence-information-macro-icon
+                   expand-content expand-control expand-control-icon expand-control-text
+                   excerpt-content toc-macro) ++ []
+
+  defp drop_undeclared_macro_chrome(nodes, context) do
+    case declared_macros(context) do
+      # A body from a source that carries no storage cannot be judged this way,
+      # so it keeps every block it has rather than losing what may be earned.
+      nil ->
+        nodes
+
+      names ->
+        {budgeted, _left} = budget_chrome(nodes, chrome_budget(names))
+        budgeted
+    end
+  end
+
+  defp declared_macros(%{storage: storage}) when is_binary(storage) do
+    @macro_declaration
+    |> Regex.scan(storage, capture: :all_but_first)
+    |> List.flatten()
+    |> Enum.map(&(&1 |> String.trim() |> String.downcase()))
+  end
+
+  defp declared_macros(_context), do: nil
+
+  defp chrome_budget(names) do
+    Map.new(@chrome_families, fn {token, earned_by} ->
+      {token, Enum.count(names, &(&1 in earned_by))}
+    end)
+  end
+
+  # Reading order matters: a declared macro earns the first block of its family
+  # in the document, and a paste that happens to come earlier keeps nothing.
+  defp budget_chrome(nodes, budget), do: Enum.flat_map_reduce(nodes, budget, &budget_node/2)
+
+  defp budget_node({tag, attrs, children}, budget) do
+    case chrome_token(attrs) do
+      nil ->
+        {children, budget} = budget_chrome(children, budget)
+        {[{tag, attrs, children}], budget}
+
+      token ->
+        case Map.get(budget, token, 0) do
+          left when left > 0 ->
+            {children, budget} =
+              budget_chrome(children, Map.put(budget, token, left - 1))
+
+            {[{tag, attrs, children}], budget}
+
+          _undeclared ->
+            # The wrapper goes and its words stay: what Confluence shows.
+            unwrap_chrome(children, budget)
+        end
+    end
+  end
+
+  defp budget_node(other, budget), do: {[other], budget}
+
+  # Inside a block that is going away, so is every wrapper that belongs to it.
+  defp unwrap_chrome(children, budget) do
+    Enum.flat_map_reduce(children, budget, fn
+      {tag, attrs, inner}, budget ->
+        if chrome_wrapper?(attrs),
+          do: unwrap_chrome(inner, budget),
+          else: budget_node({tag, attrs, inner}, budget)
+
+      other, budget ->
+        {[other], budget}
+    end)
+  end
+
+  defp chrome_wrapper?(attrs) do
+    classes = class_tokens(attrs)
+    Enum.any?(@chrome_parts, &(&1 in classes))
+  end
+
+  defp chrome_token(attrs) do
+    classes = class_tokens(attrs)
+
+    Enum.find_value(@chrome_families, fn {token, _earned_by} ->
+      if token in classes, do: token
+    end)
+  end
+
+  defp class_tokens(attrs) do
+    case List.keyfind(attrs, "class", 0) do
+      {_name, value} when is_binary(value) -> String.split(value)
+      _none -> []
+    end
   end
 
   defp replace_live_only_content(nodes, context) do

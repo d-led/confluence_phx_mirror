@@ -2095,7 +2095,8 @@ defmodule ConfluencePhxMirror.Sync do
       base_url: site_origin(dto.url),
       pages: index,
       attachments: attachment_map,
-      attachment_lookup: &Mirror.attachment_ref/2
+      attachment_lookup: &Mirror.attachment_ref/2,
+      storage: dto.body.storage
     }
 
     rendered =
@@ -2494,7 +2495,8 @@ defmodule ConfluencePhxMirror.Sync do
         Emoticons.from_storage(dto.body_export, Map.get(dto, :body_storage)),
         %{
           context
-          | attachments: Map.merge(refs, context.attachments)
+          | attachments: Map.merge(refs, context.attachments),
+            storage: Map.get(dto, :body_storage)
         }
       )
 
