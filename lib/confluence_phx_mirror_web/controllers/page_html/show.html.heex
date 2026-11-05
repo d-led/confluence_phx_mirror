@@ -140,15 +140,19 @@
               }
             )}
           </:presence>
+          <%!-- A space's home page is the space's front door: an administrator
+          asking whether the space is fresh is standing here, not on the admin
+          screen. It goes in the page's own row so it sits beside the page's
+          press and wraps with the rest of the row, which is what a reader of a
+          narrow screen expects of one line of presses. --%>
+          <:actions>
+            <.space_sync
+              :if={@page.confluence_id == @space.homepage_confluence_id}
+              space={@space}
+              admin?={@admin?}
+            />
+          </:actions>
         </.page_meta>
-        <%!-- A space's home page is the space's front door: an administrator
-        asking whether the space is fresh is standing here, not on the admin
-        screen. --%>
-        <.space_sync
-          :if={@page.confluence_id == @space.homepage_confluence_id}
-          space={@space}
-          admin?={@admin?}
-        />
       </:meta>
     </.page_header>
 

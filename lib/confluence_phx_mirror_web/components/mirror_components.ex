@@ -276,11 +276,18 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
   slot :presence,
     doc: "drawn after the sync stamp; the page's readers, on screens too narrow for the rail"
 
+  slot :actions,
+    doc:
+      "an administrator's further presses, drawn after this page's own in the same row — the space-wide resync on a space's home page"
+
   def page_meta(assigns) do
     assigns = assign(assigns, :byline, Publishing.byline(assigns.page.author_name))
 
     ~H"""
-    <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/70">
+    <div
+      id="page-meta"
+      class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/70"
+    >
       <span :if={@byline} id="page-byline" class="inline-flex items-center gap-1">
         <.icon name="hero-user-circle" class="size-3.5" />
         {@byline}
@@ -324,6 +331,7 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
           <.icon name="hero-arrow-path-rounded-square" class="size-3.5" /> Resync
         </button>
       </form>
+      {render_slot(@actions)}
     </div>
     """
   end
