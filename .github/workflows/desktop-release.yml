@@ -97,7 +97,12 @@ jobs:
             # `upload-artifact` treats a directory's own path as the zip's root:
             # pointing it at the folder itself unpacks the `.exe`, the note and
             # `rel\` loose into whatever directory a person unzips in.
-            path: _build/desktop/package/unpack
+            #
+            # It sits in the runner's temp directory rather than under `_build`,
+            # which this workflow caches: a restored `_build` carried the folder
+            # a previous run had moved there, and moving onto a directory that
+            # already has contents fails ("Directory not empty").
+            path: ${{ runner.temp }}/unpack
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -184,9 +189,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p _build/desktop/package/unpack
-          mv _build/desktop/package/confluence-export-windows \
-            _build/desktop/package/unpack/
+          rm -rf "$RUNNER_TEMP/unpack"
+          mkdir -p "$RUNNER_TEMP/unpack"
+          mv _build/desktop/package/confluence-export-windows "$RUNNER_TEMP/unpack/"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
