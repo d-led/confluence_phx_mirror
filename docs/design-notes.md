@@ -469,6 +469,61 @@ a sync, and a site that never answered is not a site that turned its title off.
 An answer that differs is one audit entry (`site.settings_read`), and an answer
 that repeats itself is none — the same discipline a page's version gets.
 
+## Public by the space, not by the site (decided, not built)
+
+`CM_PUBLIC_SITE` is all-or-nothing today: it makes a stranger a reader of
+everything the site's permissions leave open, and `CM_ANONYMIZE_CONTRIBUTORS` and
+`CM_EXCLUDE_COMMENTS` then anonymise the *whole* deployment. That is right for a
+documentation site and wrong for a mirror with two audiences — most spaces
+internal, a few meant for the world.
+
+The decision (2026-11-05) is that public is a **subset of spaces**, named by an
+environment variable and by nothing else:
+
+* `CM_PUBLIC_SPACES=ENG,OPS` — the space keys a stranger may read. Infra only: no
+  entry in `Settings.Catalogue`, no admin screen, no audit row to trust. Changing
+  it is a deploy, which is the point: it is the one setting whose mistake is a
+  leak, and it should travel the way the credentials travel.
+* It **narrows** the switches that already exist rather than replacing them.
+  `CM_PUBLIC_SITE=true` still says "a stranger is a reader"; with a list, a
+  stranger is a reader of those spaces only, and the mirrored permissions still
+  apply inside them — the list never grants what Confluence restricts. Unset
+  keeps today's meaning (every space the permissions leave open), so no existing
+  deployment changes silently.
+* Fail closed on the reading side: an anonymous request for a page outside the
+  list gets the 404 an unknown page gets, so a wrong key reveals nothing.
+
+The cost is that anonymity stops being a deployment-wide flag. `byline/1` and
+`exclude_comments?/0` are global booleans read where a name is drawn; a public
+subset makes the question per page — *this* page is public, that one is not. So
+the seam has to carry the reader (`Publishing.for_reader(scope)`-shaped), and
+every place that publishes an identity has to ask it: the byline, comment
+authors, the people directory `/people`, a person's page and picture
+(`/people/:account_id`, `/people/:account_id/avatar`), the `contributors` and
+`user-profile` macros and the "reading now" badge. A page in a public space must
+not say who wrote it, who commented, who is reading, or link to anybody's
+profile.
+
+What this cannot promise, said here rather than in a footnote:
+
+* a page's **own prose** is not scrubbed. Names in a sentence, a code sample, a
+  screenshot or an attached file stay: the mirror removes the identities *it*
+  draws, not the ones the author typed.
+* titles, space names and the recent-changes feed still say which documents
+  exist. A space nobody should know about does not belong in the list.
+* a body can name people indirectly through editor chrome (live-doc markers,
+  version stamps); each of those is a renderer decision, and the revision list
+  in `Sync.Renderer` is where each one is recorded.
+
+The failure mode to design against is a wrong key in the list. It gets the boot
+log naming the public spaces it resolved, a startup warning for a key that
+matches no mirrored space (not a silent no-op), and a line in
+`scripts/fly-deploy.sh --check` that prints the list before anything ships.
+
+Deliberately left open: whether a personal space may ever be public (default:
+no), and whether public pages should carry `noindex` (they are public on
+purpose, and indexing is what a documentation site wants).
+
 ## Known limitations
 
 * Confluence's own emoji set (`:big_grin:`, the blue-star family) has no Unicode

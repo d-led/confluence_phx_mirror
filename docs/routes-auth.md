@@ -230,6 +230,12 @@ not answer either. Each is one setting and one seam, so no surface is left out:
 | `CM_ANONYMIZE_CONTRIBUTORS` | `Publishing.byline/1` | page meta, comment authors, catalogue bylines, `/people` (closed), API presenters, Markdown and site exports, MCP answers |
 | `CM_EXCLUDE_COMMENTS` | `Mirror.comments/1`, `Mirror.Search` | the page view (no section at all), comment search hits **and the snippet that quotes them**, `…/comments`, exports, MCP results |
 
+Both are deployment-wide, which matches `CM_PUBLIC_SITE`: a public site is a
+documentation site and publishes nothing else. A deployment that means to expose
+a *subset* of spaces instead needs the same answer per page rather than per site —
+decided, not built, in `design-notes.md` under "Public by the space, not by the
+site", including what such a mode cannot scrub.
+
 ## Administration
 
 `Accounts.Admins` — three sources, first match wins:
