@@ -60,7 +60,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 6: the link under a whiteboard or database is a caption, not its address.
   # 7: a drawn whiteboard is a figure whose picture opens a viewer, where it can
   #    be zoomed, panned and saved.
-  def revision, do: 7
+  # 8: a database names the database it embeds instead of saying "a database".
+  def revision, do: 8
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

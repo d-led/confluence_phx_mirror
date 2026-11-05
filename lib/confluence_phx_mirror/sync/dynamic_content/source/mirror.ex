@@ -99,6 +99,28 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
     end
   end
 
+  # A database's rows are not in anything the mirror can read — the content body
+  # is empty and the export view carries only the embed — so what is asked for is
+  # the database's own record: its title, which is what the page can honestly
+  # say. A record that cannot be read is logged and answered with the plain
+  # notice, never with a name the mirror invented.
+  @impl true
+  def database(_host, url) do
+    case ConfluencePhxMirror.Confluence.HttpSource.database_record(url) do
+      {:ok, record} ->
+        {:ok, record}
+
+      {:error, reason} ->
+        ConfluencePhxMirror.Sync.Log.add(
+          :warn,
+          "a database could not be read: #{inspect(reason)}",
+          %{database: url}
+        )
+
+        {:error, reason}
+    end
+  end
+
   # A contributor list is about names and counts, not about bodies: the scan is
   # one light row per page, and the audience rule decides which of those rows may
   # be counted. Past the cap the answer is `:too_large` — a count that quietly

@@ -115,6 +115,19 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   @callback whiteboard(host :: Page.t(), url :: String.t()) :: {:ok, map()} | {:error, term()}
 
   @doc """
+  The record behind a database the page embeds: at least its `title`.
+
+  A database is a *live view*, and this is the one place the two embeds differ.
+  A board is a document, so the mirror draws it. A database's rows belong to the
+  service its own iframe talks to, and neither the content body (empty) nor the
+  export view carries them; what is readable is the database's own record, which
+  is enough to name it properly and link it, and not enough to draw a table.
+
+  An `{:error, reason}` means the mirror will not claim a name it does not have.
+  """
+  @callback database(host :: Page.t(), url :: String.t()) :: {:ok, map()} | {:error, term()}
+
+  @doc """
   The files attached to `page`, by file name.
 
   An attachment is exactly as readable as the page holding it, so a macro that

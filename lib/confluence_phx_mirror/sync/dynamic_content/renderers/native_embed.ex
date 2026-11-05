@@ -48,8 +48,25 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
     end
   end
 
+  # A database is a live view: the mirror can read its record, not its rows. So
+  # it names the database it was given instead of guessing, and says the one
+  # true thing about a view — open it where it lives.
+  defp contents(%{"macro" => "native-embed:database"} = attrs, url, context) do
+    [record(context, url), address(attrs, url)]
+  end
+
   defp contents(attrs, url, _context) do
     [Nodes.notice("#{kind(attrs)} — drawn in Confluence; open it there."), address(attrs, url)]
+  end
+
+  defp record(context, url) do
+    case context.source.database(context.page, url) do
+      {:ok, %{"title" => title}} when is_binary(title) and title != "" ->
+        Nodes.notice("Database “#{title}” — a live view; the mirror links to it.")
+
+      _unreadable ->
+        Nodes.notice("Database — drawn in Confluence; open it there.")
+    end
   end
 
   defp board(context, url) do

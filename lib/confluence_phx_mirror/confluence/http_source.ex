@@ -835,6 +835,34 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     end
   end
 
+  @doc """
+  The record behind a database: its title, status and links.
+
+  A database's rows are not in this API — they live in the service its own iframe
+  talks to — and its content body is empty. What is readable is the record, and
+  reading it is what lets a page name the database it embeds rather than say
+  "this is a database" about a box with nothing in it.
+  """
+  @spec database_record(String.t()) :: {:ok, map()} | {:error, term()}
+  def database_record(url) when is_binary(url) do
+    with {:ok, id} <- database_id(url) do
+      # REST v2 sits beside the v1 root this module otherwise speaks to, so the
+      # address is built whole and handed to `build_url` as an absolute URL.
+      request_json(origin() <> "/wiki/api/v2/databases/" <> id, %{})
+    end
+  end
+
+  # The address the page recorded, e.g.
+  # `https://site/wiki/spaces/MFS/database/29163537`.
+  defp database_id(url) do
+    with %URI{path: path} when is_binary(path) <- URI.parse(url),
+         [id] when id != "" <- Regex.run(~r{/database/([0-9]+)$}, path, capture: :all_but_first) do
+      {:ok, id}
+    else
+      _not_a_database -> {:error, {:not_a_database, body_snippet(url)}}
+    end
+  end
+
   # ── Whiteboards ──────────────────────────────────────────────────────────
 
   @doc """

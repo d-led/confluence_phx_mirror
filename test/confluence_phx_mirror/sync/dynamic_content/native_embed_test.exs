@@ -73,6 +73,24 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
     refute html =~ "data:image/svg+xml"
   end
 
+  test "a database is named from its own record, not guessed at" do
+    StubContent.script(database: {:ok, %{"title" => "Release log", "status" => "current"}})
+
+    html = expand(marker("native-embed:database", @board))
+
+    assert html =~ "Release log"
+    assert StubContent.questions() |> Enum.any?(&match?({:database, @board}, &1))
+  end
+
+  test "a database the mirror cannot read is still linked, and says so plainly" do
+    StubContent.script(database: {:error, :not_found})
+
+    html = expand(marker("native-embed:database", @board))
+
+    assert html =~ "Database — drawn in Confluence; open it there."
+    assert html =~ ~s(href="#{@board}")
+  end
+
   test "an embed with no address says why it cannot be linked" do
     StubContent.script(whiteboard: {:ok, document("January")})
 
