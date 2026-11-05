@@ -9,16 +9,63 @@ with their arguments — is indexed in [mix-tasks.md](mix-tasks.md).
 
 ## Local setup
 
+Phoenix 1.8 · LiveView 1.2 · Ecto/Postgres · Elixir 1.20. What that asks of a
+machine:
+
+| Need | Version | Why |
+| --- | --- | --- |
+| Elixir / OTP | 1.20+ / OTP 29 | `mix.exs` requires `~> 1.20`; the image builds on `hexpm/elixir:1.20.4-erlang-29.1.2-debian-trixie` |
+| Node.js with npm | any current LTS | `mix setup` runs `npm ci` in `assets/`; a missing `node` is what stops a first run |
+| Postgres | 12+ | the search index is a stored generated column |
+| Docker | any | only for the local Postgres and the mail sink; anywhere else it is `DATABASE_URL` |
+
 ```bash
 docker compose up -d && mix setup && mix phx.server
 ```
 
-The [README](../README.md#1-see-it-working) lists the prerequisites and what
-each setup command does. Development and test assume an administrator
-(`MIRROR_AUTO_ADMIN`), so no sign-in is in the way.
+Development and test assume an administrator (`MIRROR_AUTO_ADMIN`), so no
+sign-in is in the way. The two addresses beside the server: the mail sink
+(smtp4dev) at <http://localhost:3001>, the database UI (Adminer) at
+<http://localhost:8092>, LiveDashboard at <http://localhost:4000/dev/dashboard>.
 
 **Done when** `mix lint` is green and `mix test` passes — that is the loop you
 will run all day.
+
+### The three setup commands that look alike
+
+| Command | What it does |
+| --- | --- |
+| `mix setup` | a fresh checkout: deps, database, migrations, assets |
+| `mix ecto.setup` | *only* the database for the configured source, plus a first sync |
+| `mix ecto.reset` | drop that database, then `ecto.setup` |
+
+### Pointing a checkout at a real site
+
+```bash
+mix confluence.probe        # optional: are the URL and the token good?
+mix ecto.setup              # create this site's database, take a first snapshot
+scripts/start-mirrored.sh   # serve that site
+```
+
+**Done when** `mix confluence.probe` names your account and `/admin` shows a
+finished sync with pages.
+
+* **The first snapshot is the slow part.** Minutes to hours, depending on the
+  site; watch `/admin/sync-log`.
+* **Each source gets its own database** (`…_dev_acme_atlassian_net`), so demo
+  content and a real site never mix. Switching is only a matter of the
+  environment.
+* **The server logs to your terminal.** Redirect it for a file:
+  `scripts/start-mirrored.sh > /tmp/mirror_server.log 2>&1`.
+
+A token is read from the environment on purpose: nothing about it is written to
+the repo.
+
+### Knobs worth knowing
+
+`CM_REQUESTS_PER_SECOND` / `CM_BURST` (the client's token bucket),
+`CM_SYNC_CONCURRENCY`, `CM_RECONCILE_INTERVAL_SECONDS`, `PORT`. The exhaustive
+list is [configuration.md](configuration.md).
 
 `AGENTS.md` carries the Phoenix/Elixir conventions; the invariants below are the
 ones specific to the mirror.
