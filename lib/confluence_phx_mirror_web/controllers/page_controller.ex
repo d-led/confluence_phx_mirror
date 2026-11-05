@@ -202,14 +202,31 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   # mirrored; rendering it raw is the whole point of the mirror.
   # sobelow_skip ["XSS.Raw"]
   def render_page(conn, page, kind \\ :page) do
-    etag = page_etag(conn, page, kind)
-    conn = conn |> put_reader_cache(etag)
-
-    if requested_etag?(conn, etag) do
-      send_resp(conn, 304, "")
+    if one_time_notice?(conn) do
+      # A flash is said once, so the copy that says it is not the page: it gets
+      # no ETag and no cache at all. With one, a reload revalidates, the server
+      # answers 304 to a tag that describes the *page*, and the browser puts its
+      # stored body back — notice and all — so "re-read this page" reappears on
+      # every reload of a page nobody re-read.
+      conn
+      |> put_resp_header("cache-control", "private, no-store")
+      |> do_render_page(page, kind)
     else
-      do_render_page(conn, page, kind)
+      etag = page_etag(conn, page, kind)
+      conn = conn |> put_reader_cache(etag)
+
+      if requested_etag?(conn, etag) do
+        send_resp(conn, 304, "")
+      else
+        do_render_page(conn, page, kind)
+      end
     end
+  end
+
+  defp one_time_notice?(conn) do
+    conn.assigns
+    |> Map.get(:flash, %{})
+    |> Enum.any?(fn {_kind, message} -> not is_nil(message) end)
   end
 
   # A mirrored page only changes when the sync rewrites it, so a reader who
@@ -226,7 +243,11 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   defp put_reader_cache(conn, etag) do
     conn
     |> put_resp_header("etag", etag)
-    |> put_resp_header("cache-control", "public, max-age=0, must-revalidate")
+    # `private`, never `public`: what this page says depends on who is reading
+    # it — the action bar an administrator gets, the tree of the pages they may
+    # open, the permission dialogs. A shared cache that stored one reader's copy
+    # could hand it to the next.
+    |> put_resp_header("cache-control", "private, max-age=0, must-revalidate")
   end
 
   defp requested_etag?(conn, etag) do

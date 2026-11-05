@@ -283,7 +283,7 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
   test "a page names its version in an etag and answers 304 to a repeat", %{conn: conn} do
     conn = get(conn, "/spaces/ENG/pages/1002/Architecture+Overview")
     assert [etag] = get_resp_header(conn, "etag")
-    assert get_resp_header(conn, "cache-control") == ["public, max-age=0, must-revalidate"]
+    assert get_resp_header(conn, "cache-control") == ["private, max-age=0, must-revalidate"]
 
     again =
       conn
@@ -293,6 +293,27 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
 
     assert again.status == 304
     assert again.resp_body == ""
+  end
+
+  test "a notice is said once and never handed back by a cache", %{conn: conn} do
+    conn = conn |> log_in_admin() |> post("/spaces/ENG/pages/1002/resync")
+    assert redirected_to(conn) == "/spaces/ENG/pages/1002/Architecture+Overview"
+
+    notice = conn |> recycle() |> get("/spaces/ENG/pages/1002/Architecture+Overview")
+    assert html_response(notice, 200) =~ "Re-reading"
+    assert get_resp_header(notice, "cache-control") == ["private, no-store"]
+    assert get_resp_header(notice, "etag") == []
+
+    # A browser that kept that copy and asks whether it is still good must not be
+    # told "yes": the answer is the page, without the notice.
+    after_notice =
+      notice
+      |> recycle()
+      |> put_req_header("if-none-match", ~s("1002-1-page-admin-0"))
+      |> get("/spaces/ENG/pages/1002/Architecture+Overview")
+
+    assert after_notice.status == 200
+    refute html_response(after_notice, 200) =~ "Re-reading"
   end
 
   test "a page is not served from the blog URL", %{conn: conn} do
