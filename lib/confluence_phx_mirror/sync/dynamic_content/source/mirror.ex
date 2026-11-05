@@ -12,6 +12,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.{Page, Search}
+  alias ConfluencePhxMirror.Sync.DynamicContent.Items
 
   @impl true
   def pages_by_label(%Page{} = host, labels, opts) do
@@ -164,6 +165,34 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
     |> Enum.map(& &1.label)
     |> Enum.uniq()
     |> Enum.sort()
+  end
+
+  # A report over inline items reads the bodies that carry them, so the cap is on
+  # pages: past it the answer is `:too_large` for the same reason `contributors`
+  # gives one. The marker is the literal class name Confluence gives the list,
+  # which keeps the scan to the pages that could answer.
+  @item_scan 200
+
+  @item_markers %{tasks: "inline-task-list", decisions: "decision-list"}
+
+  @impl true
+  def items(%Page{} = host, space, kind, _opts) do
+    rows =
+      Mirror.item_pages(space_id(space, host), Map.fetch!(@item_markers, kind),
+        limit: @item_scan + 1
+      )
+
+    if length(rows) > @item_scan do
+      {:error, :too_large}
+    else
+      {:ok, rows |> visible_to(host) |> Enum.flat_map(&items_on(&1, kind))}
+    end
+  end
+
+  defp items_on(page, kind) do
+    page.body_export
+    |> Items.extract(kind)
+    |> Enum.map(&Map.put(&1, :page, %{page | body_export: nil}))
   end
 
   @impl true

@@ -30,6 +30,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
              "content-by-label",
              "content-report-table",
              "contributors",
+             "decision-report",
              "detailssummary",
              "excerpt-include",
              "include",
@@ -38,6 +39,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
              "native-embed:whiteboard",
              "pagetree",
              "recently-updated",
+             "tasks-report",
              "toc",
              "user-profile"
            ]

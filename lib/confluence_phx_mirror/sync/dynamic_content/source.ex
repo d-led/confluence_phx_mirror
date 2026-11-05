@@ -148,6 +148,20 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
               {:ok, [String.t()]} | {:error, :too_large}
 
   @doc """
+  The tasks or decisions of a space, each with the page it lives on.
+
+  These are inline content rather than macros, so the answer is read out of the
+  stored bodies of the pages that carry such an item — which is why the port caps
+  what it will scan and answers `{:error, :too_large}` past it, instead of
+  reporting a part of a space as if it were all of it. `space` is a key, or nil
+  for the host's own space, and every page returned is one the host's readers may
+  open.
+  """
+  @callback items(host :: Page.t(), space :: String.t() | nil, :tasks | :decisions, keyword()) ::
+              {:ok, [%{page: Page.t(), text: String.t(), state: String.t()}]}
+              | {:error, :too_large}
+
+  @doc """
   One person, by Confluence account id, with the pages of theirs readable
   alongside the host.
 

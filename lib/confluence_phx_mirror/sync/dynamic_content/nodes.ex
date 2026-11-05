@@ -125,6 +125,27 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Nodes do
   end
 
   @doc """
+  A report over inline items: what each one says, where it stands, and the page
+  it lives on.
+
+  The page column is the point of the macro — an item read without the page it
+  came from is a task nobody can go and finish.
+  """
+  def item_report(items, space_key) do
+    rows =
+      Enum.map(items, fn item ->
+        [[item.text], [item.state], [page_link(item.page, space_key)]]
+      end)
+
+    table(["Item", "State", "Page"], rows)
+  end
+
+  defp page_link(page, space_key) do
+    {"a", [{"href", URLs.content_path(space_key, page)}, {"class", "mirror-dynamic-link"}],
+     [page.title]}
+  end
+
+  @doc """
   A page's files: name linked to the mirrored blob, type and size beside it.
 
   The space key is given rather than read off the page: a run draws a page it has

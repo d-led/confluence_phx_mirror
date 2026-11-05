@@ -2486,6 +2486,36 @@ defmodule ConfluencePhxMirror.Mirror do
   end
 
   @doc """
+  The pages of a space whose stored body carries `marker`, with the body itself.
+
+  Tasks and decisions live inside page bodies rather than in a table of their
+  own, so a report over them reads the bodies that have any. `marker` is the
+  literal class name Confluence gives the list (`inline-task-list`,
+  `decision-list`), which keeps the scan to the pages that could answer; the
+  caller caps how many bodies it will take and reads the body of each.
+
+  Options: `:limit` — pages to read, newest first.
+  """
+  def item_pages(space_id, marker, opts \\ []) do
+    from(p in Page,
+      where: p.space_id == ^space_id and is_nil(p.deleted_at),
+      where: like(p.body_export, ^"%#{marker}%"),
+      order_by: [desc: p.external_updated_at],
+      select: %{
+        id: p.id,
+        space_id: p.space_id,
+        title: p.title,
+        slug: p.slug,
+        type: p.type,
+        confluence_id: p.confluence_id,
+        body_export: p.body_export
+      }
+    )
+    |> limit_rows(Keyword.get(opts, :limit))
+    |> Repo.all()
+  end
+
+  @doc """
   How many children a page has.
 
   A front page with five hundred children is normal in a big space, and a page

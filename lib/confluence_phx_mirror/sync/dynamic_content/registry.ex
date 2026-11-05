@@ -27,6 +27,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "content-by-label" => Renderers.ContentByLabel,
     "content-report-table" => Renderers.ContentReportTable,
     "contributors" => Renderers.Contributors,
+    "decision-report" => Renderers.DecisionReport,
     "detailssummary" => Renderers.PagePropertiesReport,
     "excerpt-include" => Renderers.ExcerptInclude,
     "include" => Renderers.Include,
@@ -35,6 +36,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "native-embed:whiteboard" => Renderers.NativeEmbed,
     "pagetree" => Renderers.PageTree,
     "recently-updated" => Renderers.RecentlyUpdated,
+    "tasks-report" => Renderers.TasksReport,
     "toc" => Renderers.Toc,
     "user-profile" => Renderers.UserProfile
   }
