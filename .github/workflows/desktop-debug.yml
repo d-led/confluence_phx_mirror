@@ -29,12 +29,13 @@
 name: desktop-debug
 
 on:
-  push:
-    # `main` only, and only once: this was `["**"]` like the release workflow,
-    # which built the same three platforms twice on every push to main — once as
-    # a debug build and once as a release. A pull request or a manual dispatch
-    # is where a branch build belongs.
-    branches: [main]
+  # Not on `push` at all, and that is the point: a push to `main` already builds
+  # these three platforms in `desktop-release.yml`, and this workflow built them
+  # again — same cargo, same release, half the work thrown away. It was
+  # `["**"]` before that, which built every branch of the repository too.
+  #
+  # What is left is where a build that is not a release belongs: a pull request,
+  # and a person asking for one.
   pull_request:
   workflow_dispatch:
 
