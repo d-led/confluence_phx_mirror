@@ -32,6 +32,7 @@ It never writes back: no uploads, no edits, no page history.
 | --- | --- | --- |
 | **a copy on my laptop** (macOS, Windows, Linux app) | ~2 min | [The desktop app](#the-desktop-app) |
 | **to see it working** (demo content, Docker only) | ~4 min | [Try it, one command](#try-it-one-command) |
+| **to start it without compose** (plain `docker run`) | ~5 min | [Without compose](#without-compose) |
 | **to mirror my own site** (public read-only, no sign-in) | ~5 min, then the first pull | [Mirror your site](#mirror-your-site) |
 | **to deploy it** (Fly.io, or any container host) | ~20 min | [Deploy it](#deploy-it) |
 
@@ -94,6 +95,30 @@ starts.
 
 `docker compose -f docker-compose.demo.yml down` stops it; add `-v` to drop the
 database and the files with it.
+
+### Without compose
+
+The published image is `ghcr.io/d-led/confluence_phx_mirror:main`, and it still
+wants a Postgres, which is one container of its own:
+
+```bash
+docker run -d --name mirror-db -p 55432:5432 \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres postgres:17
+
+export DATABASE_URL=ecto://postgres:postgres@host.docker.internal:55432/postgres
+export SECRET_KEY_BASE=$(openssl rand -hex 48)
+
+docker run --rm -e DATABASE_URL -e SECRET_KEY_BASE \
+  ghcr.io/d-led/confluence_phx_mirror:main /app/bin/migrate
+
+docker run -d --name mirror -p 4000:4000 -e DATABASE_URL -e SECRET_KEY_BASE \
+  -e CM_SOURCE=demo -e MIRROR_AUTO_ADMIN=true -e CM_BOOTSTRAP_SYNC=true \
+  -e PHX_HOST=localhost ghcr.io/d-led/confluence_phx_mirror:main
+```
+
+`host.docker.internal` is Docker Desktop's address for the host; on Linux, use
+the database container's own address. The same recipe with every knob
+explained: [deployment.md](docs/deployment.md#the-same-image-by-hand).
 
 ## Mirror your site
 
