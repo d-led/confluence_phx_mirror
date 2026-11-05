@@ -688,14 +688,36 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
 
 .confluence-content .codeContent pre,
 .confluence-content .preformatted pre {
-  margin: 0;
-  padding: 0.85rem 1rem;
   overflow-x: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8rem;
   line-height: 1.55;
   tab-size: 2;
   color: var(--color-base-content);
+  margin: 0;
+  padding: 0.85rem 1rem;
+}
+
+/* A code block whose macro asks for a gutter: the numbers are a column of their
+   own, aligned by the shared line height, and they stay put while the code
+   scrolls sideways. */
+.confluence-content .mirror-code {
+  display: flex;
+  align-items: stretch;
+}
+
+.confluence-content .mirror-code pre.mirror-code-gutter {
+  flex: none;
+  padding-right: 0.6rem;
+  border-right: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+  text-align: right;
+  user-select: none;
+}
+
+.confluence-content .mirror-code pre:not(.mirror-code-gutter) {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .confluence-content .preformatted {

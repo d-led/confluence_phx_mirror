@@ -105,6 +105,16 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       assert Renderer.render(html, context()).html =~ "https://example.test/photo.png"
     end
+
+    test "a face points at the mirror, not at the site" do
+      html =
+        ~s(<img class="confluence-userlink" src="https://dled.atlassian.net/wiki/aa-avatar/557058:12861f68" />)
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ ~s(src="/people/557058%3A12861f68/avatar")
+      refute result.html =~ "dled.atlassian.net"
+    end
   end
 
   describe "attachments" do
@@ -552,6 +562,40 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert result.html =~ "A Jira issues search"
       refute result.html =~ "the jira macro"
     end
+
+    test "a code block that asks for a gutter gets its line numbers" do
+      # The code macro's own `gutter` setting survives in the export view, so the
+      # mirror honours the author's choice rather than making one.
+      html =
+        ~s(<div class="code panel"><div class="codeContent panelContent">) <>
+          ~s(<pre class="syntaxhighlighter-pre" data-syntaxhighlighter-params="brush: sql; gutter: true; theme: Confluence">) <>
+          "SELECT 1;\nFROM dual;\nWHERE 1 = 1;</pre></div></div>"
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ ~s(class="mirror-code")
+      assert gutter(result.html) == ["1", "2", "3"]
+    end
+
+    test "a code block without one keeps its plain pre" do
+      html =
+        ~s(<div class="code panel"><div class="codeContent panelContent">) <>
+          ~s(<pre class="syntaxhighlighter-pre" data-syntaxhighlighter-params="brush: sql; gutter: false; theme: Confluence">) <>
+          "SELECT 1;</pre></div></div>"
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ "syntaxhighlighter-pre"
+      refute result.html =~ "mirror-code-gutter"
+    end
+  end
+
+  defp gutter(html) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find("pre.mirror-code-gutter")
+    |> Floki.text()
+    |> String.split("\n")
   end
 
   defp page do

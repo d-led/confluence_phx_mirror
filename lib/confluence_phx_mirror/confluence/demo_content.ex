@@ -148,8 +148,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
           )
       ),
       page(1003, "ENG", 1001, "Macros Gallery", macros_body(), ~w(macros demo),
-        version: 6,
-        message: "Declare the macros whose chrome the page draws",
+        version: 7,
+        message: "Show a code block with line numbers",
         updated_at: ~U[2026-10-17 16:45:00Z],
         storage:
           properties_storage(macros_body(), [{"Owner", "Docs"}, {"Status", "Review"}],
@@ -386,7 +386,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     <p>Statuses: #{lozenge(:success, "DONE")} #{lozenge(:inprogress, "IN PROGRESS")} #{lozenge(:moved, "MOVED")} #{lozenge(:default, "BACKLOG")}</p>
     <h2 id="code">Code &amp; preformatted text</h2>
     #{code("javascript", ~s|const response = await fetch('/api/v1/pages/1002');\nconst page = await response.json();\nconsole.log(page.title);|)}
-    #{code("sql", ~s|SELECT title, ts_rank_cd(search_vector, q) AS rank\nFROM pages, websearch_to_tsquery('simple', 'mirror pipeline') q\nWHERE search_vector @@ q\nORDER BY rank DESC;|)}
+    #{code("sql", ~s|SELECT title, ts_rank_cd(search_vector, q) AS rank\nFROM pages, websearch_to_tsquery('simple', 'mirror pipeline') q\nWHERE search_vector @@ q\nORDER BY rank DESC;|, true)}
     <div class="preformatted panel"><div class="preformattedContent panelContent"><pre>No formatting here.
       Indentation and *asterisks* survive verbatim.</pre></div></div>
     <blockquote><p>Quotes keep their emphasis in the export view.</p></blockquote>
@@ -625,12 +625,12 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
   defp panel_colours(:warning), do: {"#fffae6", "#ffc400"}
   defp panel_colours(:error), do: {"#ffebe6", "#ff5630"}
 
-  defp code(language, source) do
+  defp code(language, source, gutter \\ false) do
     doc("""
     <div class="code panel pdl" style="border-width: 1px;">
       <div class="codeHeader panelHeader pdl" style="border-bottom-width: 1px;"><b>#{language}</b></div>
       <div class="codeContent panelContent pdl">
-        <pre class="syntaxhighlighter-pre" data-syntaxhighlighter-params="brush: #{language}; gutter: false; theme: Confluence">#{html_escape(source)}</pre>
+        <pre class="syntaxhighlighter-pre" data-syntaxhighlighter-params="brush: #{language}; gutter: #{gutter}; theme: Confluence">#{html_escape(source)}</pre>
       </div>
     </div>
     """)

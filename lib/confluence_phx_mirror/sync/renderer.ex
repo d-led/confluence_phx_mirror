@@ -76,7 +76,11 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 16: the task and decision reports are drawn from the items inside page bodies
   #     instead of staying the widget for a macro Confluence will not expand.
   # 17: a reported task says its words, not the tick Confluence draws beside them.
-  def revision, do: 17
+  # 18: a code block that asks for a gutter gets its line numbers beside it.
+  # 19: a contributor's name is the link to their page here, not a dead word.
+  # 20: a face is served from the mirror's own blob store, instead of pointing at
+  #     the site — which does not serve it, and redirects the reader to Gravatar.
+  def revision, do: 20
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -175,6 +179,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     rewritten =
       nodes
       |> traverse_and_rewrite(context)
+      |> code_gutters()
       |> replace_live_only_content(context)
       |> Floki.raw_html()
       |> Emoticons.characters()
@@ -516,6 +521,43 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       {_name, value} when is_binary(value) -> String.split(value)
       _none -> []
     end
+  end
+
+  # Confluence's code macro takes a `gutter` setting — line numbers or not — and
+  # the export view keeps it: `data-syntaxhighlighter-params="brush: sql; gutter: true; …"`.
+  # So the mirror honours the author's choice instead of making one for them.
+  #
+  # The numbers are a second `pre` beside the code rather than markup inside it:
+  # the tokens a highlighter paints cross line boundaries, and cutting them apart
+  # at every newline would be a parser's job for a cosmetic win. Two columns share
+  # one line height, and the code scrolls sideways without taking its numbers.
+  defp code_gutters(nodes) do
+    Floki.traverse_and_update(nodes, fn
+      {"pre", attrs, children} = pre ->
+        if numbers?(attrs), do: with_gutter(pre, children), else: pre
+
+      other ->
+        other
+    end)
+  end
+
+  defp numbers?(attrs) do
+    params = attribute(attrs, "data-syntaxhighlighter-params") || ""
+
+    has_class?(attrs, "syntaxhighlighter-pre") and
+      match?([_], Regex.run(~r/gutter:\s*true/i, params))
+  end
+
+  defp with_gutter(pre, children) do
+    numbers =
+      children
+      |> Floki.text(sep: "")
+      |> String.split("\n")
+      |> Enum.with_index(1)
+      |> Enum.map_join("\n", fn {_line, number} -> Integer.to_string(number) end)
+
+    {"div", [{"class", "mirror-code"}],
+     [{"pre", [{"class", "mirror-code-gutter"}, {"aria-hidden", "true"}], [numbers]}, pre]}
   end
 
   defp replace_live_only_content(nodes, context) do
@@ -975,12 +1017,31 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       page_id = page_id_from_path(href) ->
         page_link(page_id, fragment(href), context)
 
+      account_id = avatar_account(href) ->
+        {:attachment, people_avatar_path(account_id)}
+
       attachment = attachment_from_path(href) ->
         attachment_link(attachment, href, context)
 
       true ->
         {:external, absolutise(href, context)}
     end
+  end
+
+  # A face is not a file the site serves: `/aa-avatar/<account-id>` answers 302,
+  # to Gravatar or to Atlassian's initials service. Left in a page, the path sends
+  # every reader to two third parties and shows nothing once the site is
+  # unreachable. The bytes are kept in the blob store beside the attachments, and
+  # this is the route that serves them back to the reader who may see the page.
+  defp avatar_account(href) do
+    case Regex.run(~r{/aa-avatar/([^/?#]+)}, href) do
+      [_, account_id] -> account_id
+      nil -> nil
+    end
+  end
+
+  defp people_avatar_path(account_id) do
+    "/people/" <> URI.encode_www_form(account_id) <> "/avatar"
   end
 
   defp page_link(confluence_id, fragment, context) do
