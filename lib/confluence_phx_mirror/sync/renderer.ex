@@ -64,7 +64,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 9: a panel draws the icon its storage declares, which the export view drops.
   # 10: a labels list is drawn from the mirror's own labels instead of staying the
   #     widget for a macro Confluence will not expand for a reader.
-  def revision, do: 10
+  # 11: a parameter that names a page, a person or a file carries that name, so an
+  #     include finds the page it was pointed at instead of naming none.
+  def revision, do: 11
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -524,7 +526,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp declaration({"ac:structured-macro", attrs, children}) do
     case attribute(attrs, "ac:name") do
-      name when is_binary(name) -> [{String.downcase(name), declared_parameters(children)}]
+      name when is_binary(name) -> [{String.downcase(name), parameters(children)}]
       _no_name -> []
     end
   end
@@ -536,19 +538,6 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   defp elements(nodes) when is_list(nodes), do: Enum.flat_map(nodes, &elements/1)
   defp elements({tag, attrs, children}), do: [{tag, attrs, children} | elements(children)]
   defp elements(_text), do: []
-
-  defp declared_parameters(children) do
-    Enum.flat_map(children, fn
-      {"ac:parameter", attrs, value} ->
-        case attribute(attrs, "ac:name") do
-          name when is_binary(name) -> [{name, value |> Floki.text() |> String.trim()}]
-          _no_name -> []
-        end
-
-      _other ->
-        []
-    end)
-  end
 
   defp attribute(attrs, name) do
     case List.keyfind(attrs, name, 0) do
@@ -624,17 +613,57 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   # The options a stored macro carries, in the order the page wrote them.
   defp parameters(children) do
-    Enum.flat_map(children, fn
-      {"ac:parameter", attrs, value} ->
-        case List.keyfind(attrs, "ac:name", 0) do
-          {"ac:name", name} -> [{name, value |> Floki.text() |> String.trim()}]
-          nil -> []
+    Enum.flat_map(children, &List.wrap(parameter(&1)))
+  end
+
+  # A parameter's value is not always text. Confluence writes a reference as a
+  # typed element — `<ri:page ri:content-title="…"/>`, `<ri:user ri:account-id="…"/>`
+  # — and `<ac:parameter ac:name="">` around one carries no name at all: the kind
+  # of thing it names *is* the name ("page", "user"). Read for its text alone, such
+  # a parameter is empty, and the macro ends up naming nothing.
+  defp parameter({"ac:parameter", attrs, value}) do
+    case attribute(attrs, "ac:name") do
+      name when is_binary(name) ->
+        case reference(value) do
+          {kind, named} -> {kind_name(name, kind), named}
+          nil -> {name, value |> Floki.text() |> String.trim()}
         end
 
-      _other ->
-        []
-    end)
+      _no_name ->
+        nil
+    end
   end
+
+  defp parameter(_other), do: nil
+
+  # Which attribute of a typed reference carries the identity, best first. A page
+  # is named by its title before its id because that is the word `include` reads.
+  @references %{
+    "ri:page" => ["ri:content-title", "ri:content-id"],
+    "ri:user" => ["ri:account-id", "ri:username", "ri:userkey"],
+    "ri:attachment" => ["ri:filename"],
+    "ri:space" => ["ri:space-key"]
+  }
+
+  defp reference(nodes) when is_list(nodes), do: Enum.find_value(nodes, &reference/1)
+
+  defp reference({tag, attrs, _children}) do
+    with keys when is_list(keys) <- Map.get(@references, tag),
+         value when is_binary(value) <- Enum.find_value(keys, &attribute(attrs, &1)) do
+      {tag, value}
+    end
+  end
+
+  defp reference(_node), do: nil
+
+  defp kind_name("", kind), do: kind_word(kind)
+  defp kind_name(name, _kind), do: name
+
+  defp kind_word("ri:page"), do: "page"
+  defp kind_word("ri:user"), do: "user"
+  defp kind_word("ri:attachment"), do: "attachment"
+  defp kind_word("ri:space"), do: "space"
+  defp kind_word(_other), do: ""
 
   # The link is written as a plain Confluence URL so the usual anchor rewriting
   # turns it into an absolute link back to the original page.

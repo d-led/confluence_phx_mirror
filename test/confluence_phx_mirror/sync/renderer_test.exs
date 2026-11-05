@@ -476,6 +476,22 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert result.html =~ "Run mix setup."
       refute result.html =~ "does not draw this macro"
     end
+
+    test "a parameter that names a page carries the page's title, not nothing" do
+      # Confluence writes the include's target as a typed value with no name of
+      # its own: `<ac:parameter ac:name=""><ri:page ri:content-title="…"/></ac:parameter>`.
+      # Read only for its text, that parameter is empty and the macro names no page.
+      html = """
+      <ac:structured-macro ac:name="include">
+        <ac:parameter ac:name=""><ri:page ri:content-title="Architecture Overview" /></ac:parameter>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ ~s(data-macro="include")
+      assert result.html =~ ~s(data-page="Architecture Overview")
+    end
   end
 
   defp page do
