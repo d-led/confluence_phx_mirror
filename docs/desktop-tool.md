@@ -605,6 +605,41 @@ but it is being archived on 30 November 2026, its successor does not cover Windo
 and it cannot build on the OTP this app runs on. `mix release` plus Tauri's own
 bundler needs no third party and gives all three platforms.
 
+### What Windows does not have
+
+Six things about this build only showed up on the Windows runner, each one found by
+the leg that builds it and none of them visible on a Mac:
+
+* a password hasher. `argon2_elixir` has no Windows branch in its Makefile at
+  all — it links an executable instead of a library and the job died with
+  `undefined reference to WinMain` — so the tool's build leaves it out and
+  `TokenHash` reads the hasher from configuration. Without one it stores a word
+  (`no-password-hasher-in-this-build`, deliberately not a weaker digest that
+  would verify) and `verify/2` answers `false`, which is what a wrong token gets.
+  The tool issues no tokens: one local reader, no sign-in, no API clients.
+* an icon. `tauri-build` compiles the icon into the executable's resources on
+  Windows, and without an `.ico` it stopped with "icons/icon.ico not found;
+  required for generating a Windows Resource file" — the repository carried one
+  PNG, enough for macOS. `cargo tauri icon` generated the platform set and both
+  configs list it.
+* `cmd` and POSIX paths. The boot check and the debug job handed the launcher's
+  path to `cmd /C`, which does not resolve one: "`_build` is not recognized as an
+  internal or external command". The launcher is started directly on all three
+  platforms — bash runs a `.bat` through `cmd` itself.
+* `cp -R`. The OTP tree holds entries it refuses to write over: it stopped at
+  `erts-17.1.1/bin/erl` with "File exists". The copy is a tar stream, which only
+  has to reproduce the tree.
+* POSIX permission bits. `test -x` on `bin/<name>.bat` says no, because there are
+  none to say yes about; on Windows the launcher only has to be *there*.
+* `rm -f` on a directory. The artifact *is* the staging folder there, so
+  "assembling" it by first removing it said "Is a directory" — Windows removes
+  nothing, because `upload-artifact` zips the folder for it.
+
+One more thing is not Windows's: an artifact uploaded from a directory is zipped
+as that directory's **contents**, so the Windows download unpacked its three files
+loose. The workflow moves the folder under `unpack/` and uploads that, so what a
+person unzips is one folder holding `confluence-export.exe`, `rel\` and the note.
+
 The binary must carry built assets — `priv/static/assets/css/app.css` and the
 archive favicon — because there is no npm at runtime.
 
