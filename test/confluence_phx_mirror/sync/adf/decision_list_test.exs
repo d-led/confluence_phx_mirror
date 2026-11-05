@@ -28,7 +28,8 @@ defmodule ConfluencePhxMirror.Sync.Adf.DecisionListTest do
   end
 
   test "each list keeps the state of its own items" do
-    html = ~s(<ul class="decision-list"><li>Ship it.</li></ul><ul class="decision-list"><li>Revisit it.</li></ul>)
+    html =
+      ~s(<ul class="decision-list"><li>Ship it.</li></ul><ul class="decision-list"><li>Revisit it.</li></ul>)
 
     assert repaired(html, items(["DECIDED", "OPEN"])) ==
              ~s(<ul class="decision-list"><li data-decision-state="decided">Ship it.</li></ul><ul class="decision-list"><li data-decision-state="open">Revisit it.</li></ul>)
