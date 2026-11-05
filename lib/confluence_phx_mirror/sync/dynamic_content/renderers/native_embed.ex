@@ -49,7 +49,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   end
 
   defp contents(attrs, url, _context) do
-    [Nodes.notice("#{kind(attrs)} — drawn in Confluence; open it there."), address(url)]
+    [Nodes.notice("#{kind(attrs)} — drawn in Confluence; open it there."), address(attrs, url)]
   end
 
   defp board(context, url) do
@@ -61,7 +61,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
 
   defp drawn(document, attrs, url) do
     case Whiteboard.svg(document) do
-      {:ok, svg} -> [picture(svg, attrs), address(url)]
+      {:ok, svg} -> [picture(svg, attrs), address(attrs, url)]
       :error -> sorry(attrs, url)
     end
   end
@@ -85,12 +85,19 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
         "The mirror could not draw this #{String.downcase(kind(attrs))}. " <>
           "It is a canvas Confluence paints itself; open it there to see it as its authors do."
       ),
-      address(url)
+      address(attrs, url)
     ]
   end
 
-  defp address(url),
-    do: {"p", [], [{"a", [{"href", url}, {"class", "mirror-dynamic-link"}], [url]}]}
+  # A caption, not a citation: the address is long and says nothing a reader
+  # wants to read, and the drawing above it already carries the content. The
+  # link still goes where the words say it does.
+  defp address(attrs, url) do
+    {"p", [{"class", "mirror-embed-source"}],
+     [
+       {"a", [{"href", url}, {"class", "mirror-dynamic-link"}], ["#{kind(attrs)} in Confluence"]}
+     ]}
+  end
 
   # A marker carries the macro it came from, which is the only place the kind is
   # recorded: the page writes one name for each embed.

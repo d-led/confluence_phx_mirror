@@ -55,7 +55,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #    staying the unknown-macro placeholder the export view carries.
   # 4: a whiteboard is drawn from its document (`Sync.Whiteboard`), or apologises
   #    with a link when it cannot be.
-  def revision, do: 4
+  # 5: a macro's parameters are found wherever it is declared — inside another
+  #    macro's body included — so an embed that sat in an excerpt keeps them.
+  # 6: the link under a whiteboard or database is a caption, not its address.
+  def revision, do: 6
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -207,13 +210,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     {"toc-macro", ["toc"]}
   ]
 
-  @macro_declaration ~r/<ac:structured-macro\b[^>]*\bac:name\s*=\s*"([^"]+)"/i
-
   # The modern editor does not always write a structured macro: a panel, a
   # status or a code block inserted from its palette is stored as an ADF node
   # (Confluence keeps the editor's document inline), and those are macros all
   # the same. Counted here by the name the export gives their chrome.
-  @adf_node ~r/<ac:adf-node\b[^>]*\btype\s*=\s*"([^"]+)"/i
   @adf_names %{
     "panel" => "panel",
     "status" => "status",
@@ -221,7 +221,6 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     "expand" => "expand",
     "expandable" => "expand"
   }
-
   # The inside of a chrome block: these carry no meaning of their own and only
   # appear within a family, so they go when their wrapper goes.
   @chrome_parts ~w(panelContent panelHeader codeContent codeHeader pdl
@@ -242,23 +241,29 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   end
 
   defp declared_macros(%{storage: storage}) when is_binary(storage) do
-    structured =
-      @macro_declaration
-      |> Regex.scan(storage, capture: :all_but_first)
-      |> List.flatten()
-
-    adf =
-      @adf_node
-      |> Regex.scan(storage, capture: :all_but_first)
-      |> List.flatten()
-      |> Enum.map(&Map.get(@adf_names, &1))
-      |> Enum.reject(&is_nil/1)
-
-    (structured ++ adf)
-    |> Enum.map(&(&1 |> String.trim() |> String.downcase()))
+    storage
+    |> Floki.parse_fragment!()
+    |> elements()
+    |> Enum.flat_map(&declared_name/1)
   end
 
   defp declared_macros(_context), do: nil
+
+  defp declared_name({"ac:structured-macro", attrs, _children}) do
+    case attribute(attrs, "ac:name") do
+      name when is_binary(name) -> [name |> String.trim() |> String.downcase()]
+      _no_name -> []
+    end
+  end
+
+  defp declared_name({"ac:adf-node", attrs, _children}) do
+    case attribute(attrs, "type") do
+      type when is_binary(type) -> List.wrap(Map.get(@adf_names, type))
+      _no_type -> []
+    end
+  end
+
+  defp declared_name(_element), do: []
 
   defp chrome_budget(names) do
     Map.new(@chrome_families, fn {token, earned_by} ->
@@ -410,31 +415,54 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp replace_node(other, declarations, _context), do: {[other], declarations}
 
-  # The parameters each macro name declares, in document order. Regexes rather
-  # than a parser, for the same reason `declared_macros/1` uses one: the storage
-  # is Confluence's own serialisation and this only needs its declarations.
-  @declaration ~r/<ac:structured-macro\b([^>]*)>(.*?)<\/ac:structured-macro>/su
-  @declaration_name ~r/\bac:name="([^"]+)"/u
-  @declared_parameter ~r/<ac:parameter\b[^>]*\bac:name="([^"]+)"[^>]*>(.*?)<\/ac:parameter>/su
-
+  # The parameters each macro name declares, in document order. The storage is
+  # walked as the tree it is, not scanned: a macro may sit inside another, or
+  # inside a wrapper between the two — a whiteboard in an excerpt's body is the
+  # real case — and anything that looks for closing tags textually loses the
+  # nesting and every declaration after it.
   defp declarations_by_name(%{storage: storage}) when is_binary(storage) do
-    @declaration
-    |> Regex.scan(storage, capture: :all_but_first)
-    |> Enum.flat_map(fn [opening, body] ->
-      case Regex.run(@declaration_name, opening, capture: :all_but_first) do
-        [name] -> [{String.downcase(name), declared_parameters(body)}]
-        _no_name -> []
-      end
-    end)
+    storage
+    |> Floki.parse_fragment!()
+    |> elements()
+    |> Enum.flat_map(&declaration/1)
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
 
   defp declarations_by_name(_context), do: %{}
 
-  defp declared_parameters(body) do
-    @declared_parameter
-    |> Regex.scan(body, capture: :all_but_first)
-    |> Enum.map(fn [name, value] -> {name, unescape(value)} end)
+  defp declaration({"ac:structured-macro", attrs, children}) do
+    case attribute(attrs, "ac:name") do
+      name when is_binary(name) -> [{String.downcase(name), declared_parameters(children)}]
+      _no_name -> []
+    end
+  end
+
+  defp declaration(_element), do: []
+
+  # Every element of a parsed document, in document order: a parent before its
+  # children. Nothing here depends on which tags wrap which — that is the point.
+  defp elements(nodes) when is_list(nodes), do: Enum.flat_map(nodes, &elements/1)
+  defp elements({tag, attrs, children}), do: [{tag, attrs, children} | elements(children)]
+  defp elements(_text), do: []
+
+  defp declared_parameters(children) do
+    Enum.flat_map(children, fn
+      {"ac:parameter", attrs, value} ->
+        case attribute(attrs, "ac:name") do
+          name when is_binary(name) -> [{name, value |> Floki.text() |> String.trim()}]
+          _no_name -> []
+        end
+
+      _other ->
+        []
+    end)
+  end
+
+  defp attribute(attrs, name) do
+    case List.keyfind(attrs, name, 0) do
+      {_key, value} -> value
+      nil -> nil
+    end
   end
 
   defp declared(declarations, name) do
@@ -444,15 +472,6 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       [parameters | rest] -> {parameters, Map.put(declarations, key, rest)}
       [] -> {[], declarations}
     end
-  end
-
-  defp unescape(value) do
-    value
-    |> String.replace("&lt;", "<")
-    |> String.replace("&gt;", ">")
-    |> String.replace("&quot;", "\"")
-    |> String.replace("&#39;", "'")
-    |> String.replace("&amp;", "&")
   end
 
   defp macro_label(name), do: Map.get(@macro_labels, name, "the #{name} macro")

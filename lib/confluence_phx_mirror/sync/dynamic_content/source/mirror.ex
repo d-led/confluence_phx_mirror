@@ -81,7 +81,22 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   # the site answers for the reader the token belongs to.
   @impl true
   def whiteboard(_host, url) do
-    ConfluencePhxMirror.Confluence.HttpSource.whiteboard_document(url)
+    case ConfluencePhxMirror.Confluence.HttpSource.whiteboard_document(url) do
+      {:ok, document} ->
+        {:ok, document}
+
+      {:error, reason} ->
+        # The reader gets an apology and a link; the reason belongs in the run's
+        # log, where somebody can act on it. Without this line the failure is
+        # indistinguishable from "this mirror does not draw boards".
+        ConfluencePhxMirror.Sync.Log.add(
+          :warn,
+          "a whiteboard could not be read: #{inspect(reason)}",
+          %{whiteboard: url}
+        )
+
+        {:error, reason}
+    end
   end
 
   # A contributor list is about names and counts, not about bodies: the scan is

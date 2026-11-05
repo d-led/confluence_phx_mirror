@@ -865,7 +865,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   # board and does not deserve a request.
   defp whiteboard_id(url) do
     with %URI{path: path} when is_binary(path) <- URI.parse(url),
-         [id] when id != "" <- Regex.run(~r{/whiteboard/([0-9]+)$}, path) do
+         [id] when id != "" <- Regex.run(~r{/whiteboard/([0-9]+)$}, path, capture: :all_but_first) do
       {:ok, id}
     else
       _not_a_board -> {:error, {:not_a_whiteboard, body_snippet(url)}}

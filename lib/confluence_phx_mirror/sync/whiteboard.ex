@@ -158,6 +158,7 @@ defmodule ConfluencePhxMirror.Sync.Whiteboard do
     "light-yellow" => "#fffae6",
     "light-red" => "#ffebe6",
     "light-purple" => "#eae6ff",
+    "light-gray" => "#f4f5f7",
     "blue" => "#4c9aff",
     "green" => "#36b37e",
     "yellow" => "#ffab00",
@@ -169,9 +170,19 @@ defmodule ConfluencePhxMirror.Sync.Whiteboard do
   }
 
   defp palette(name) do
-    case Map.get(@palette, name) do
+    case Map.get(@palette, family(name)) do
       nil -> if hex?(name), do: name, else: "#ffffff"
       hex -> hex
+    end
+  end
+
+  # A board names a colour `palette.light.blue.200`: a tone, a hue and a weight.
+  # The weight is a shade of the same hue, so the tone and hue carry the colour.
+  defp family(name) do
+    case String.split(name, ".") do
+      ["palette", tone, hue, _weight] -> tone <> "-" <> hue
+      ["palette", hue, _weight] -> hue
+      _plain -> name
     end
   end
 

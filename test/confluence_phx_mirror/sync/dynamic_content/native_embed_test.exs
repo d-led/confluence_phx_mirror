@@ -26,6 +26,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
     assert drawn_words(html) =~ "January"
   end
 
+  test "the link under a drawing is a caption, not the address itself" do
+    StubContent.script(whiteboard: {:ok, document("January")})
+
+    html = expand(marker("native-embed:whiteboard", @board))
+
+    assert html =~ ~s(href="#{@board}")
+    assert html =~ "Whiteboard in Confluence"
+    refute html =~ ">#{@board}<"
+  end
+
   test "a board the mirror cannot read apologises and points at the original" do
     StubContent.script(whiteboard: {:error, :not_found})
 

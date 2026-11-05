@@ -690,6 +690,26 @@
   color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 
+/* The line under a whiteboard or database: a caption to the original, quiet
+   enough to sit under a drawing without competing with it. */
+.confluence-content .mirror-embed-source {
+  margin: 0.4rem 0 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+.confluence-content .mirror-embed-source a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.confluence-content .mirror-embed-source a:hover {
+  text-decoration: underline;
+}
+
 .confluence-content .mirror-dynamic-list {
   margin: 0;
   padding-left: 1.1rem;

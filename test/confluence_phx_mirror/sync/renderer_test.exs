@@ -574,5 +574,16 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       assert Renderer.render(html, context()).html =~ "does not draw this macro"
     end
+
+    test "a declaration nested inside another macro still gives up its parameters" do
+      html =
+        ~s(<img class="wysiwyg-unknown-macro" src="/wiki/plugins/servlet/confluence/placeholder/unknown-macro?name=native-embed:whiteboard" />)
+
+      storage =
+        ~s(<ac:structured-macro ac:name="excerpt"><ac:rich-text-body><ac:structured-macro ac:name="native-embed:whiteboard"><ac:parameter ac:name="url">https://site/wiki/spaces/MFS/whiteboard/7</ac:parameter></ac:structured-macro></ac:rich-text-body></ac:structured-macro>)
+
+      assert Renderer.render(html, context(%{storage: storage})).html =~
+               ~s(data-url="https://site/wiki/spaces/MFS/whiteboard/7")
+    end
   end
 end

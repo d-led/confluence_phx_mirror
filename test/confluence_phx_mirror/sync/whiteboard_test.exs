@@ -25,6 +25,20 @@ defmodule ConfluencePhxMirror.Sync.WhiteboardTest do
     assert svg =~ ~r/viewBox="-30 -20 570 160"/
   end
 
+  test "a board's dotted palette name is drawn in the colour it names" do
+    nodes = %{"a" => %{shape(0, "January") | "color" => "palette.light.blue.200"}}
+
+    assert {:ok, svg} = Whiteboard.svg(%{"version" => "2024-05-20_ALPHA", "nodes" => nodes})
+    assert svg =~ ~s(fill="#deebff")
+  end
+
+  test "a colour this mirror does not know is drawn neutrally" do
+    nodes = %{"a" => %{shape(0, "January") | "color" => "palette.dark.taupe.700"}}
+
+    assert {:ok, svg} = Whiteboard.svg(%{"version" => "2024-05-20_ALPHA", "nodes" => nodes})
+    assert svg =~ ~s(fill="#ffffff")
+  end
+
   test "a document version this mirror does not know is not drawn" do
     assert Whiteboard.svg(%{"version" => "2030-01-01_ALPHA", "nodes" => %{"a" => shape(0, "x")}}) ==
              :error
