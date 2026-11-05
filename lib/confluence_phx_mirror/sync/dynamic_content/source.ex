@@ -136,18 +136,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   @callback attachments(page :: Page.t()) :: [ConfluencePhxMirror.Mirror.Attachment.t()]
 
   @doc """
-  The labels a space's pages carry, most used first, with how many pages each.
+  The labels a space's pages carry, alphabetically, each once.
 
-  A label's count is pages carrying it — the one number the mirror can state.
-  Both the labels and their counts are taken over the pages readable alongside
-  the host, so a label only a narrower page carries is not named here.
-
-  `space` is a key, or nil for the host's own space; `:limit` caps how many
-  labels come back. A space larger than the port is willing to scan is
-  `{:error, :too_large}` rather than a count that quietly stopped halfway.
+  A label is named here only if some page readable alongside the host carries it,
+  so a label used solely on a narrower page is not disclosed. `space` is a key,
+  or nil for the host's own space. A space larger than the port is willing to
+  scan is `{:error, :too_large}` rather than a list that quietly stopped
+  halfway.
   """
   @callback labels(host :: Page.t(), space :: String.t() | nil, keyword()) ::
-              {:ok, [%{name: String.t(), pages: pos_integer()}]} | {:error, :too_large}
+              {:ok, [String.t()]} | {:error, :too_large}
 
   @doc """
   One person, by Confluence account id, with the pages of theirs readable

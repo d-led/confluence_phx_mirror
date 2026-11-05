@@ -104,16 +104,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.SourceMirrorTest do
   end
 
   describe "labels" do
-    test "counts the pages carrying each label in the host's space, most used first" do
+    test "names every label the space's readable pages carry, alphabetically" do
       docs = space_fixture(%{key: "DOCS", name: "Docs"})
       host = page_fixture(docs, %{title: "Home", confluence_id: 97_130})
       {:ok, _} = Mirror.replace_labels(host, ["runbook", "incident"])
 
       second = page_fixture(docs, %{title: "Two", confluence_id: 97_131})
-      {:ok, _} = Mirror.replace_labels(second, ["runbook"])
+      {:ok, _} = Mirror.replace_labels(second, ["runbook", "alpha"])
 
-      assert {:ok, [%{name: "runbook", pages: 2}, %{name: "incident", pages: 1}]} =
-               Source.Mirror.labels(host, nil, limit: 10)
+      assert {:ok, ["alpha", "incident", "runbook"]} = Source.Mirror.labels(host, nil, [])
     end
 
     test "leaves out a label only a page these readers cannot open carries" do
@@ -129,15 +128,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.SourceMirrorTest do
           %{subject_type: "group", subject_key: "docs-team"}
         ])
 
-      assert {:ok, [%{name: "runbook"}]} = Source.Mirror.labels(host, nil, limit: 10)
-    end
-
-    test "takes the number of labels it was asked for" do
-      docs = space_fixture(%{key: "DOCS", name: "Docs"})
-      host = page_fixture(docs, %{title: "Home", confluence_id: 97_134})
-      {:ok, _} = Mirror.replace_labels(host, ["alpha", "beta"])
-
-      assert {:ok, [%{name: "alpha"}]} = Source.Mirror.labels(host, nil, limit: 1)
+      assert {:ok, ["runbook"]} = Source.Mirror.labels(host, nil, [])
     end
 
     test "a space bigger than the cap is reported as truncated, not counted in part" do

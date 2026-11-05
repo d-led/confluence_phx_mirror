@@ -145,30 +145,25 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   @label_scan 5_000
 
   @impl true
-  def labels(%Page{} = host, space, opts) do
+  def labels(%Page{} = host, space, _opts) do
     %{pages: pages, labels: labels, truncated?: truncated?} =
       Mirror.space_labels(space_id(space, host), limit: @label_scan)
 
     if truncated? do
       {:error, :too_large}
     else
-      {:ok, labels |> counted(visible_to(pages, host)) |> top_labels(opts)}
+      {:ok, labels |> named(visible_to(pages, host))}
     end
   end
 
-  defp counted(labels, pages) do
+  defp named(labels, pages) do
     allowed = MapSet.new(pages, & &1.id)
 
     labels
     |> Enum.filter(&MapSet.member?(allowed, &1.page_id))
-    |> Enum.frequencies_by(& &1.label)
-    |> Enum.map(fn {name, count} -> %{name: name, pages: count} end)
-  end
-
-  defp top_labels(labels, opts) do
-    labels
-    |> Enum.sort_by(&{-&1.pages, &1.name})
-    |> Enum.take(Keyword.get(opts, :limit, 30))
+    |> Enum.map(& &1.label)
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   @impl true

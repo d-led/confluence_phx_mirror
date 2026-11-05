@@ -69,16 +69,50 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Nodes do
   defp written(1), do: "1 page"
   defp written(count), do: "#{count} pages"
 
-  @doc "A list of labels: the name, linked to the mirror's own label page, and its count."
-  def label_list(labels),
-    do: {"ul", [{"class", "mirror-label-list"}], Enum.map(labels, &label_item/1)}
+  # Confluence's own boundaries, in the order it draws them.
+  @label_groups ["A-G", "H-N", "O-R", "S-Z"]
 
-  defp label_item(%{name: name, pages: pages}) do
-    {"li", [],
+  @doc """
+  A labels list, in the four alphabetical columns Confluence's own macro draws.
+
+  The buckets and their boundaries are the site's, not ours: *A–G*, *H–N*,
+  *O–R*, *S–Z*. A label whose first character is not a letter — a digit, a
+  symbol — has no bucket of its own on the site either, so it joins the first,
+  and a column with nothing in it is left out rather than drawn empty.
+  """
+  def label_groups(names) do
+    grouped = Enum.group_by(names, &group_title/1)
+
+    {"div", [{"class", "mirror-label-groups"}],
+     Enum.flat_map(@label_groups, fn title ->
+       case Map.get(grouped, title, []) do
+         [] -> []
+         labels -> [label_group(title, labels)]
+       end
+     end)}
+  end
+
+  defp label_group(title, labels) do
+    {"div", [{"class", "mirror-label-group"}],
      [
-       {"a", [{"href", URLs.label_path(name)}, {"class", "mirror-dynamic-link"}], [name]},
-       {"span", [{"class", "mirror-dynamic-meta"}], [" · " <> written(pages)]}
+       {"p", [{"class", "mirror-label-group-title"}], [title]},
+       {"ul", [{"class", "mirror-label-list"}], Enum.map(labels, &label_item/1)}
      ]}
+  end
+
+  defp group_title(name) do
+    case name |> String.downcase() |> String.first() do
+      <<first>> when first < ?a -> "A-G"
+      <<first>> when first in ?a..?g -> "A-G"
+      <<first>> when first in ?h..?n -> "H-N"
+      <<first>> when first in ?o..?r -> "O-R"
+      _not_a_letter_or_later -> "S-Z"
+    end
+  end
+
+  defp label_item(name) do
+    {"li", [],
+     [{"a", [{"href", URLs.label_path(name)}, {"class", "mirror-dynamic-link"}], [name]}]}
   end
 
   @doc "The way from a profile to everything else that person wrote, in the mirror."

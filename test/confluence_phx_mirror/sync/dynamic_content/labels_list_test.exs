@@ -1,12 +1,13 @@
 defmodule ConfluencePhxMirror.Sync.DynamicContent.LabelsListTest do
   @moduledoc """
-  *Labels list* is the space's labels, most used first.
+  *Labels list*: a space's labels, in the four alphabetical columns Confluence's
+  own macro draws.
 
-  Confluence never renders it for a reader without a browser session, so the
-  marker is all a sync can read — the same five macros the gallery page shows as
-  placeholders. Three claims are pinned: the list is the port's answer and nothing
-  invented, each label leads to the mirror's own label page, and a space the port
-  will not scan says so rather than counting half of it.
+  The mirror resolves it from its own labels rather than copying an export view,
+  so the columns hold exactly what the host page's readers may open — a label
+  only a narrower page carries is neither named nor drawn. What is pinned: the
+  grouping is Confluence's, an empty column is not drawn, each label leads to the
+  mirror's own label page, and a space the port will not scan says so.
   """
 
   use ExUnit.Case, async: true
@@ -17,24 +18,31 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.LabelsListTest do
   @marker ~s(<div class="mirror-macro" data-macro="labels-list"></div>)
   @space %{key: "ENG"}
   @host %{id: 1, confluence_id: 1001, slug: "page-1001", title: "Engineering", space: @space}
+  @all ~w(api architecture home planning runbook service)
 
   setup do
-    StubContent.script(
-      labels: {:ok, [%{name: "runbook", pages: 12}, %{name: "incident", pages: 1}]}
-    )
+    StubContent.script(labels: {:ok, @all})
   end
 
-  test "lists the labels the port counted, with the pages each one is on" do
-    html = expand()
+  test "draws the alphabetical columns Confluence draws" do
+    # The site's boundaries, not an even split: 7 + 7 + 4 + 8 letters, so `r`
+    # ends the third column and `runbook` sits under O-R.
+    assert groups(expand()) == [
+             {"A-G", ["api", "architecture"]},
+             {"H-N", ["home"]},
+             {"O-R", ["planning", "runbook"]},
+             {"S-Z", ["service"]}
+           ]
+  end
 
-    assert text(html) =~ "Labels"
-    assert labels(html) == ["runbook · 12 pages", "incident · 1 page"]
+  test "a column with no label is not drawn at all" do
+    StubContent.script(labels: {:ok, ["api", "runbook"]})
+
+    assert groups(expand()) == [{"A-G", ["api"]}, {"O-R", ["runbook"]}]
   end
 
   test "each label leads to the mirror's own label page" do
-    html = expand()
-
-    assert hrefs(html) == ["/labels/runbook", "/labels/incident"]
+    assert hrefs(expand()) == Enum.map(@all, &"/labels/#{&1}")
   end
 
   test "asks about the space the marker names" do
@@ -57,7 +65,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.LabelsListTest do
     # a page may hold either, so the mirror has to answer to both.
     html = expand(~s(<div class="mirror-macro" data-macro="listlabels"></div>))
 
-    assert labels(html) == ["runbook · 12 pages", "incident · 1 page"]
+    assert groups(html) == [
+             {"A-G", ["api", "architecture"]},
+             {"H-N", ["home"]},
+             {"O-R", ["planning", "runbook"]},
+             {"S-Z", ["service"]}
+           ]
   end
 
   test "a space too large to scan says so instead of counting half of it" do
@@ -71,11 +84,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.LabelsListTest do
 
   defp text(html), do: html |> Floki.parse_fragment!() |> Floki.text()
 
-  defp labels(html) do
+  defp groups(html) do
     html
     |> Floki.parse_fragment!()
-    |> Floki.find("ul.mirror-label-list li")
-    |> Enum.map(&(&1 |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.trim()))
+    |> Floki.find("div.mirror-label-group")
+    |> Enum.map(fn group ->
+      title = group |> Floki.find("p.mirror-label-group-title") |> Floki.text()
+
+      {title, group |> Floki.find("ul.mirror-label-list a") |> Enum.map(&Floki.text/1)}
+    end)
   end
 
   defp hrefs(html) do

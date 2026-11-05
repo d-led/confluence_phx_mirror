@@ -72,7 +72,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     the widget — the body it wraps was being dropped with the placeholder.
   # 14: an undrawn macro is named in words a reader knows ("a tasks report"), not
   #     by the key the page stores.
-  def revision, do: 14
+  # 15: a labels list is the site's four alphabetical columns, not one flat list.
+  def revision, do: 15
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

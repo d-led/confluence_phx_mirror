@@ -961,6 +961,39 @@ html.whiteboard-viewer-open {
   margin: 0.15rem 0;
 }
 
+/* A labels list is the site's four alphabetical columns: a heading with a rule
+   under it, then the labels. The site draws four across and stacks them on a
+   phone, so the tracks are fixed and only the narrow screen wraps. */
+.confluence-content .mirror-label-groups {
+  display: grid;
+  gap: 1.25rem 1.5rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0.25rem 0;
+}
+
+@media (max-width: 48rem) {
+  .confluence-content .mirror-label-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.confluence-content .mirror-label-group-title {
+  margin: 0 0 0.35rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  font-weight: 600;
+}
+
+.confluence-content .mirror-label-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.confluence-content .mirror-label-list li {
+  margin: 0.1rem 0;
+}
+
 .confluence-content .mirror-dynamic-meta {
   font-size: 0.85em;
   color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
