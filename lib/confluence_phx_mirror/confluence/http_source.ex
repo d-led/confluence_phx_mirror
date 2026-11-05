@@ -355,6 +355,24 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     end
   end
 
+  # The same read, for the directory rather than for the account: the name the
+  # site publishes, and the face it draws (`avatar/1` above, which fetches the
+  # bytes the mirror stores). A picture that will not download is not a failed
+  # person — the row is worth having without it, and the next sweep asks again.
+  @impl true
+  def person(account_id, _opts) when is_binary(account_id) and account_id != "" do
+    with {:ok, body} <- request_json("/user?accountId=#{URI.encode_www_form(account_id)}", %{}) do
+      {:ok, %{display_name: body["displayName"], avatar: picture(account_id)}}
+    end
+  end
+
+  defp picture(account_id) do
+    case avatar(account_id) do
+      {:ok, image} -> image
+      {:error, _unavailable} -> nil
+    end
+  end
+
   # The one settings endpoint Confluence Cloud answers with the site's own
   # configuration. `/settings` and `/settings/global` are Data Center's, and the
   # rest of the General configuration screen is read by the admin UI over
@@ -389,6 +407,21 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     fetch_bytes(url, fn response ->
       %{body: response.body, media_type: media_type(response)}
     end)
+  end
+
+  # A person's face: `/aa-avatar/<account-id>` is a path below the wiki root, but
+  # the site does not serve it — the path answers 302, to Gravatar or to
+  # Atlassian's initials service. So the bytes are fetched here, once, and kept
+  # beside the attachments (`Blobs.Key.person_avatar/2`). A URL left in a page
+  # would send every *reader* to two third parties, and would show nothing at all
+  # while the site is unreachable, which is the whole point of a mirror.
+  #
+  # The request leaves the site, so no credential goes with it; see
+  # `credential_for/1`.
+  defp avatar(account_id) when is_binary(account_id) and account_id != "" do
+    with {:ok, url} <- download_url("/aa-avatar/" <> account_id) do
+      download_image(url)
+    end
   end
 
   defp fetch_bytes(url, shape, attempt \\ 1) do
@@ -441,7 +474,8 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   # The media API sits on these domains; a deployment can narrow or extend it
   # with `:download_hosts`.
-  defp default_download_hosts, do: ["atlassian.com", "atlassian.net", "atl-paas.net"]
+  defp default_download_hosts,
+    do: ["atlassian.com", "atlassian.net", "atl-paas.net", "gravatar.com"]
 
   # Confluence hands out download links relative to the REST root
   # (`/rest/api/content/…/download`), and older exports use the web path
@@ -1049,7 +1083,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     {extra_headers, request_options} = Keyword.pop(options, :headers, [])
 
     defaults = [
-      headers: auth_headers() ++ extra_headers,
+      headers: credential_for(url) ++ extra_headers,
       receive_timeout: config()[:request_timeout_ms] || 30_000,
       connect_options: [timeout: config()[:connect_timeout_ms] || 10_000],
       redirect: false,
@@ -1340,6 +1374,18 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       true ->
         []
     end
+  end
+
+  # The credential belongs to the configured site and to nothing else.
+  #
+  # A download can be redirected to another host — an attachment to the media
+  # CDN, a profile picture to Gravatar — and those redirects are followed. The
+  # header is attached only when the request goes to the site's own host, so a
+  # third party never receives a token that can read the whole site.
+  defp credential_for(url) do
+    site = config()[:base_url] |> URI.parse() |> Map.get(:host)
+
+    if URI.parse(url) |> Map.get(:host) == site, do: auth_headers(), else: []
   end
 
   defp api_base do
