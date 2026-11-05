@@ -449,6 +449,13 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
               >
                 {BuildInfo.ci_label()}
               </a>
+              <span
+                :if={BuildInfo.built_at()}
+                id="build-stamp"
+                class="font-mono text-base-content/60"
+              >
+                {BuildInfo.built_at()}
+              </span>
             </span>
           </div>
         </div>

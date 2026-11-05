@@ -12,7 +12,8 @@ defmodule Mix.Tasks.Build.Info do
     * `BUILD_VERSION` — defaults to `git describe --tags --always --dirty`,
       or `dev` where there is no git (a Docker build context, for instance)
     * `BUILD_REVISION` — defaults to `git rev-parse --short HEAD`
-    * `BUILD_BUILT_AT` — defaults to now, UTC
+    * `BUILD_BUILT_AT` — defaults to now, on the clock of the machine that
+      builds, in the offset it was running in: `2026-11-05 06:23+01:00`
     * `BUILD_CI_PROVIDER`, `BUILD_CI_WORKFLOW`, `BUILD_CI_RUN_NUMBER`,
       `BUILD_CI_RUN_URL` — set by the pipeline that runs the build; all unset
       means "built by hand", and the footer says `dev` or the git description
@@ -42,9 +43,48 @@ defmodule Mix.Tasks.Build.Info do
     %{
       version: version(),
       revision: env("BUILD_REVISION", git("rev-parse", ["--short", "HEAD"])),
-      built_at: env("BUILD_BUILT_AT", DateTime.utc_now() |> DateTime.to_iso8601()),
+      built_at: env("BUILD_BUILT_AT", built_now()),
       ci: ci()
     }
+  end
+
+  @doc false
+  # When the build happened, written the way the person reading it says it:
+  # `2026-11-05 06:23+01:00`. `Z` would be one conversion away from the time they
+  # remember, and a build often happens in a different zone from the one it is
+  # read in.
+  @spec stamp(DateTime.t(), integer()) :: String.t()
+  def stamp(datetime, offset_seconds) do
+    clock =
+      datetime |> DateTime.add(offset_seconds, :second) |> Calendar.strftime("%Y-%m-%d %H:%M")
+
+    clock <> offset(offset_seconds)
+  end
+
+  defp built_now, do: stamp(DateTime.utc_now(), local_offset())
+
+  # The offset in force now, daylight saving included: local and universal time
+  # are both asked of the operating system, and the difference is the offset.
+  # Rounded to a quarter hour because every real offset is one of those and the
+  # two clocks are read a moment apart — unrounded, a boundary turns `+01:00`
+  # into `+00:59`.
+  defp local_offset do
+    seconds =
+      :calendar.datetime_to_gregorian_seconds(:calendar.local_time()) -
+        :calendar.datetime_to_gregorian_seconds(:calendar.universal_time())
+
+    round(seconds / 900) * 900
+  end
+
+  defp offset(seconds) when seconds < 0, do: "-" <> hours_and_minutes(-seconds)
+
+  defp offset(seconds), do: "+" <> hours_and_minutes(seconds)
+
+  defp hours_and_minutes(seconds) do
+    minutes = div(seconds, 60)
+
+    [div(minutes, 60), rem(minutes, 60)]
+    |> Enum.map_join(":", &(&1 |> Integer.to_string() |> String.pad_leading(2, "0")))
   end
 
   defp version do

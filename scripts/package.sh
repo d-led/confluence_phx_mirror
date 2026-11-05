@@ -440,6 +440,12 @@ if [[ ! -f "_build/desktop/lib/$name/priv/native/confluence_keyring.so" ]]; then
     env MIX_ENV=desktop mix compile --force
 fi
 
+# What the tool was built from, burned into the release the way the image does
+# it: the version, the commit, and the moment — the tool serves the same admin
+# footer, and a copy somebody reports a bug against should be able to say when
+# it was made instead of `dev`.
+run "recording what this build is" env MIX_ENV=desktop mix build.info
+
 # Signing is macOS's problem: `ElixirKit.Release.codesign/1` runs `codesign`
 # over 2 700 files so a signed app is not one that refuses to launch, and there
 # is nothing on Linux or Windows for it to sign. Asking for it there would fail

@@ -250,22 +250,30 @@ The image carries one extra file, `priv/build_info.json`, written by
 `mix build.info` before `mix release`:
 
 ```json
-{"version": "v1.2.3", "revision": "3f2a1c9b8e7d…", "built_at": "2026-10-23T14:02:19Z",
+{"version": "v1.2.3", "revision": "3f2a1c9b8e7d…", "built_at": "2026-10-23 16:02+02:00",
  "ci": {"provider": "github", "workflow": "ci", "run_number": "42", "run_url": "…/runs/42"}}
 ```
 
-An administrator sees it in the admin footer as `v1.2.3+3f2a1c9`, with the run
-as a `ci #42` link when a pipeline built the image; readers do not. The boot log
+`built_at` is written the way the machine that built it read its clock —
+`YYYY-MM-DD HH:mm±HH:MM`, in the offset that machine was running in, daylight
+saving included — rather than in UTC: a build stamp is read by a person who
+remembers a day and an hour, and `Z` is one conversion away from that. It
+travels with the image, so a container built in one zone and read in another
+still says when it was built.
+
+An administrator sees it in the admin footer as `v1.2.3+3f2a1c9` with that stamp
+beside it, and the run as a `ci #42` link when a pipeline built the image;
+readers do not. The boot log
 says the same in one line, so a log from a container that started for someone
 else's deploy can be identified. A checkout that no build touched — `mix
 phx.server`, the test suite — says `dev`, because that is what it is: a
 gitignored file that only a build writes.
 
-| Where | `version` | `revision` | `ci` |
-| --- | --- | --- | --- |
-| `docker build --build-arg VERSION=… --build-arg REVISION=…` | the argument | the argument | from `CI_*` build arguments |
-| `scripts/mix_release.sh` | `git describe --tags --always --dirty` | short commit | none |
-| development, tests | `dev` | none | none |
+| Where | `version` | `revision` | `built_at` | `ci` |
+| --- | --- | --- | --- | --- |
+| `docker build --build-arg VERSION=… --build-arg REVISION=…` | the argument | the argument | the moment `mix build.info` ran in the image | from `CI_*` build arguments |
+| `scripts/mix_release.sh` | `git describe --tags --always --dirty` | short commit | the moment the release was made, same format | none |
+| development, tests | `dev` | none | none | none |
 
 `ENV` cannot stand in for this: what the footer reports is a property of the
 bytes in the image, not of how someone started it.

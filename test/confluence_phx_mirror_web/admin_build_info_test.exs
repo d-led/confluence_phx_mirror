@@ -30,4 +30,19 @@ defmodule ConfluencePhxMirrorWeb.AdminBuildInfoTest do
 
     refute html =~ "build-info"
   end
+
+  test "the footer says when that build was made", %{conn: conn} do
+    administrator = user_fixture(%{role: "admin"})
+
+    conn = Plug.Test.init_test_session(conn, %{"user_id" => administrator.id})
+
+    # A checkout is not a build, so the suite runs without one; this puts one in
+    # front of the footer and empties it again.
+    BuildInfo.cache(%{BuildInfo.dev() | version: "1.2.3", built_at: "2026-11-05 06:23+01:00"})
+    on_exit(fn -> BuildInfo.forget() end)
+
+    {:ok, view, _html} = live(conn, ~p"/admin")
+
+    assert has_element?(view, "#build-stamp", "2026-11-05 06:23+01:00")
+  end
 end

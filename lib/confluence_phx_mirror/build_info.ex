@@ -68,6 +68,13 @@ defmodule ConfluencePhxMirror.BuildInfo do
   def ci(info \\ info()), do: info.ci
 
   @doc """
+  When the build happened, as the building machine wrote it —
+  `2026-11-05 06:23+01:00` — or nil for a checkout no build touched.
+  """
+  @spec built_at(t()) :: String.t() | nil
+  def built_at(info \\ info()), do: info.built_at
+
+  @doc """
   The run's name for a footer link — `ci #42` — or nil outside a pipeline.
   """
   @spec ci_label(t()) :: String.t() | nil
@@ -186,6 +193,19 @@ defmodule ConfluencePhxMirror.BuildInfo do
   @spec forget() :: :ok
   def forget do
     :persistent_term.erase(@term)
+    :ok
+  end
+
+  @doc """
+  Puts a build in front of `info/0` without one being read.
+
+  The suite's other half of `forget/0`: a page that names a build can only be
+  tested against a build, and the one in `priv/` belongs to whatever release was
+  built last.
+  """
+  @spec cache(t()) :: :ok
+  def cache(info) do
+    :persistent_term.put(@term, info)
     :ok
   end
 
