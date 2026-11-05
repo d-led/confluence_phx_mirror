@@ -18,7 +18,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
   import ConfluencePhxMirrorWeb.AdminComponents
 
   alias ConfluencePhxMirror.{Mirror, Settings, SpaceDirectory, Trash}
-  alias ConfluencePhxMirror.Sync.SpaceScope
+  alias ConfluencePhxMirror.Sync
+  alias ConfluencePhxMirror.Sync.{SpaceScope, SpaceWorker}
   alias ConfluencePhxMirrorWeb.Admin.{Paging, SettingsRefusal}
   alias ConfluencePhxMirrorWeb.Time
 
@@ -81,6 +82,20 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
       |> assign(:add_key, "")
       |> push_event("space_key_value", %{value: ""})
       |> change(SpaceScope.add(key, actor(socket)), added_message(key))
+    end
+  end
+
+  # A row's own refresh: the job the overview's "Sync one space" queues, reached
+  # from the list an administrator is already reading rather than through a find
+  # box that has to be told which space they mean.
+  def handle_event("sync", %{"key" => key}, socket) do
+    case Sync.enqueue(SpaceWorker, %{"space_key" => key, "trigger" => requested_by(socket)}) do
+      {:ok, _job} ->
+        {:noreply, put_flash(socket, :info, "A refresh of #{key} is queued.")}
+
+      {:error, reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Could not queue a refresh of #{key}: #{inspect(reason)}")}
     end
   end
 
@@ -205,14 +220,29 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
               <th class="py-1 pr-3 font-medium">Key</th>
               <th class="py-1 pr-3 text-right font-medium">Pages</th>
               <th class="py-1 text-right font-medium">Last read</th>
+              <th class="py-1 text-right font-medium"><span class="sr-only">Refresh</span></th>
             </tr>
           </thead>
           <tbody>
             <tr :for={{key, name, synced_at, pages} <- @mirrored} class="border-t border-base-300/50">
-              <td class="py-1.5 pr-3">{name}</td>
+              <td class="py-1.5 pr-3">
+                <.link navigate={~p"/spaces/#{key}"} class="link">{name}</.link>
+              </td>
               <td class="py-1.5 pr-3 font-mono text-[11px]">{key}</td>
               <td class="py-1.5 pr-3 text-right tabular-nums">{pages}</td>
-              <td class="py-1.5 text-right text-base-content/70">{Time.ago(synced_at)}</td>
+              <td class="py-1.5 pr-3 text-right text-base-content/70">{Time.ago(synced_at)}</td>
+              <td class="py-1.5 text-right">
+                <button
+                  type="button"
+                  id={"sync-space-#{key}"}
+                  phx-click="sync"
+                  phx-value-key={key}
+                  class="btn btn-ghost btn-xs gap-1"
+                  title={"Read #{key} from Confluence again"}
+                >
+                  <.icon name="hero-arrow-path" class="size-3.5" /> Sync
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -369,4 +399,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
     do: "#{key} removed — #{pages} page(s) moved to the trash."
 
   defp actor(socket), do: {:user, socket.assigns.current_user}
+
+  # Every run's log answers "who asked for this?", so a manual one carries the
+  # address of the administrator who pressed the button.
+  defp requested_by(socket) do
+    case socket.assigns[:current_user] do
+      nil -> "the spaces screen"
+      user -> "the spaces screen, by #{user.email}"
+    end
+  end
 end

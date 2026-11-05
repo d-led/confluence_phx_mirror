@@ -6,10 +6,12 @@ defmodule ConfluencePhxMirrorWeb.AdminSpacesLiveTest do
 
   use ConfluencePhxMirrorWeb.ConnCase, async: false
 
+  import Ecto.Query
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
 
   alias ConfluencePhxMirror.Confluence.HttpSource
+  alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync.SpaceScope
   alias ConfluencePhxMirror.TestConfig
@@ -127,6 +129,23 @@ defmodule ConfluencePhxMirrorWeb.AdminSpacesLiveTest do
 
     assert has_element?(view, "#no-mirrored-match")
     assert view |> element("#no-mirrored-match") |> render() =~ "nothing-matches"
+  end
+
+  test "a mirrored row opens the space it names, and refreshes only that one", %{conn: conn} do
+    page_fixture(space_fixture(%{key: "ENG", name: "Engineering"}), %{title: "A page of ENG"})
+    page_fixture(space_fixture(%{key: "OPS", name: "Operations"}), %{title: "A page of OPS"})
+
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces")
+
+    assert has_element?(view, ~s(a[href="/spaces/ENG"]), "Engineering")
+
+    view |> element("#sync-space-ENG") |> render_click()
+
+    assert queued_space_keys() == ["ENG"]
+  end
+
+  defp queued_space_keys do
+    Repo.all(from j in Oban.Job, where: j.queue == "sync", select: j.args["space_key"])
   end
 
   defp configured_spaces(spaces) do
