@@ -10,8 +10,16 @@
       {assigns[:page_title]}
     </.live_title>
     <%!-- Written by scripts/favicon.sh; the name is the browser's own default,
-    so a shortcut saved without a link still finds it. --%>
-    <link rel="icon" href={~p"/favicon.ico"} />
+    so a shortcut saved without a link still finds it.
+
+    A literal path, not `~p`: with a cache manifest configured, the route
+    helper hands back the digested name (`/favicon-e496…ico?vsn=d`), and
+    `Plug.Static` serves a top-level file only under the exact name its
+    `static_paths/0` allows. `/assets/…` and `/images/…` survive that because
+    their first segment is an allowed directory; a file at the root has only
+    itself, so the digested icon 404s and the tab falls back to a blank page
+    icon. Dev has no manifest, which is why this only ever breaks in a release. --%>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon" />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <%!-- Swagger UI is a bundle of its own and only /api/docs/swagger asks for it:
     the reader pages must not download a vendor UI. --%>
