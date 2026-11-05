@@ -303,6 +303,25 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       refute result.html =~ "does not draw this macro"
     end
 
+    test "an information panel keeps the classes that make it a panel" do
+      # export_view renders a tip/note/warning macro as a div family, and it is
+      # the classes alone that carry the meaning: strip them and the panel
+      # degrades to the bare sentence inside it. The stylesheet draws the box,
+      # the tone and the badge from these names.
+      html =
+        ~s(<div class="confluence-information-macro confluence-information-macro-tip">) <>
+          ~s(<span class="aui-icon aui-icon-small aui-iconfont-approve confluence-information-macro-icon"></span>) <>
+          ~s(<div class="confluence-information-macro-body"><p>Read this first.</p></div></div>)
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~
+               ~s(class="confluence-information-macro confluence-information-macro-tip")
+
+      assert result.html =~ ~s(class="confluence-information-macro-body")
+      assert result.html =~ "Read this first."
+    end
+
     test "a vendor layout macro is drawn instead of apologised for" do
       html = """
       <ac:structured-macro ac:name="aura-tab-group">

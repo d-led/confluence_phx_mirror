@@ -440,6 +440,84 @@
   margin-bottom: 0.35rem;
 }
 
+/* Information macros (tip, note, info, warning) ------------------------- */
+
+/* export_view hands these over as `.confluence-information-macro-<kind>` with
+   an empty icon `<span>` that expects Confluence's icon font, which this site
+   does not serve. Without these rules the panel degrades to a bare paragraph —
+   the badge, the colour and the box all disappear. So the kind is carried by a
+   tone the badge is painted with and a glyph drawn in CSS. */
+.confluence-content .confluence-information-macro {
+  --information-macro-tone: var(--color-info);
+
+  position: relative;
+  margin: 1rem 0;
+  padding: 0.7rem 0.95rem 0.7rem 2.7rem;
+  border: 1px solid color-mix(in oklab, var(--information-macro-tone) 30%, transparent);
+  border-left: 3px solid var(--information-macro-tone);
+  border-radius: 0.5rem;
+  background: color-mix(in oklab, var(--information-macro-tone) 8%, transparent);
+}
+
+.confluence-content .confluence-information-macro-tip {
+  --information-macro-tone: var(--color-success);
+}
+
+.confluence-content .confluence-information-macro-note,
+.confluence-content .confluence-information-macro-info {
+  --information-macro-tone: var(--color-info);
+}
+
+.confluence-content .confluence-information-macro-warning {
+  --information-macro-tone: var(--color-warning);
+}
+
+.confluence-content .confluence-information-macro-error {
+  --information-macro-tone: var(--color-error);
+}
+
+.confluence-content .confluence-information-macro-icon {
+  position: absolute;
+  top: 0.85rem;
+  left: 0.9rem;
+  display: grid;
+  place-items: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 999rem;
+  background: var(--information-macro-tone);
+  color: var(--color-base-100);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  /* Confluence's icon font is not loaded; the glyph is the badge's own. */
+  background-image: none;
+}
+
+.confluence-content .confluence-information-macro-icon::before {
+  content: "i";
+}
+
+.confluence-content .confluence-information-macro-tip .confluence-information-macro-icon::before {
+  content: "✓";
+}
+
+.confluence-content .confluence-information-macro-warning .confluence-information-macro-icon::before {
+  content: "!";
+}
+
+.confluence-content .confluence-information-macro-error .confluence-information-macro-icon::before {
+  content: "✕";
+}
+
+.confluence-content .confluence-information-macro-body > :first-child {
+  margin-top: 0;
+}
+
+.confluence-content .confluence-information-macro-body > :last-child {
+  margin-bottom: 0;
+}
+
 /* Code / preformatted -------------------------------------------------- */
 
 /* Confluence's code macro, plus a theme-aware syntax palette for the tokens
