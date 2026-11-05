@@ -327,45 +327,132 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   end
 
   defp replace_live_only_content(nodes, context) do
-    Floki.traverse_and_update(nodes, fn
-      {tag, _attrs, _children} when tag in @live_only_elements ->
-        unavailable("this embedded content", context)
+    {replaced, _declarations} = replace_nodes(nodes, declarations_by_name(context), context)
 
-      # Confluence's `unknown-macro` placeholder is a *picture of a macro*, drawn
-      # by the site under the reader's own session. Copied into a mirror it is a
-      # broken image where a macro used to be — and in a window with no session it
-      # is a blank box — so it becomes the same widget the renderer uses for a
-      # macro it cannot draw, naming the macro the placeholder named.
-      {"img", attrs, _children} = node ->
-        case placeholder_macro(attrs) do
-          nil ->
-            node
+    replaced
+  end
 
-          name ->
-            MacroPlaceholder.widget(name, label: label(name), url: external_url(context))
-        end
-
-      {"ac:structured-macro", attrs, children} = node ->
-        case List.keyfind(attrs, "ac:name", 0) do
-          {"ac:name", name} when name in @body_is_the_answer ->
-            excerpt_region(children)
-
-          {"ac:name", name} ->
-            parameters = parameters(children)
-            body = rich_text_body(children)
-
-            case VendorMacros.draw(name, Map.new(parameters), body) do
-              {:ok, drawn} -> drawn
-              :error -> unresolved(name, parameters, body, context)
-            end
-
-          nil ->
-            node
-        end
-
-      node ->
-        node
+  # A cursor, not a plain walk: when a macro the mirror *can* draw arrives as
+  # nothing but a picture of itself, its parameters have to be read from the
+  # storage — in document order, the nth picture matching the nth declaration.
+  defp replace_nodes(nodes, declarations, context) when is_list(nodes) do
+    Enum.flat_map_reduce(nodes, declarations, fn node, seen ->
+      replace_node(node, seen, context)
     end)
+  end
+
+  defp replace_node({tag, _attrs, _children}, declarations, context)
+       when tag in @live_only_elements,
+       do: {List.wrap(unavailable("this embedded content", context)), declarations}
+
+  # Confluence's `unknown-macro` placeholder is a *picture of a macro*, drawn by
+  # the site under the reader's own session. Copied into a mirror it is a broken
+  # image where a macro used to be — and in a window with no session it is a
+  # blank box.
+  #
+  # So the name in the picture is looked up, not taken at face value: a macro the
+  # mirror draws becomes the marker the storage-format path would have built,
+  # with the parameters the storage declares (the picture carries the name and
+  # nothing else). Everything else becomes the widget the renderer uses for a
+  # macro it cannot draw.
+  defp replace_node({"img", attrs, _children} = node, declarations, context) do
+    case placeholder_macro(attrs) do
+      nil ->
+        {[node], declarations}
+
+      name ->
+        {parameters, declarations} = declared(declarations, name)
+
+        case Marker.build(name, parameters) do
+          {:ok, marker} ->
+            {[marker], declarations}
+
+          :error ->
+            {MacroPlaceholder.widget(name, label: label(name), url: external_url(context)),
+             declarations}
+        end
+    end
+  end
+
+  defp replace_node({"ac:structured-macro", attrs, children} = node, declarations, context) do
+    # Children first: a macro may wrap other macros (a tab holding a panel), and
+    # the wrapping macro is drawn from children that are already mirror-ready —
+    # which is what the bottom-up traversal this replaced gave it.
+    {children, declarations} = replace_nodes(children, declarations, context)
+
+    case List.keyfind(attrs, "ac:name", 0) do
+      {"ac:name", name} when name in @body_is_the_answer ->
+        {List.wrap(excerpt_region(children)), declarations}
+
+      {"ac:name", name} ->
+        parameters = parameters(children)
+        body = rich_text_body(children)
+
+        drawn =
+          case VendorMacros.draw(name, Map.new(parameters), body) do
+            {:ok, drawn} -> drawn
+            :error -> unresolved(name, parameters, body, context)
+          end
+
+        {List.wrap(drawn), declarations}
+
+      nil ->
+        {[node], declarations}
+    end
+  end
+
+  # Any other element may still hold one of the above inside it.
+  defp replace_node({tag, attrs, children}, declarations, context) do
+    {children, declarations} = replace_nodes(children, declarations, context)
+
+    {[{tag, attrs, children}], declarations}
+  end
+
+  defp replace_node(other, declarations, _context), do: {[other], declarations}
+
+  # The parameters each macro name declares, in document order. Regexes rather
+  # than a parser, for the same reason `declared_macros/1` uses one: the storage
+  # is Confluence's own serialisation and this only needs its declarations.
+  @declaration ~r/<ac:structured-macro\b([^>]*)>(.*?)<\/ac:structured-macro>/su
+  @declaration_name ~r/\bac:name="([^"]+)"/u
+  @declared_parameter ~r/<ac:parameter\b[^>]*\bac:name="([^"]+)"[^>]*>(.*?)<\/ac:parameter>/su
+
+  defp declarations_by_name(%{storage: storage}) when is_binary(storage) do
+    @declaration
+    |> Regex.scan(storage, capture: :all_but_first)
+    |> Enum.flat_map(fn [opening, body] ->
+      case Regex.run(@declaration_name, opening, capture: :all_but_first) do
+        [name] -> [{String.downcase(name), declared_parameters(body)}]
+        _no_name -> []
+      end
+    end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+
+  defp declarations_by_name(_context), do: %{}
+
+  defp declared_parameters(body) do
+    @declared_parameter
+    |> Regex.scan(body, capture: :all_but_first)
+    |> Enum.map(fn [name, value] -> {name, unescape(value)} end)
+  end
+
+  defp declared(declarations, name) do
+    key = String.downcase(name)
+
+    case Map.get(declarations, key, []) do
+      [parameters | rest] -> {parameters, Map.put(declarations, key, rest)}
+      [] -> {[], declarations}
+    end
+  end
+
+  defp unescape(value) do
+    value
+    |> String.replace("&lt;", "<")
+    |> String.replace("&gt;", ">")
+    |> String.replace("&quot;", "\"")
+    |> String.replace("&#39;", "'")
+    |> String.replace("&amp;", "&")
   end
 
   defp macro_label(name), do: Map.get(@macro_labels, name, "the #{name} macro")

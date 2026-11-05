@@ -552,4 +552,27 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
                ~s(<li data-decision-state="decided">Ship it.</li>)
     end
   end
+
+  describe "a macro that arrives as a picture of itself" do
+    test "is rebuilt as the marker its storage declaration describes" do
+      html =
+        ~s(<img class="wysiwyg-unknown-macro" src="/wiki/plugins/servlet/confluence/placeholder/unknown-macro?name=native-embed:whiteboard&amp;locale=en_US" />)
+
+      storage =
+        ~s(<ac:structured-macro ac:name="native-embed:whiteboard"><ac:parameter ac:name="url">https://site/wiki/spaces/MFS/whiteboard/1</ac:parameter></ac:structured-macro>)
+
+      result = Renderer.render(html, context(%{storage: storage}))
+
+      assert result.html =~ ~s(data-macro="native-embed:whiteboard")
+      assert result.html =~ ~s(data-url="https://site/wiki/spaces/MFS/whiteboard/1")
+      refute result.html =~ "does not draw this macro"
+    end
+
+    test "a macro the mirror cannot draw still becomes the widget" do
+      html =
+        ~s(<img class="wysiwyg-unknown-macro" src="/wiki/plugins/servlet/confluence/placeholder/unknown-macro?name=table-filter" />)
+
+      assert Renderer.render(html, context()).html =~ "does not draw this macro"
+    end
+  end
 end
