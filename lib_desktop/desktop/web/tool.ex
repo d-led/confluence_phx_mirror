@@ -200,9 +200,36 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
   # it, so a mirror that takes an hour does not take an hour of your attention.
   post "/__tool/mirror" do
     case blocked() do
-      nil -> started(conn, Jobs.start_mirror([conn.params["space"]], conn.params["space"]))
+      nil -> start_from_form(conn)
       _reason -> redirect_to(conn, "/__tool/spaces")
     end
+  end
+
+  # One press, and the selection decides what it means: nothing ticked is the
+  # bulk run (what the workspace is configured for, everything when nothing is),
+  # anything ticked is exactly those spaces and *is* the new configuration. A
+  # list that needed one press per space was a list nobody finished.
+  defp start_from_form(conn) do
+    case selected_spaces(conn) do
+      [] ->
+        bulk_start(conn, String.trim(conn.params["q"] || ""))
+
+      [key] ->
+        started(conn, Jobs.start_mirror([key], key))
+
+      keys ->
+        started(conn, Jobs.start_mirror(keys, "#{length(keys)} spaces", remember: true))
+    end
+  end
+
+  # `space` arrives once per ticked box: one value, a list, or absent.
+  defp selected_spaces(conn) do
+    conn.params
+    |> Map.get("space")
+    |> List.wrap()
+    |> Enum.map(&String.trim(to_string(&1)))
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
   end
 
   # The one control the run screen needs. A run stops at its next page, so the
@@ -214,13 +241,17 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
   end
 
   post "/__tool/mirror_all" do
-    query = String.trim(conn.params["q"] || "")
+    case blocked() do
+      nil -> bulk_start(conn, String.trim(conn.params["q"] || ""))
+      _reason -> redirect_to(conn, "/__tool/spaces")
+    end
+  end
 
-    case {blocked(), Spaces.list()} do
-      {is_blocked, _list} when is_binary(is_blocked) ->
-        redirect_to(conn, "/__tool/spaces")
-
-      {nil, {:ok, spaces}} ->
+  # A bulk run copies what this workspace is configured for — every space the
+  # site lists when nothing is — which is why it never rewrites that set.
+  defp bulk_start(conn, query) do
+    case Spaces.list() do
+      {:ok, spaces} ->
         configured = ConfluencePhxMirror.Sync.SpaceScope.added()
         keys = spaces |> filter(query) |> Enum.map(& &1.key) |> configured_only(configured)
 
@@ -231,7 +262,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
 
       # Still being fetched: send them back to the screen that shows it, rather
       # than mirroring a list that is not there yet.
-      {nil, _loading_or_failed} ->
+      _loading_or_failed ->
         redirect_to(conn, "/__tool/spaces")
     end
   end

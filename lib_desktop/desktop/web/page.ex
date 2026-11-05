@@ -272,41 +272,44 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
 
         """
         <li data-search="#{escape(String.downcase(space.name))} #{escape(String.downcase(space.key))}">
-          <div>
-            <strong>#{escape(space.name)}</strong>
-            <small>#{escape(space.key)}#{if mirrored > 0, do: " · #{mirrored} pages mirrored", else: " · not mirrored yet"}</small>
-          </div>
+          <label class="pick">
+            <input type="checkbox" name="space" value="#{escape(space.key)}" form="selection"#{blocked}>
+            <span>
+              <strong>#{escape(space.name)}</strong>
+              <small>#{escape(space.key)}#{if mirrored > 0, do: " · #{mirrored} pages mirrored", else: " · not mirrored yet"}</small>
+            </span>
+          </label>
           #{read}
           #{forget}
-          <form method="post" action="/__tool/mirror">
-            <input type="hidden" name="space" value="#{escape(space.key)}">
-            <button type="submit" class="secondary"#{blocked}>#{if mirrored > 0, do: "Mirror again", else: "Mirror"}</button>
-          </form>
         </li>
         """
       end)
 
-    # The nuclear option belongs first: on a site with a hundred thousand
-    # spaces it is the only thing most people want, and finding it at the bottom
-    # of a list they cannot scroll is the whole complaint.
-    everything =
-      if matching > 0 do
-        # A bulk run copies the spaces this workspace is configured for — all of
-        # them when nothing is configured — so the button counts that, not the
-        # listing. "Mirror all 143" over a setup made for one space is how a
-        # catalogue came to hold a hundred spaces nobody asked for.
+    # One button, whose meaning is the selection: tick nothing and it takes
+    # everything the filter shows; tick anything and it takes exactly that. The
+    # checkboxes carry `form="selection"` so they drive that one form from
+    # inside the list, instead of a form per row and one press per space.
+    action =
+      if going?(Map.get(meta, :run)) do
+        """
+        <p class="note">
+          A run is going. <a href="/__tool/mirror">Go to sync log</a>
+        </p>
+        """
+      else
         configured = Map.get(meta, :configured, 0)
         noun = if configured > 0, do: "configured space", else: "space"
 
         """
-        <form method="post" action="/__tool/mirror_all" class="everything">
+        <form method="post" action="/__tool/mirror" id="selection" class="everything">
           <input type="hidden" name="q" value="#{escape(Map.get(meta, :query, ""))}">
-          <button type="submit"#{blocked}>Mirror <span data-count>#{if configured > 0, do: configured, else: matching}</span> <span data-noun>#{noun}</span></button>
-          <small>#{if configured > 0, do: "The spaces you configured, one after another. Nothing is added to that set.", else: "One after another, in the order they are listed."}</small>
+          <button type="submit"#{blocked} data-mirror>Mirror <span data-count>#{if configured > 0, do: configured, else: matching}</span> <span data-noun>#{noun}</span></button>
+          <a href="/__tool/mirror" class="next">Go to sync log</a>
         </form>
+        <p class="note">
+          #{if configured > 0, do: "The spaces you configured, one after another. Nothing is added to that set.", else: "Tick nothing to take every space the filter shows, or tick the ones you want."}
+        </p>
         """
-      else
-        ""
       end
 
     truncated =
@@ -328,7 +331,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       <h1>Spaces</h1>
       <p class="lede">#{spaces_lede(known, meta)}</p>
       #{status_banner(Map.get(meta, :run))}
-      #{everything}
+      #{if matching > 0, do: action, else: ""}
       <form method="get" action="/__tool/spaces" class="filter" role="search">
         <input name="q" type="search" value="#{escape(Map.get(meta, :query, ""))}"
                placeholder="Filter by name or key" data-filter autofocus>
@@ -465,6 +468,12 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
 
   defp waiting(%{queued: 0}), do: ""
   defp waiting(%{queued: queued}), do: " · #{queued} more waiting"
+
+  # A run in flight owns the screen's action: pressing again would only queue
+  # behind it, and a button that appears to work while nothing moves is worse
+  # than a sentence saying where the run is.
+  defp going?(%{state: state}) when state in [:running, :queued], do: true
+  defp going?(_run), do: false
 
   @doc """
   An error term as the sentence the runtime already had.
@@ -664,11 +673,26 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       var items = Array.prototype.slice.call(document.querySelectorAll("ul.spaces > li"));
       var empty = document.querySelector("[data-empty]");
       var counts = Array.prototype.slice.call(document.querySelectorAll("[data-count]"));
-      var form = document.querySelector("form.everything");
+      var nouns = Array.prototype.slice.call(document.querySelectorAll("[data-noun]"));
+      var boxes = Array.prototype.slice.call(document.querySelectorAll("input[type=checkbox][form=selection]"));
+      var form = document.getElementById("selection");
+      var shown = items.length;
+
+      // The one button says what it will do: nothing ticked takes the list the
+      // filter shows, anything ticked takes exactly that.
+      function applyCount() {
+        var ticked = boxes.filter(function (box) { return box.checked; }).length;
+        var number = ticked > 0 ? ticked : shown;
+
+        counts.forEach(function (count) { count.textContent = number; });
+        nouns.forEach(function (noun) {
+          noun.textContent = ticked > 0 ? (ticked === 1 ? "selected space" : "selected spaces") : "space";
+        });
+      }
 
       function applyFilter() {
         var words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
-        var shown = 0;
+        shown = 0;
 
         items.forEach(function (item) {
           var haystack = item.getAttribute("data-search") || "";
@@ -679,15 +703,17 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
           if (match) shown++;
         });
 
-        counts.forEach(function (count) { count.textContent = shown; });
         if (empty) empty.hidden = shown !== 0;
         if (form) form.hidden = shown === 0;
+        applyCount();
       }
 
       if (input && items.length) {
         input.addEventListener("input", applyFilter);
         applyFilter();
       }
+
+      boxes.forEach(function (box) { box.addEventListener("change", applyCount); });
 
       // The run banner. Polls while it exists, then reloads once so the
       // catalogue counts shown on this page are the ones that just changed.
@@ -839,13 +865,17 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
                        gap: 1rem; padding: .75rem 0; border-bottom: 1px solid rgba(127,127,127,.2); }
         ul.spaces li:first-child { border-top: 1px solid rgba(127,127,127,.2); }
         ul.spaces form { margin: 0; }
+        ul.spaces label.pick { display: flex; align-items: center; gap: .65rem;
+                               margin-right: auto; cursor: pointer; }
+        ul.spaces label.pick input { width: 1.05rem; height: 1.05rem; accent-color: #2f5fe0; }
+        ul.spaces label.pick span { display: block; }
         button.secondary { width: auto; padding: .4rem .9rem; font-size: .8125rem;
                            background: transparent; color: #2f5fe0;
                            border: 1px solid rgba(47,95,224,.4); }
         button.secondary:hover { background: rgba(47,95,224,.08); }
-        form.everything { margin: 0 0 1rem; }
-        form.everything button { width: 100%; }
-        form.everything small { display: block; margin-top: .4rem; text-align: center; }
+        form.everything { margin: 0 0 .5rem; display: flex; align-items: center; gap: .75rem; }
+        form.everything button { flex: 1; }
+        a.next { font-size: .8125rem; white-space: nowrap; }
         form.filter { margin: 0 0 1rem; }
         form.filter input { width: 100%; }
         .status { margin: 2rem 0 0; font-size: .8125rem; opacity: .5; }
