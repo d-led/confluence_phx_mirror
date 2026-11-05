@@ -69,7 +69,10 @@ defmodule ConfluencePhxMirror.Export.Site.Content do
   # ---------------------------------------------------------------------------
 
   defp node({"a", attrs, children}, context, urls) do
-    {"a", rewrite_attribute(attrs, "href", context, urls), children}
+    case screen_href(attrs, context) do
+      nil -> {"a", rewrite_attribute(attrs, "href", context, urls), children}
+      _screen_path -> {"span", [], children}
+    end
   end
 
   defp node({"img", attrs, children}, context, urls) do
@@ -121,11 +124,30 @@ defmodule ConfluencePhxMirror.Export.Site.Content do
     end
   end
 
+  # A screen of the mirror is not a file of the archive. A person's page and a
+  # label catalogue are drawn by the mirror from its own tables, and macros write
+  # links to them into a body (`/people/<account>`, `/labels/<name>`); the archive
+  # carries documents, so those links would point at nothing once unzipped. The
+  # name stays and the link goes — a word is better than a dead address.
+  # The page's own label chips still lead into the catalogue, because the archive
+  # rewrites those itself.
+  defp screen_href(attrs, context) do
+    with {_, href} when is_binary(href) <- List.keyfind(attrs, "href", 0),
+         "/" <> rest <- site_path(href, context),
+         true <- String.starts_with?(rest, ~w(people/ labels/)) do
+      "/" <> rest
+    else
+      _not_a_screen -> nil
+    end
+  end
+
   # A path on the mirror's own site, with the site's address stripped when the
   # body used the full URL. Nothing else is ours to rewrite.
   defp site_path("/spaces/" <> _rest = path, _context), do: path
   defp site_path("/pages/viewpage.action?" <> _rest = path, _context), do: path
   defp site_path("/attachments/" <> _rest = path, _context), do: path
+  defp site_path("/people/" <> _rest = path, _context), do: path
+  defp site_path("/labels/" <> _rest = path, _context), do: path
 
   defp site_path(href, context) do
     Enum.find_value(Map.get(context, :origins, []), fn origin ->
