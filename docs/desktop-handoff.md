@@ -1,24 +1,25 @@
 # Desktop export tool — hand-off
 
-State of the branch `desktop` (`origin/desktop`, draft PR #3).
+**Merged into `main` as `4ce062c` (2026-11-05), from `origin/desktop` and PR #3.**
+This document is now what to read before continuing: what was built, what was
+proven, and what is still open.
 
 ## Read this first
 
-**Nothing that works on `main` may stop working.** This branch is 100 commits of
-`lib/` plumbing beside a whole second build (`lib_desktop/`), and the deployment
-runs `lib/`. Before anything here is called done: `mix test` green, `mix lint`
+**Nothing that works on `main` may stop working.** The merge added `lib/`
+plumbing beside a whole second build (`lib_desktop/`), and the deployment runs
+`lib/`. Before any change here is called done: `mix test` green, `mix lint`
 clean, and the SQLite suite green beside it — and where a shared change cannot be
 avoided, its Postgres path is the one that must not move (see §2 of
 `docs/review-desktop-branch.md`).
 
-**The PR is to be merged as soon as it is green, not perfected.** What is left
-is under *Next, in order*, and none of it is a reason to hold the merge: the
-tool is useful now, the deployment is untouched, and every remaining item is
-additive (signing, a `lib_desktop` test environment, a Cypress harness). Review,
-merge, then continue on the next branch.
+**What is left is under *What is unfinished*, and none of it blocks a release:**
+the tool is useful now, the deployment is untouched, and every remaining item is
+additive (signing, a `lib_desktop` test environment, CQL in the tool's search).
 
 Everything in "What works" is green: `mix lint` passes with **no sobelow
-findings and no skip registry**, and the suite is 1917/1917 on an idle machine.
+findings and no skip registry**, and the suite is 1997/1997 on an idle machine
+(1929 more against SQLite, which is where the tool's catalogue lives).
 
 **The window is the mirror.** It opens on the server's own home page and every
 screen behind it is the server's own screen — the directory, a page, the search
@@ -53,7 +54,7 @@ connection, the press that queues a mirror run, and the archive.
 | A refused run lands somewhere that explains it | `POST /__tool/mirror` with a run already going → 303 `/__tool/mirror` (the run that blocked it), not a silent bounce to the list; `Jobs.start_mirror/3` answers `{:error, :busy | :no_worker | :nothing_to_do}` instead of dropping the result |
 | A task supervisor that refuses says so | `Spaces` and `Jobs` now match `Task.Supervisor.start_child/2`: a refusal becomes an error on the screen, where before the refresh stayed "loading" and the run stayed "running" forever |
 | It is an app you can double-click | `cargo tauri build --bundles app` → `Confluence Export.app`, **50.33 MiB**, carrying the whole release at `Contents/Resources/rel/confluence_phx_mirror` (49 MB). `open` it: the window starts **its own bundled** sidecar on a fresh port, `/` answers "Not connected yet / Still needed: site", and quitting the window stops the sidecar (no port left behind) |
-| Server suite | 1917 passed, 7 excluded, 0 failed (on a clean database, one suite at a time) |
+| Server suite | 1997 passed, 7 excluded, 0 failed (on a clean database, one suite at a time); 1929 passed, 75 excluded against SQLite |
 
 ## What is unfinished
 

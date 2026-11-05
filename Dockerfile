@@ -17,7 +17,9 @@
 #
 # Base images are pinned to dated tags rather than to `latest`, so a rebuild of
 # an old commit builds the same toolchain. Dependabot (.github/dependabot.yml)
-# opens a pull request when a newer one appears, and CI scans the result.
+# opens a pull request when a newer one appears, and CI scans the result. The
+# runtime stage additionally applies the archive's security updates, because a
+# CVE fixed after the tag was cut is in no base image yet — see the note there.
 #
 # Debian rather than Alpine for the runtime: the mirror talks to Confluence over
 # TLS and to Postgres by name, and glibc's resolver behaves like the one every
@@ -138,7 +140,16 @@ LABEL org.opencontainers.image.title="Confluence Mirror" \
 # Runtime libraries the release needs: openssl for crypto, libstdc++ for NIFs,
 # ncurses for the shell, libsctp for distribution, locales so UTF-8 titles sort
 # and log correctly, tzdata for the digest hour and "recent" timestamps.
+#
+# `upgrade` before `install`, because the base tag is dated and the archive is
+# not: a Debian security update published after the tag (apt 3.0.4 for
+# CVE-2026-109518, which the CI scan caught two days after `trixie-20261020-slim`
+# was cut) is in the repository and in no base image yet. Without this the scan
+# gate goes red on a day nothing in this repository changed. What it costs is the
+# reproducibility the pinned tags buy — a rebuild after a security update is not
+# byte-identical — which is the right trade for an image that ships.
 RUN apt-get update \
+  && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends \
        ca-certificates libstdc++6 openssl libncurses6 libsctp1 locales tzdata \
   && rm -rf /var/lib/apt/lists/* \
