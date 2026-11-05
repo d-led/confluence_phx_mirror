@@ -17,6 +17,7 @@ defmodule ConfluencePhxMirror.Resources do
   use GenServer
 
   alias ConfluencePhxMirror.Blobs.LocalStore
+  alias ConfluencePhxMirror.Resources.Device
 
   @measure_ms 60_000
 
@@ -36,8 +37,9 @@ defmodule ConfluencePhxMirror.Resources do
   The blob mount as last measured, with the device it lives on.
 
   Returns `%{path:, used_bytes:, files:, device:, measured_at:}`, where
-  `device` is `%{filesystem:, mount:, total_bytes:, used_bytes:, free_bytes:,
-  percent:}` or `nil` when the operating system would not say.
+  `device` is `%{mount:, total_bytes:, used_bytes:, free_bytes:, percent:}` or
+  `nil` when the operating system would not say — `Device` is what asks it, and
+  what each system can be asked for.
   """
   def mount, do: GenServer.call(__MODULE__, :mount)
 
@@ -58,7 +60,7 @@ defmodule ConfluencePhxMirror.Resources do
       path: path,
       used_bytes: bytes,
       files: files,
-      device: device(path),
+      device: Device.read(path),
       measured_at: DateTime.utc_now()
     }
   end
@@ -199,39 +201,6 @@ defmodule ConfluencePhxMirror.Resources do
 
   defp combine({bytes, files}, {more_bytes, more_files}),
     do: {bytes + more_bytes, files + more_files}
-
-  # The device the mount sits on, as the operating system reports it: total,
-  # used and free for that filesystem — not the mirror's share of it. `df -P`
-  # is the portable spelling (POSIX output, one line, path in, filesystem out).
-  defp device(path) do
-    with target when is_binary(target) <- existing(path),
-         {out, 0} <- System.cmd("df", ["-kP", target], stderr_to_stdout: true),
-         [_header, line | _] <- String.split(out, "\n", trim: true),
-         [filesystem, total, used, free, capacity | mount] <- String.split(line) do
-      %{
-        filesystem: filesystem,
-        mount: Enum.join(mount, " "),
-        total_bytes: blocks(total),
-        used_bytes: blocks(used),
-        free_bytes: blocks(free),
-        percent: capacity |> String.trim_trailing("%") |> String.to_integer()
-      }
-    else
-      _unknown -> nil
-    end
-  end
-
-  # `df` wants a path that exists; before the first attachment the store's own
-  # directory may not — the disk is still there, one level up.
-  defp existing(path) do
-    cond do
-      File.exists?(path) -> path
-      Path.dirname(path) == path -> path
-      true -> existing(Path.dirname(path))
-    end
-  end
-
-  defp blocks(kilobytes), do: String.to_integer(kilobytes) * 1024
 
   @impl true
   def init(_opts) do
