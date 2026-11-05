@@ -11,6 +11,13 @@
 //! turns into that page's failure state — the reason, and the release's own last
 //! words — when the release refuses to come up.
 
+// A release build on Windows is a window, not a console program. Without this
+// every launch opens a console beside the app — and a failure closes it again
+// before the sentence on it can be read, which is what "a window that flashes
+// and disappears" is. What a failure says goes to the log and to the failure
+// page below.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -136,8 +143,7 @@ impl Trouble {
             Trouble::AnotherSite
         } else if matches("database busy") || matches("database is locked") {
             Trouble::FolderInUse
-        } else if matches("keychain") || matches("credential store") || matches("secret service")
-        {
+        } else if matches("keychain") || matches("credential store") || matches("secret service") {
             Trouble::CredentialsLocked
         } else {
             Trouble::Stopped
@@ -511,9 +517,7 @@ fn failure_page(failure: &Failure, output: &VecDeque<String>) -> String {
     let details = if said.trim().is_empty() {
         String::new()
     } else {
-        format!(
-            "<details><summary>What the app said</summary><pre>{said}</pre></details>"
-        )
+        format!("<details><summary>What the app said</summary><pre>{said}</pre></details>")
     };
 
     let log = match &failure.log {
@@ -592,18 +596,26 @@ fn open_log(path: &Path) -> Option<File> {
 /// the release's environment — and `CreateProcess` refuses to run a `.bat`
 /// itself. `mix.exs` asks for both flavours (`include_executables_for`) so a
 /// Windows build has the launcher it needs.
+///
+/// Directory and file are two names, joined one at a time. `join("bin/x.bat")`
+/// keeps the forward slash inside the path; Windows accepts such a path in
+/// `cmd`, and then `%~dp0` in the batch file carries that slash too, so the
+/// release's launcher builds `…\bin/..\releases\0.1.0\start` and `erl` — which
+/// does not normalise `…\bin/..` — answers **"cannot get boot file"**.
 #[cfg(windows)]
-const SIDECAR_LAUNCHER: &str = "bin/confluence_phx_mirror.bat";
+const LAUNCHER_FILE: &str = "confluence_phx_mirror.bat";
 #[cfg(not(windows))]
-const SIDECAR_LAUNCHER: &str = "bin/confluence_phx_mirror";
+const LAUNCHER_FILE: &str = "confluence_phx_mirror";
+
+const LAUNCHER_DIR: &str = "bin";
 
 /// The command that starts the release.
 ///
-/// On Windows that is `cmd /C <the .bat>`: the launcher is not an executable,
-/// and `CREATE_NO_WINDOW` keeps a console from flashing up behind the app — or
-/// standing there as a black rectangle nobody asked for. The install directory
-/// can contain spaces (`C:\Program Files\Confluence Export\…`); `Command`
-/// quotes the one argument it is given, which is what `cmd /C` wants.
+/// On Windows that is `cmd /C call <the .bat>`: the launcher is not an
+/// executable, and `call` is not decoration — an install under
+/// `C:\Users\Dmitry Ledentsov\…` is a quoted path with a space in it, and `cmd`
+/// on its own splits that at the first space. `CREATE_NO_WINDOW` keeps a console
+/// from flashing up behind the app.
 fn launch_command(path: &Path) -> Command {
     #[cfg(windows)]
     {
@@ -613,7 +625,11 @@ fn launch_command(path: &Path) -> Command {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
         let mut command = Command::new("cmd");
-        command.arg("/C").arg(path).creation_flags(CREATE_NO_WINDOW);
+        command
+            .arg("/C")
+            .arg("call")
+            .arg(path)
+            .creation_flags(CREATE_NO_WINDOW);
         command
     }
 
@@ -625,7 +641,7 @@ fn launch_command(path: &Path) -> Command {
 
 fn sidecar_path(app: &AppHandle) -> PathBuf {
     if let Ok(explicit) = std::env::var("CONFLUENCE_EXPORT_SIDECAR") {
-        return explicit.into();
+        return native(PathBuf::from(explicit));
     }
 
     // The release travels *inside* what was installed, and where that is depends
@@ -660,12 +676,46 @@ fn sidecar_path(app: &AppHandle) -> PathBuf {
         .find(|candidate| candidate.exists())
         // Development: the release inside the checkout.
         .unwrap_or_else(|| {
-            PathBuf::from("../_build/desktop/rel/confluence_phx_mirror").join(SIDECAR_LAUNCHER)
+            native(
+                PathBuf::from("..")
+                    .join("_build")
+                    .join("desktop")
+                    .join("rel")
+                    .join(RELEASE_DIR)
+                    .join(LAUNCHER_DIR)
+                    .join(LAUNCHER_FILE),
+            )
         })
 }
 
 fn bundled_release(root: &Path) -> PathBuf {
-    root.join("rel/confluence_phx_mirror").join(SIDECAR_LAUNCHER)
+    native(
+        root.join("rel")
+            .join(RELEASE_DIR)
+            .join(LAUNCHER_DIR)
+            .join(LAUNCHER_FILE),
+    )
+}
+
+/// The release's own directory name: what `mix release` calls the folder.
+const RELEASE_DIR: &str = "confluence_phx_mirror";
+
+/// Every separator the platform's own, on Windows only.
+///
+/// The release's batch launchers pass their directory on to `erl`, which does
+/// not normalise `…\bin/..` into `…` — and the release's directory name comes
+/// from an environment variable that someone can write with slashes. On Unix a
+/// path is already a path.
+fn native(path: PathBuf) -> PathBuf {
+    PathBuf::from(separators(&path.to_string_lossy(), cfg!(windows)))
+}
+
+fn separators(path: &str, windows: bool) -> String {
+    if windows {
+        path.replace('/', "\\")
+    } else {
+        path.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -735,7 +785,11 @@ mod tests {
         let sentences: std::collections::HashSet<_> =
             troubles.iter().map(|t| t.explain()).collect();
 
-        assert_eq!(titles.len(), troubles.len(), "two problems share a headline");
+        assert_eq!(
+            titles.len(),
+            troubles.len(),
+            "two problems share a headline"
+        );
         assert_eq!(
             sentences.len(),
             troubles.len(),
@@ -796,5 +850,44 @@ mod tests {
             ),
             Ok(())
         );
+    }
+
+    #[test]
+    fn the_launcher_is_inside_the_release_and_named_per_platform() {
+        let path = bundled_release(Path::new("/opt/confluence-export"));
+        let parts: Vec<_> = path
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy().into_owned())
+            .collect();
+
+        assert!(parts.ends_with(&[
+            "rel".to_string(),
+            RELEASE_DIR.to_string(),
+            LAUNCHER_DIR.to_string(),
+            LAUNCHER_FILE.to_string(),
+        ]));
+    }
+
+    #[test]
+    fn a_windows_path_carries_no_forward_slash_for_erl_to_choke_on() {
+        // The batch launcher hands its own directory to `erl`, and `erl` does not
+        // normalise `…\bin/..`: a slash left in the path is "cannot get boot
+        // file" on a machine nobody can debug from here.
+        assert_eq!(
+            separators(r"C:\Users\me\rel\confluence_phx_mirror\bin/..\start", true),
+            r"C:\Users\me\rel\confluence_phx_mirror\bin\..\start"
+        );
+    }
+
+    #[test]
+    fn a_unix_path_is_left_exactly_as_it_was() {
+        assert_eq!(
+            separators("/opt/rel/bin/start", false),
+            "/opt/rel/bin/start"
+        );
+
+        // A resolver path that means something to the shell must not be rewritten
+        // by a helper that only exists for Windows.
+        assert_eq!(separators(r"C:\a\b", false), r"C:\a\b");
     }
 }

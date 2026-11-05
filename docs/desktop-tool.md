@@ -121,6 +121,13 @@ layers, because `nightly.link` wraps the artifact in a zip of its own and the
 macOS and Linux artifacts **are** archives — a line that assumed one layer
 installed nothing and said the app was missing, which is how this was found.
 
+Windows also gets a **setup.exe**: the same build through Tauri's NSIS bundler,
+which installs under `%LOCALAPPDATA%\Programs\Confluence Export` with the release
+in `rel\` beside the executable. It is the download to take if a person would
+rather double-click than run a line of PowerShell; the portable folder stays,
+because a folder needs no installer and no administrator. A build that cannot
+produce one says so and still publishes the folder.
+
 From a checkout, or by hand:
 
 ```sh
@@ -654,6 +661,31 @@ the leg that builds it and none of them visible on a Mac:
 * `rm -f` on a directory. The artifact *is* the staging folder there, so
   "assembling" it by first removing it said "Is a directory" — Windows removes
   nothing, because `upload-artifact` zips the folder for it.
+
+Two more only the *installed* copy could show, and both are what the first
+person to start it on Windows reported — a window that said it was taking longer
+than usual, and then `cannot get boot file`:
+
+* a console beside the window. A release build is a console program unless
+  `windows_subsystem = "windows"` says otherwise, so every launch opened a black
+  rectangle behind the app — and a startup failure closed it again before the
+  sentence on it could be read. The failure now goes where the macOS one already
+  went: the log, and the window's own failure page.
+* a path with two separators in it. `join("bin/confluence_phx_mirror.bat")`
+  produced `…\rel/confluence_phx_mirror\bin/confluence_phx_mirror.bat`. Windows
+  accepts that path, so the launcher ran — and `%~dp0` inside it inherited the
+  slash, which made the release's own `--boot` read `…\bin/..\releases\0.1.0\start`.
+  `erl` does not normalise `…\bin/..`, and answers **cannot get boot file**. The
+  window now joins one component at a time and normalises to `\` on Windows, and
+  it starts the launcher with `cmd /C call` — without `call`, a path with a space
+  in it (`C:\Users\Dmitry Ledentsov\…`) is split by `cmd` at the first space.
+
+What that cost in coverage is worth naming: `package.sh`'s boot check starts the
+`.bat` *from bash*, which hands `cmd` a POSIX path and gets backslashes in
+`%~dp0` — so the check passed on every run while the window failed. It now boots
+on Windows the way the window does (`cmd //c call` with a `cygpath -w` path), and
+`cargo test` of the window runs on the Windows runner too, where those `cfg`
+branches are compiled at all.
 
 One more thing is not Windows's: an artifact uploaded from a directory is zipped
 as that directory's **contents**, so the Windows download unpacked its three files

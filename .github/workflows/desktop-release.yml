@@ -40,7 +40,9 @@
 #   Linux    `confluence-export-linux.tar.gz`: the window plus `rel/` beside it,
 #            built on 22.04 so the glibc floor is a known one.
 #   Windows  a folder that `upload-artifact` zips: `confluence-export.exe` with
-#            `rel\` beside it, which is what `resource_dir()` means there.
+#            `rel\` beside it, which is what `resource_dir()` means there — plus,
+#            when the NSIS bundler produces one, `confluence-export-windows-setup.exe`,
+#            the same build as an installer somebody double-clicks.
 #
 # Every platform runs the same `scripts/package.sh`, boot check included: a
 # build that cannot serve `/health` and `/__tool` out of the artifact it just
@@ -172,6 +174,17 @@ jobs:
         shell: bash
         run: command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "^2" --locked
 
+      # The window's own logic, on the platform whose branches nothing else
+      # compiles: `ci.yml` tests this crate on Linux, where `cmd`/`call`, the
+      # separator normalising and the `.bat` name are different functions. The
+      # first Windows launch of this tool failed on exactly that difference —
+      # `cannot get boot file` — so the code that builds the path is tested where
+      # it runs.
+      - name: Test the window on the platform it ships to
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
       # One script, not a second implementation of it. The steps used to be
       # spelled out here — assets, release, window, bundle, boot check, zip — and
       # they drifted: this workflow zipped the window *without* carrying the
@@ -256,6 +269,18 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
+      # The same build in the shape a Windows person expects: one file to
+      # double-click, which puts the app under `%LOCALAPPDATA%\Programs` and the
+      # release beside it. Not fatal when it is absent — the portable folder is a
+      # complete install — but a build that has one publishes it.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: runner.os == 'Windows'
+        with:
+          name: confluence-export-windows-setup
+          path: _build/desktop/package/confluence-export-windows-setup.exe
+          retention-days: 90
+          if-no-files-found: warn
+
   release:
     name: release
     if: startsWith(github.ref, 'refs/tags/v')
@@ -293,3 +318,16 @@ jobs:
             ls -lh "$asset"
             gh release upload "$tag" "$asset" --clobber --repo "$GITHUB_REPOSITORY"
           done
+
+          # The Windows installer, when the run built one: a `.exe` is the
+          # download that needs no unpacking, and it is the only artifact here
+          # that installs rather than sits in a folder.
+          setup="dist/confluence-export-windows-setup/confluence-export-windows-setup.exe"
+          if [[ -f $setup ]]; then
+            asset="confluence-export-${tag}-windows-setup.exe"
+            mv "$setup" "$asset"
+            ls -lh "$asset"
+            gh release upload "$tag" "$asset" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            echo "this run produced no Windows installer"
+          fi
