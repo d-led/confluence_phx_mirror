@@ -16,7 +16,12 @@
 # form, so that is the screen this checks for: a path alone would pass a window
 # showing nothing anybody could fill in.#
 #
-#   scripts/smoke-window.sh [--window PATH] [--port N] [--seconds N]
+#   scripts/smoke-window.sh [--window PATH] [--port N] [--seconds N] [--up-seconds N]
+#
+# `--up-seconds` is the time the release gets to say it is listening. Sixty is
+# the same budget `scripts/package.sh` gives it, and it is not padding: a cold
+# Erlang boot on a loaded Windows runner is tens of seconds, and a shorter
+# deadline reports "the window never started" about a window that was fine.
 #
 # It asserts structure, not pixels: a screenshot of a person's desktop is not
 # something a test should take, and a runner with no graphics session has no
@@ -55,14 +60,16 @@ esac
 
 window=$default_window
 port=43998
+up_seconds=60
 seconds=60
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --window) window=$2; shift 2 ;;
     --port) port=$2; shift 2 ;;
+    --up-seconds) up_seconds=$2; shift 2 ;;
     --seconds) seconds=$2; shift 2 ;;
-    -h | --help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -103,6 +110,19 @@ launch=(
 [[ ${#runner[@]} -gt 0 ]] && launch+=("${runner[@]}")
 launch+=("$window")
 
+# Where the tool keeps its own log, per platform. On Windows that is a fixed
+# folder no environment variable moves, so the scratch `HOME` above does not
+# apply there — which is also why this check wants no other copy of the tool
+# open on Windows.
+if [[ $platform == windows ]]; then
+  workspace="$(cygpath -u "${LOCALAPPDATA:-$HOME/AppData/Local}")/confluence-export"
+elif [[ $platform == macos ]]; then
+  workspace="$home/Library/Application Support/confluence-export"
+else
+  workspace="$home/.local/share/confluence-export"
+fi
+tool_log="$workspace/logs/desktop.log"
+
 "${launch[@]}" >"$log" 2>&1 &
 pid=$!
 
@@ -116,22 +136,40 @@ fail() {
   echo "$1" >&2
   echo "--- what the window said:" >&2
   tail -25 "$log" >&2
+
+  if [[ -f $tool_log ]]; then
+    echo "--- what the tool logged:" >&2
+    tail -25 "$tool_log" >&2
+  fi
+
   stop
   exit 1
 }
 
 # The server first: a window whose server never started is a different fault from
-# a window whose server is fine and whose page never painted.
+# a window whose server is fine and whose page never painted. A window that is
+# still running and a window that has died are different again, and the second
+# one has an exit code worth printing.
 up=
-for _ in $(seq 1 30); do
+for i in $(seq 1 "$up_seconds"); do
   if curl -fsS -m 2 "http://127.0.0.1:$port/health" >/dev/null 2>&1; then
     up=yes
     break
   fi
+
+  [[ $((i % 10)) -eq 0 ]] && echo "waiting for the server on 127.0.0.1:$port (${i}s)"
   sleep 1
 done
 
-[[ -n $up ]] || fail "the window never started its server on 127.0.0.1:$port"
+if [[ -z $up ]]; then
+  if kill -0 "$pid" 2>/dev/null; then
+    fail "the window is running but never served 127.0.0.1:$port within ${up_seconds}s"
+  fi
+
+  wait "$pid" 2>/dev/null
+  code=$?
+  fail "the window exited before it started a server (exit $code)"
+fi
 
 painted=
 for _ in $(seq 1 "$seconds"); do
