@@ -307,14 +307,21 @@ NOTE
 
 assemble() {
   mkdir -p "$out"
-  rm -f "$out/$asset"
 
   case "$platform" in
-    macos) assemble_bundle ;;
-    linux) assemble_tarball ;;
+    macos)
+      rm -f "$out/$asset"
+      assemble_bundle
+      ;;
+    linux)
+      rm -f "$out/$asset"
+      assemble_tarball
+      ;;
     # Windows ships as a folder: `upload-artifact` zips it for the workflow, and
     # a local run has the same folder to zip by hand. Choosing an archive format
-    # here would only add a zip tool to a platform that does not have `tar`.
+    # here would only add a zip tool to a platform that does not have `tar` —
+    # and there is nothing to assemble, so nothing to remove either (`rm -f` on
+    # the folder the staging step just filled says "Is a directory").
     windows) echo "the artifact is $out/confluence-export-windows/" ;;
   esac
 }
