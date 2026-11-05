@@ -298,6 +298,41 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert result.html =~ "The holiday calendar lives here."
     end
 
+    # A chart, a diagram, a timeline: the author's content is the macro's own
+    # text, and a box that only says "not drawn" drops the one thing a reader
+    # came for. The words come first, the apology second.
+    test "a macro whose content is its own text shows that text first" do
+      html = """
+      <ac:structured-macro ac:name="chart">
+        <ac:parameter ac:name="type">pie</ac:parameter>
+        <ac:plain-text-body><![CDATA[{"series": [{"name": "Open", "value": 3}]}]]></ac:plain-text-body>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~
+               ~r{<blockquote class="mirror-macro-placeholder"><pre class="mirror-macro-source">.*series.*</pre><p>The mirror does not draw this macro\.</p>}s
+    end
+
+    # The shape a real page arrives in: the export view kept a picture of the
+    # macro and nothing else, and the content lives in the storage.
+    test "a macro the export reduced to a picture still shows what it carried" do
+      storage = """
+      <ac:structured-macro ac:name="drawio">
+        <ac:plain-text-body><![CDATA[<mxGraphModel><root/></mxGraphModel>]]></ac:plain-text-body>
+      </ac:structured-macro>
+      """
+
+      html =
+        ~s(<img class="wysiwyg-unknown-macro" src="https://dled.atlassian.net/wiki/plugins/servlet/placeholder/unknown-macro?name=drawio">)
+
+      result = Renderer.render(html, context(%{storage: storage}))
+
+      assert result.html =~ "mxGraphModel"
+      assert result.html =~ "The mirror does not draw this macro."
+    end
+
     test "an excerpt keeps its words, wrapped the way the export view wraps one" do
       # The body *is* the answer, so there is nothing to draw and nothing to
       # explain. The wrapper is what an excerpt include on another page reads.

@@ -14,6 +14,11 @@ defmodule ConfluencePhxMirror.Sync.MacroPlaceholder do
   a `>` block, so the same node that styles as a box on the reader page reads as
   a note in a Markdown or site archive, with no second implementation and no way
   for the two to drift apart.
+
+  What the macro carried comes first and the apology second: a chart's series, a
+  diagram's source or the paragraph inside a vendor container is the author's
+  own content, and a box that only says "not drawn" drops the one thing a reader
+  came for.
   """
 
   @doc """
@@ -25,15 +30,31 @@ defmodule ConfluencePhxMirror.Sync.MacroPlaceholder do
   @spec widget(String.t(), keyword()) :: [Floki.html_node()]
   def widget(name, opts \\ []) do
     label = Keyword.get(opts, :label) || "the #{name} macro"
+    content = Keyword.get(opts, :content, [])
 
     [
       {"blockquote", [{"class", "mirror-macro-placeholder"}],
-       [
-         {"p", [], ["The mirror does not draw this macro."]},
-         {"p", [], [sentence(label) | origin(Keyword.get(opts, :url))]}
-       ]}
+       content ++
+         [
+           {"p", [], ["The mirror does not draw this macro."]},
+           {"p", [], [sentence(label) | origin(Keyword.get(opts, :url))]}
+         ]}
     ]
   end
+
+  @doc """
+  A macro's own text, kept as the lines its author wrote.
+
+  The plain-text body is what a `chart`, a `drawio` diagram or a `timeline`
+  stores: its content is not markup the mirror could draw, and it is not
+  something to drop either.
+  """
+  @spec source(String.t() | nil) :: [Floki.html_node()]
+  def source(text) when is_binary(text) and text != "" do
+    [{"pre", [{"class", "mirror-macro-source"}], [String.trim(text)]}]
+  end
+
+  def source(_text), do: []
 
   # The labels are written as they are said mid-sentence ("a Jira issues
   # search"); at the start of the line they take a capital.

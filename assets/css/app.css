@@ -709,7 +709,8 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
 .confluence-content .mirror-code pre.mirror-code-gutter {
   flex: none;
   padding-right: 0.6rem;
-  border-right: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+  border-right: 1px solid
+    color-mix(in oklab, var(--color-base-content) 15%, transparent);
   color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
   text-align: right;
   user-select: none;
@@ -1015,7 +1016,8 @@ html.whiteboard-viewer-open {
 .confluence-content .labelsAlphaList .labelsAlphaKey {
   margin: 0 0 0.35rem;
   padding-bottom: 0.3rem;
-  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  border-bottom: 1px solid
+    color-mix(in oklab, var(--color-base-content) 20%, transparent);
   font-weight: 600;
 }
 
@@ -1038,7 +1040,8 @@ html.whiteboard-viewer-open {
 .confluence-content .mirror-label-group-title {
   margin: 0 0 0.35rem;
   padding-bottom: 0.3rem;
-  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  border-bottom: 1px solid
+    color-mix(in oklab, var(--color-base-content) 20%, transparent);
   font-weight: 600;
 }
 
@@ -1238,6 +1241,20 @@ html.whiteboard-viewer-open {
 .confluence-content .mirror-macro-placeholder p + p {
   margin-top: 0.25rem;
   color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+
+/* What the macro carried, before the note that says it is not drawn: a chart's
+   series, a diagram's source. Kept as lines, and it may be long. */
+.confluence-content .mirror-macro-placeholder .mirror-macro-source {
+  margin: 0 0 0.45rem;
+  padding: 0.5rem 0.65rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 0.25rem;
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 
 /* Content only live Confluence can render (macros, app iframes) ---------- */

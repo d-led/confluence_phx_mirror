@@ -82,7 +82,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     the site — which does not serve it, and redirects the reader to Gravatar.
   # 21: a page in a space the deployment publishes names nobody in its body, so
   #     the one copy served to every reader is the stranger's copy.
-  def revision, do: 21
+  # 22: a macro the mirror cannot draw shows what it carried — its own text or
+  #     the body it wrapped — instead of dropping it behind the note.
+  def revision, do: 22
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -597,15 +599,18 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
         {[node], declarations}
 
       name ->
-        {parameters, declarations} = declared(declarations, name)
+        {declaration, declarations} = declared(declarations, name)
 
-        case Marker.build(name, parameters) do
+        case Marker.build(name, declaration.parameters) do
           {:ok, marker} ->
             {[marker], declarations}
 
           :error ->
-            {MacroPlaceholder.widget(name, label: label(name), url: external_url(context)),
-             declarations}
+            {MacroPlaceholder.widget(name,
+               label: label(name),
+               url: external_url(context),
+               content: MacroPlaceholder.source(declaration.text)
+             ), declarations}
         end
     end
   end
@@ -627,7 +632,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
         drawn =
           case VendorMacros.draw(name, Map.new(parameters), body) do
             {:ok, drawn} -> drawn
-            :error -> unresolved(name, parameters, body, context)
+            :error -> unresolved(name, parameters, body, plain_text_body(children), context)
           end
 
         {List.wrap(drawn), declarations}
@@ -663,8 +668,14 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp declaration({"ac:structured-macro", attrs, children}) do
     case attribute(attrs, "ac:name") do
-      name when is_binary(name) -> [{String.downcase(name), parameters(children)}]
-      _no_name -> []
+      name when is_binary(name) ->
+        [
+          {String.downcase(name),
+           %{parameters: parameters(children), text: plain_text_body(children)}}
+        ]
+
+      _no_name ->
+        []
     end
   end
 
@@ -687,8 +698,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     key = String.downcase(name)
 
     case Map.get(declarations, key, []) do
-      [parameters | rest] -> {parameters, Map.put(declarations, key, rest)}
-      [] -> {[], declarations}
+      [declaration | rest] -> {declaration, Map.put(declarations, key, rest)}
+      [] -> {%{parameters: [], text: ""}, declarations}
     end
   end
 
@@ -719,15 +730,20 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   end
 
   # A macro the mirror cannot draw still has content. Most of these are
-  # containers — a tab whose body holds the page somebody wrote — so the widget
-  # comes first and the body follows it, rather than replacing it.
-  defp unresolved(name, parameters, body, context) do
+  # containers — a tab whose body holds the page somebody wrote — so the content
+  # goes inside the box, with the note after it, rather than being replaced by
+  # the note.
+  defp unresolved(name, parameters, body, text, context) do
     case Marker.build(name, parameters) do
       {:ok, marker} ->
         marker
 
       :error ->
-        MacroPlaceholder.widget(name, label: label(name), url: external_url(context)) ++ body
+        MacroPlaceholder.widget(name,
+          label: label(name),
+          url: external_url(context),
+          content: body ++ MacroPlaceholder.source(text)
+        )
     end
   end
 
