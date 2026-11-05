@@ -696,6 +696,13 @@ on Windows the way the window does (`cmd //c call` with a `cygpath -w` path), an
 `cargo test` of the window runs on the Windows runner too, where those `cfg`
 branches are compiled at all.
 
+`cygpath` is MSYS's, not ours: it translates the shell's path into the one `cmd`
+understands, and it is present exactly where this script can run on Windows at
+all — a bash is Git for Windows, and `cygpath` ships beside it. The script asks for
+it up front with the other prerequisites, so a bash without one names the missing
+tool instead of failing mid-check. Nothing the tool *ships* needs it: the window
+builds its own paths in Rust.
+
 One more thing is not Windows's: an artifact uploaded from a directory is zipped
 as that directory's **contents**, so the Windows download unpacked its three files
 loose. The workflow moves the folder under `unpack/` and uploads that, so what a

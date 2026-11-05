@@ -161,6 +161,16 @@ if [[ "$(uname -s)" == Darwin ]] && ! xcode-select -p >/dev/null 2>&1; then
   exit 69
 fi
 
+# `cygpath` turns the launcher's POSIX path into the Windows one the boot check
+# hands `cmd`. It is MSYS's, not ours: this script only runs on Windows inside a
+# bash — Git for Windows, which is what the runner's `shell: bash` is — and that
+# bash ships `cygpath` beside itself. Nothing the *tool* ships needs it: the
+# window builds its own paths in Rust. Asked here so a bash without it says which
+# tool is missing instead of failing mid-check with "command not found".
+if [[ $platform == windows ]]; then
+  require cygpath "Git for Windows (MSYS) — https://git-scm.com/download/win"
+fi
+
 # Hex and rebar are the package managers the fetch uses, and on a machine that
 # has never built an Elixir project `mix deps.get` stops to ask whether to install
 # them — a prompt inside a script is a hang. Both are no-ops once present.
@@ -209,6 +219,9 @@ boot_check() {
   # Rust, and that is the one that has to work: a separator the batch file inherits
   # turns the release's boot file into one `erl` cannot find ("cannot get boot
   # file"), which is a download that opens on nothing.
+  #
+  # `cygpath -w` is only the translation from this shell's path to the one `cmd`
+  # wants — MSYS's own tool, required above, never something the tool ships.
   if [[ $platform == windows ]]; then
     HOME="$home" RELEASE_DISTRIBUTION=none \
       cmd //c call "$(cygpath -w "$carried")" start >"$log" 2>&1 &
