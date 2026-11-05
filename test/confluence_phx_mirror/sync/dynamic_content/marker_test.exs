@@ -56,6 +56,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.MarkerTest do
     assert attribute(capped_at, "data-limit") == "5"
   end
 
+  test "Children's own word for a cap is a limit too" do
+    assert {:ok, {"div", first, []}} = Marker.build("children", [{"first", "3"}])
+
+    assert attribute(first, "data-limit") == "3"
+  end
+
   test "a report's query is carried as the page wrote it" do
     assert {:ok, {"div", attributes, []}} =
              Marker.build("content-report-table", [{"cql", "label = runbook limit 5"}])

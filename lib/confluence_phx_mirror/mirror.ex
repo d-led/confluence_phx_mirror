@@ -3410,14 +3410,19 @@ defmodule ConfluencePhxMirror.Mirror do
 
   Returns `%{columns: [String.t()], rows: [%{page: Page.t(), values: map()}]}`.
   Columns default to the keys actually present, alphabetically, capped at six.
+
+  Options: `:limit` — how many rows to read, the first by title (default 50).
   """
-  def property_report(space_id, columns \\ []) do
+  def property_report(space_id, columns \\ [], opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+
     pages =
       from(p in Page,
         join: property in assoc(p, :properties),
         where: p.space_id == ^space_id and is_nil(p.deleted_at),
         distinct: true,
         order_by: [asc: p.title],
+        limit: ^limit,
         preload: [:space, :properties]
       )
       |> Repo.all()

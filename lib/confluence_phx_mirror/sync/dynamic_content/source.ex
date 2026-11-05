@@ -28,8 +28,17 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   @doc """
   A space's page-properties report: its columns and one row per page carrying
   properties. `space` is a key, or nil for the host page's own space.
+
+  Options: `:limit` — how many rows to read (default 50). A space with a
+  property on every page is the whole catalogue, and a macro listing all of it
+  would say nothing a reader could scan.
   """
-  @callback property_report(host :: Page.t(), space :: String.t() | nil, [String.t()]) ::
+  @callback property_report(
+              host :: Page.t(),
+              space :: String.t() | nil,
+              [String.t()],
+              keyword()
+            ) ::
               %{columns: [String.t()], rows: [%{page: Page.t(), values: map()}]}
 
   @doc """

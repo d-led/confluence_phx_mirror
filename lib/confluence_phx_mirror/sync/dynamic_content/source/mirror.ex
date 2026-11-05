@@ -21,8 +21,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   end
 
   @impl true
-  def property_report(%Page{} = host, space, columns) do
-    report = Mirror.property_report(space_id(space, host), columns)
+  def property_report(%Page{} = host, space, columns, opts) do
+    report = Mirror.property_report(space_id(space, host), columns, opts)
 
     %{report | rows: narrow(report.rows, & &1.page, host)}
   end

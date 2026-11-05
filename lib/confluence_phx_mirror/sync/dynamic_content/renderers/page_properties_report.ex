@@ -3,11 +3,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.PagePropertiesReport
   *Page Properties Report*: a table of the properties pages declare.
 
       <div class="mirror-macro" data-macro="page-properties-report"
-           data-space="ENG" data-columns="Owner,Status"></div>
+           data-space="ENG" data-columns="Owner,Status" data-limit="25"></div>
 
   The properties are what `Page Properties` macros put into a page's
   `properties` during the sync, so the report costs one query and no body
   parsing. Rows for pages the host's readers may not open are left out.
+
+  A space carries one row per page that declares properties, so on a large
+  space the report is the whole catalogue. It is read as one window instead —
+  fifty rows unless the marker's `limit` asks for another number.
   """
 
   @behaviour ConfluencePhxMirror.Sync.DynamicContent.Renderer
@@ -20,7 +24,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.PagePropertiesReport
       context.source.property_report(
         context.page,
         space(attrs),
-        Attributes.list(attrs, "columns")
+        Attributes.list(attrs, "columns"),
+        limit: Attributes.int(attrs, "limit", 50, 1..200)
       )
 
     case report.rows do

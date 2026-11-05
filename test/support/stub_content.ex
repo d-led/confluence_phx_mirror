@@ -40,8 +40,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.StubContent do
   end
 
   @impl true
-  def property_report(_host, space, columns) do
-    record({:property_report, space})
+  def property_report(_host, space, columns, opts) do
+    record({:property_report, space, opts})
     answer(:property_report, %{columns: columns, rows: []})
   end
 

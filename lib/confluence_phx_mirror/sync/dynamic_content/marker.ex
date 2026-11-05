@@ -23,6 +23,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Marker do
   alias ConfluencePhxMirror.Sync.DynamicContent.Registry
 
   @renamed %{
+    "first" => "limit",
     "headings" => "columns",
     "max" => "limit",
     "maxresults" => "limit",
