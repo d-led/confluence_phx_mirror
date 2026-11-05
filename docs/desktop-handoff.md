@@ -78,15 +78,25 @@ connection, the press that queues a mirror run, and the archive.
    suites, and the window shell has ten Rust tests of its own. What is still
    untested is the bulk of `lib_desktop/`: settings, credentials, the space list,
    jobs, the archive. Adding a test is now a file, not a harness.
-5. **The suite was flaky under load — two separate causes, both closed.** The
+5. **The suite was flaky under load — three separate causes, all closed.** The
    `DBConnection`/`OwnershipError` failures were two suites against one test
    database (trap 6), not the code. The rest was real: three tests waited for a
    built archive with a five-second budget and one waited two seconds for a
    spawned process, so each passed alone and failed on a loaded machine — a test
    reporting the machine. All four are now bounded by a deadline (60 s for an
    archive, 10 s for a message) that returns the moment the thing is ready.
-   `Export.ZipTest`'s single 60 s timeout in a full run is the same class and has
-   the same remedy if it recurs.
+   `Export.ZipTest`'s single 60 s timeout in a full run is the same class and
+   has the same remedy if it recurs.
+
+   The third came from the SQLite leg on a runner: `Exqlite.Error: Database busy`
+   on an insert with nothing wrong with it. `DataCase` keeps the suite to one
+   writer, but it asked for `:global`'s lock *as the test process*, and `:global`
+   frees a lock when the process that called `set_lock` dies — which is before
+   `on_exit` has rolled that test's transaction back. The next test could
+   therefore write into a database still returning to its old state. The lock now
+   belongs to a holder process that outlives the test and is released after the
+   rollback, and `suite_writer_lock_test.exs` states that property (it fails
+   against the old arrangement).
 
 ## What was asked for, and where it stands
 
