@@ -837,62 +837,13 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   defp request_json(path, params) do
     with {:ok, url} <- build_url(path, params) do
-      json_request(:get, url)
+      json_request(url)
     end
   end
 
-  @doc """
-  Sends a JSON request to the configured site.
-
-  Only `mix confluence.seed` writes to Confluence; the sync itself never calls
-  this with anything but `:get`. Kept here so writes share the same
-  authentication, rate limiting, retries and URL safety as reads.
-  """
-  @spec json(:get | :post | :put | :delete, String.t(), Enumerable.t() | map() | nil) ::
-          {:ok, term()} | {:error, term()}
-  def json(method, path, payload \\ nil) do
-    with {:ok, url} <- build_url(path, %{}) do
-      json_request(method, url, payload)
-    end
-  end
-
-  @doc """
-  Uploads one attachment to a page.
-
-  Used only by `mix confluence.seed`: the sync itself never writes.
-  """
-  @spec upload_attachment(integer(), String.t(), String.t(), binary()) ::
-          {:ok, map()} | {:error, term()}
-  def upload_attachment(page_id, filename, media_type, bytes) do
-    boundary = "----mirror#{System.unique_integer([:positive])}"
-
-    body = [
-      "--#{boundary}\r\n",
-      "Content-Disposition: form-data; name=\"file\"; filename=\"",
-      filename,
-      "\"\r\n",
-      "Content-Type: ",
-      media_type,
-      "\r\n\r\n",
-      bytes,
-      "\r\n--#{boundary}--\r\n"
-    ]
-
-    with {:ok, url} <- build_url("/content/#{page_id}/child/attachment", %{}) do
-      request_json(:post, url,
-        headers: [
-          # Confluence's XSRF check expects this header on uploads.
-          {"x-atlassian-token", "no-check"},
-          {"content-type", "multipart/form-data; boundary=#{boundary}"}
-        ],
-        body: IO.iodata_to_binary(body)
-      )
-    end
-  end
-
-  defp json_request(method, url, payload \\ nil) do
+  defp json_request(url, payload \\ nil) do
     options = if payload, do: [json: payload], else: []
-    request_json(method, url, options)
+    request_json(:get, url, options)
   end
 
   defp request_json(method, url, options) do
@@ -940,7 +891,11 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   # One attempt, one line in the sync log, one tick in `Traffic`. The line is
   # written when the answer is in, which is what gives it a status and a
   # latency; a call that will be retried says so and how long it will wait.
-  defp request(method, url, options, attempt \\ 1) do
+  #
+  # `:get` and nothing else, matched in the head: this mirror reads a site and
+  # never writes to it, so a write is not something this module declines to do —
+  # it is something it cannot say.
+  defp request(:get = method, url, options, attempt \\ 1) do
     {:ok, waited_ms} = RateLimiter.acquire()
     Traffic.throttled(waited_ms)
 
