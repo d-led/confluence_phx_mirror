@@ -2,18 +2,20 @@
 #
 # Ship a version to a Fly deployment that already exists.
 #
-#   scripts/fly-deploy.sh live                the mirror of a real Confluence site
-#   scripts/fly-deploy.sh live --proxy        …and its front door, after it
-#   scripts/fly-deploy.sh live --proxy-only   only its front door
-#   scripts/fly-deploy.sh live --check        verify only: would this deploy?
-#   scripts/fly-deploy.sh live --sync         …and enqueue a full snapshot afterwards
+#   scripts/fly-deploy.sh                     the live mirror, and nothing else
+#   scripts/fly-deploy.sh --check             verify only: would this deploy?
+#   scripts/fly-deploy.sh --sync              …and enqueue a full snapshot afterwards
+#   scripts/fly-deploy.sh --proxy             …and its front door, after it
+#   scripts/fly-deploy.sh --proxy-only        only its front door
+#   scripts/fly-deploy.sh live                the same as no target at all
 #   scripts/fly-deploy.sh demo                the demo mirror
 #   scripts/fly-deploy.sh demo --proxy        …and the demo's front door
 #
 # A release ships the mirror and stops there, because the mirror is what a
 # version changes. The oauth2-proxy in front of it has an image of its own and
 # changes rarely: --proxy adds the front door to the same release, --proxy-only
-# releases the front door alone, for when nothing else moved.
+# releases the front door alone, for when nothing else moved. Neither is ever
+# implied — a plain run leaves the front door alone.
 #
 # No credentials and no DATABASE_URL: everything a release needs is already on
 # the app, put there once by scripts/fly-provision.sh. This script creates
@@ -182,10 +184,9 @@ for arg in "$@"; do
   esac
 done
 
-if [ -z "$target" ]; then
-  usage >&2
-  exit 64
-fi
+# The live mirror is what almost every run means, so it is what a bare
+# invocation gets. The demo is a separate deployment and has to be named.
+target="${target:-live}"
 
 if [ "$with_proxy" -eq 1 ] && [ "$proxy_only" -eq 1 ]; then
   die "--proxy and --proxy-only ask for different releases; give one"
