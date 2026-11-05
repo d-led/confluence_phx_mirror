@@ -189,8 +189,21 @@ const KEPT_LINES: usize = 40;
 /// A first launch after an upgrade can migrate a large catalogue, and the system
 /// can put a keychain question in front of the person at any point; both are
 /// reasons to be patient. A minute is past all of them, and past the point where
-/// a spinner is an answer.
+/// a spinner is an answer. It is not the deadline for a process that has already
+/// ended — that is answered as soon as it is seen (`STARTUP_SLICE`).
 const STARTUP_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// How often the launch looks at the process it started while it waits.
+///
+/// The announcement is what the wait is for, but a release can also be *gone*:
+/// a launcher that cannot find its boot file exits at once, sometimes leaving a
+/// pipe a grandchild still holds open, and a window that waited out the deadline
+/// for it would be a spinner in front of a fact it already had.
+const STARTUP_SLICE: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// How long the release's own output is given to finish arriving after the
+/// process has ended, so the page can say what it said.
+const LAST_WORDS: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// How long the release may take to answer once it has said where it listens.
 /// It has already started listening by then, so this is a formality that catches
@@ -291,6 +304,16 @@ fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String
 
     let mut command = launch_command(&path);
 
+    // The release is started from its own directory, not from wherever this
+    // process happened to be started. A Windows shortcut carries any "Start in"
+    // the person who made it chose, and a launcher handed the wrong working
+    // directory has to be right about every path it builds to survive it.
+    if let Some(root) = release_root(&path) {
+        if root.is_dir() {
+            command.current_dir(root);
+        }
+    }
+
     command
         .arg("start")
         // The tool has no peers, so distribution buys it nothing and costs it
@@ -380,7 +403,7 @@ fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String
             });
         }
 
-        match arriving.recv_timeout(left) {
+        match arriving.recv_timeout(left.min(STARTUP_SLICE)) {
             Ok(line) => {
                 if let Some(url) = line.trim().strip_prefix("desktop ui: ") {
                     return match answering(url) {
@@ -392,22 +415,49 @@ fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String
                     };
                 }
             }
+            // Nothing was said in this slice. If the process is still there, it
+            // may yet have something to say; if it is not, the answer is what it
+            // already said, and waiting the rest of the minute out would put a
+            // spinner in front of a fact.
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                return Err(Failure {
-                    trouble: Trouble::Slow,
-                    log: log_path,
-                })
+                if !matches!(child.try_wait(), Ok(None)) {
+                    return Err(Failure {
+                        trouble: last_words(&arriving, &shared),
+                        log: log_path,
+                    });
+                }
             }
             // The release closed its output: it is gone, and the reason is in
             // what it last said.
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                let trouble = Trouble::classify(&shared.lock().unwrap().output);
                 return Err(Failure {
-                    trouble,
+                    trouble: last_words(&arriving, &shared),
                     log: log_path,
                 });
             }
         }
+    }
+}
+
+/// What the release said as it ended, classified into a situation a person can
+/// act on.
+///
+/// The reader thread appends every line to `shared` *before* it sends it, so a
+/// closed channel means everything that arrived is already there. The bounded
+/// wait covers the other order: the process is gone while the reader is still
+/// draining what it had buffered.
+fn last_words(arriving: &std::sync::mpsc::Receiver<String>, shared: &SharedState) -> Trouble {
+    let deadline = std::time::Instant::now() + LAST_WORDS;
+
+    while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()) {
+        if left.is_zero() || arriving.recv_timeout(left).is_err() {
+            break;
+        }
+    }
+
+    match shared.lock() {
+        Ok(state) => Trouble::classify(&state.output),
+        Err(_) => Trouble::Stopped,
     }
 }
 
@@ -799,21 +849,54 @@ fn sidecar_path(app: &AppHandle) -> PathBuf {
         candidates.push(bundled_release(&directory));
     }
 
+    if let Some(found) = candidates.iter().find(|candidate| candidate.exists()) {
+        return found.clone();
+    }
+
+    // Development: the release inside the checkout, found from the executable's
+    // own directory. Never from the working directory — a process can be started
+    // anywhere, and an app that looks for its own files relative to whatever
+    // `cd` it inherited works only when it is started one particular way.
+    if let Some(development) = development_release() {
+        if development.exists() {
+            return development;
+        }
+    }
+
+    // Nowhere to point at all. Handing back the first place it should have been
+    // is what lets the window say *this copy is incomplete* with a path in the
+    // log, instead of failing to start for a reason nobody can see.
     candidates
         .into_iter()
-        .find(|candidate| candidate.exists())
-        // Development: the release inside the checkout.
-        .unwrap_or_else(|| {
-            native(
-                PathBuf::from("..")
-                    .join("_build")
-                    .join("desktop")
-                    .join("rel")
-                    .join(RELEASE_DIR)
-                    .join(LAUNCHER_DIR)
-                    .join(LAUNCHER_FILE),
-            )
-        })
+        .next()
+        .unwrap_or_else(|| native(PathBuf::from(LAUNCHER_FILE)))
+}
+
+/// Where `cargo tauri dev` keeps the release: `_build/desktop/rel` in the
+/// checkout the window was built from, reached from the executable.
+fn development_release() -> Option<PathBuf> {
+    // `src-tauri/target/{debug,release}/confluence-export` → the checkout; a test
+    // binary sits one level deeper (`…/deps`), which the extra step covers.
+    let exe = std::env::current_exe().ok()?;
+    let checkout = exe
+        .ancestors()
+        .find(|directory| directory.join("_build").is_dir())?
+        .to_path_buf();
+
+    Some(native(
+        checkout
+            .join("_build")
+            .join("desktop")
+            .join("rel")
+            .join(RELEASE_DIR)
+            .join(LAUNCHER_DIR)
+            .join(LAUNCHER_FILE),
+    ))
+}
+
+/// The release's own directory, from a launcher inside its `bin/`.
+fn release_root(launcher: &Path) -> Option<&Path> {
+    launcher.parent().and_then(Path::parent)
 }
 
 fn bundled_release(root: &Path) -> PathBuf {
@@ -1076,5 +1159,47 @@ mod tests {
             failure_title(Trouble::Died),
             "Confluence Export — Confluence Export stopped"
         );
+    }
+
+    #[test]
+    fn the_release_is_started_from_its_own_directory() {
+        // Two levels above the launcher: `…/rel/<name>/bin/<launcher>`.
+        let root = release_root(Path::new(
+            "/opt/rel/confluence_phx_mirror/bin/confluence_phx_mirror",
+        ));
+
+        assert_eq!(root, Some(Path::new("/opt/rel/confluence_phx_mirror")));
+    }
+
+    #[test]
+    fn where_the_window_looks_is_never_relative_to_the_working_directory() {
+        // The development release used to be `../_build/…`, which is a path in
+        // whatever directory the process was started from. A checkout is found
+        // from the executable instead, so this is absolute or absent.
+        if let Some(path) = development_release() {
+            assert!(
+                path.is_absolute(),
+                "{} is relative to the working directory",
+                path.display()
+            );
+            assert!(path.ends_with(LAUNCHER_FILE));
+        }
+    }
+
+    #[test]
+    fn what_the_release_said_is_read_before_anything_is_concluded() {
+        let (lines, arriving) = std::sync::mpsc::channel::<String>();
+        let shared: SharedState = Arc::new(Mutex::new(Shared::default()));
+        shared
+            .lock()
+            .unwrap()
+            .output
+            .push_back("** (Exqlite.Error) Database busy".to_string());
+
+        // The reader thread is done: the channel closes and the classification
+        // still sees the line it filed.
+        drop(lines);
+
+        assert_eq!(last_words(&arriving, &shared), Trouble::FolderInUse);
     }
 }

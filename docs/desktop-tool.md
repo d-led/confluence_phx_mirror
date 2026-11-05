@@ -226,10 +226,24 @@ report is the one that carries what the window already knows.
 A launch also has a bound. The waiting page changes its own sentence at five and
 forty seconds, and at sixty the window becomes that failure page rather than
 claiming to be starting for ever — a spinner nobody can end is how a person is
-left guessing. Before the window is pointed at the release's address, the shell
-asks that address to accept a connection; a server that died between announcing
-itself and the first request becomes *the window has nothing to show* instead of
-the webview's own error page.
+left guessing. The bound is for a release that is *alive and quiet*; a release
+that has already exited is not waited out at all: the launch looks at the process
+every 250 ms as well as at its output, and a launcher that dies at once — the
+`cannot get boot file` case — becomes the failure page in a quarter of a second,
+carrying whatever it managed to say. Before the window is pointed at the release's
+address, the shell asks that address to accept a connection; a server that died
+between announcing itself and the first request becomes *the window has nothing to
+show* instead of the webview's own error page.
+
+**Nothing here is found relative to the working directory.** A Windows shortcut
+carries any "Start in" its maker chose, and Explorer launches a program from
+whichever folder it was opened in, so a process's `cd` is not a fact about the
+app. The window finds its release from `resource_dir()` and from its own
+executable's directory (the development checkout is found the same way, by walking
+up from the executable), and it starts the release *with the release's own root as
+the child's working directory* — the launcher, the release and anything either of
+them builds a path from are then all anchored to the install, not to wherever the
+person clicked.
 
 **One workspace, one copy.** A second copy is refused in words (see *already
 running* above) before it opens anything: two copies would be two servers, two
