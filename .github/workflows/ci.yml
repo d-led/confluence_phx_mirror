@@ -53,6 +53,11 @@ on:
     branches: [main]
     tags: ["v*.*.*"]
   pull_request:
+    # `labeled`, because the slow gates above are asked for by adding a label to
+    # a pull request that already has commits. Without it the label would sit
+    # there doing nothing until the next push, which is not what "run this one
+    # fully" means to the person who clicked it.
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
     inputs:
       full:
