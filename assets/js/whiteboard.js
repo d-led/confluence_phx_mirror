@@ -91,11 +91,27 @@ function fit() {
   apply();
 }
 
-function zoom(factor) {
-  viewer.scale = Math.min(
-    MAX_SCALE,
-    Math.max(MIN_SCALE, viewer.scale * factor),
-  );
+// Zoom keeps the point under the pointer where it is: scaling about the centre
+// of the sheet drags whatever a reader is looking at away from their cursor,
+// which is the one thing a zoom must not do. The anchor is in client
+// coordinates; without one the zoom is about the middle, which is what the
+// buttons and the keys mean.
+//
+// With `translate(x, y) scale(s)` about the element's centre, a screen point `c`
+// (measured from that centre) is reached by the element point `(c - t) / s`.
+// Holding that point under the cursor across a change of scale gives
+// `t' = c - (c - t) * s' / s`.
+function zoom(factor, anchor) {
+  const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, viewer.scale * factor));
+  const ratio = next / viewer.scale;
+
+  const box = viewer.canvas.getBoundingClientRect();
+  const x = anchor ? anchor.x - box.left - box.width / 2 : 0;
+  const y = anchor ? anchor.y - box.top - box.height / 2 : 0;
+
+  viewer.x = x - (x - viewer.x) * ratio;
+  viewer.y = y - (y - viewer.y) * ratio;
+  viewer.scale = next;
   apply();
 }
 
@@ -231,7 +247,10 @@ function listen() {
     "wheel",
     (event) => {
       event.preventDefault();
-      zoom(Math.exp(-event.deltaY * 0.0015));
+      zoom(Math.exp(-event.deltaY * 0.0015), {
+        x: event.clientX,
+        y: event.clientY,
+      });
     },
     { passive: false },
   );
