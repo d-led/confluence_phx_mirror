@@ -147,9 +147,6 @@ defmodule ConfluencePhxMirrorWeb.Router do
     post "/session", SessionController, :create
     get "/session/:token", SessionController, :confirm
     delete "/session", SessionController, :delete
-
-    post "/subscriptions", SubscriptionController, :create
-    delete "/subscriptions", SubscriptionController, :delete
   end
 
   live_session :reader, on_mount: [{LiveUserAuth, :default}] do

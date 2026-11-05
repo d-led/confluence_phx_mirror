@@ -51,8 +51,8 @@ defmodule ConfluencePhxMirrorWeb.QueryBudgetTest do
     overview = QueryCounter.count(fn -> get(conn, ~p"/spaces/ENG/overview") end)
     landing = QueryCounter.count(fn -> get(conn, ~p"/spaces/ENG") end)
 
-    assert overview <= 17, "space overview issued #{overview} queries"
-    assert landing <= 24, "space landing issued #{landing} queries"
+    assert overview <= 18, "space overview issued #{overview} queries"
+    assert landing <= 27, "space landing issued #{landing} queries"
   end
 
   # A page renders the readers badge twice: the rail names who is here, and the
@@ -61,11 +61,16 @@ defmodule ConfluencePhxMirrorWeb.QueryBudgetTest do
   # statements — the reader's scope, the page, whether it may be read — so the
   # ceiling below moved by exactly those three, not by three per page on the
   # screen.
+  #
+  # The rail's Watch island is the other fixed cost: it mounts in a process of
+  # its own and does not take the render's word for what the reader may watch —
+  # it resolves the page and the space it was handed and asks once for the
+  # reader's watch list. A constant handful, not one per row on the screen.
   test "deep page rendering stays bounded", %{conn: conn} do
     queries =
       QueryCounter.count(fn -> get(conn, "/spaces/ENG/pages/1002/Architecture+Overview") end)
 
-    assert queries <= 25, "page view issued #{queries} queries"
+    assert queries <= 26, "page view issued #{queries} queries"
   end
 
   # "rate" is a word the mirror knows few of, which is the case the fragment pass

@@ -921,7 +921,10 @@ screen**: the mirror reads it from the deployment's `SMTP_PASSWORD` — a Fly
 secret, or a variable in the compose file — because a password in this database
 would travel in every backup of it.
 
-Readers can watch a page or a whole space from the page rail.
+Readers can watch a page or a whole space from the page rail, and the space on
+its own from the space's screen. The control commits where the reader stands: the
+press writes the subscription and the button turns into its opposite, so nobody
+is thrown back to the top of a page they were reading.
 
 * `instant` – one e-mail per *burst* of changes: the first change schedules a
   send `notifications.window_seconds` later (`MIRROR_NOTIFICATION_WINDOW_SECONDS`,

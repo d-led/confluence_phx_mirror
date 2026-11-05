@@ -35,6 +35,21 @@
     <p :if={@space.synced_at} class="mt-2 text-xs text-base-content/70">
       Space metadata synced {Time.ago(@space.synced_at)}.
     </p>
+    <%!--
+      Watching a space is offered where the space is, not only in a page's rail:
+      this is the screen somebody lands on when they want the whole space, and
+      the control behaves the same way here — the press commits, the label flips,
+      and the page stays where it is.
+    --%>
+    <div :if={@current_scope.user} class="mt-3 max-w-xs">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-base-content/60">
+        Notifications
+      </p>
+      {live_render(@conn, ConfluencePhxMirrorWeb.WatchLive,
+        id: "watch-space-#{@space.id}",
+        session: %{"watch_space" => @space.id, "watch_space_key" => @space.key}
+      )}
+    </div>
   </header>
 
   <div class="mt-4 border-b border-base-300/70">
