@@ -363,12 +363,7 @@ fn same_origin(target: &tauri::Url, origin: &tauri::Url) -> bool {
 fn own_origins() -> Vec<tauri::Url> {
     OWN_ORIGINS
         .lock()
-        .map(|origins| {
-            origins
-                .iter()
-                .filter_map(|url| url.parse().ok())
-                .collect()
-        })
+        .map(|origins| origins.iter().filter_map(|url| url.parse().ok()).collect())
         .unwrap_or_default()
 }
 
@@ -1141,8 +1136,31 @@ const RELEASE_DIR: &str = "confluence_phx_mirror";
 /// not normalise `…\bin/..` into `…` — and the release's directory name comes
 /// from an environment variable that someone can write with slashes. On Unix a
 /// path is already a path.
+///
+/// It also takes the verbatim prefix off, because Windows has two spellings of
+/// every path and the two disagree about who may run them. `\\?\D:\…` means
+/// "no parsing, exactly these bytes", which is right for a file API and wrong
+/// for `cmd`: handed `\\?\D:\…\confluence_phx_mirror.bat`, `cmd` answers "The
+/// system cannot find the path specified" and starts nothing. Tauri's
+/// `resource_dir()` hands one out, so every launch from a bundle or a portable
+/// folder failed on Windows while the same launcher started by hand ran — the
+/// difference between the two is this prefix and nothing else.
 fn native(path: PathBuf) -> PathBuf {
-    PathBuf::from(separators(&path.to_string_lossy(), cfg!(windows)))
+    PathBuf::from(separators(
+        &verbatim_stripped(&path.to_string_lossy()),
+        cfg!(windows),
+    ))
+}
+
+/// The same path in the spelling every program understands.
+fn verbatim_stripped(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        path.to_string()
+    }
 }
 
 fn separators(path: &str, windows: bool) -> String {
@@ -1557,5 +1575,35 @@ mod tests {
         command.arg("/C").arg("call").arg("C:\\a b\\launch.bat");
 
         assert_eq!(describe(&command), "cmd /C call C:\\a b\\launch.bat");
+    }
+
+    // The failure this was written for: the launcher was found, `cmd` was given
+    // its path, and `cmd` said "The system cannot find the path specified" —
+    // because the path was in Windows' verbatim spelling, which `cmd` refuses.
+    #[test]
+    fn a_verbatim_path_becomes_one_cmd_can_run() {
+        assert_eq!(
+            verbatim_stripped(r"\\?\D:\a\_temp\unpack\rel\bin\launch.bat"),
+            r"D:\a\_temp\unpack\rel\bin\launch.bat"
+        );
+
+        // A network share keeps its own spelling, with the prefix gone.
+        assert_eq!(
+            verbatim_stripped(r"\\?\UNC\server\share\rel\bin\launch.bat"),
+            r"\\server\share\rel\bin\launch.bat"
+        );
+    }
+
+    #[test]
+    fn an_ordinary_path_is_left_alone() {
+        assert_eq!(
+            verbatim_stripped(r"C:\Users\runner\AppData\Local\rel\bin\launch.bat"),
+            r"C:\Users\runner\AppData\Local\rel\bin\launch.bat"
+        );
+
+        assert_eq!(
+            verbatim_stripped("/Applications/Confluence Export.app/launch"),
+            "/Applications/Confluence Export.app/launch"
+        );
     }
 }
