@@ -21,7 +21,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Sync.DynamicContent.Marker
-  alias ConfluencePhxMirror.Sync.{Emoticons, MacroPlaceholder, VendorMacros}
+  alias ConfluencePhxMirror.Sync.{Adf, Emoticons, MacroPlaceholder, VendorMacros}
 
   @type page_ref :: %{space_key: String.t(), confluence_id: integer(), slug: String.t()}
 
@@ -49,7 +49,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   Raise it whenever the output changes for a body that is already mirrored.
   """
   @spec revision() :: pos_integer()
-  def revision, do: 1
+
+  # 2: a decision list keeps the state its export view drops (`Sync.Adf`).
+  def revision, do: 2
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -131,6 +133,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       |> Floki.parse_fragment!()
       |> remove_unsafe_elements()
       |> drop_undeclared_macro_chrome(context)
+      |> Adf.repair(context)
 
     # Links are collected *before* rewriting, while hrefs still carry the
     # Confluence identity the link table needs.

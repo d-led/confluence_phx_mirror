@@ -540,4 +540,16 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert Renderer.render(html, context()).html =~ ~s(data-highlight-colour="#e3fcef")
     end
   end
+
+  describe "ADF repair" do
+    test "a decision keeps the state its export view dropped" do
+      html = ~s(<ul class="decision-list"><li>Ship it.</li></ul>)
+
+      storage =
+        ~s(<ac:adf-node type="decision-list"><ac:adf-node type="decision-item"><ac:adf-attribute key="state">DECIDED</ac:adf-attribute><ac:adf-content>Ship it.</ac:adf-content></ac:adf-node></ac:adf-node>)
+
+      assert Renderer.render(html, context(%{storage: storage})).html =~
+               ~s(<li data-decision-state="decided">Ship it.</li>)
+    end
+  end
 end

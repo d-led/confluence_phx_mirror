@@ -1152,6 +1152,42 @@
   text-decoration: none;
 }
 
+/* Decisions ------------------------------------------------------------ */
+
+/* A decision list is an ADF node, not a macro, and the export view keeps only
+   its fallback: `<ul class="decision-list">`. The state the site shows is
+   restored by the renderer as `data-decision-state`, so the badge is drawn from
+   the attribute and the words stay the page's own. Neutral by design: the state
+   names itself, and "open" is as real a decision as "decided". */
+.confluence-content .decision-list {
+  list-style: none;
+  padding-left: 0;
+  display: grid;
+  gap: 0.375rem;
+  margin: 0.75rem 0;
+}
+
+.confluence-content .decision-list li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-left: 3px solid
+    color-mix(in oklab, var(--color-base-content) 25%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 5%, transparent);
+  border-radius: 0 0.35rem 0.35rem 0;
+}
+
+.confluence-content .decision-list li[data-decision-state]::before {
+  content: attr(data-decision-state);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+
 /* Columns -------------------------------------------------------------- */
 
 /* Confluence names its layout macros by shape (`three-equal`, `two-left-sidebar`…).
