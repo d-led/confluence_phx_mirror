@@ -75,6 +75,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   @impl true
   def attachments(%Page{} = page), do: Mirror.attachments(page)
 
+  # A board's document is not in this mirror's database: it is fetched from the
+  # site, at sync time, because nothing else holds it. The audience rule needs no
+  # applying here — the board is exactly as readable as the page embedding it, and
+  # the site answers for the reader the token belongs to.
+  @impl true
+  def whiteboard(_host, url) do
+    ConfluencePhxMirror.Confluence.HttpSource.whiteboard_document(url)
+  end
+
   # A contributor list is about names and counts, not about bodies: the scan is
   # one light row per page, and the audience rule decides which of those rows may
   # be counted. Past the cap the answer is `:too_large` — a count that quietly

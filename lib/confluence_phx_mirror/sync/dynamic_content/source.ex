@@ -101,6 +101,20 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
               | {:error, :too_large}
 
   @doc """
+  The document behind a whiteboard the page embeds, or why it could not be read.
+
+  A board is a canvas Confluence paints itself, and the export view carries only
+  an unknown-macro placeholder for it. Its *document* is readable all the same —
+  over GraphQL, as `WHITEBOARD_DOC_FORMAT` — and holds a node per shape with its
+  geometry, z-index and words. `url` is the address the page recorded, which
+  names the board's id.
+
+  An `{:error, reason}` is not an empty board: the caller shows an apology and a
+  link rather than a box that pretends the board is blank.
+  """
+  @callback whiteboard(host :: Page.t(), url :: String.t()) :: {:ok, map()} | {:error, term()}
+
+  @doc """
   The files attached to `page`, by file name.
 
   An attachment is exactly as readable as the page holding it, so a macro that

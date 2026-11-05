@@ -82,6 +82,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.StubContent do
   end
 
   @impl true
+  def whiteboard(_host, url) do
+    record({:whiteboard, url})
+    answer(:whiteboard, {:error, :no_document})
+  end
+
+  @impl true
   def contributors(_host, space, _opts) do
     record({:contributors, space})
     answer(:contributors, {:ok, []})

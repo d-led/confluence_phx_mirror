@@ -835,6 +835,98 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     end
   end
 
+  # ── Whiteboards ──────────────────────────────────────────────────────────
+
+  @doc """
+  The document behind a whiteboard, or why it could not be read.
+
+  A board is a canvas, so no REST representation carries it: `body.export_view`
+  holds an unknown-macro placeholder and there is no export endpoint at all
+  (create / get-metadata / delete is the whole Whiteboard API). The document does
+  exist, though, over the GraphQL gateway, as `WHITEBOARD_DOC_FORMAT` — this is
+  the read that makes a board renderable without a browser.
+
+  Two reads: the content record for the board's `ari` (the ARI is what the graph
+  is keyed by), then the query itself. The query travels as variables, never as
+  interpolated text — the address came out of a page's storage.
+  """
+  @spec whiteboard_document(String.t()) :: {:ok, map()} | {:error, term()}
+  def whiteboard_document(url) when is_binary(url) do
+    with {:ok, id} <- whiteboard_id(url),
+         {:ok, ari} <- content_ari(id),
+         {:ok, payload} <- graphql_whiteboard(ari),
+         {:ok, value} <- whiteboard_value(payload),
+         {:ok, document} <- decode_json(value) do
+      {:ok, document}
+    end
+  end
+
+  # The address the page recorded, e.g.
+  # `https://site/wiki/spaces/MFS/whiteboard/28344336`; anything else is not a
+  # board and does not deserve a request.
+  defp whiteboard_id(url) do
+    with %URI{path: path} when is_binary(path) <- URI.parse(url),
+         [id] when id != "" <- Regex.run(~r{/whiteboard/([0-9]+)$}, path) do
+      {:ok, id}
+    else
+      _not_a_board -> {:error, {:not_a_whiteboard, body_snippet(url)}}
+    end
+  end
+
+  defp content_ari(id) do
+    with {:ok, content} <- request_json("/content/" <> id, %{}),
+         ari when is_binary(ari) <- content["ari"] do
+      {:ok, ari}
+    else
+      nil -> {:error, :no_ari}
+      {:error, _reason} = error -> error
+      _unexpected -> {:error, :no_ari}
+    end
+  end
+
+  defp graphql_whiteboard(ari) do
+    query = """
+    query whiteboard($ari: ID!) {
+      node(id: $ari) {
+        ... on ConfluenceWhiteboard { body { whiteboardDocFormat { representation value } } }
+      }
+    }
+    """
+
+    with {:ok, url} <- SafeURL.resolve(origin() <> "/gateway/api/graphql", config()[:base_url]) do
+      request_json(:post, url, json: %{"query" => query, "variables" => %{"ari" => ari}})
+    end
+  end
+
+  defp whiteboard_value(%{
+         "data" => %{
+           "node" => %{"body" => %{"whiteboardDocFormat" => %{"value" => value}}}
+         }
+       })
+       when is_binary(value),
+       do: {:ok, value}
+
+  defp whiteboard_value(%{"errors" => [%{"message" => message} | _rest]}),
+    do: {:error, {:graphql, message}}
+
+  defp whiteboard_value(_payload), do: {:error, :no_whiteboard_document}
+
+  # The guard behind the warning above `request/4`: only a GraphQL `query` may
+  # travel in a POST body, and a mutation is refused by name.
+  defp query_document?(options) do
+    case Keyword.get(options, :json) do
+      %{"query" => query} when is_binary(query) ->
+        if Regex.match?(~r/\b(mutation|subscription)\b/i, query) do
+          {:error, {:not_a_query, :mutation_refused}}
+        else
+          :ok
+        end
+
+      _not_a_graphql_body ->
+        {:error, {:not_a_query, :no_query_document}}
+    end
+  end
+
   defp request_json(path, params) do
     with {:ok, url} <- build_url(path, params) do
       json_request(url)
@@ -888,14 +980,42 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     SafeURL.resolve(url, config()[:base_url])
   end
 
+  # ╔══════════════════════════════════════════════════════════════════════╗
+  # ║  ⚠⚠⚠  THE ONLY PLACE THIS MODULE CAN SEND A NON-GET  ⚠⚠⚠             ║
+  # ║  READ THIS BEFORE ADDING A CALLER                                    ║
+  # ╚══════════════════════════════════════════════════════════════════════╝
+  #
+  # This mirror reads a site and never writes to it. That used to be enforced by
+  # the verb alone — the head said `:get`, and a write was "not something this
+  # module declines to do, it is something it cannot say".
+  #
+  # Confluence's GraphQL gateway broke that shortcut: a *query* is a read, but it
+  # is answered only over POST (a GET comes back 415 Unsupported Media Type). So
+  # the verb no longer carries the guarantee, and the guarantee is now said out
+  # loud, in three parts:
+  #
+  #   1. `:post` is accepted HERE and nowhere else in the module.
+  #   2. The body must be a GraphQL document whose text is a `query`.
+  #   3. A document mentioning `mutation` or `subscription` is refused before the
+  #      request leaves this process — see `query_document?/1` below.
+  #
+  # Everything else — a REST write, a form post, any body that is not a GraphQL
+  # query — comes back as `{:error, {:not_a_query, reason}}` and never touches
+  # the network. If a future caller needs another POST, that is a change to this
+  # comment and to `query_document?/1`, not a new clause somewhere else.
+  defp request(method, url, options, attempt \\ 1)
+
   # One attempt, one line in the sync log, one tick in `Traffic`. The line is
   # written when the answer is in, which is what gives it a status and a
   # latency; a call that will be retried says so and how long it will wait.
-  #
-  # `:get` and nothing else, matched in the head: this mirror reads a site and
-  # never writes to it, so a write is not something this module declines to do —
-  # it is something it cannot say.
-  defp request(:get = method, url, options, attempt \\ 1) do
+  defp request(:get = method, url, options, attempt),
+    do: perform(method, url, options, attempt)
+
+  defp request(:post, url, options, attempt) do
+    with :ok <- query_document?(options), do: perform(:post, url, options, attempt)
+  end
+
+  defp perform(method, url, options, attempt) do
     {:ok, waited_ms} = RateLimiter.acquire()
     Traffic.throttled(waited_ms)
 
