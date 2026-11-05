@@ -239,7 +239,10 @@ stage_release() {
     . scripts/lib/bundle.sh
     bundle_embed_release "$app" "$release" "$name"
   else
-    cp -R "$release" "$stage"
+    # A tar stream, not `cp -R`: the OTP tree holds files `cp` refuses to write
+    # over — on Windows it stopped at `erts-17.1.1/bin/erl` with "File exists" —
+    # and the copy only has to reproduce the tree, which is what tar does.
+    tar -C "$(dirname "$release")" -cf - "$name" | tar -x -C "$(dirname "$stage")"
   fi
 
   # Without a launcher there, the window starts nothing — and a window that
