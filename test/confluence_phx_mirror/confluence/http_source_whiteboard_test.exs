@@ -56,12 +56,10 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceWhiteboardTest do
     # The graph is keyed by the ARI; without one there is nothing to ask, and a
     # second request would be a guess at the site's expense.
     Req.Test.stub(__MODULE__, fn conn ->
-      cond do
-        String.contains?(conn.request_path, "/content/") ->
-          Req.Test.json(conn, %{"id" => "28344336"})
-
-        true ->
-          flunk("the query ran without an ari to key it: #{conn.request_path}")
+      if String.contains?(conn.request_path, "/content/") do
+        Req.Test.json(conn, %{"id" => "28344336"})
+      else
+        flunk("the query ran without an ari to key it: #{conn.request_path}")
       end
     end)
 
