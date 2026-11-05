@@ -8,6 +8,7 @@ defmodule ConfluencePhxMirror.PublishingTest do
 
   import ConfluencePhxMirror.Fixtures
 
+  alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.TestConfig
@@ -60,5 +61,48 @@ defmodule ConfluencePhxMirror.PublishingTest do
     TestConfig.put(:exclude_comments, true)
 
     assert Mirror.comments(page) == []
+  end
+
+  describe "a public subset of the spaces" do
+    test "no list means no space is public" do
+      assert Publishing.public_spaces() == []
+
+      refute Publishing.public_space?("ENG")
+    end
+
+    test "the list names the spaces a stranger may read, in whatever case it was written" do
+      TestConfig.put(:public_spaces, [" eng", "OPS"])
+
+      assert Publishing.public_spaces() == ["ENG", "OPS"]
+      assert Publishing.public_space?("eng")
+      assert Publishing.public_space?("Ops")
+      refute Publishing.public_space?("HR")
+      refute Publishing.public_space?(nil)
+    end
+
+    test "a stranger on a public deployment is shown nobody, without being asked to remember a flag" do
+      TestConfig.put(:public_site, true)
+
+      refute Publishing.identities?(Scope.for_user(nil))
+    end
+
+    test "a reader with an account sees the same page as before" do
+      TestConfig.put(:public_site, true)
+
+      assert Publishing.identities?(Scope.for_user(user_fixture()))
+    end
+
+    test "a stored body of a public space names nobody, because one copy is served to everybody" do
+      TestConfig.put(:public_spaces, ["ENG"])
+
+      refute Publishing.identities_in_space?("ENG")
+      assert Publishing.identities_in_space?("HR")
+    end
+
+    test "a stored body names nobody either when the deployment publishes no names" do
+      TestConfig.put(:anonymize_contributors, true)
+
+      refute Publishing.identities_in_space?("HR")
+    end
   end
 end

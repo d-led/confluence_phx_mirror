@@ -405,6 +405,7 @@ config :confluence_phx_mirror,
 # published at all (`ConfluencePhxMirror.Publishing`).
 config :confluence_phx_mirror,
   public_site: System.get_env("CM_PUBLIC_SITE") in ~w(1 true yes),
+  public_spaces: System.get_env("CM_PUBLIC_SPACES", "") |> String.split(",", trim: true),
   anonymize_contributors: System.get_env("CM_ANONYMIZE_CONTRIBUTORS") in ~w(1 true yes),
   exclude_comments: System.get_env("CM_EXCLUDE_COMMENTS") in ~w(1 true yes)
 
