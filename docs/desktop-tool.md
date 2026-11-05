@@ -128,6 +128,15 @@ rather double-click than run a line of PowerShell; the portable folder stays,
 because a folder needs no installer and no administrator. A build that cannot
 produce one says so and still publishes the folder.
 
+Built on the Windows runner, 2026-11-05: `makensis` wrote
+`Confluence Export_0.1.0_x64-setup.exe` (24.1 MiB), the artifact is
+`confluence-export-windows-setup` beside `confluence-export-windows`, and the
+same run's boot check served `/health` and `/__tool` — the check now starts the
+launcher through `cmd //c call` with a Windows path, so it exercises the shape
+the window uses rather than a friendlier one. Nobody has installed that setup.exe
+on a Windows desktop yet; what is verified is that it is built from the release
+the gate booted.
+
 From a checkout, or by hand:
 
 ```sh
