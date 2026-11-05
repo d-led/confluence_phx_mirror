@@ -58,6 +58,13 @@ connection, the press that queues a mirror run, and the archive.
 
 ## What is unfinished
 
+0. **The Linux build installs and does not start.** The artifact's release dies at
+   boot on Debian 12 and Ubuntu 22.04 (`prim_tty:isatty/1` → `user_drv` →
+   `application_start_failure`), while the Linux leg's own boot check serves on
+   the runner. Evidence, the two things to try, and why the installer is not
+   implicated: `docs/desktop-tool.md` §"Linux: it installs, and it does not start
+   yet". macOS is unaffected.
+
 1. **The query language, and comments as hits.** The tool has an index — an FTS5
    table the triggers keep in step with `pages`, ranked by `bm25`
    (`Mirror.Search.Lite`) — so the search *box* works and answers filters. What

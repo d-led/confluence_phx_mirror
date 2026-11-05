@@ -682,8 +682,42 @@ exporter. Steps 6–7 make it double-clickable.
 Step 4 is the only one that touches server code, it is a move rather than a
 rewrite, and the existing export tests are what proves it.
 
-## Not in v1
+## Linux: it installs, and it does not start yet
 
+Found while proving the install line (2026-11-05), and not fixed. The artifact of
+the last successful run, unpacked on Debian 12 and on Ubuntu 22.04:
+
+    $ bin/confluence_phx_mirror start </dev/null
+    =ERROR REPORT====
+    ** State machine user_drv terminating
+    ** Reason for termination = error:undef
+    ** Stacktrace =
+    **  [{erlang,nif_error,[undef],[…]},
+         {prim_tty,isatty,1,[…]},
+         {user_drv,init,1,[…]}, …]
+    Kernel pid terminated (application_controller) (
+      "{application_start_failure,kernel,{{shutdown,{failed_to_start_child,user,nouser}}, …}}")
+
+`prim_tty` — OTP 29's terminal driver — asks ERTS for a NIF by module name, and
+here the stub is left in place, so `user_drv` dies at boot. Nothing of ours is
+involved: `bin/<name> eval ':ok'` dies the same way.
+
+What is **not** established is why CI disagrees. The Linux leg's own boot check
+(`scripts/package.sh`, "booting the release the artifact carries", the same
+`bin/<name> start`) serves `/health` on the ubuntu-22.04 runner, for the same
+tree this tarball was made from. Two things to try, in order:
+
+1. Boot **the unpacked artifact** in CI rather than the staging folder. That is
+   what a person runs, and the only shape tested on the machine it ships to.
+2. If it reproduces there, take the release's ERTS from an OTP built with a
+   terminal (`libncurses-dev` present when OTP is built) — the runner's OTP is
+   the suspect.
+
+`install-desktop.sh` is not implicated: it downloads, unpacks and installs
+correctly, and the window then reports exactly this failure, because that is what
+happens.
+
+## Not in v1
 Search inside the tool. The archive already ships a matcher that runs from a
 folder with no server — `Export.Site.Search.script/0` — and that is the search
 the user gets. A local index only earns its place if the tool grows a search

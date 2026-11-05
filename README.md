@@ -208,7 +208,7 @@ site and taking a copy of it.
 | platform | download | what you get |
 | --- | --- | --- |
 | macOS (Apple silicon) | [`confluence-export-macos.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-macos.zip) | `Confluence Export.app` — unzip, drag to `/Applications`, double-click |
-| Linux x64 | [`confluence-export-linux.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-linux.zip) | a folder with the window, `rel/` and a `README.txt`; needs GTK 3 and WebKitGTK 4.1 |
+| Linux x64 | [`confluence-export-linux.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-linux.zip) | a folder with the window, `rel/` and a `README.txt`; needs GTK 3 and WebKitGTK 4.1 — **it installs and does not start yet**, see [what is known](docs/desktop-tool.md#linux-it-installs-and-it-does-not-start-yet) |
 | Windows x64 | [`confluence-export-windows.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-windows.zip) | one folder, `confluence-export-windows`, with `confluence-export.exe`, `rel\` and a `README.txt`; unzip it and run the `.exe` |
 
 Each link is the newest **successful** run of the `desktop-release` workflow on
@@ -232,7 +232,10 @@ tool in `~/.local/share/confluence-export` with a launcher in `~/.local/bin` on
 Linux. The PowerShell one puts the folder in `%LOCALAPPDATA%\Programs` and a
 Start Menu entry beside it. Run either again to take the newest build; both say
 what arrived, where it went, and what is missing (the Linux one checks that GTK 3
-and WebKitGTK 4.1 are there, and names the `apt` line if they are not).
+and WebKitGTK 4.1 are there, and names the `apt` line if they are not). **macOS is
+the platform that runs today**: on Linux the install is right and the window does
+not start yet, and Windows is built and boot-checked in CI but has never been
+started on Windows.
 
 **Windows and Linux archives are named `.zip` by `nightly.link`**, because an
 artifact is served as the zip GitHub stores — a zip holding the Linux tarball, and
