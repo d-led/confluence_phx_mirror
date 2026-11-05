@@ -357,6 +357,22 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert result.html =~ ~s(class="panel")
     end
 
+    test "a panel the editor stored as an ADF node is a declaration too" do
+      # The modern palette writes a panel as an ADF node, not a structured macro,
+      # and Confluence draws it. Counting only structured macros would strip a
+      # panel the original really shows.
+      storage = """
+      <ac:adf-extension><ac:adf-node type="panel">
+        <ac:adf-attribute key="panel-type">note</ac:adf-attribute>
+        <ac:adf-content><p>A real panel.</p></ac:adf-content>
+      </ac:adf-node></ac:adf-extension>
+      """
+
+      result = Renderer.render(@pasted_chrome, Map.put(context(), :storage, storage))
+
+      assert result.html =~ ~s(class="panel")
+    end
+
     test "chrome is earned one block per declaration, in reading order" do
       html = ~s(<div class="panel"><p>First.</p></div><div class="panel"><p>Second.</p></div>)
       storage = ~s(<ac:structured-macro ac:name="panel"></ac:structured-macro>)

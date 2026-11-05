@@ -186,6 +186,20 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   @macro_declaration ~r/<ac:structured-macro\b[^>]*\bac:name\s*=\s*"([^"]+)"/i
 
+  # The modern editor does not always write a structured macro: a panel, a
+  # status or a code block inserted from its palette is stored as an ADF node
+  # (Confluence keeps the editor's document inline), and those are macros all
+  # the same. Counted here by the name the export gives their chrome.
+  @adf_node ~r/<ac:adf-node\b[^>]*\btype\s*=\s*"([^"]+)"/i
+  @adf_names %{
+    "panel" => "panel",
+    "status" => "status",
+    "codeBlock" => "code",
+    "expand" => "expand",
+    "expandable" => "expand",
+    "excerpt" => "excerpt"
+  }
+
   # The inside of a chrome block: these carry no meaning of their own and only
   # appear within a family, so they go when their wrapper goes.
   @chrome_parts ~w(panelContent panelHeader codeContent codeHeader pdl
@@ -207,9 +221,19 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   end
 
   defp declared_macros(%{storage: storage}) when is_binary(storage) do
-    @macro_declaration
-    |> Regex.scan(storage, capture: :all_but_first)
-    |> List.flatten()
+    structured =
+      @macro_declaration
+      |> Regex.scan(storage, capture: :all_but_first)
+      |> List.flatten()
+
+    adf =
+      @adf_node
+      |> Regex.scan(storage, capture: :all_but_first)
+      |> List.flatten()
+      |> Enum.map(&Map.get(@adf_names, &1))
+      |> Enum.reject(&is_nil/1)
+
+    (structured ++ adf)
     |> Enum.map(&(&1 |> String.trim() |> String.downcase()))
   end
 
