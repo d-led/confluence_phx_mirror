@@ -30,6 +30,21 @@
 #
 # `scripts/quality.sh --image` is the same build and uid check locally; the Trivy
 # scan stays here, where it is fourteen seconds rather than a database download.
+#
+# What a pull request pays for. `lint` and `test` run on every one: minutes, and
+# the two failures a branch meets most often. `types`, `test-sqlite` and
+# `desktop` — and the three platforms `desktop-debug.yml` builds — are skipped
+# unless the pull request carries the `ci:full` label:
+#
+#   gh pr edit 42 --add-label ci:full
+#
+# The trade is deliberate. A PLT, a second full suite on the other engine and a
+# Rust build per platform are worth ten minutes of a runner when a change
+# reaches the type layer, the SQL written for two dialects, or `lib_desktop` —
+# and most pull requests reach none of those. What it costs is that such a break
+# is caught by the push to `main`, which runs the whole set, rather than by the
+# pull request that introduced it. A push, a tag and a dispatch run everything;
+# a dispatch can also ask for the two halves separately (`full`, `image`).
 
 name: ci
 
@@ -40,6 +55,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      full:
+        description: "Also run the slow gates: dialyzer, the SQLite suite, the desktop tool"
+        type: boolean
+        default: false
       image:
         description: "Also build, scan, start and publish the image (the expensive half)"
         type: boolean
@@ -96,6 +115,13 @@ jobs:
     runs-on: ubuntu-24.04
     # Two minutes of PLT on a miss, ten seconds on a hit, plus the compile.
     timeout-minutes: 15
+    # A pull request runs it when it says so, with the label or by dispatch:
+    # dialyzer earns its place before a change that moves a spec, not before
+    # every change. See the header.
+    if: >-
+      github.event_name != 'pull_request'
+      || inputs.full
+      || contains(github.event.pull_request.labels.*.name, 'ci:full')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -127,6 +153,13 @@ jobs:
     # desktop workflow builds the release and the window on three platforms; this
     # is the cheap half that types the tool and tests the window's own logic.
     timeout-minutes: 25
+    # Cheap against the release builds, not cheap against `lint`: the system
+    # libraries, a second dependency set and a Rust compile. A pull request asks
+    # for it with `ci:full`.
+    if: >-
+      github.event_name != 'pull_request'
+      || inputs.full
+      || contains(github.event.pull_request.labels.*.name, 'ci:full')
     env:
       MIX_ENV: desktop
     steps:
@@ -244,6 +277,13 @@ jobs:
     # One test at a time (SQLite has a single writer), so the same budget the
     # Postgres job gets.
     timeout-minutes: 40
+    # The second engine is a gate on the SQL a change writes, not on every
+    # change: a pull request asks for it with `ci:full` and the push to `main`
+    # runs it either way.
+    if: >-
+      github.event_name != 'pull_request'
+      || inputs.full
+      || contains(github.event.pull_request.labels.*.name, 'ci:full')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1

@@ -36,7 +36,17 @@ on:
   #
   # What is left is where a build that is not a release belongs: a pull request,
   # and a person asking for one.
+  #
+  # And of those, only the pull request that says so. Three platforms, each a
+  # release and a cargo build, is the most expensive thing this repository does
+  # per commit, and most pull requests do not touch `lib_desktop`, `src-tauri` or
+  # the packaging scripts at all. The `ci:full` label asks for it (and `labeled`
+  # is in the event types below, because adding a label to a pull request that
+  # already has commits is a request, not a state):
+  #
+  #   gh pr edit 42 --add-label ci:full
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 permissions:
@@ -55,6 +65,10 @@ env:
 jobs:
   build:
     name: build (debug, ${{ matrix.name }})
+    # Skipped on a pull request that has not asked for it — see the header.
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
