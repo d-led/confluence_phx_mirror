@@ -70,7 +70,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     widget for a macro Confluence will not expand for a reader.
   # 13: an html macro shows the markup it holds, through the sanitiser, instead of
   #     the widget — the body it wraps was being dropped with the placeholder.
-  def revision, do: 13
+  # 14: an undrawn macro is named in words a reader knows ("a tasks report"), not
+  #     by the key the page stores.
+  def revision, do: 14
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -104,12 +106,17 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # reach this map (`Sync.DynamicContent.Marker` intercepts them first).
   @live_only_elements ~w(iframe object embed)
 
+  # The keys are the `ac:name` values a page actually stores, which is not always
+  # the name Confluence's own documentation gives the macro: the tasks report is
+  # `tasks-report` in storage, and a map that knew only `tasks-report-macro` made
+  # the widget say "The tasks-report macro" instead of naming the thing.
   @macro_labels %{
     "jira" => "a Jira issues search",
     "jiraissues" => "a Jira issues list",
     "jirachart" => "a Jira chart",
     "advanced-roadmaps-plan-macro" => "an Advanced Roadmaps plan",
-    "tasks-report-macro" => "a tasks report",
+    "tasks-report" => "a tasks report",
+    "decision-report" => "a decisions report",
     "space-attachments" => "a space attachments list",
     "spaces-list" => "a spaces list",
     "livesearch" => "a live search box",

@@ -538,6 +538,19 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       refute result.html =~ "does not draw this macro"
       refute result.html =~ "unknown-macro"
     end
+
+    test "a macro the mirror cannot draw is named in words a reader knows" do
+      # The widget said "The tasks-report macro" — the key rather than the thing
+      # — because the label map knew Confluence's older spelling of it.
+      html = """
+      <img class="wysiwyg-unknown-macro" src="/wiki/plugins/servlet/confluence/placeholder/unknown-macro?name=tasks-report" />
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ "A tasks report"
+      refute result.html =~ "tasks-report"
+    end
   end
 
   defp page do
