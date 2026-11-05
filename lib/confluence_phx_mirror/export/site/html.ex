@@ -225,6 +225,16 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
   # event handlers are already gone — exactly like the comment bodies below.
   # sobelow_skip ["XSS.Raw"]
   def page(assigns) do
+    # A file leaves the building, so it is written the way a stranger reads the
+    # page: one in a space the deployment publishes carries no byline.
+    byline =
+      Publishing.byline(
+        assigns.page.author_name,
+        Publishing.identities_in_space?(assigns.space_key)
+      )
+
+    assigns = Map.put(assigns, :byline, byline)
+
     ~H"""
     <.shell
       title={@title}
@@ -270,7 +280,7 @@ defmodule ConfluencePhxMirror.Export.Site.HTML do
               Archived
             </span>
             <span :if={@page.status == "draft"} class="badge badge-info badge-xs">Draft</span>
-            <span :if={Publishing.byline(@page.author_name)}>by {@page.author_name}</span>
+            <span :if={@byline}>by {@byline}</span>
             <span :if={@updated}>updated {@updated}</span>
             <span>version {@page.version_number}</span>
             <a :if={@original} href={@original} class="link link-primary">Original on Confluence</a>

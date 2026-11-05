@@ -430,6 +430,10 @@ defmodule ConfluencePhxMirror.Export do
   # ---------------------------------------------------------------------------
 
   defp front_matter(page) do
+    # A file leaves the building, so it is written the way a stranger reads the
+    # page: one in a space the deployment publishes carries no author.
+    author = Publishing.byline(page.author_name, Publishing.identities_in_space?(page.space.key))
+
     """
     ---
     title: #{inspect(page.title)}
@@ -437,7 +441,7 @@ defmodule ConfluencePhxMirror.Export do
     space: #{inspect(page.space.key)}
     confluence_id: #{page.confluence_id}
     version: #{page.version_number}
-    author: #{inspect(Publishing.byline(page.author_name) || "unknown")}
+    author: #{inspect(author || "unknown")}
     updated: #{iso8601(page.external_updated_at)}
     url: #{inspect(page.external_url)}
     labels: [#{Enum.join(page.labels || [], ", ")}]

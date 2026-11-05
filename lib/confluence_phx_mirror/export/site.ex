@@ -648,7 +648,10 @@ defmodule ConfluencePhxMirror.Export.Site do
     file = page_path(plan.space.key, row.confluence_id)
     prefix = prefix(file)
     comment_context = Map.put(context, :prefix, prefix)
-    comments = comment_thread(thread, comment_context)
+    # A file leaves the building, so it is written the way a stranger reads the
+    # page: one in a space the deployment publishes names nobody.
+    identities? = Publishing.identities_in_space?(plan.space.key)
+    comments = comment_thread(thread, comment_context, identities?)
 
     HTML.page(%{
       title: "#{row.title} · #{plan.space.name} · #{Sites.name()}",
@@ -703,23 +706,23 @@ defmodule ConfluencePhxMirror.Export.Site do
   # A discussion is roots and one level of replies, the way the reader screen
   # draws it. A comment's body is Confluence HTML like a page's, so it goes
   # through the same rewrite: a link to another page stays inside the archive.
-  defp comment_thread(comments, context) do
+  defp comment_thread(comments, context, identities?) do
     replies = Enum.group_by(Enum.reject(comments, &is_nil(&1.parent_id)), & &1.parent_id)
 
     comments
     |> Enum.filter(&is_nil(&1.parent_id))
     |> Enum.map(fn comment ->
       Map.put(
-        comment_data(comment, context),
+        comment_data(comment, context, identities?),
         :replies,
-        Enum.map(replies[comment.id] || [], &comment_data(&1, context))
+        Enum.map(replies[comment.id] || [], &comment_data(&1, context, identities?))
       )
     end)
   end
 
-  defp comment_data(comment, context) do
+  defp comment_data(comment, context, identities?) do
     %{
-      author: Publishing.byline(comment.author_name) || "Anonymous",
+      author: Publishing.byline(comment.author_name, identities?) || "Anonymous",
       at: stamp(comment.external_created_at),
       body: Content.rewrite(comment.body_export, context)
     }

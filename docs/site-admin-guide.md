@@ -786,7 +786,9 @@ What is different from a plain public site:
   page sees what they always saw;
 * because the body is stored once, a signed-in reader of a public page also
   loses the names inside those macros. That is the trade, and it is why the
-  renderer revision moves: an already-mirrored page is re-read on the next sync.
+  renderer revision moves: an already-mirrored page is re-read on the next sync;
+* a Markdown or static export of a page in a listed space is written the same
+  way — no byline, no comment authors — because a file leaves the building.
 
 The page's own prose is not scrubbed, and titles, space names and the
 recent-changes feed still say which documents exist — a space nobody should know

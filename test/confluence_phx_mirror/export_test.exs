@@ -9,6 +9,7 @@ defmodule ConfluencePhxMirror.ExportTest do
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.URLs
+  alias ConfluencePhxMirror.TestConfig
 
   setup do
     demo_snapshot!()
@@ -28,6 +29,18 @@ defmodule ConfluencePhxMirror.ExportTest do
 
     test "names the file after the title" do
       assert Export.page_filename(Mirror.get_page!(1002)) == "architecture_overview.md"
+    end
+
+    # A file leaves the building, so it is written the way a stranger would see
+    # the page: a page in a public space carries no author.
+    test "a page in a public space is exported without its author" do
+      markdown = Export.page_markdown(Mirror.get_page!(1002))
+
+      assert markdown =~ ~s(author: "Jane Doe")
+
+      TestConfig.put(:public_spaces, ["ENG"])
+
+      refute Export.page_markdown(Mirror.get_page!(1002)) =~ "Jane Doe"
     end
   end
 

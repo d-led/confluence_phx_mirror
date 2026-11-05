@@ -219,6 +219,10 @@ in a sentence, a screenshot or an attachment stay); titles, space names and the
 recent-changes feed still say which documents exist; and a body can name people
 indirectly through editor chrome.
 
+The files the mirror writes follow the page's space for the same reason: a
+Markdown or static export of a page in a listed space carries no byline and no
+comment authors, because a file is somebody's copy the moment it is written.
+
 The boot log names the spaces it resolved on every start, and warns about a key
 that matches no mirrored space. `scripts/fly-deploy.sh --check` prints the list
 of the running app before anything ships.

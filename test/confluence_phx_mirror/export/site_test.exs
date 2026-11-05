@@ -8,6 +8,7 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
   alias ConfluencePhxMirror.Demo
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.TestConfig
 
   @stylesheet "/* the theme this site wears */"
 
@@ -161,6 +162,21 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       assert page =~ "VPN steps"
       # The reply hangs under its parent, the way the reader screen draws it.
       assert page =~ "Jane Doe"
+    end
+
+    # A file leaves the building, so a space the deployment publishes is
+    # written the way a stranger reads it. The claim is about the chrome the
+    # mirror draws — the comment authors here — not the page's prose, which
+    # still names people in a sentence and is not scrubbed by design.
+    test "a published space's pages name nobody in their chrome" do
+      TestConfig.put(:public_spaces, ["ENG"])
+
+      page = archive(admin())["spaces/ENG/pages/#{Demo.open_page_parent()}.html"]
+
+      assert page =~ ~s(id="comments")
+      assert page =~ ~s(>Anonymous</span>)
+      refute page =~ ~s(>Sam Rivera</span>)
+      refute page =~ ~s(>Jane Doe</span>)
     end
 
     test "carries a label catalogue and a page for each label", %{files: files} do
