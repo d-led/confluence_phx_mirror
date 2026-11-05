@@ -33,6 +33,21 @@ can serve — is already database-free, and it is shared. So is the whole readin
 surface, because the tool mounts the server's endpoint rather than reimplementing
 it (see "Screens" below).
 
+### One dependency the tool's build cannot have
+
+`argon2_elixir` — the Argon2id hasher behind issued API tokens — has no Windows
+build: its Makefile has no Windows branch at all, so there is no `-shared` and the
+result is named `.so`, and the link dies with `undefined reference to WinMain`.
+There is no newer release. The tool must build on Windows, so `:desktop` leaves
+the library out, and `config/desktop.exs` says so by naming no hasher.
+
+The difference is one module: `Accounts.TokenHash.Hasher`. Where the library is
+compiled it is Argon2id, unchanged; where it is not, `hash/1` stores a word that no
+token can match (deliberately not a weaker digest, which would verify) and
+`verify/2` answers `false` for any digest it cannot compute — the same answer a
+wrong token gets. The tool issues no tokens: one local reader, no sign-in, no API
+clients. `test_desktop/` pins both halves of that.
+
 ## The boundary is the build, not the adapter
 
 There is a tempting design in which one repository serves both engines and a
