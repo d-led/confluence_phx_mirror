@@ -35,6 +35,17 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.MarkerTest do
               ], []}
   end
 
+  # A page written in Confluence's editor stores `contentbylabel`; one written
+  # through the API stores `content-by-label`. Both are pages in the same
+  # mirror, and a reader expects the same listing from either.
+  test "the editor's spelling of a macro resolves to the canonical one" do
+    assert {:ok, {"div", attributes, []}} =
+             Marker.build("contentbylabel", [{"labels", "runbook"}])
+
+    assert {"data-macro", "content-by-label"} in attributes
+    assert {"data-labels", "runbook"} in attributes
+  end
+
   test "the Page Properties Report is `detailssummary`, and its headings are columns" do
     assert {:ok, {"div", attributes, []}} =
              Marker.build("detailssummary", [{"headings", "Owner,Status"}])

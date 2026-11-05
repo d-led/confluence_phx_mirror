@@ -52,6 +52,13 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
     assert "page-properties-report" in Registry.names()
   end
 
+  # Both spellings sit on one page in the wild: the editor writes
+  # `contentbylabel`, the API writes `content-by-label`.
+  test "a macro the editor spells differently is the same macro" do
+    assert Registry.fetch("contentbylabel") == Registry.fetch("content-by-label")
+    assert Registry.canonical("contentbylabel") == "content-by-label"
+  end
+
   test "a macro the mirror does not know is not a registered name" do
     assert Registry.fetch("content-by-user") == :error
   end
