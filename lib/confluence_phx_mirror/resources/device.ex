@@ -39,14 +39,15 @@ defmodule ConfluencePhxMirror.Resources.Device do
   end
 
   # `df -P`: kilobytes, one line per filesystem, and the mount point last — so a
-  # directory with a space in its name stays one field. `find_executable` and
-  # not a bare name, because a system without `df` is a machine to say nothing
-  # about: `System.cmd/3` raises when the program is not there, and this runs
-  # inside the process that measures the store.
+  # directory with a space in its name stays one field. The program is named the
+  # way the system names it, not resolved through `find_executable` first: a
+  # resolved path is a variable standing where a command belongs, which is what
+  # a command-injection check has to treat as untrusted. A machine without `df`
+  # is a machine to say nothing about, so the raise it produces is caught below
+  # rather than avoided by looking the program up.
   defp from_df(path) do
-    with df when is_binary(df) <- System.find_executable("df"),
-         target when is_binary(target) <- existing(path),
-         {output, 0} <- System.cmd(df, ["-kP", target], stderr_to_stdout: true),
+    with target when is_binary(target) <- existing(path),
+         {:ok, output} <- df_report(target),
          [_header, line | _rest] <- String.split(output, "\n", trim: true),
          [_filesystem, total, used, free, capacity | mount] <- String.split(line),
          {:ok, total} <- integer(total),
@@ -63,6 +64,16 @@ defmodule ConfluencePhxMirror.Resources.Device do
     else
       _not_reported -> nil
     end
+  end
+
+  defp df_report(target) do
+    case System.cmd("df", ["-kP", target], stderr_to_stdout: true) do
+      {output, 0} -> {:ok, output}
+      {_output, _status} -> :error
+    end
+  rescue
+    # `System.cmd/3` raises `:enoent` when the program is not on this machine.
+    ErlangError -> :error
   end
 
   defp volume_report(path) do
