@@ -4,6 +4,8 @@ Working on the code itself: invariants, tests and quality gates. The one-page
 map of the system — runtime, data, ingestion, search, identity, deployment — is
 [architecture.md](architecture.md). Deployment lives in
 [operations.md](operations.md), settings in [configuration.md](configuration.md).
+Every task and alias this project adds — `mix confluence.sync` and the rest,
+with their arguments — is indexed in [mix-tasks.md](mix-tasks.md).
 
 ## Local setup
 

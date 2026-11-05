@@ -30,6 +30,7 @@ author and the original URL.*
 | **run the desktop app** (macOS, no Docker) | ~2 min | [The desktop app](#the-desktop-app) |
 | run it in production | — | [operations.md](docs/operations.md) |
 | change the code | — | [developers.md](docs/developers.md) |
+| find a command (`mix confluence.sync`, `mix precommit`, …) | — | [mix-tasks.md](docs/mix-tasks.md) |
 
 **Docker is the only prerequisite** for the first two: both run our image, and
 the database comes with it. Elixir 1.20+ and Node with npm are needed only to
