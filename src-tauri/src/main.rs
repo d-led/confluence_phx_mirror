@@ -36,9 +36,9 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder}
 /// a database open.
 struct Sidecar(Mutex<Option<Child>>);
 
-/// Where the running mirror listens, once the release has said so. The window's
-/// navigation policy reads it to tell this window's own pages from the site's.
-static ORIGIN: Mutex<Option<String>> = Mutex::new(None);
+/// The origins this window may load, in the order they become true: the page it
+/// was born on, and the server the release announced.
+static OWN_ORIGINS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// Why the release could not be started — as one of a few situations a person
 /// can act on, not as whatever the release happened to print.
@@ -283,7 +283,14 @@ fn main() {
 }
 
 fn splash_window(app: &tauri::App) -> Result<WebviewWindow, Box<dyn std::error::Error>> {
-    let url: tauri::Url = format!("{SPLASH}://localhost/").parse()?;
+    let url: tauri::Url = splash_url("").parse()?;
+
+    // Both shapes are this window's own, because the platform decides which one
+    // it is served as: WebView2 has no custom schemes, so Tauri answers the
+    // splash over `http://splash.localhost/` there — and a policy that knew only
+    // the scheme judged the window's own first page an outside link.
+    remember_origin("splash://localhost/");
+    remember_origin("http://splash.localhost/");
 
     Ok(
         WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
@@ -302,40 +309,32 @@ fn splash_window(app: &tauri::App) -> Result<WebviewWindow, Box<dyn std::error::
     )
 }
 
-/// Whether a click may load in this window; anything else leaves for the
-/// person's own browser, where they may already have a session.
+/// Whether a click may load in this window. Anything else is refused, and
+/// **nothing is started on its behalf**: a fallback that handed the link to the
+/// system browser opened a console window on Windows (`cmd /C start` without
+/// `CREATE_NO_WINDOW`) and a second copy of the page in the default browser,
+/// which is a worse failure than the link simply not being followed.
 fn leaves_for_the_browser(target: &tauri::Url) -> bool {
-    let origin = mirror_origin();
-
-    match destination(target, origin.as_ref()) {
-        Destination::Window => true,
-        Destination::Browser => {
-            if matches!(target.scheme(), "http" | "https") {
-                open_externally(target);
-            }
-
-            false
-        }
-    }
+    is_own_page(target)
 }
 
-/// Where a click belongs: in this window, or in the person's browser.
+/// Where a click belongs, as a decision that can be tested without a window.
 #[derive(Debug, PartialEq, Eq)]
 enum Destination {
     Window,
-    Browser,
+    Elsewhere,
 }
 
-fn destination(target: &tauri::Url, origin: Option<&tauri::Url>) -> Destination {
-    // The splash page is this window's own, and it is there before any server is.
-    if target.scheme() == SPLASH {
-        return Destination::Window;
+fn destination(target: &tauri::Url, own: &[tauri::Url]) -> Destination {
+    if own.iter().any(|origin| same_origin(target, origin)) {
+        Destination::Window
+    } else {
+        Destination::Elsewhere
     }
+}
 
-    match origin {
-        Some(origin) if same_origin(target, origin) => Destination::Window,
-        _ => Destination::Browser,
-    }
+fn is_own_page(target: &tauri::Url) -> bool {
+    destination(target, &own_origins()) == Destination::Window
 }
 
 fn same_origin(target: &tauri::Url, origin: &tauri::Url) -> bool {
@@ -344,58 +343,43 @@ fn same_origin(target: &tauri::Url, origin: &tauri::Url) -> bool {
         && target.port_or_known_default() == origin.port_or_known_default()
 }
 
-fn mirror_origin() -> Option<tauri::Url> {
-    ORIGIN.lock().ok()?.as_ref().and_then(|url| url.parse().ok())
+/// Every origin this window has a right to: the page it was created on and the
+/// server it was pointed at.
+fn own_origins() -> Vec<tauri::Url> {
+    OWN_ORIGINS
+        .lock()
+        .map(|origins| {
+            origins
+                .iter()
+                .filter_map(|url| url.parse().ok())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
-fn remember_mirror(url: &str) {
-    if let Ok(mut origin) = ORIGIN.lock() {
-        *origin = Some(url.to_string());
+fn remember_origin(url: &str) {
+    if let Ok(mut origins) = OWN_ORIGINS.lock() {
+        if !origins.iter().any(|known| known == url) {
+            origins.push(url.to_string());
+        }
     }
-}
-
-/// Hands a link to the system's browser. Failure is not worth a dialog: the
-/// window has already refused to go there.
-fn open_externally(url: &tauri::Url) -> bool {
-    let (program, mut args) = browser_command(url.as_str());
-
-    Command::new(program)
-        .args(&mut args)
-        .spawn()
-        .map(|_| true)
-        .unwrap_or(false)
-}
-
-#[cfg(target_os = "macos")]
-fn browser_command(url: &str) -> (&'static str, Vec<String>) {
-    ("open", vec![url.to_string()])
-}
-
-// `start` reads the first quoted argument as a window title, so the empty one
-// is not padding: without it a URL with no spaces opens as a title and nothing
-// happens.
-#[cfg(target_os = "windows")]
-fn browser_command(url: &str) -> (&'static str, Vec<String>) {
-    (
-        "cmd",
-        vec![
-            "/C".to_string(),
-            "start".to_string(),
-            String::new(),
-            url.to_string(),
-        ],
-    )
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-fn browser_command(url: &str) -> (&'static str, Vec<String>) {
-    ("xdg-open", vec![url.to_string()])
 }
 
 fn navigate(window: &WebviewWindow, url: &str) {
     if let Ok(url) = url.parse::<tauri::Url>() {
-        remember_mirror(url.as_str());
+        remember_origin(url.as_str());
         let _ = window.navigate(url);
+    }
+}
+
+/// The splash page in the shape the platform can load: a custom scheme where
+/// there are custom schemes, and the `*.localhost` form WebView2 needs on
+/// Windows — which is also the URL the navigation policy sees there.
+fn splash_url(suffix: &str) -> String {
+    if cfg!(target_os = "windows") {
+        format!("http://{SPLASH}.localhost/{suffix}")
+    } else {
+        format!("{SPLASH}://localhost/{suffix}")
     }
 }
 
@@ -779,7 +763,7 @@ fn announce_failure(window: &WebviewWindow, shared: &SharedState, failure: Failu
 
     // The same page, asked for again: what it serves is read from the state
     // above, so this swap is the whole redraw.
-    navigate(window, &format!("{SPLASH}://localhost/?failed=1"));
+    navigate(window, &splash_url("?failed=1"));
 }
 
 /// What the title bar says while the page says the rest.
@@ -1310,6 +1294,19 @@ mod tests {
         "http://127.0.0.1:43100".parse().unwrap()
     }
 
+    // The splash in both shapes, because the platform decides which one exists:
+    // macOS and Linux serve the custom scheme, WebView2 answers it over
+    // `http://splash.localhost/`. A policy that knew only the scheme refused the
+    // window's own first page on Windows, and the fallback that "handled" it
+    // opened a console and the default browser.
+    fn splash_scheme() -> tauri::Url {
+        "splash://localhost/".parse().unwrap()
+    }
+
+    fn splash_webview2() -> tauri::Url {
+        "http://splash.localhost/".parse().unwrap()
+    }
+
     // Rendered content keeps the links Confluence gave it. Following one used to
     // leave the mirror for a site this window has no session on — and a login
     // that bounces back and forth ends with the site answering "too many
@@ -1320,39 +1317,59 @@ mod tests {
             .parse()
             .unwrap();
 
-        assert_eq!(destination(&page, Some(&mirror())), Destination::Window);
+        assert_eq!(destination(&page, &[mirror()]), Destination::Window);
     }
 
     #[test]
-    fn a_link_to_the_site_leaves_for_the_browser() {
+    fn a_link_to_the_site_is_refused() {
         let site = "https://dled.atlassian.net/wiki/spaces/MFS/pages/1048577"
             .parse()
             .unwrap();
 
-        assert_eq!(destination(&site, Some(&mirror())), Destination::Browser);
+        assert_eq!(destination(&site, &[mirror()]), Destination::Elsewhere);
     }
 
     #[test]
     fn another_port_on_the_same_host_is_not_the_mirror() {
         let neighbour = "http://127.0.0.1:4000/spaces/ENG".parse().unwrap();
 
+        assert_eq!(destination(&neighbour, &[mirror()]), Destination::Elsewhere);
+    }
+
+    #[test]
+    fn the_splash_page_is_this_window_s_own_however_it_is_served() {
         assert_eq!(
-            destination(&neighbour, Some(&mirror())),
-            Destination::Browser
+            destination(&splash_scheme(), &[splash_scheme()]),
+            Destination::Window
+        );
+
+        assert_eq!(
+            destination(&splash_webview2(), &[splash_webview2()]),
+            Destination::Window
         );
     }
 
     #[test]
-    fn the_splash_page_is_this_window_s_own() {
-        let splash = "splash://localhost/".parse().unwrap();
+    fn the_mirror_is_still_the_mirror_once_the_splash_is_own_too() {
+        // Both origins are remembered, and neither makes the other's pages legal:
+        // the registry is a list of what this window may load, not a wildcard.
+        let own = [splash_scheme(), splash_webview2(), mirror()];
 
-        assert_eq!(destination(&splash, None), Destination::Window);
+        assert_eq!(
+            destination(&"http://127.0.0.1:43100/".parse().unwrap(), &own),
+            Destination::Window
+        );
+
+        assert_eq!(
+            destination(&"https://example.atlassian.net/".parse().unwrap(), &own),
+            Destination::Elsewhere
+        );
     }
 
     #[test]
-    fn nothing_but_the_splash_page_loads_before_the_mirror_is_known() {
+    fn nothing_loads_before_an_origin_is_known() {
         let page = "http://127.0.0.1:43100/spaces/ENG".parse().unwrap();
 
-        assert_eq!(destination(&page, None), Destination::Browser);
+        assert_eq!(destination(&page, &[]), Destination::Elsewhere);
     }
 }

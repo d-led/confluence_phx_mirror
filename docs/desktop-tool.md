@@ -499,12 +499,15 @@ watched stdin unconditionally would exit immediately and fail the boot check.
 ### A link cannot take the window off the mirror
 
 The window is pointed at one origin, and it stays there. `on_navigation` asks
-`destination/2`: a page of the mirror — same scheme, host and port — loads in the
-window, the splash scheme is always the window's own, and **everything else
-leaves for the person's browser** (`open` on macOS, `start` under `cmd` on
-Windows, `xdg-open` elsewhere). Before the release has announced its address,
-nothing but the splash page is allowed, so there is no window in which a link
-could be followed by accident.
+`destination/2`: a page of the mirror — same scheme, host and port — loads in
+the window, the splash page is always the window's own, and **everything else is
+refused**. Nothing is started on a refused link's behalf.
+
+The splash is remembered in the shape each platform actually serves it, because
+WebView2 has no custom schemes and answers `splash://` over
+`http://splash.localhost/`. A policy that knew only the scheme treated the
+window's own first page as an outside link — on Windows only, which is the kind
+of difference that ships.
 
 This is not tidiness. Rendered content keeps the links Confluence gave it — an
 attachment that fell back to its site, the byline that opens the original page —
@@ -512,8 +515,15 @@ and a webview that follows one of them lands on a login page it has no session
 for. A site that bounces between its login and the page it was asked for turns
 that into a window that reloads until the site answers **"too many requests"**:
 the person sees a throttle that has nothing to do with the mirror, and the
-mirror's own screens never load. Handing the link to the browser instead is what
-makes the person's existing session, and the site's own rate limit, apply to it.
+mirror's own screens never load.
+
+Refusing silently is the whole of the behaviour, and it is deliberate. An earlier
+version handed the link to the system browser as a graceful fallback; on Windows
+that meant `cmd /C start` — a console window in the background (no
+`CREATE_NO_WINDOW`), a splash page in the default browser, and the app's own
+window left on a failure screen. A link that does nothing is a smaller fault than
+a program that starts processes nobody asked for. The one process the tool ever
+starts is its own release, and that call is hidden on Windows.
 
 ### When the folder and the configuration disagree
 
