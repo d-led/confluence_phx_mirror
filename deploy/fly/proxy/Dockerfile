@@ -7,7 +7,7 @@
 
 # A tagged release, not `latest`: the image is reproduced by tag, and
 # Dependabot (.github/dependabot.yml, docker/…) proposes the next one.
-FROM quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
+FROM quay.io/oauth2-proxy/oauth2-proxy:v7.15.6
 
 # Settings come from the environment (the `[env]` block of `fly.toml` here,
 # or `fly.demo.toml`, and Fly secrets); the
