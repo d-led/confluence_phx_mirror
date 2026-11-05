@@ -98,11 +98,12 @@ jobs:
             # pointing it at the folder itself unpacks the `.exe`, the note and
             # `rel\` loose into whatever directory a person unzips in.
             #
-            # It sits in the runner's temp directory rather than under `_build`,
-            # which this workflow caches: a restored `_build` carried the folder
-            # a previous run had moved there, and moving onto a directory that
+            # That folder is made in the runner's temp directory, and its path is
+            # therefore set at the upload step rather than here: a matrix value
+            # cannot read the `runner` context. It sits outside `_build`, which
+            # this workflow caches — a restored `_build` carried the folder a
+            # previous run had moved there, and moving onto a directory that
             # already has contents fails ("Directory not empty").
-            path: ${{ runner.temp }}/unpack
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -196,7 +197,9 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.path }}
+          # Windows has no `path` in the matrix (see the comment there); its
+          # artifact is the folder staged in the runner's temp directory.
+          path: ${{ matrix.path || format('{0}/unpack', runner.temp) }}
           # `nightly.link` serves the newest artifact of a branch, and an
           # installed build should keep working for a while: a week is not long
           # enough for that promise.
