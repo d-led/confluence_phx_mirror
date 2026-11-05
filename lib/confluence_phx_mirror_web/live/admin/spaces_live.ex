@@ -99,7 +99,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.SpacesLive do
     end
   end
 
-  def handle_event("refresh", _params, socket) do
+  # One line, because the decision it makes is the site's and not this screen's:
+  # `handle_event/3` is already the widest function in the module, and every
+  # condition written inside a clause is counted against it.
+  def handle_event("refresh", _params, socket), do: refresh_the_site(socket)
+
+  defp refresh_the_site(socket) do
     if socket.assigns.paused? do
       {:noreply, put_flash(socket, :error, suspended_message())}
     else
