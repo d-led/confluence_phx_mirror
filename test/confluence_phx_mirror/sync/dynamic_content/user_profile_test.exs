@@ -57,6 +57,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.UserProfileTest do
              "names no person"
   end
 
+  test "the editor's own spelling of the macro draws the same profile" do
+    # The editor writes `profile`; the seeded page carried `user-profile`.
+    html =
+      expand(~s(<div class="mirror-macro" data-macro="profile" data-user="#{@account}"></div>))
+
+    assert html =~ "Jane Doe"
+    assert titled(html) == ["Architecture"]
+  end
+
   defp expand(marker \\ @marker),
     do: DynamicContent.expand(marker, %{space: @space, page: @host, source: StubContent})
 

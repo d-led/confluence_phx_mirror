@@ -42,9 +42,17 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
   # What the same macro is called elsewhere. The Page Properties Report is the
   # one that catches people out: Confluence's key is `detailssummary`, and
   # nothing in its UI says so.
+  #
+  # The last two are not historical spellings but *the editor's*: a page a person
+  # builds in Confluence's editor and stores `listlabels` and `profile`, while a
+  # page whose storage was written through the API carries `labels-list` and
+  # `user-profile`. Both are in the wild at once — so both are answered here, and
+  # the canonical name stays the one that reads like the macro's own words.
   @aliases %{
     "page-properties-report" => "detailssummary",
-    "table-of-contents" => "toc"
+    "table-of-contents" => "toc",
+    "listlabels" => "labels-list",
+    "profile" => "user-profile"
   }
 
   @doc "The renderer that draws `name`, or `:error` for a macro the mirror lacks."

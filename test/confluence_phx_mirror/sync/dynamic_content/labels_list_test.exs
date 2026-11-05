@@ -51,6 +51,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.LabelsListTest do
     assert text(expand()) == "No page in this space carries a label yet."
   end
 
+  test "the editor's own spelling of the macro draws the same list" do
+    # Confluence's editor writes `listlabels` into storage; the page that was
+    # seeded through the API carried `labels-list`. Both are the same macro, and
+    # a page may hold either, so the mirror has to answer to both.
+    html = expand(~s(<div class="mirror-macro" data-macro="listlabels"></div>))
+
+    assert labels(html) == ["runbook · 12 pages", "incident · 1 page"]
+  end
+
   test "a space too large to scan says so instead of counting half of it" do
     StubContent.script(labels: {:error, :too_large})
 
