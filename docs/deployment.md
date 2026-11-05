@@ -49,6 +49,21 @@ the directory it is given, so the default is always the right app.
 | `deploy/fly/demo/fly.toml` | `confluence-mirror-demo-app` | the self-contained demo (`CM_SOURCE=demo`, no credentials) |
 | `deploy/fly/proxy/fly.demo.toml` | `confluence-mirror-demo` | the demo's proxy |
 
+**Those names are ours, and Fly names are unique across all of Fly.** Deploying
+this repository as it stands fails on the first app whose name somebody already
+holds. Pick your own names before the first deploy, everywhere the old ones
+appear:
+
+* `app = "…"` in the `fly.toml` you deploy (and in the proxy's, and the demo's);
+* `OAUTH2_PROXY_UPSTREAMS` in the proxy's `fly.toml` — it names the backend app;
+* the app, proxy and database names at the top of `scripts/fly-provision.sh` and
+  `scripts/fly-deploy.sh`, which provision and check exactly those apps;
+* `FLY_APP_NAME.internal` references, if you cluster replicas.
+
+Nothing above is required by the application — any host that runs containers,
+keeps a volume for attachments and provides Postgres will do; the section below
+is the image contract.
+
 The demo pair is the only thing that is not a default, and its file names say
 `demo`:
 
