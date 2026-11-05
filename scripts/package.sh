@@ -179,7 +179,10 @@ fi
 # to be: the release only says where it listens once it is running, and the point
 # is to ask it for a page. `HOME` is a scratch directory because the tool's store
 # lives under the user's data directory — a check that took the write lock on the
-# catalogue somebody has open would be a check nobody dares run.
+# catalogue somebody has open would be a check nobody dares run. That holds on
+# macOS and Linux; Windows keeps its workspace in a fixed known folder that no
+# environment variable moves, so there this check wants no copy of the tool open
+# (the single-instance guard would answer before a port did).
 boot_check() {
   local home log url pid carried
   home=$(mktemp -d)
@@ -247,8 +250,26 @@ stage_release() {
 
   # Without a launcher there, the window starts nothing — and a window that
   # opens on nothing is worse than a build that fails here.
-  test -x "$stage/$launcher"
+  if ! release_carries_launcher; then
+    echo "the release carried no launcher at ${stage#$PWD/}/$launcher — it holds:"
+    ls "$stage" 2>/dev/null || echo "(nothing; the copy did not land)"
+    return 1
+  fi
+
   echo "carried $(du -sh "$stage" | cut -f1) into ${stage#$PWD/}"
+}
+
+# The file the window starts the release through: a script on macOS and Linux,
+# which has to be executable, and the `.bat` on Windows, which only has to be
+# there — the POSIX permission bits of a Windows filesystem are not a fact, and
+# `test -x` on the `.bat` answered no to a launcher that runs.
+release_carries_launcher() {
+  local required="$stage/$launcher"
+  if [[ $platform == windows ]]; then
+    test -f "$required"
+  else
+    test -x "$required"
+  fi
 }
 
 # A portable folder is a complete install on Linux and Windows: the window
