@@ -7,11 +7,17 @@
 # branch is what somebody installs — there is no release to wait for:
 #
 #   curl -fsSL https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.sh | sh
+#   powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.ps1 | iex"
 #
-# The script reads the newest artifact through `nightly.link`, which serves
+# The scripts read the newest artifact through `nightly.link`, which serves
 # `<workflow>/<branch>/<artifact>.zip` for the last successful run:
 #
 #   https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-macos.zip
+#
+# That zip is a wrapper: what is inside it is the artifact, and the macOS and
+# Linux artifacts are archives themselves. `install-desktop.sh` unpacks both
+# layers — an installer that assumed one said the app was missing, which is how
+# that bug was found — while the Windows artifact is the folder itself.
 #
 # What the macOS one holds is **the application bundle**: `Confluence Export.app`,
 # zipped with `ditto` because a bundle is directories, symlinks and extended
