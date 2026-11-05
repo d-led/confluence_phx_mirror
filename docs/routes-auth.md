@@ -199,6 +199,11 @@ The shell still offers a *Sign in* button to that visitor
 deployment: a nudge, not a wall, and the one piece of chrome a public site
 should drop.
 
+**Two audiences in one instance** — staff behind the proxy, the internet on one
+unauthenticated path — is designed but not built:
+[public-surface.md](public-surface.md) is the argument, the threat model, the
+route allowlist and the cost.
+
 ### The rule a public site narrows
 
 `can_read_space?/2`, `restrict_spaces/2`, `restrict_pages/2` and the in-memory
