@@ -134,12 +134,23 @@ stop() {
 
 fail() {
   echo "$1" >&2
-  echo "--- what the window said:" >&2
-  tail -25 "$log" >&2
+
+  # Everything, not a tail. A pipe that has been quietly losing the interesting
+  # line is the reason this script exists, and a log nobody prints is a log
+  # nobody reads: a CI run whose output is one sentence sends somebody to a
+  # Windows machine to find out what happened.
+  echo "--- what the window said ($log):" >&2
+  cat "$log" >&2
 
   if [[ -f $tool_log ]]; then
-    echo "--- what the tool logged:" >&2
-    tail -25 "$tool_log" >&2
+    # The path as well as the contents: the log is appended across launches, so
+    # the same file can hold lines from the packaging boot check that ran a
+    # moment earlier — and a reader who does not know the path cannot tell whose
+    # lines they are looking at.
+    echo "--- what the tool logged ($tool_log):" >&2
+    cat "$tool_log" >&2
+  else
+    echo "--- the tool wrote no log at $tool_log" >&2
   fi
 
   stop

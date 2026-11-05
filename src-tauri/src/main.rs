@@ -244,12 +244,21 @@ fn main() {
             }
         })
         .setup(move |app| {
+            // Breadcrumbs, and they are load-bearing: the window has no console
+            // (`windows_subsystem = "windows"`), so a launch that stalls leaves
+            // an empty log and a smoke test that can only say "it never served".
+            // One line before and one after each step of the start makes the
+            // difference visible in a CI log, where it is the only witness.
+            println!("window: creating the window");
+
             // Built first, pointed at the waiting page: `setup` used to block
             // until the release had spoken, so a slow boot was a window that did
             // not exist and a failed one was no window at all.
             let window = splash_window(app)?;
             let handle = app.handle().clone();
             let shared = Arc::clone(&shared);
+
+            println!("window: created; starting the release");
 
             std::thread::spawn(move || match start_sidecar(&handle, &shared) {
                 Ok((child, url)) => {

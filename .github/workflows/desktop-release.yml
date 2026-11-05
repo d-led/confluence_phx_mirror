@@ -140,10 +140,18 @@ jobs:
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
+          # `~/.cargo/registry` and `~/.cargo/git` are the *downloads*: the three
+          # heavy paths below only help while this key matches, and the key
+          # carries `hashFiles('src-tauri/Cargo.lock')` — so the one run that
+          # changes a dependency rebuilt the crate graph from nothing and fetched
+          # every tarball again. With the registry cached, a miss is a compile
+          # and not a download.
           path: |
             deps
             _build/desktop
             src-tauri/target
+            ~/.cargo/registry
+            ~/.cargo/git
           key: desktop-release-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock', 'src-tauri/Cargo.lock') }}
           restore-keys: |
             desktop-release-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
@@ -204,46 +212,6 @@ jobs:
         shell: bash
         run: scripts/package.sh
 
-      # The window itself, not only the release inside it. Every check around it
-      # asks the *server* a question, and all of them were green while the window
-      # judged its own splash page a foreign link, opened a console window and the
-      # default browser instead, and showed the person nothing at all — the shape
-      # that shipped. This opens the executable a person downloads and waits for
-      # it to report the screen it painted.
-      - name: Open the window that was just built
-        shell: bash
-        run: scripts/smoke-window.sh
-
-      # The installer is the shape a Windows person actually uses, and until now
-      # the one shape nothing had ever opened: the checks above all look at the
-      # portable folder, whose `rel\` is assembled by `scripts/package.sh`,
-      # while the installed copy gets its `rel\` from the bundler's resource
-      # copy. A download that installs fine and then crashes on start is exactly
-      # the difference between those two, so the installed window is opened too.
-      - name: Install the Windows package and open the installed window
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./_build/desktop/package/confluence-export-windows-setup.exe /S
-
-          # The install directory follows `productName`, and the executable's
-          # name follows the crate — so it is found rather than assumed, and a
-          # package that installs nothing says so instead of timing out.
-          installed=$(find "$LOCALAPPDATA" -maxdepth 3 -type f -iname "confluence*.exe" \
-            ! -iname "*uninstall*" | head -1)
-
-          if [ -z "$installed" ]; then
-            echo "the installer put no window under $LOCALAPPDATA:" >&2
-            find "$LOCALAPPDATA" -maxdepth 2 -iname "*confluence*" >&2 || true
-            exit 1
-          fi
-
-          echo "installed: $installed"
-          ls "$(dirname "$installed")" || true
-
-          scripts/smoke-window.sh --window "$installed"
-
       # What a person actually runs: the artifact, unpacked, with the release
       # inside it started the way the window starts one. `scripts/package.sh`
       # boots the staging folder; this boots the tarball, which is the only shape
@@ -252,41 +220,9 @@ jobs:
       # `prim_tty` NIF while the staging folder serves, so the two disagree about
       # exactly the thing worth knowing (`docs/desktop-tool.md`, "Linux, and why
       # an emulated container lies about it").
-      - name: Boot the unpacked artifact, as the window would
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -uo pipefail
-          work=$(mktemp -d)
-          mkdir -p "$work/home"
-          tar -xzf _build/desktop/package/confluence-export-linux.tar.gz -C "$work"
-          release="$work/confluence-export-linux/rel/confluence_phx_mirror"
-          log="$work/boot.log"
-
-          HOME="$work/home" RELEASE_DISTRIBUTION=none CONFLUENCE_EXPORT_PORT=43999 \
-            "$release/bin/confluence_phx_mirror" start </dev/null >"$log" 2>&1 &
-          pid=$!
-
-          url=""
-          for _ in $(seq 1 40); do
-            url=$(sed -n 's/^desktop ui: //p' "$log" | head -1)
-            [ -n "$url" ] && break
-            sleep 1
-          done
-
-          if [ -z "$url" ]; then
-            echo "the unpacked artifact never announced a port — what it said:"
-            head -25 "$log"
-            kill "$pid" 2>/dev/null || true
-            exit 1
-          fi
-
-          echo "the unpacked artifact serves ${url%/}"
-          curl -fsS "${url%/}/health" >/dev/null
-          curl -fsS "${url%/}/__tool" >/dev/null
-
-          kill "$pid" 2>/dev/null || true
-          wait "$pid" 2>/dev/null || true
+      #
+      # It runs after the uploads, like the window checks below: a failing check
+      # is a fact worth reporting and not a reason to withhold the download.
 
       # The zip a person downloads has to unpack into one folder, and
       # `upload-artifact` zips a directory's *contents*. So the folder is given
@@ -324,6 +260,95 @@ jobs:
           path: _build/desktop/package/confluence-export-windows-setup.exe
           retention-days: 90
           if-no-files-found: warn
+
+      - name: Boot the unpacked artifact, as the window would
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -uo pipefail
+          work=$(mktemp -d)
+          mkdir -p "$work/home"
+          tar -xzf _build/desktop/package/confluence-export-linux.tar.gz -C "$work"
+          release="$work/confluence-export-linux/rel/confluence_phx_mirror"
+          log="$work/boot.log"
+
+          HOME="$work/home" RELEASE_DISTRIBUTION=none CONFLUENCE_EXPORT_PORT=43999 \
+            "$release/bin/confluence_phx_mirror" start </dev/null >"$log" 2>&1 &
+          pid=$!
+
+          url=""
+          for _ in $(seq 1 40); do
+            url=$(sed -n 's/^desktop ui: //p' "$log" | head -1)
+            [ -n "$url" ] && break
+            sleep 1
+          done
+
+          if [ -z "$url" ]; then
+            echo "the unpacked artifact never announced a port — what it said:"
+            cat "$log"
+            kill "$pid" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "the unpacked artifact serves ${url%/}"
+          curl -fsS "${url%/}/health" >/dev/null
+          curl -fsS "${url%/}/__tool" >/dev/null
+
+          kill "$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+
+      # The window itself, and *after* the uploads on purpose: a check that fails
+      # is a fact worth reporting, and it is not a reason to withhold the download
+      # from somebody waiting for one. The other order did exactly that — the
+      # Windows package was built, and a failed window check meant it was never
+      # published.
+      #
+      # Every check before this one asks the *server* a question, and all of them
+      # were green while the window judged its own splash page a foreign link,
+      # opened a console window and the default browser instead, and showed the
+      # person nothing at all — the shape that shipped. This opens the executable
+      # a person downloads and waits for it to report the screen it painted.
+      - name: Open the window that was just built
+        shell: bash
+        run: |
+          # Windows' portable folder lives in the runner's temp directory by now
+          # (the step above moved it there so its zip unpacks into one folder).
+          if [[ $RUNNER_OS == Windows ]]; then
+            scripts/smoke-window.sh \
+              --window "$RUNNER_TEMP/unpack/confluence-export-windows/confluence-export.exe"
+          else
+            scripts/smoke-window.sh
+          fi
+
+      # The installer is the shape a Windows person actually uses, and until now
+      # the one shape nothing had ever opened: the checks above look at the
+      # portable folder, whose `rel\` is assembled by `scripts/package.sh`, while
+      # the installed copy gets its `rel\` from the bundler's resource copy. A
+      # download that installs fine and then crashes on start is exactly the
+      # difference between those two, so the installed window is opened too.
+      - name: Install the Windows package and open the installed window
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./_build/desktop/package/confluence-export-windows-setup.exe /S
+
+          # The install directory follows `productName`, and the executable's
+          # name follows the crate — so it is found rather than assumed, and a
+          # package that installs nothing says so instead of timing out.
+          installed=$(find "$LOCALAPPDATA" -maxdepth 3 -type f -iname "confluence*.exe" \
+            ! -iname "*uninstall*" | head -1)
+
+          if [ -z "$installed" ]; then
+            echo "the installer put no window under $LOCALAPPDATA:" >&2
+            find "$LOCALAPPDATA" -maxdepth 2 -iname "*confluence*" >&2 || true
+            exit 1
+          fi
+
+          echo "installed: $installed"
+          ls "$(dirname "$installed")" || true
+
+          scripts/smoke-window.sh --window "$installed"
 
   release:
     name: release
