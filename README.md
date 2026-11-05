@@ -36,8 +36,9 @@ It never writes back: no uploads, no edits, no page history.
 | **to mirror my own site** (public read-only, no sign-in) | ~5 min, then the first pull | [Mirror your site](#mirror-your-site) |
 | **to deploy it** (Fly.io, or any container host) | ~20 min | [Deploy it](#deploy-it) |
 
-Docker is the only prerequisite for the middle two: both run our image, and the
-database comes with it. Mirroring a real site also needs an Atlassian API token.
+Docker is the only prerequisite for the three container rows: they run our
+image and bring their own database. Mirroring a real site also needs an
+Atlassian API token.
 
 ## The desktop app
 
@@ -196,8 +197,9 @@ scripts — otherwise the deploy stops on a name that is already taken.
 ### Anywhere else
 
 A release carries everything but the configuration: no compiler, no Node, no
-state on disk except the blob root. Build the image with the `Dockerfile` and
-run the three commands a deploy needs — migrate, then serve:
+state on disk except the blob root. Build the image with the `Dockerfile` (or
+pull the published `ghcr.io/d-led/confluence_phx_mirror:main`), then run the two
+steps a deploy needs — migrate, then serve:
 
 ```bash
 docker build -t confluence-mirror .
@@ -208,7 +210,6 @@ docker run -p 4000:4000 -v mirror-blobs:/app/var/mirror -e … confluence-mirror
 A release that mirrors a real site **refuses to start** with the sign-in-free
 switches on (`MIRROR_AUTO_ADMIN`, `MIRROR_SELF_SIGNUP`, `CM_PROXY_AUTH`) unless
 `MIRROR_ALLOW_UNSAFE_IDENTITY=1` says you meant it.
-
 
 ## Take a copy with you
 
