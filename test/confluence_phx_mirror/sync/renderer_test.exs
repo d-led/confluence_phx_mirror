@@ -492,6 +492,19 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert result.html =~ ~s(data-macro="include")
       assert result.html =~ ~s(data-page="Architecture Overview")
     end
+
+    test "a named parameter that holds a reference keeps its own word" do
+      html = """
+      <ac:structured-macro ac:name="user-profile">
+        <ac:parameter ac:name="user"><ri:user ri:account-id="557058:abc" /></ac:parameter>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ ~s(data-macro="user-profile")
+      assert result.html =~ ~s(data-user="557058:abc")
+    end
   end
 
   defp page do

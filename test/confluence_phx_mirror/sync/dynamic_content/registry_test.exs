@@ -38,7 +38,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
              "native-embed:whiteboard",
              "pagetree",
              "recently-updated",
-             "toc"
+             "toc",
+             "user-profile"
            ]
   end
 

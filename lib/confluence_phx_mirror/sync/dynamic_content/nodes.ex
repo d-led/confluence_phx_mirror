@@ -81,6 +81,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Nodes do
      ]}
   end
 
+  @doc "The way from a profile to everything else that person wrote, in the mirror."
+  def person_link(name, account_id) do
+    {"p", [],
+     [
+       {"a", [{"href", URLs.person_path(account_id)}, {"class", "mirror-person-link"}],
+        ["All pages by #{name} in this mirror"]}
+     ]}
+  end
+
   @doc """
   A page's files: name linked to the mirrored blob, type and size beside it.
 

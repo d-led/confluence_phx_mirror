@@ -66,7 +66,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     widget for a macro Confluence will not expand for a reader.
   # 11: a parameter that names a page, a person or a file carries that name, so an
   #     include finds the page it was pointed at instead of naming none.
-  def revision, do: 11
+  # 12: a user profile names its person and their pages instead of staying the
+  #     widget for a macro Confluence will not expand for a reader.
+  def revision, do: 12
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

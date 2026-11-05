@@ -171,6 +171,23 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
     |> Enum.take(Keyword.get(opts, :limit, 30))
   end
 
+  @impl true
+  def authored(%Page{} = host, account_id, opts) do
+    case Mirror.find_author(account_id) do
+      %{name: name} ->
+        pages =
+          account_id
+          |> Mirror.pages_by_author()
+          |> visible_to(host)
+          |> Enum.take(Keyword.get(opts, :limit, 20))
+
+        {:ok, %{name: name, pages: pages}}
+
+      nil ->
+        :error
+    end
+  end
+
   defp ranked(rows, opts) do
     rows
     |> Enum.group_by(&{&1.name, &1.account_id})

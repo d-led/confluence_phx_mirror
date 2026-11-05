@@ -148,4 +148,19 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   """
   @callback labels(host :: Page.t(), space :: String.t() | nil, keyword()) ::
               {:ok, [%{name: String.t(), pages: pos_integer()}]} | {:error, :too_large}
+
+  @doc """
+  One person, by Confluence account id, with the pages of theirs readable
+  alongside the host.
+
+  The name comes from the bylines the mirror has read — there is no separate
+  people directory to ask — so a person the site knows but whose pages are all
+  out of these readers' reach is still answered, with an empty list; a person the
+  mirror has never seen is `:error`, because a name it does not have is not a
+  name it may invent.
+
+  Options: `:limit` — pages to come back, newest first.
+  """
+  @callback authored(host :: Page.t(), account_id :: String.t(), keyword()) ::
+              {:ok, %{name: String.t(), pages: [Page.t()]}} | :error
 end

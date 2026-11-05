@@ -105,6 +105,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.StubContent do
     answer(:labels, {:ok, []})
   end
 
+  @impl true
+  def authored(_host, account_id, _opts) do
+    record({:authored, account_id})
+    answer(:authored, :error)
+  end
+
   defp record(question), do: Process.put(@asked, [question | Process.get(@asked, [])])
 
   defp answer(name, default), do: @key |> Process.get([]) |> Keyword.get(name, default)

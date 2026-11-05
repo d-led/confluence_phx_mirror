@@ -35,7 +35,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "native-embed:whiteboard" => Renderers.NativeEmbed,
     "pagetree" => Renderers.PageTree,
     "recently-updated" => Renderers.RecentlyUpdated,
-    "toc" => Renderers.Toc
+    "toc" => Renderers.Toc,
+    "user-profile" => Renderers.UserProfile
   }
 
   # What the same macro is called elsewhere. The Page Properties Report is the

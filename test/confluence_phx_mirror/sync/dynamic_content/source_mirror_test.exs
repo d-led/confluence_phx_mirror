@@ -148,4 +148,55 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.SourceMirrorTest do
       assert %{pages: [_one_of_two], truncated?: true} = Mirror.space_labels(docs.id, limit: 1)
     end
   end
+
+  describe "authored" do
+    test "names the person and the pages of theirs these readers may open" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      host = page_fixture(docs, %{title: "Home", confluence_id: 97_140})
+
+      mine =
+        page_fixture(docs, %{
+          title: "Mine",
+          confluence_id: 97_141,
+          author_name: "Jane Doe",
+          author_account_id: "acc-jane"
+        })
+
+      assert {:ok, %{name: "Jane Doe", pages: [found]}} =
+               Source.Mirror.authored(host, "acc-jane", limit: 20)
+
+      assert found.id == mine.id
+    end
+
+    test "leaves out a page of theirs these readers cannot open" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      host = page_fixture(docs, %{title: "Home", confluence_id: 97_142})
+      open = janes_page(docs, "Open", 97_143)
+      draft = janes_page(docs, "Draft", 97_144)
+
+      {:ok, _} =
+        Mirror.replace_page_restrictions(draft, [
+          %{subject_type: "group", subject_key: "docs-team"}
+        ])
+
+      assert {:ok, %{pages: [found]}} = Source.Mirror.authored(host, "acc-jane", limit: 20)
+      assert found.id == open.id
+    end
+
+    test "a person the mirror has never seen is :error, not an empty profile" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      host = page_fixture(docs, %{title: "Home", confluence_id: 97_145})
+
+      assert Source.Mirror.authored(host, "acc-nobody", limit: 20) == :error
+    end
+
+    defp janes_page(docs, title, id) do
+      page_fixture(docs, %{
+        title: title,
+        confluence_id: id,
+        author_name: "Jane Doe",
+        author_account_id: "acc-jane"
+      })
+    end
+  end
 end
