@@ -760,6 +760,45 @@ LiveView answer as the caller does: their results pass through the same
 `Authorization` checks, so a reader cannot find in them what the reader-side
 directory hides.
 
+### Publishing a subset of the spaces
+
+Most mirrors serve one audience. A mirror with two — most spaces internal, a few
+meant for the world — names the public ones:
+
+```bash
+fly secrets set CM_PUBLIC_SITE=true CM_PUBLIC_SPACES="ENG,OPS" -a <app>
+```
+
+Two settings, one deploy, no screen. The list is deliberately not in
+`/admin`: it is the one setting whose mistake is a leak, so it travels the way
+the credentials travel. `CM_PUBLIC_SITE` still says *a stranger is a reader*;
+the list says *of which spaces*. Inside them Confluence's own permissions still
+decide — listing a space the site restricts grants nothing.
+
+What is different from a plain public site:
+
+* a page outside the list answers with the `404` an unknown page gets;
+* a page **inside** it names nobody: no byline, no comment authors, no "reading
+  now", no `/people` directory, no link to a person — and the same in the
+  `contributors` and `user-profile` macros in the body. That is not a switch to
+  remember: a listed space is anonymised whether or not
+  `CM_ANONYMIZE_CONTRIBUTORS` is set. A reader with an account reading the same
+  page sees what they always saw;
+* because the body is stored once, a signed-in reader of a public page also
+  loses the names inside those macros. That is the trade, and it is why the
+  renderer revision moves: an already-mirrored page is re-read on the next sync.
+
+The page's own prose is not scrubbed, and titles, space names and the
+recent-changes feed still say which documents exist — a space nobody should know
+about does not belong in the list.
+
+Every start names what it resolved (`publishing: public spaces ENG, OPS: …` in
+the log) and warns about a key that matches no mirrored space, so a typo is said
+out loud rather than being a silent no-op. `scripts/fly-deploy.sh --check`
+prints the same list — read from the running app, because the value is a secret
+— before anything ships. A list without `CM_PUBLIC_SITE` grants nothing, and the
+boot line says so.
+
 ## Themes and variants
 
 Two decisions, kept apart:

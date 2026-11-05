@@ -486,6 +486,11 @@ fly deploy --build-arg VERSION="$(git describe --tags --always)"
   `CM_ANONYMIZE_CONTRIBUTORS` (bylines, comments, `/people`, exports, MCP
   answers) and `CM_EXCLUDE_COMMENTS` (the section, the search hits and the
   snippets that quote them).
+* **A third narrows *which* spaces are public**: `CM_PUBLIC_SPACES=ENG,OPS`
+  makes a stranger a reader of those, closes every other space to them, and
+  anonymises the ones on the list whether or not
+  `CM_ANONYMIZE_CONTRIBUTORS` is set — the mirror's one answer to a page that
+  is public by accident. Unset keeps the site-wide reading above.
 
 Anonymous reading is not a promise, it is a test:
 `test/confluence_phx_mirror_web/controllers/access_test.exs` walks catalogues,

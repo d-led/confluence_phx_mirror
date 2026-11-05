@@ -211,7 +211,9 @@ What that file decides, and why:
   rather than open. The rule, and what it deliberately does not answer: see
   [routes-auth.md](routes-auth.md#public-documentation-sites).
   `CM_ANONYMIZE_CONTRIBUTORS` and `CM_EXCLUDE_COMMENTS` decide whether names
-  and comments appear at all.
+  and comments appear at all. `CM_PUBLIC_SPACES=ENG,OPS` publishes a subset of
+  the spaces instead of all of them, and anonymises those by itself — see
+  [configuration.md](configuration.md#publishing).
 * **`CM_SOURCE=http` plus the three credentials is the whole upstream
   contract** — the account needs Confluence product access, and the token comes
   from <https://id.atlassian.com/manage-profile/security/api-tokens>.

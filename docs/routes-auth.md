@@ -230,11 +230,22 @@ not answer either. Each is one setting and one seam, so no surface is left out:
 | `CM_ANONYMIZE_CONTRIBUTORS` | `Publishing.byline/1` | page meta, comment authors, catalogue bylines, `/people` (closed), API presenters, Markdown and site exports, MCP answers |
 | `CM_EXCLUDE_COMMENTS` | `Mirror.comments/1`, `Mirror.Search` | the page view (no section at all), comment search hits **and the snippet that quotes them**, `…/comments`, exports, MCP results |
 
-Both are deployment-wide, which matches `CM_PUBLIC_SITE`: a public site is a
-documentation site and publishes nothing else. A deployment that means to expose
-a *subset* of spaces instead needs the same answer per page rather than per site —
-decided, not built, in `design-notes.md` under "Public by the space, not by the
-site", including what such a mode cannot scrub.
+Both are deployment-wide, which matches the all-or-nothing reading of
+`CM_PUBLIC_SITE`: a public site is a documentation site and publishes nothing
+else.
+
+A deployment with two audiences — most spaces internal, a few meant for the
+world — names the public ones in `CM_PUBLIC_SPACES` instead. The list narrows
+what a stranger may read, and **anonymises those spaces by itself**: a page a
+stranger may open is drawn without bylines, comment authors, presence, the
+people directory or links to anybody's profile, whether or not
+`CM_ANONYMIZE_CONTRIBUTORS` is set. A reader with an account keeps today's view
+of the same page, so the question is asked per reader *and* per page
+(`Publishing.identities?/1`); the stored body is the one thing that cannot be,
+and a page in a listed space is rendered for the stranger
+(`Publishing.identities_in_space?/1`) and served that way to everybody. What
+such a mode cannot scrub is in `design-notes.md` under "Public by the space,
+not by the site".
 
 ## Administration
 

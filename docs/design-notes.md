@@ -469,7 +469,7 @@ a sync, and a site that never answered is not a site that turned its title off.
 An answer that differs is one audit entry (`site.settings_read`), and an answer
 that repeats itself is none — the same discipline a page's version gets.
 
-## Public by the space, not by the site (decided, not built)
+## Public by the space, not by the site
 
 `CM_PUBLIC_SITE` is all-or-nothing today: it makes a stranger a reader of
 everything the site's permissions leave open, and `CM_ANONYMIZE_CONTRIBUTORS` and
@@ -507,13 +507,25 @@ environment variable and by nothing else:
 The cost is that anonymity stops being a deployment-wide flag. `byline/1` and
 `exclude_comments?/0` are global booleans read where a name is drawn; a public
 subset makes the question per page — *this* page is public, that one is not. So
-the seam has to carry the reader (`Publishing.for_reader(scope)`-shaped), and
-every place that publishes an identity has to ask it: the byline, comment
-authors, the people directory `/people`, a person's page and picture
-(`/people/:account_id`, `/people/:account_id/avatar`), the `contributors` and
-`user-profile` macros and the "reading now" badge. A page in a public space must
-not say who wrote it, who commented, who is reading, or link to anybody's
-profile.
+the seam carries the reader — `Publishing.identities?(scope)` — and every place
+that publishes an identity asks it: the byline, comment authors, the presence
+badge, the `contributors` and `user-profile` macros, the people directory
+`/people`, a person's page and picture (`/people/:account_id`,
+`/people/:account_id/avatar`), the catalogue bylines, the name menu in search
+and the people links in the shell. A page in a public space must not say who
+wrote it, who commented, who is reading, or link to anybody's profile.
+
+The stored body is the one surface that cannot be per reader: it is rendered
+once, at sync time, and served to everybody. So it is decided from the page's
+space — `Publishing.identities_in_space?/1` — and a page in a listed space is
+stored in the stranger's shape. That is a deliberate trade: a signed-in reader
+of a public page loses the names inside the body's macros, and keeps the ones in
+the page's own chrome. `Sync.Renderer.revision/0` moves when a renderer starts
+drawing differently, which is what re-reads the bodies already mirrored.
+
+One more surface has to know: the page's ETag. One row now draws three shapes —
+an administrator's, a reader's and the stranger's — and a tag that named only
+two would offer a cached reader's copy to a stranger's revalidation.
 
 What this cannot promise, said here rather than in a footnote:
 

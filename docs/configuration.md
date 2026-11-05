@@ -196,14 +196,32 @@ none is named: [routes-auth.md](routes-auth.md#admission-may-this-identity-have-
 
 ## Publishing
 
-For a mirror put on the internet as a documentation site. All three are off: a
-mirror behind its proxy publishes to the people it admitted.
+For a mirror put on the internet as a documentation site. All of these are off:
+a mirror behind its proxy publishes to the people it admitted.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `CM_PUBLIC_SITE` | `false` | a visitor with no account is a reader: a space whose permissions the sync never stored is **closed** to them (open only with an explicit `anonymousAccess` grant), and the shell offers no sign-in. Admitted readers keep the mirror's own reading of a space with no permissions |
-| `CM_ANONYMIZE_CONTRIBUTORS` | `false` | no bylines anywhere a stranger can read them: page meta, comments, catalogues, `/people`, the API, the Markdown and site exports, MCP answers. `/admin` still shows them |
+| `CM_PUBLIC_SPACES` | unset | comma-separated space keys (`ENG,OPS`) a stranger may read. It **narrows** `CM_PUBLIC_SITE`: that switch still makes a stranger a reader, this says of which spaces, and the synced permissions still decide inside them — the list never grants what Confluence restricts. A page outside the list answers with the 404 an unknown page gets. Case does not matter. Unset means "no list": a public site stays all-or-nothing. A space in the list is **anonymised** (see below) |
+| `CM_ANONYMIZE_CONTRIBUTORS` | `false` | no bylines anywhere a stranger can read them: page meta, comments, catalogues, `/people`, the API, the Markdown and site exports, MCP answers. `/admin` still shows them. **A space in `CM_PUBLIC_SPACES` is anonymised whether or not this is set** |
 | `CM_EXCLUDE_COMMENTS` | `false` | comments are not published: the page draws no comments section, `Mirror.comments/1` answers none to the exports, the API and MCP, and full-text search neither finds a page through a comment nor quotes one |
+
+Anonymisation is the default for the public parts rather than a second flag to
+remember: forgetting it would publish the identities of exactly the pages meant
+for the world. A reader with an account reading the same page keeps what the
+mirror always drew, because the question is asked per reader and per page. The
+one thing that cannot be per reader is the stored body, so a page in a listed
+space is rendered for the stranger and served that way to everybody — the
+`contributors` and `user-profile` macros on it name nobody.
+
+Three things this cannot promise: a page's **own prose** is not scrubbed (names
+in a sentence, a screenshot or an attachment stay); titles, space names and the
+recent-changes feed still say which documents exist; and a body can name people
+indirectly through editor chrome.
+
+The boot log names the spaces it resolved on every start, and warns about a key
+that matches no mirrored space. `scripts/fly-deploy.sh --check` prints the list
+of the running app before anything ships.
 
 The audience rule, why a public site needs the narrower one, and what the proxy
 has to allow: [routes-auth.md](routes-auth.md#public-documentation-sites).
