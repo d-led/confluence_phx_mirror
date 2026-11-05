@@ -75,7 +75,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 15: a labels list is the site's four alphabetical columns, not one flat list.
   # 16: the task and decision reports are drawn from the items inside page bodies
   #     instead of staying the widget for a macro Confluence will not expand.
-  def revision, do: 16
+  # 17: a reported task says its words, not the tick Confluence draws beside them.
+  def revision, do: 17
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

@@ -48,6 +48,22 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.ItemsTest do
     assert Items.extract(html, :tasks) == [%{text: "Two lines", state: "open"}]
   end
 
+  test "the tick Confluence draws beside a task is decoration, not words" do
+    # Confluence puts an icon span in the item; the state is the class, so the
+    # glyph would only be a stray character in the middle of a sentence.
+    html = """
+    <ul class="inline-task-list">
+      <li class="checked"><span class="aui-icon aui-icon-small aui-iconfont-tick">✓</span> Whiteboard read</li>
+      <li><span class="aui-icon aui-icon-small aui-iconfont-tick">☐</span> Database linked</li>
+    </ul>
+    """
+
+    assert Items.extract(html, :tasks) == [
+             %{text: "Whiteboard read", state: "done"},
+             %{text: "Database linked", state: "open"}
+           ]
+  end
+
   test "a page carrying none of them yields nothing, not an error" do
     assert Items.extract("<p>nothing here</p>", :tasks) == []
     assert Items.extract("", :decisions) == []

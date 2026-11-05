@@ -62,8 +62,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Items do
 
   # `sep: " "` keeps two blocks from running together ("Two" + "lines"), and the
   # squeeze then makes a paragraph break read as one space rather than two.
+  # The tick Confluence draws beside a task is an icon span, and its glyph is
+  # decoration: the state is the item's class, so the character would only sit
+  # in the middle of a sentence.
   defp text(children) do
     children
+    |> Floki.filter_out(".aui-icon")
     |> Floki.text(sep: " ")
     |> String.replace(~r/\s+/u, " ")
     |> String.trim()
