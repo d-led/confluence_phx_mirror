@@ -190,13 +190,11 @@ boot_check() {
   # Windows it is the `.bat`, which is the launcher the release ships there.
   carried="$PWD/$stage/$launcher"
 
-  # `.bat` is not an executable: `CreateProcess` refuses one, so Windows runs it
-  # through `cmd /C` — the same thing `src-tauri/src/main.rs` does.
-  if [[ $platform == windows ]]; then
-    HOME="$home" RELEASE_DISTRIBUTION=none cmd //C "$carried" start >"$log" 2>&1 &
-  else
-    HOME="$home" RELEASE_DISTRIBUTION=none "$carried" start >"$log" 2>&1 &
-  fi
+  # Started directly on every platform: bash runs a `.bat` through `cmd` itself,
+  # and `cmd` will not resolve a POSIX path — handing one to `cmd /C` is how the
+  # Windows boot check failed with "'_build' is not recognized as an internal or
+  # external command".
+  HOME="$home" RELEASE_DISTRIBUTION=none "$carried" start >"$log" 2>&1 &
   pid=$!
 
   for _ in $(seq 1 60); do

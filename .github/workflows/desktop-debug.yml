@@ -133,14 +133,11 @@ jobs:
             *) bin="$dir/confluence_phx_mirror" ;;
           esac
 
-          case "$(uname -s)" in
-            MINGW* | MSYS* | CYGWIN*)
-              RELEASE_DISTRIBUTION=none "$COMSPEC" //C "$bin" start >"$log" 2>&1 &
-              ;;
-            *)
-              RELEASE_DISTRIBUTION=none "$bin" start >"$log" 2>&1 &
-              ;;
-          esac
+          # Started directly, not through `cmd /C`: bash runs a `.bat` through
+          # cmd itself, and cmd will not resolve a POSIX path — passing one is
+          # how this step failed on Windows with
+          # "'_build' is not recognized as an internal or external command".
+          RELEASE_DISTRIBUTION=none "$bin" start >"$log" 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true; cat "$log"' EXIT
 
