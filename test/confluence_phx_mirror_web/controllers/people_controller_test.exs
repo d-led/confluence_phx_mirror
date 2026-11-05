@@ -31,5 +31,14 @@ defmodule ConfluencePhxMirrorWeb.PeopleControllerTest do
       body = conn |> get(~p"/people/nobody") |> html_response(404)
       assert body =~ "Nobody with that account"
     end
+
+    test "an identity the site only lists in a group still opens, and says so", %{conn: conn} do
+      group_member_fixture(%{account_id: "acc-guest", display_name: "Casey Guest"})
+
+      html = conn |> get(~p"/people/acc-guest") |> html_response(200)
+
+      assert html =~ "Casey Guest"
+      assert html =~ "Nothing authored here yet"
+    end
   end
 end

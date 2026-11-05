@@ -1360,10 +1360,26 @@ defmodule ConfluencePhxMirror.Mirror do
     )
   end
 
-  defp groups_by_subject(account_ids) do
+  @doc """
+  The groups each of `account_ids` belongs to, keyed by the identity it was read
+  under.
+
+  A membership row is written under its e-mail when the site gave one and under
+  its account id otherwise, so the key here is the account id when there is one:
+  every caller has account ids, and keying by a lowercased address would answer
+  "no groups" for a member who has both.
+
+  Read once for a page of identities rather than once per row: a directory shows
+  a group list beside every name, and fifty names would otherwise be fifty
+  queries.
+  """
+  @spec groups_by_subject([String.t()]) :: %{String.t() => [String.t()]}
+  def groups_by_subject([]), do: %{}
+
+  def groups_by_subject(account_ids) do
     from(m in GroupMember,
       where: m.account_id in ^account_ids,
-      select: {m.subject_key, m.group_name}
+      select: {fragment("coalesce(?, ?)", m.account_id, m.subject_key), m.group_name}
     )
     |> Repo.all()
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
@@ -3263,8 +3279,35 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
-  @doc "Looks an author up by Confluence account id."
-  def find_author(account_id), do: Enum.find(authors(), &(&1.account_id == account_id))
+  @doc """
+  Looks an identity up by Confluence account id: a byline first, then a member
+  of a synced group.
+
+  A group's member list is how the mirror learns about the people who never
+  authored anything — the readers waiting to sign in — so their entry in the
+  directory opens a page that says so rather than a 404.
+  """
+  def find_author(account_id) do
+    found = Enum.find(authors(), &(&1.account_id == account_id))
+
+    found ||
+      Enum.find(authors(), &(is_nil(&1.account_id) and &1.name == account_id)) ||
+      group_member_identity(account_id)
+  end
+
+  defp group_member_identity(account_id) do
+    from(m in GroupMember,
+      where: m.account_id == ^account_id,
+      group_by: [m.account_id],
+      select: %{
+        account_id: m.account_id,
+        name: max(coalesce(m.display_name, m.account_id)),
+        pages: 0,
+        updated_at: type(^nil, :utc_datetime)
+      }
+    )
+    |> Repo.one()
+  end
 
   # ---------------------------------------------------------------------------
   # Dynamic content (macros Confluence resolves in the browser)

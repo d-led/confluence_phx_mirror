@@ -18,8 +18,13 @@
     </span>
     <div>
       <h1 class="text-2xl font-semibold leading-tight">{@author.name}</h1>
-      <p class="mt-1 text-xs text-base-content/70">
-        {@author.pages} items · last change {Time.ago(@author.updated_at)}
+      <p :if={@author.pages > 0} class="mt-1 text-xs text-base-content/70">
+        {@author.pages} {if @author.pages == 1, do: "item", else: "items"} · last change {Time.ago(
+          @author.updated_at
+        )}
+      </p>
+      <p :if={@author.pages == 0} class="mt-1 text-xs text-base-content/70">
+        Nothing authored here yet — this identity is one the site's groups name.
       </p>
     </div>
   </header>

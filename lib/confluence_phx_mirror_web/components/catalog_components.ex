@@ -111,22 +111,27 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
       id="catalog-results"
       class="mt-4 divide-y divide-base-300/60 overflow-hidden rounded-xl border border-base-300/70 bg-base-100"
     >
-      <li :for={author <- @items}>
+      <li :for={person <- @items}>
         <.link
-          navigate={URLs.person_path(author.account_id)}
+          navigate={URLs.person_path(person.account_id)}
           class="group flex min-h-14 items-center gap-3 px-4 py-3 transition hover:bg-base-200/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-inset"
         >
           <span class="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-            {initials(author.name)}
+            {initials(person.name)}
           </span>
           <span class="min-w-0">
             <span class="block truncate text-sm font-semibold group-hover:text-primary">
-              {author.name}
+              {person.name}
             </span>
-            <span class="block text-[11px] text-base-content/70">
-              {author.pages} {if author.pages == 1, do: "item", else: "items"} · updated {Time.ago(
-                author.updated_at
-              )}
+            <span class="block truncate text-[11px] text-base-content/70">
+              {written_line(person)}
+            </span>
+            <span
+              :if={person.groups != []}
+              class="block truncate text-[11px] text-base-content/60"
+              title={Enum.join(person.groups, ", ")}
+            >
+              {groups_line(person.groups)}
             </span>
           </span>
         </.link>
@@ -457,4 +462,18 @@ defmodule ConfluencePhxMirrorWeb.CatalogComponents do
 
   defp sort_tone(true), do: "text-base-content"
   defp sort_tone(false), do: "text-base-content/70 hover:text-base-content"
+
+  # A byline answers "how much did they write"; a group answers "who is this".
+  # The directory says whichever it knows, and says nothing it does not: a
+  # person the mirror knows only from a group has written nothing here yet.
+  defp written_line(%{pages: 0}), do: "Has not written anything yet"
+
+  defp written_line(%{pages: pages} = person) do
+    "#{pages} #{if pages == 1, do: "page", else: "pages"}" <> updated_line(person)
+  end
+
+  defp updated_line(%{updated_at: nil}), do: ""
+  defp updated_line(%{updated_at: at}), do: " · updated #{Time.ago(at)}"
+
+  defp groups_line(groups), do: "in " <> Enum.join(groups, ", ")
 end

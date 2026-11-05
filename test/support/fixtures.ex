@@ -6,10 +6,38 @@ defmodule ConfluencePhxMirror.Fixtures do
   alias ConfluencePhxMirror.Accounts
   alias ConfluencePhxMirror.Blobs.Store
   alias ConfluencePhxMirror.Mirror
-  alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
+  alias ConfluencePhxMirror.Mirror.{Attachment, Comment, GroupMember, Page, Space}
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
+
+  @doc """
+  One member of a Confluence group, written the way a sync writes it.
+
+  Membership is the only place the mirror learns about somebody who never wrote
+  anything, so a test that needs such a person needs this row and nothing else.
+  """
+  def group_member_fixture(attrs \\ %{}) do
+    member =
+      Map.merge(
+        %{
+          group_name: "confluence-users",
+          email: "jane@example.com",
+          account_id: "acc-jane",
+          display_name: "Jane Doe"
+        },
+        attrs
+      )
+
+    {:ok, _written} =
+      Mirror.put_group_members(
+        member.group_name,
+        [member],
+        System.unique_integer([:positive])
+      )
+
+    %GroupMember{group_name: member.group_name, account_id: member.account_id}
+  end
 
   @doc """
   One undelivered notification in the outbox.

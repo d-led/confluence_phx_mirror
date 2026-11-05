@@ -344,11 +344,11 @@ defmodule ConfluencePhxMirrorWeb.CatalogLive do
       title: "People",
       page_title: "People",
       blurb:
-        "Authors of mirrored content. The mirror lists the bylines it synced from Confluence; it does not keep a separate user directory.",
-      placeholder: "Filter by name",
+        "Everyone the mirror can name: the bylines it synced and the members of the Confluence groups it mirrors, with each person's groups. An identity is a name and a Confluence account id — the mirror keeps no addresses.",
+      placeholder: "Filter by name or account id",
       singular: "person",
       plural: "people",
-      empty: empty(q, "No authors yet", "Sync a space and its authors appear here.")
+      empty: empty(q, "No identities yet", "Sync a space and its authors and groups appear here.")
     }
   end
 

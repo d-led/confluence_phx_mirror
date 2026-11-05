@@ -145,6 +145,49 @@ defmodule ConfluencePhxMirror.CatalogTest do
       assert [%{name: "Jane Doe", pages: 2}] = Catalog.people(insider()).items
       assert [%{name: "Jane Doe", pages: 2}] = Catalog.people(admin()).items
     end
+
+    test "names somebody the site only lists in a group, who wrote nothing here" do
+      group_member_fixture(%{
+        group_name: "confluence-users",
+        account_id: "acc-guest",
+        email: "guest@example.com",
+        display_name: "Casey Guest"
+      })
+
+      assert [
+               %{
+                 name: "Casey Guest",
+                 account_id: "acc-guest",
+                 pages: 0,
+                 groups: ["confluence-users"]
+               }
+             ] =
+               Catalog.people(reader()).items
+    end
+
+    test "says which groups a person belongs to, beside what they wrote" do
+      space = space_fixture()
+      person = page_fixture(space, %{author_name: "Jane Doe", author_account_id: "acc-jane"})
+
+      group_member_fixture(%{
+        group_name: "confluence-admins",
+        account_id: person.author_account_id
+      })
+
+      group_member_fixture(%{
+        group_name: "confluence-users",
+        account_id: person.author_account_id
+      })
+
+      assert [%{name: "Jane Doe", pages: 1, groups: groups}] = Catalog.people(reader()).items
+      assert Enum.sort(groups) == ["confluence-admins", "confluence-users"]
+    end
+
+    test "finds an identity by the account id Confluence gave it" do
+      group_member_fixture(%{account_id: "557058:abc-123", display_name: "Sam Rivera"})
+
+      assert [%{name: "Sam Rivera"}] = Catalog.people(reader(), q: "abc-123").items
+    end
   end
 
   describe "the label index" do

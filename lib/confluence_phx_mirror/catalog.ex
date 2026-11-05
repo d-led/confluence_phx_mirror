@@ -23,7 +23,8 @@ defmodule ConfluencePhxMirror.Catalog do
 
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Authorization
-  alias ConfluencePhxMirror.Mirror.{Attachment, Counters, Label, Page, Space}
+  alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Mirror.{Attachment, Counters, GroupMember, Label, Page, Space}
   alias ConfluencePhxMirror.Repo
 
   @default_limit 50
@@ -110,29 +111,74 @@ defmodule ConfluencePhxMirror.Catalog do
   """
   @spec people(Scope.t(), keyword()) :: page()
   def people(%Scope{} = scope, opts \\ []) do
+    scope
+    |> identities()
+    |> matching(opts[:q], &identity_contains/2)
+    |> order_by([i], asc_nulls_last: i.name)
+    |> page(opts)
+    |> with_groups()
+  end
+
+  # Two things name a person, and a directory that reads only one of them is a
+  # directory of authors, not of people. Content names its author; a group names
+  # its members, and that is the only list of identities Confluence Cloud still
+  # answers — it is where somebody who never wrote anything appears at all.
+  #
+  # The byline half stays inside the reader's permissions, so its page count is
+  # the reader's count. A group is not content: naming a colleague who belongs
+  # to a mirrored group is what Confluence's own people directory does.
+  defp identities(%Scope{} = scope) do
+    union = union_all(bylines(scope), ^group_members())
+
+    from(i in subquery(union),
+      group_by: [i.account_id],
+      select: %{
+        account_id: i.account_id,
+        name: max(i.name),
+        pages: max(i.pages),
+        updated_at: max(i.updated_at)
+      }
+    )
+    |> subquery()
+  end
+
+  defp bylines(%Scope{} = scope) do
     from(p in Page,
       as: :page,
       where: is_nil(p.deleted_at) and not is_nil(p.author_name),
-      group_by: [p.author_name, p.author_account_id],
+      group_by: [fragment("coalesce(?, ?)", p.author_account_id, p.author_name)],
       select: %{
-        name: p.author_name,
-        account_id: p.author_account_id,
+        account_id: fragment("coalesce(?, ?)", p.author_account_id, p.author_name),
+        name: max(p.author_name),
         pages: count(p.id),
         updated_at: max(p.external_updated_at)
       }
     )
     |> Authorization.restrict_pages(scope)
-    |> matching(opts[:q], &author_contains/2)
-    |> order_by([p], asc: p.author_name)
-    |> page(opts)
   end
 
-  defp author_contains(query, pattern) do
-    where(
-      query,
-      [p],
-      like_ci(p.author_name, ^pattern) or like_ci(p.author_account_id, ^pattern)
+  defp group_members do
+    from(m in GroupMember,
+      where: not is_nil(m.account_id),
+      group_by: [m.account_id],
+      select: %{
+        account_id: m.account_id,
+        name: max(coalesce(m.display_name, m.account_id)),
+        pages: type(^0, :integer),
+        updated_at: type(^nil, :utc_datetime)
+      }
     )
+  end
+
+  # The group list is read once for the page of rows, not once per row.
+  defp with_groups(%{items: items} = page) do
+    groups = Mirror.groups_by_subject(Enum.map(items, & &1.account_id))
+
+    %{page | items: Enum.map(items, &Map.put(&1, :groups, Map.get(groups, &1.account_id, [])))}
+  end
+
+  defp identity_contains(query, pattern) do
+    where(query, [i], like_ci(i.name, ^pattern) or like_ci(i.account_id, ^pattern))
   end
 
   @doc """
@@ -269,7 +315,11 @@ defmodule ConfluencePhxMirror.Catalog do
   def pages_by_author(%Scope{} = scope, account_id, opts \\ []) when is_binary(account_id) do
     scope
     |> readable_pages_query(opts)
-    |> where([p], p.author_account_id == ^account_id)
+    |> where(
+      [p],
+      p.author_account_id == ^account_id or
+        (is_nil(p.author_account_id) and p.author_name == ^account_id)
+    )
     |> order_by([p], desc: p.external_updated_at)
     |> preload(:space)
     |> page(opts)

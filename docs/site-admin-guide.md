@@ -440,7 +440,7 @@ The reader UI follows Confluence's entity model instead of one flat page list:
 | `/spaces/:key/attachments` | all attachments of the space with download links |
 | `/spaces/:key/pages/:id/:slug` | one page |
 | `/labels`, `/labels/:name` | label catalog and everything carrying one label |
-| `/people`, `/people/:account_id` | authors seen on mirrored content |
+| `/people`, `/people/:account_id` | the identities the mirror can name — bylines and Confluence group members — with the groups each belongs to |
 | `/recent` | newest content across all spaces |
 | `/search` | plain-text and structured search |
 
