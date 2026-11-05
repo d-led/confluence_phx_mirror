@@ -172,7 +172,13 @@ defmodule ConfluencePhxMirror.MixProject do
        depth: 1},
       {:swoosh, "~> 1.16"},
       {:gen_smtp, "~> 1.3"},
-      {:argon2_elixir, "~> 4.1"},
+      # Every environment but `:desktop`. The library's Makefile has no Windows
+      # branch at all — no `-shared`, and it names the result `.so` — so it cannot
+      # build on the platform the tool must ship for, and its newest release
+      # (4.1.3) is the same. Nothing in the tool hashes or checks a token: it has
+      # one local reader, no sign-in, and no API clients. `Accounts.TokenHash`
+      # decides what a build without a hasher can do, in one place.
+      {:argon2_elixir, "~> 4.1", only: [:dev, :test, :prod]},
       {:req, "~> 0.5"},
       {:floki, "~> 0.38"},
       # Converted page bodies, for the MCP server and its repeated reads of one

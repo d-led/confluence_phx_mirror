@@ -6,6 +6,14 @@ import Config
 data_dir = :filename.basedir(:user_data, "confluence-export")
 File.mkdir_p!(data_dir)
 
+# No password hasher in this build. `argon2_elixir` has no Windows build at all
+# (its Makefile has no Windows branch), and the tool has to ship there, so
+# `mix.exs` leaves it out of `:desktop`. What that costs is written down once:
+# `Accounts.TokenHash.Hasher` stores a word instead of a digest and refuses every
+# digest it cannot compute. The tool issues no tokens — one local reader, no
+# sign-in, no API clients.
+config :confluence_phx_mirror, :password_hasher, nil
+
 config :confluence_phx_mirror,
   ecto_repos: [ConfluencePhxMirror.Repo],
   # Fixed at compile time by `ConfluencePhxMirror.Repo`. dev, test and prod never

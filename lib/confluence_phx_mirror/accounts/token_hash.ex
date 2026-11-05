@@ -26,13 +26,15 @@ defmodule ConfluencePhxMirror.Accounts.TokenHash do
 
   # OWASP's Argon2id recommendation is 19 MiB, two passes, one lane; the library
   # takes the memory cost as a power of two, so 2^14 KiB = 16 MiB.
+  alias ConfluencePhxMirror.Accounts.TokenHash.Hasher
+
   @policy [t_cost: 2, m_cost: 14, parallelism: 1]
 
   @type verdict :: :current | :legacy | :error
 
   @doc "Writes `token` as a digest under the policy in force."
   @spec hash(String.t()) :: String.t()
-  def hash(token) when is_binary(token), do: Argon2.hash_pwd_salt(token, policy())
+  def hash(token) when is_binary(token), do: digest(token)
 
   @doc """
   Whether `token` matches `stored`.
@@ -44,15 +46,13 @@ defmodule ConfluencePhxMirror.Accounts.TokenHash do
   @spec verify(String.t(), String.t() | nil) :: verdict()
   def verify(token, stored) when is_binary(token) and is_binary(stored) do
     cond do
-      argon2?(stored) -> if(matches_argon2?(token, stored), do: freshness(stored), else: :error)
+      argon2?(stored) -> argon2_verdict(token, stored)
       legacy?(stored) -> if(legacy_matches?(token, stored), do: :legacy, else: :error)
       true -> :error
     end
   end
 
   def verify(_token, _stored), do: :error
-
-  defp matches_argon2?(token, stored), do: Argon2.verify_pass(token, stored)
 
   defp freshness(stored) do
     if stored_params(stored) == policy_params(), do: :current, else: :legacy
@@ -94,5 +94,15 @@ defmodule ConfluencePhxMirror.Accounts.TokenHash do
 
   defp policy do
     Application.get_env(:confluence_phx_mirror, :token_hash_params, @policy)
+  end
+
+  # `Hasher` is this build's digest, chosen when it compiled: Argon2id in the
+  # deployment, and a placeholder in the desktop tool, which cannot build the
+  # library on Windows. See that module for why the difference is a word rather
+  # than a weaker hash.
+  defp digest(token), do: Hasher.hash(token, policy())
+
+  defp argon2_verdict(token, stored) do
+    if Hasher.verify(token, stored), do: freshness(stored), else: :error
   end
 end
