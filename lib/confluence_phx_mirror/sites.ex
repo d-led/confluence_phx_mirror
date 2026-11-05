@@ -138,6 +138,44 @@ defmodule ConfluencePhxMirror.Sites do
   def database(base, key), do: base <> "_" <> key
 
   @doc """
+  Compares the database's site with the configured one, without deciding what to
+  do about a disagreement.
+
+  `verify!/0` refuses by raising, which is right before a sync and right at the
+  start of a server that has no one to ask. A window is the other case: there is
+  a person in front of it and no console to read, and an app that dies with a
+  crash dump explains nothing. So the window asks this, keeps running, and shows
+  the answer; nothing is corrupted either way, because reading never mixes sites
+  and writing goes through `verify!/0`.
+  """
+  @spec check() :: :ok | :unrecorded | :no_schema | {:conflict, Site.t(), t()}
+  def check do
+    configured = current()
+
+    case Repo.get(Site, 1) do
+      # Nothing recorded is not a disagreement. A catalogue belongs to a site
+      # once it holds that site's content, so the recording happens on the first
+      # write (`verify!/0`) — not at boot. Recording at boot meant a fresh machine
+      # stamped its empty catalogue with the bundled demo's key, and then refused
+      # the site its owner connected a minute later: the app told a brand-new user
+      # their folder "belongs to demo".
+      nil ->
+        :unrecorded
+
+      %Site{key: key} when key == configured.key ->
+        :ok
+
+      %Site{} = recorded ->
+        {:conflict, recorded, configured}
+    end
+  rescue
+    error in Postgrex.Error ->
+      if error.postgres.code == :undefined_table,
+        do: :no_schema,
+        else: reraise(error, __STACKTRACE__)
+  end
+
+  @doc """
   Records the site in the current database, or refuses to continue.
 
   Called at boot and before a sync so content from one site can never land in
@@ -146,31 +184,82 @@ defmodule ConfluencePhxMirror.Sites do
   """
   @spec verify!() :: :ok | :no_schema
   def verify! do
-    configured = current()
-
-    case Repo.get(Site, 1) do
-      nil ->
-        record!(configured)
+    case check() do
+      :unrecorded ->
+        record!(current())
         :ok
 
-      %Site{key: key} when key == configured.key ->
+      :ok ->
         :ok
 
-      %Site{key: key, base_url: base_url} ->
-        raise """
-        This database belongs to the site #{inspect(key)} (#{base_url || "demo"}),
-        but the mirror is configured for #{inspect(configured.key)}.
+      :no_schema ->
+        :no_schema
 
-        Refusing to mix two Confluence sites in one mirror. Point the app at the
-        right database (`mix mirror.site` prints the one for the current
-        configuration) or run this site against a fresh one.
-        """
+      {:conflict, recorded, configured} ->
+        raise conflict_message(recorded, configured)
     end
-  rescue
-    error in Postgrex.Error ->
-      if error.postgres.code == :undefined_table,
-        do: :no_schema,
-        else: reraise(error, __STACKTRACE__)
+  end
+
+  @doc """
+  What a person is told when the folder and the configuration name two sites.
+
+  One text for both audiences: `verify!/0` raises it, and a window's boot check
+  raises it when it is the last thing it can do. It names the site the folder
+  belongs to, because that is the half nobody typed and nobody remembers.
+  """
+  @spec conflict_message(Site.t(), t()) :: String.t()
+  def conflict_message(recorded, configured) do
+    """
+    This database belongs to the site #{inspect(recorded.key)} (#{recorded.base_url || "demo"}),
+    but the mirror is configured for #{inspect(configured.key)}.
+
+    Refusing to mix two Confluence sites in one mirror. Point the app at the
+    right database (`mix mirror.site` prints the one for the current
+    configuration) or run this site against a fresh one.
+    """
+  end
+
+  @conflict_key :site_conflict
+
+  @doc """
+  Keeps a disagreement for a screen to explain, and logs it.
+
+  The window's boot check reports rather than refuses — see `Sites.Guard` — and a
+  person who is not told what happened cannot fix it. A deployment never calls
+  this: it refuses instead, which is what `verify!/0` does.
+  """
+  @spec report_conflict!(Site.t(), t()) :: :ok
+  def report_conflict!(recorded, configured) do
+    Application.put_env(:confluence_phx_mirror, @conflict_key, %{
+      recorded: recorded.key,
+      recorded_url: recorded.base_url,
+      configured: configured.key,
+      configured_url: configured.base_url
+    })
+  end
+
+  @doc "The disagreement the boot check reported, or `nil`."
+  @spec conflict() :: nil | map()
+  def conflict, do: Application.get_env(:confluence_phx_mirror, @conflict_key)
+
+  @doc """
+  Asks again, and keeps whichever answer is true now.
+
+  A window keeps running when it disagrees with its folder, so the disagreement
+  is not a boot-time fact: saving the right site clears it, and pointing the tool
+  at a folder that belongs to another site creates one. Called after the
+  connection changes, which is the only thing that can change this answer.
+  """
+  @spec refresh_conflict() :: :ok | :unrecorded | :no_schema
+  def refresh_conflict do
+    case check() do
+      {:conflict, recorded, configured} ->
+        report_conflict!(recorded, configured)
+
+      no_conflict ->
+        Application.delete_env(:confluence_phx_mirror, @conflict_key)
+        no_conflict
+    end
   end
 
   @doc "Writes (or refreshes) the site identity of the current database."

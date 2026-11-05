@@ -9,8 +9,9 @@ defmodule ConfluencePhxMirror.Resources do
   would cost more than every query on the page together. One process walks it
   once a minute and remembers the answer (`refresh/0` measures immediately).
 
-  The database is asked every time — `pg_database_size/1` is a catalogue lookup,
-  and while a sync runs those are the numbers an operator watches move.
+  The database is asked every time — its size is a catalogue lookup in Postgres
+  and a file's size in SQLite — because while a sync runs those are the numbers
+  an operator watches move.
   """
 
   use GenServer
@@ -18,6 +19,16 @@ defmodule ConfluencePhxMirror.Resources do
   alias ConfluencePhxMirror.Blobs.LocalStore
 
   @measure_ms 60_000
+
+  # Which figures the store can answer, decided when the adapter is — see
+  # `database/0`.
+  @adapter Application.compile_env(
+             :confluence_phx_mirror,
+             :repo_adapter,
+             Ecto.Adapters.Postgres
+           )
+
+  @database_label if @adapter == Ecto.Adapters.SQLite3, do: "SQLite", else: "Postgres"
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -52,7 +63,7 @@ defmodule ConfluencePhxMirror.Resources do
     }
   end
 
-  @doc """
+  @database_doc """
   The running database, in bytes, and its biggest tables.
 
   `bytes` is the database; `tablespace_bytes` is everything the default
@@ -62,33 +73,77 @@ defmodule ConfluencePhxMirror.Resources do
   computed against a device size the deployment knows
   (`CM_DATABASE_CAPACITY_GB`, see `database_capacity/0`).
   """
-  def database do
-    %{rows: [[bytes, tablespace_bytes]]} =
-      Ecto.Adapters.SQL.query!(
-        ConfluencePhxMirror.Repo,
-        "select pg_database_size(current_database()), pg_tablespace_size('pg_default')",
-        []
-      )
 
-    # `pg_total_relation_size` per user table: a couple of catalogue lookups on
-    # a schema of a few dozen tables, which is why this can be asked per tick.
-    %{rows: rows} =
-      Ecto.Adapters.SQL.query!(
-        ConfluencePhxMirror.Repo,
-        "select relname, pg_total_relation_size(relid)::bigint " <>
-          "from pg_stat_user_tables order by 2 desc limit 3",
-        []
-      )
+  # Which figures can be asked of the store, decided when the adapter is — a
+  # deployment's database is a catalogue, the tool's is a file, and the second
+  # has no `pg_database_size/1` to call. Only the branch that can run is
+  # compiled, which is also why there is no clause that cannot match.
+  if @adapter == Ecto.Adapters.SQLite3 do
+    @doc @database_doc
+    def database do
+      case ConfluencePhxMirror.Repo.config()[:database] do
+        path when is_binary(path) -> sqlite_files(path)
+        _not_a_file -> %{bytes: 0, tablespace_bytes: 0, tables: []}
+      end
+    end
 
-    %{
-      bytes: bytes,
-      tablespace_bytes: tablespace_bytes,
-      tables: Enum.map(rows, fn [name, size] -> {name, size} end)
-    }
+    # SQLite keeps the database — and the write-ahead log a sync grows — in
+    # files, so the size is a file's. Per-table sizes would need `dbstat`, a
+    # virtual table most builds do not compile in; asked and unanswered is a
+    # reason to draw nothing rather than a reason to guess.
+    defp sqlite_files(path) do
+      main = size_of(path)
+      wal = size_of(path <> "-wal")
+
+      %{bytes: main, tablespace_bytes: main + wal, tables: []}
+    end
+
+    defp size_of(path) do
+      case File.stat(path) do
+        {:ok, %{size: size}} -> size
+        _unreadable -> 0
+      end
+    end
+  else
+    @doc @database_doc
+    def database do
+      %{rows: [[bytes, tablespace_bytes]]} =
+        Ecto.Adapters.SQL.query!(
+          ConfluencePhxMirror.Repo,
+          "select pg_database_size(current_database()), pg_tablespace_size('pg_default')",
+          []
+        )
+
+      # `pg_total_relation_size` per user table: a couple of catalogue lookups on
+      # a schema of a few dozen tables, which is why this can be asked per tick.
+      %{rows: rows} =
+        Ecto.Adapters.SQL.query!(
+          ConfluencePhxMirror.Repo,
+          "select relname, pg_total_relation_size(relid)::bigint " <>
+            "from pg_stat_user_tables order by 2 desc limit 3",
+          []
+        )
+
+      %{
+        bytes: bytes,
+        tablespace_bytes: tablespace_bytes,
+        tables: Enum.map(rows, fn [name, size] -> {name, size} end)
+      }
+    end
   end
 
   @doc "How big the database's device is, when the deployment says so."
   def database_capacity, do: Application.get_env(:confluence_phx_mirror, :database_capacity_bytes)
+
+  @doc """
+  What the store is called, for the screen that shows its size.
+
+  The card used to say "Postgres" on a build whose database is a file. Which
+  engine this is, is decided where the adapter is, so the name comes from there
+  too rather than from the screen.
+  """
+  @spec database_label() :: String.t()
+  def database_label, do: @database_label
 
   @doc """
   The machine's memory, and how much of it this VM holds.

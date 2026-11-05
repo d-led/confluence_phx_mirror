@@ -29,10 +29,10 @@ defmodule ConfluencePhxMirror.Repo.Migrations.AddAbsentSinceToPages do
 
     # The review screen asks "which pages are absent?" — a small slice of a
     # table that is otherwise every page in the mirror.
-    create index(:pages, [:absent_since],
-             where: "absent_since is not null",
-             concurrently: true,
-             name: :pages_absent_since_index
-           )
+    ConfluencePhxMirror.Migration.create_index(:pages, [:absent_since],
+      where: "absent_since is not null",
+      concurrently: true,
+      name: :pages_absent_since_index
+    )
   end
 end

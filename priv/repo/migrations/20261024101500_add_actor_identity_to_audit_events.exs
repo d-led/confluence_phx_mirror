@@ -22,16 +22,16 @@ defmodule ConfluencePhxMirror.Repo.Migrations.AddActorIdentityToAuditEvents do
       add :actor_account_id, :string
     end
 
-    execute(
-      "CREATE INDEX CONCURRENTLY IF NOT EXISTS audit_events_actor_email_index " <>
-        "ON audit_events (actor_email)",
-      "DROP INDEX CONCURRENTLY IF EXISTS audit_events_actor_email_index"
+    ConfluencePhxMirror.Migration.build_index(
+      "audit_events_actor_email_index",
+      :audit_events,
+      [:actor_email]
     )
 
-    execute(
-      "CREATE INDEX CONCURRENTLY IF NOT EXISTS audit_events_actor_account_id_index " <>
-        "ON audit_events (actor_account_id)",
-      "DROP INDEX CONCURRENTLY IF EXISTS audit_events_actor_account_id_index"
+    ConfluencePhxMirror.Migration.build_index(
+      "audit_events_actor_account_id_index",
+      :audit_events,
+      [:actor_account_id]
     )
   end
 end

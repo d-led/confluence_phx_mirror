@@ -19,9 +19,11 @@ defmodule ConfluencePhxMirror.Repo.Migrations.IndexPagesAuthorRecent do
   @disable_migration_lock true
 
   def change do
-    create index(:pages, ["author_account_id", "external_updated_at DESC"],
-             name: :pages_author_recent_index,
-             concurrently: true
-           )
+    ConfluencePhxMirror.Migration.create_index(
+      :pages,
+      ["author_account_id", "external_updated_at DESC"],
+      name: :pages_author_recent_index,
+      concurrently: true
+    )
   end
 end

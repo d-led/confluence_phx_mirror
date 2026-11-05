@@ -8,7 +8,10 @@ defmodule ConfluencePhxMirror.Mail.BudgetTest do
 
   use ConfluencePhxMirror.DataCase, async: false
 
+  import ConfluencePhxMirror.Fixtures
+
   alias ConfluencePhxMirror.Mail.Budget
+  alias ConfluencePhxMirror.Mail.Send
   alias ConfluencePhxMirror.Settings
 
   @actor {:system, "test"}
@@ -16,6 +19,11 @@ defmodule ConfluencePhxMirror.Mail.BudgetTest do
   setup do
     Settings.update(%{"mail.per_day" => "2"}, @actor)
     on_exit(fn -> Settings.reload() end)
+
+    # The allowance is the day's, so the test says where the day starts. A row
+    # that outlived the test that wrote it would spend part of it, and this test
+    # would be measuring that instead of the rule it is about.
+    Repo.delete_all(from(s in Send, where: s.day == ^Date.utc_today()))
     :ok
   end
 
@@ -24,6 +32,27 @@ defmodule ConfluencePhxMirror.Mail.BudgetTest do
 
     assert {:ok, _} = Budget.claim("watcher:1")
     assert Budget.remaining() == 1
+  end
+
+  # A name is what the ledger deduplicates on, so two *different* messages must
+  # never share one. A clock does not promise that: a store fast enough to answer
+  # inside a millisecond produced the same name twice, the second ask was reported
+  # as "already sent", and `mail_test.exs`'s minute-window case failed about once
+  # in six runs because of it.
+  test "two asks for a test message never carry one name, however fast they come" do
+    reader = user_fixture()
+
+    names = for _ask <- 1..500, do: Budget.key(:test, reader)
+
+    assert length(Enum.uniq(names)) == 500
+  end
+
+  test "two ends of a link never carry one name either" do
+    reader = user_fixture()
+
+    names = for _event <- 1..500, do: Budget.key(:identity_link, reader, "acc-1", :account)
+
+    assert length(Enum.uniq(names)) == 500
   end
 
   test "the day runs out, and says how long until it does not" do
@@ -58,13 +87,19 @@ defmodule ConfluencePhxMirror.Mail.BudgetTest do
   end
 
   test "yesterday's allowance is not today's" do
+    # Counted from here: this is about the boundary between two days, not about
+    # what else the database holds, so anything already in it must not change
+    # the answer.
+    handed_over = Budget.handed_over()
+    spent_today = Budget.used()
+
     assert {:ok, send} = Budget.claim("yesterday:1")
     assert :ok = Budget.mark_sent(send)
     backdate(send)
 
-    assert Budget.used() == 0
-    assert Budget.handed_over() == 1, "the count of all days still has it"
-    assert Budget.remaining() == 2
+    assert Budget.used() == spent_today, "yesterday's message does not spend today's"
+    assert Budget.handed_over() == handed_over + 1, "the count of all days still has it"
+    assert Budget.remaining() == 2 - spent_today
   end
 
   # The day is UTC, so a row from before midnight belongs to the day before.

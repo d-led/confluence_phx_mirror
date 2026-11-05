@@ -31,9 +31,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   alias ConfluencePhxMirror.Sync.Log
 
   @level_options [
-    {"all", "Everything"},
+    {"all", "All levels"},
     {"info", "Info and up"},
-    {"warn", "Warnings and errors"},
+    {"warn", "Warn and up"},
     {"error", "Errors only"}
   ]
 
@@ -44,7 +44,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   def mount(params, _session, socket) do
     if connected?(socket), do: Phoenix.PubSub.subscribe(ConfluencePhxMirror.PubSub, Log.topic())
 
-    %{entries: entries, counts: counts, held: held} = Log.snapshot()
+    %{entries: entries, held: held} = Log.snapshot()
     run = run_from_params(params)
     shown = filter_entries(entries, "all", "", run)
 
@@ -56,7 +56,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
        run: run,
        follow?: true,
        level_options: @level_options,
-       counts: counts,
+       counts: count_levels(shown),
+       elsewhere_errors: elsewhere_errors(entries, shown),
        held: held,
        shown: length(shown),
        newest_id: newest_id(entries),
@@ -64,6 +65,21 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
        page_title: "Sync log"
      )
      |> stream(:log, shown, limit: -Log.limit())}
+  end
+
+  # The numbers over the log count the lines *this page is showing*, not the
+  # whole ring: "1 error" beside a view that holds none sends a reader hunting
+  # for a line that is in another run, and the page reads as broken.
+  defp count_levels(entries) do
+    Enum.reduce(entries, %{debug: 0, info: 0, warn: 0, error: 0}, fn entry, counts ->
+      Map.update!(counts, entry.level, &(&1 + 1))
+    end)
+  end
+
+  # What the filter is hiding, so the page can say where it is instead of
+  # leaving it missing: the log's errors this view does not show.
+  defp elsewhere_errors(entries, shown) do
+    Enum.count(entries, &(&1.level == :error)) - Enum.count(shown, &(&1.level == :error))
   end
 
   # A job's row links here with `?run=<id>`, which is the whole filter: the lines
@@ -127,12 +143,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   end
 
   @impl true
-  def handle_info({:sync_log, entry, %{counts: counts, held: held}}, socket) do
+  def handle_info({:sync_log, entry, %{held: held}}, socket) do
     socket =
       if entry.id > socket.assigns.newest_id do
         socket
         |> add_line(entry)
-        |> assign(counts: counts, held: held, newest_id: entry.id)
+        |> assign(held: held, newest_id: entry.id)
         |> announce_new_line()
       else
         # A line written between the page subscribing and seeding itself: the
@@ -150,9 +166,43 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
       socket
       |> stream_insert(:log, entry, at: -1, limit: -Log.limit())
       |> assign(:shown, min(socket.assigns.shown + 1, Log.limit()))
+      |> count_in(entry)
     else
-      socket
+      elsewheres(socket, entry)
     end
+  end
+
+  # A page holding as many lines as the log keeps is a page whose next line is
+  # also a departure: the oldest one falls out of both at once, so the numbers
+  # are re-read from the ring rather than guessed at.
+  defp count_in(socket, entry) do
+    if socket.assigns.shown >= Log.limit() do
+      recount(socket)
+    else
+      assign(socket, :counts, Map.update!(socket.assigns.counts, entry.level, &(&1 + 1)))
+    end
+  end
+
+  defp elsewheres(socket, %{level: :error}) do
+    if socket.assigns.shown >= Log.limit() do
+      recount(socket)
+    else
+      assign(socket, :elsewhere_errors, socket.assigns.elsewhere_errors + 1)
+    end
+  end
+
+  defp elsewheres(socket, _entry), do: socket
+
+  defp recount(socket) do
+    entries = Log.entries()
+
+    shown =
+      filter_entries(entries, socket.assigns.level, socket.assigns.query, socket.assigns.run)
+
+    assign(socket,
+      counts: count_levels(shown),
+      elsewhere_errors: elsewhere_errors(entries, shown)
+    )
   end
 
   # Changing the filter is the one time the whole tail is re-read and the
@@ -160,13 +210,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
   # the newest of them: the container was replaced, so the browser could not
   # keep its place anyway.
   defp refilter(socket) do
-    %{entries: entries, counts: counts, held: held} = Log.snapshot()
+    %{entries: entries, held: held} = Log.snapshot()
 
     shown =
       filter_entries(entries, socket.assigns.level, socket.assigns.query, socket.assigns.run)
 
     socket
-    |> assign(counts: counts, held: held, shown: length(shown), newest_id: newest_id(entries))
+    |> assign(
+      counts: count_levels(shown),
+      elsewhere_errors: elsewhere_errors(entries, shown),
+      held: held,
+      shown: length(shown),
+      newest_id: newest_id(entries)
+    )
     |> stream(:log, shown, reset: true, limit: -Log.limit())
     |> announce_new_line()
   end
@@ -204,6 +260,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
       (needle == "" or String.contains?(String.downcase(entry.message), needle) or
          String.contains?(String.downcase(inspect(entry.details)), needle))
   end
+
+  # What the filter is hiding, said in a sentence: a reader who cannot see an
+  # error needs to know where it went, not just that the number is not zero.
+  defp elsewhere_hint(1), do: "1 error in the log belongs to another run."
+  defp elsewhere_hint(count), do: "#{count} errors in the log belong to other runs."
 
   defp level_badge(:debug), do: {"·", "text-base-content/70"}
   defp level_badge(:info), do: {"info", "text-base-content/70"}
@@ -280,12 +341,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
         subtitle="Every page, file and Confluence call, line by line — kept in memory, not in the audit log."
       />
 
-      <div class="mt-4 flex flex-wrap items-center gap-2">
+      <%!-- The filter gets the width, and what acts on the log sits under it. A
+      toolbar that puts three buttons beside the search box leaves it narrow
+      enough to cut its own placeholder in half, which is what it did. --%>
+      <div class="mt-4 flex flex-col gap-2">
         <form
           id="sync-log-filter"
           phx-change="filter"
           phx-submit="filter"
-          class="flex min-w-0 flex-1 items-center gap-2"
+          class="flex min-w-0 items-center gap-2"
         >
           <label class="input input-sm flex min-w-0 flex-1 items-center gap-2 rounded-lg border-base-300 bg-base-200/50">
             <.icon name="hero-funnel" class="size-4 opacity-50" />
@@ -293,7 +357,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
               type="search"
               name="q"
               value={@query}
-              placeholder="Filter the lines as they arrive — page, file, space, reason…"
+              placeholder="Filter these lines — page, file, space, reason…"
               title="Applies to this page's lines as they arrive, and to the lines it already holds. It does not search the log on the server."
               class="grow bg-transparent outline-none"
               phx-debounce="200"
@@ -304,8 +368,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
           <select
             id="sync-log-level"
             name="level"
-            class="select select-sm shrink-0 rounded-lg border-base-300"
-            aria-label="Level"
+            class="select select-sm w-auto shrink-0 rounded-lg border-base-300"
+            aria-label="Which levels to show"
+            title="Which levels this page shows. The counts below follow the filter."
           >
             <option :for={{value, label} <- @level_options} value={value} selected={value == @level}>
               {label}
@@ -313,38 +378,64 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
           </select>
         </form>
 
-        <button
-          id="sync-log-follow"
-          type="button"
-          phx-click="toggle_follow"
-          aria-pressed={to_string(@follow?)}
-          title="Scroll to new lines as they arrive"
-          class={[
-            "btn btn-sm h-8 gap-1.5",
-            @follow? && "btn-ghost",
-            !@follow? && "btn-warning btn-soft"
-          ]}
-        >
-          <.icon name={if @follow?, do: "hero-pause", else: "hero-play"} class="size-4" />
-          {if @follow?, do: "Following", else: "Paused"}
-        </button>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-base-content/70">
+            <%!-- The numbers describe the lines above, not the whole log: a
+            filter that hides an error must not leave "1 error" on the page
+            without it. --%>
+            <span class="text-base-content/50">these lines</span>
+            <span>{@counts.info} info</span>
+            <span>{@counts.debug} debug</span>
+            <span>{@counts.warn} warnings</span>
+            <span class={@counts.error > 0 && "font-semibold text-error"}>
+              {@counts.error} errors
+            </span>
+            <span>·</span>
+            <%!-- The log is a sliding window: once it is full, "400 of 400" means
+            "at most 400", not "the 400 the sync wrote". --%>
+            <span title={shown_tooltip(@held)}>{shown_count(@shown, @held)}</span>
+          </p>
 
-        <button id="sync-log-clear" type="button" phx-click="clear" class="btn btn-ghost btn-sm h-8">
-          Clear
-        </button>
+          <div class="ml-auto flex flex-wrap items-center gap-2">
+            <button
+              id="sync-log-follow"
+              type="button"
+              phx-click="toggle_follow"
+              aria-pressed={to_string(@follow?)}
+              title="Scroll to new lines as they arrive"
+              class={[
+                "btn btn-sm h-8 gap-1.5",
+                @follow? && "btn-ghost",
+                !@follow? && "btn-warning btn-soft"
+              ]}
+            >
+              <.icon name={if @follow?, do: "hero-pause", else: "hero-play"} class="size-4" />
+              {if @follow?, do: "Following", else: "Paused"}
+            </button>
 
-        <%!-- Selecting the lines is the browser's job; copying all of them is
-        one click. Both read the same rows, so what is copied is what is shown. --%>
-        <button
-          id="sync-log-copy"
-          type="button"
-          phx-hook=".Copy"
-          title="Copy the lines shown, one per line: time, level, line, run"
-          class="btn btn-ghost btn-sm h-8 gap-1.5"
-        >
-          <.icon name="hero-clipboard-document" class="size-4" />
-          <span data-copy-label>Copy</span>
-        </button>
+            <button
+              id="sync-log-clear"
+              type="button"
+              phx-click="clear"
+              class="btn btn-ghost btn-sm h-8"
+            >
+              Clear
+            </button>
+
+            <%!-- Selecting the lines is the browser's job; copying all of them is
+            one click. Both read the same rows, so what is copied is what is shown. --%>
+            <button
+              id="sync-log-copy"
+              type="button"
+              phx-hook=".Copy"
+              title="Copy the lines shown, one per line: time, level, line, run"
+              class="btn btn-ghost btn-sm h-8 gap-1.5"
+            >
+              <.icon name="hero-clipboard-document" class="size-4" />
+              <span data-copy-label>Copy</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <p :if={@run} id="sync-log-run-filter" class="mt-2 flex flex-wrap items-center gap-2">
@@ -352,20 +443,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.SyncLogLive do
         <span class="text-[11px] text-base-content/70">
           Only the lines this run wrote — the log is one tail for every run, so this is a view of it.
         </span>
+        <%!-- An error the filter hides is not a missing line: it is a line in
+        another run, and saying so is the difference between "the log is broken"
+        and "look over there". --%>
+        <span :if={@elsewhere_errors > 0} id="sync-log-elsewhere" class="text-[11px] text-warning">
+          {elsewhere_hint(@elsewhere_errors)}
+        </span>
         <.link navigate={~p"/admin/sync-log"} class="link link-hover text-[11px] text-primary">
           Show every run
         </.link>
-      </p>
-
-      <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-base-content/70">
-        <span>{@counts.info} info</span>
-        <span>{@counts.debug} debug</span>
-        <span>{@counts.warn} warnings</span>
-        <span>{@counts.error} errors</span>
-        <span>·</span>
-        <%!-- The log is a sliding window: once it is full, "400 of 400" means
-        "at most 400", not "the 400 the sync wrote". --%>
-        <span title={shown_tooltip(@held)}>{shown_count(@shown, @held)}</span>
       </p>
 
       <p

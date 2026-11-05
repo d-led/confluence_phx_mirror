@@ -61,7 +61,9 @@ defmodule ConfluencePhxMirror.Blobs.Sweep do
   defp orphans(opts, cutoff, referenced) do
     Store.list(opts)
     |> Enum.filter(fn {key, written_at} ->
-      written_at < cutoff and not MapSet.member?(referenced, key)
+      # A blob whose age is unknown is left alone: an unreadable timestamp is a
+      # question the sweep cannot answer, and the safe answer is "not this one".
+      is_integer(written_at) and written_at < cutoff and not MapSet.member?(referenced, key)
     end)
   end
 

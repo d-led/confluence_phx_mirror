@@ -95,7 +95,9 @@ defmodule ConfluencePhxMirror.Export.Site.Search do
         type: p.type,
         updated: p.external_updated_at,
         labels: p.labels,
-        text: fragment("left(coalesce(?, ''), ?)", p.body_text, ^@excerpt_chars)
+        # `substr` is spelled the same in Postgres and SQLite; `left` is only
+        # Postgres, and an archive is written from either.
+        text: fragment("substr(coalesce(?, ''), 1, ?)", p.body_text, ^@excerpt_chars)
       }
     )
     |> Authorization.restrict_pages(scope)

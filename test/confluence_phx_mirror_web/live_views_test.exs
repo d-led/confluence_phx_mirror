@@ -16,6 +16,7 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
     assert has_element?(view, "mark", "Architecture")
   end
 
+  @tag :postgres_only
   test "a hit that matched in a comment shows the comment's words", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/search?q=checklist")
 
@@ -32,6 +33,7 @@ defmodule ConfluencePhxMirrorWeb.LiveViewsTest do
            )
   end
 
+  @tag :postgres_only
   test "search LiveView supports boolean operators and quotes", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/search?q=rate+limit+NOT+roadmap")
 

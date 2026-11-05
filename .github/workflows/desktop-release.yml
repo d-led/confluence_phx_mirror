@@ -1,0 +1,237 @@
+# Publishes the desktop tool: an installable app from every push, and a release
+# from a version tag.
+#
+#   git tag v1.2.3 && git push origin v1.2.3
+#
+# Every push builds one too, kept for 90 days, because the newest build of a
+# branch is what somebody installs — there is no release to wait for:
+#
+#   curl -fsSL https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.sh | sh
+#
+# The script reads the newest artifact through `nightly.link`, which serves
+# `<workflow>/<branch>/<artifact>.zip` for the last successful run:
+#
+#   https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-macos.zip
+#
+# What the macOS one holds is **the application bundle**: `Confluence Export.app`,
+# zipped with `ditto` because a bundle is directories, symlinks and extended
+# attributes and the ones a plain `zip` drops are the ones that stop it
+# launching. The bundle carries the window, the sidecar release (copied into
+# `Contents/Resources/rel` by `scripts/package.sh` — not through
+# `bundle.resources`, which fails on this toolchain) and the icon, so it runs
+# where this checkout is not — drag it to `/Applications` and double-click.
+#
+# It is not signed, so Gatekeeper refuses the first launch of a downloaded copy
+# until somebody right-clicks → Open. Signing and notarisation are their own
+# piece of work, and a workflow that produced a signed-looking app nobody had run
+# would be worse than one that ships an honest unsigned bundle.
+#
+# Three platforms, three shapes of artifact, one script:
+#
+#   macOS    `Confluence Export.app`, zipped with `ditto` — a bundle is
+#            directories, symlinks and extended attributes, and a plain `zip`
+#            drops the ones that stop it launching.
+#   Linux    `confluence-export-linux.tar.gz`: the window plus `rel/` beside it,
+#            built on 22.04 so the glibc floor is a known one.
+#   Windows  a folder that `upload-artifact` zips: `confluence-export.exe` with
+#            `rel\` beside it, which is what `resource_dir()` means there.
+#
+# Every platform runs the same `scripts/package.sh`, boot check included: a
+# build that cannot serve `/health` and `/__tool` out of the artifact it just
+# wrote is a download that opens on nothing, and that gate is what stops one
+# from being published. None of the three is signed; `docs/desktop-tool.md` says
+# what that means for a person installing one.
+
+name: desktop-release
+
+on:
+  push:
+    # Every branch, `main` included: the newest build of a branch is installable,
+    # and a build that only happens on a tag is a build nobody has run.
+    branches: ["**"]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  # A superseded branch build is wasted work; a half-uploaded release is worse
+  # than a slow one, so a tag is never cancelled.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  MIX_ENV: desktop
+  ELIXIR_VERSION: "1.20.4"
+  OTP_VERSION: "29.1.2"
+
+jobs:
+  package:
+    name: package (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing must not hide the other two: the point of the matrix
+      # is to find out which one broke.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS
+            artifact: confluence-export-macos
+            path: _build/desktop/package/confluence-export-macos.zip
+          # 22.04, not `ubuntu-latest`: the glibc a build links against is the
+          # floor an installed copy needs, and `latest` moves.
+          - os: ubuntu-22.04
+            name: Linux
+            artifact: confluence-export-linux
+            path: _build/desktop/package/confluence-export-linux.tar.gz
+          - os: windows-latest
+            name: Windows
+            artifact: confluence-export-windows
+            # A folder, not an archive: `upload-artifact` zips it, and a
+            # Windows runner has no `tar` we should depend on. The download is
+            # `confluence-export.exe` with `rel\` beside it.
+            #
+            # The upload path is the folder that *contains* it, because
+            # `upload-artifact` treats a directory's own path as the zip's root:
+            # pointing it at the folder itself unpacks the `.exe`, the note and
+            # `rel\` loose into whatever directory a person unzips in.
+            path: _build/desktop/package/unpack
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        id: beam
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+
+      # What the *window* links against (Tauri's prerequisites): WebKitGTK for
+      # the webview, GTK for the window, rsvg and appindicator because Tauri
+      # links them whether or not the app uses a tray icon. The release in
+      # `rel/` needs none of this — it carries its own Erlang.
+      - name: Install the window's system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+            libayatana-appindicator3-dev libssl-dev patchelf
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build/desktop
+            src-tauri/target
+          key: desktop-release-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            desktop-release-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+
+      - name: Fetch dependencies
+        run: mix deps.get
+
+      # `mix esbuild` only bundles the JavaScript; the packages it bundles are
+      # npm's — `js/code_highlight.js` imports highlight.js' grammars — and
+      # `mix assets.install` fetches the esbuild and tailwind *binaries*, not
+      # `assets/node_modules`. Without this the bundle build dies on "Could not
+      # resolve \"highlight.js/lib/languages/diff\"", which is what it did on
+      # every run before this step existed. The lockfile pins the versions and
+      # the runner's own Node is enough, as in `ci.yml`.
+      - name: Install the assets' npm packages
+        run: npm ci --no-audit --no-fund
+        working-directory: assets
+
+      # `cargo tauri` needs the CLI, and a runner starts without it. Cached on
+      # the version it installs, which is the only thing that changes it.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-2-${{ runner.os }}
+
+      # `bash` explicitly: the Windows runner's default shell is PowerShell,
+      # where `> /dev/null` does not mean "throw the output away" — it means
+      # "write a file called null beside the workspace", and this step failed with
+      # `Could not find a part of the path 'D:\dev\null'` on every Windows run
+      # until it said so.
+      - name: Install the Tauri CLI (when the cache misses)
+        shell: bash
+        run: command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "^2" --locked
+
+      # One script, not a second implementation of it. The steps used to be
+      # spelled out here — assets, release, window, bundle, boot check, zip — and
+      # they drifted: this workflow zipped the window *without* carrying the
+      # release into `Contents/Resources/rel`, and its boot check ran
+      # `_build/desktop/rel` instead of the copy inside the bundle, so a green run
+      # published a 2 MB app whose window could not start anything. `package.sh`
+      # is what a person runs locally, and it does all of it — including whether
+      # the release *the artifact carries* answers `/health` and `/__tool`.
+      #
+      # `bash` explicitly, because on Windows the runner's default is PowerShell
+      # and this is one script for all three.
+      - name: Package (build, carry the release, boot check, assemble)
+        shell: bash
+        run: scripts/package.sh
+
+      # The zip a person downloads has to unpack into one folder, and
+      # `upload-artifact` zips a directory's *contents*. So the folder is given
+      # the parent that becomes the zip's root. A move, not a copy: same volume,
+      # 165 MB renamed rather than duplicated.
+      - name: Give the Windows folder the name it unpacks into
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _build/desktop/package/unpack
+          mv _build/desktop/package/confluence-export-windows \
+            _build/desktop/package/unpack/
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          # `nightly.link` serves the newest artifact of a branch, and an
+          # installed build should keep working for a while: a week is not long
+          # enough for that promise.
+          retention-days: 90
+          if-no-files-found: error
+
+  release:
+    name: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+
+      - name: Attach every platform to the tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+
+          gh release view "$tag" >/dev/null 2>&1 ||
+            gh release create "$tag" --title "$tag" --generate-notes \
+              --repo "$GITHUB_REPOSITORY"
+
+          # One name per platform, because three files all called
+          # `confluence-export.zip` is a download nobody can identify later.
+          for platform in macos linux windows; do
+            case "$platform" in
+              macos) src="dist/confluence-export-macos/confluence-export-macos.zip" ;;
+              linux) src="dist/confluence-export-linux/confluence-export-linux.tar.gz" ;;
+              windows) src="dist/confluence-export-windows/confluence-export-windows.zip" ;;
+            esac
+            ext="${src##*.}"
+            asset="confluence-export-${tag}-${platform}.${ext}"
+            mv "$src" "$asset"
+            ls -lh "$asset"
+            gh release upload "$tag" "$asset" --clobber --repo "$GITHUB_REPOSITORY"
+          done

@@ -29,7 +29,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools do
   """
 
   alias ConfluencePhxMirror.Accounts.Scope
-  alias ConfluencePhxMirror.Mcp.Tools.{Discussion, Index, Pages, Search, Spaces}
+  alias ConfluencePhxMirror.Mcp.Tools.{Configuration, Discussion, Index, Pages, Search, Spaces}
 
   @read_only %{
     "readOnlyHint" => true,
@@ -419,6 +419,20 @@ defmodule ConfluencePhxMirror.Mcp.Tools do
         }
       },
       "annotations" => @read_only
+    },
+    %{
+      "name" => "confluence_mirror_configuration",
+      "title" => "How this mirror is configured",
+      "description" =>
+        "What this installation is set up to do: the site it mirrors, how often it " <>
+          "syncs and verifies, when it last succeeded, how many spaces and absent pages " <>
+          "it holds, and — in the desktop tool — the folder the catalogue lives in and " <>
+          "the MCP address an assistant should be pointed at. Mirror administrators " <>
+          "only. Answers with configuration, never with a credential: no token is ever " <>
+          "part of the answer, because a tool that can read a secret writes it into a " <>
+          "transcript.",
+      "inputSchema" => %{"type" => "object", "properties" => %{}},
+      "annotations" => @read_only
     }
   ]
 
@@ -438,7 +452,8 @@ defmodule ConfluencePhxMirror.Mcp.Tools do
     "confluence_get_space" => {Spaces, :get},
     "confluence_list_blog_posts" => {Spaces, :blog_posts},
     "confluence_get_recent_changes" => {Spaces, :recent},
-    "confluence_index_status" => {Index, :status}
+    "confluence_index_status" => {Index, :status},
+    "confluence_mirror_configuration" => {Configuration, :current}
   }
 
   # The names `mcp-atlassian` already defines, so prompts and habits written for

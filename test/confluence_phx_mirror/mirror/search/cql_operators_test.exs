@@ -9,6 +9,8 @@ defmodule ConfluencePhxMirror.Mirror.Search.CqlOperatorsTest do
   """
   use ConfluencePhxMirror.DataCase, async: false
 
+  @moduletag :postgres_only
+
   @moduletag :empty_mirror
 
   import ConfluencePhxMirror.Fixtures

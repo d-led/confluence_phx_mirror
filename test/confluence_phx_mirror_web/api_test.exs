@@ -144,6 +144,7 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       assert body["message"] =~ "999999"
     end
 
+    @tag :postgres_only
     test "searches text by default across all fields", %{conn: conn} do
       body = conn |> get(~p"/api/v1/search?q=rate+limit") |> json_response(200)
 
@@ -166,6 +167,7 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       refute Enum.any?(body["results"], &(&1["title"] == "Release 2.0"))
     end
 
+    @tag :postgres_only
     test "a hit that matched in a comment names the comment", %{conn: conn} do
       body = conn |> get(~p"/api/v1/search?q=checklist") |> json_response(200)
 
@@ -231,6 +233,7 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       assert body["limit"] == 100
     end
 
+    @tag :postgres_only
     test "content search uses the same CQL engine", %{conn: conn} do
       body =
         conn
@@ -287,6 +290,13 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       user = user_fixture(%{email: "rate-limited@example.com"})
       {:ok, plain, _} = Accounts.create_api_token(user, "rate", {:system, "test"})
       header = {"authorization", "Bearer #{plain}"}
+
+      # The limiter counts in ETS, which the sandbox does not roll back, while
+      # this reader's id does roll back: on SQLite the next fixture gets id 1
+      # again, and with it whatever an earlier test spent. Emptying the bucket
+      # makes this about the window rather than about the ids an engine hands
+      # out.
+      ConfluencePhxMirror.RateLimit.set("api:user:#{user.id}", 60_000, 0)
 
       first =
         build_conn() |> put_req_header(elem(header, 0), elem(header, 1)) |> get(~p"/api/v1/stats")

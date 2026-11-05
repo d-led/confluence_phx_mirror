@@ -27,6 +27,7 @@ author and the original URL.*
 | **see it working** (bundled demo, no credentials) | ~4 min | [See it working](#1-see-it-working) |
 | **mirror a real site anyone can read** (no sign-in) | ~5 min, then the first pull | [Mirror a real site](#2-mirror-a-real-site) |
 | **deploy it** (Fly.io or Kubernetes) | ~20 min | [Deploy it](#3-deploy-it) |
+| **run the desktop app** (macOS, no Docker) | ~2 min | [The desktop app](#the-desktop-app) |
 | run it in production | — | [operations.md](docs/operations.md) |
 | change the code | — | [developers.md](docs/developers.md) |
 
@@ -195,6 +196,46 @@ PHX_SERVER=true DATABASE_URL=… SECRET_KEY_BASE=… bin/confluence_phx_mirror s
 A release that mirrors a real site **refuses to start** with the sign-in-free
 switches on (`MIRROR_AUTO_ADMIN`, `MIRROR_SELF_SIGNUP`, `CM_PROXY_AUTH`) unless
 `MIRROR_ALLOW_UNSAFE_IDENTITY=1` says you meant it.
+
+## The desktop app
+
+The same mirror as one double-clickable app, with a SQLite catalogue in
+`~/Library/Application Support/confluence-export` (`%LOCALAPPDATA%\confluence-export`
+on Windows, `~/.local/share/confluence-export` on Linux) instead of Postgres and a
+container: no Docker, no server, no shell. It is the tool for pointing at one
+site and taking a copy of it.
+
+| platform | download | what you get |
+| --- | --- | --- |
+| macOS (Apple silicon) | [`confluence-export-macos.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-macos.zip) | `Confluence Export.app` — unzip, drag to `/Applications`, double-click |
+| Linux x64 | [`confluence-export-linux.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-linux.zip) | a folder with the window, `rel/` and a `README.txt`; needs GTK 3 and WebKitGTK 4.1 |
+| Windows x64 | [`confluence-export-windows.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-windows.zip) | one folder, `confluence-export-windows`, with `confluence-export.exe`, `rel\` and a `README.txt`; unzip it and run the `.exe` |
+
+Each link is the newest **successful** run of the `desktop-release` workflow on
+`main`; a `v*` tag attaches the same three builds to
+[Releases](https://github.com/d-led/confluence_phx_mirror/releases). macOS has a
+one-line installer, which is the only platform it can install for:
+
+```sh
+# the newest build of a branch, installed into ~/Applications
+curl -fsSL https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.sh | sh
+```
+
+**Windows and Linux archives are named `.zip` by `nightly.link`**, because an
+artifact is served as the zip GitHub stores — for Linux, unpack it and run
+`./confluence-export`. None of the three is signed: macOS stops a downloaded copy
+before it offers to run it, so clear the quarantine flag once
+(`install-desktop.sh` does this for you); Windows shows a SmartScreen "unrecognised
+app" prompt under *More info → Run anyway*; Linux has nothing that stops it.
+
+```sh
+xattr -rd com.apple.quarantine "/Applications/Confluence Export.app"
+```
+
+The first launch of a copy also asks once for the keychain item
+`confluence-export` (Windows: Credential Manager, Linux: the Secret Service),
+where the site's token is kept. [The desktop tool](docs/desktop-tool.md)
+has the rest — what it shares with the server, and where it differs.
 
 ## What it does
 

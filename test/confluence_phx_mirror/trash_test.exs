@@ -47,6 +47,29 @@ defmodule ConfluencePhxMirror.TrashTest do
     end
   end
 
+  describe "a space somebody stops wanting" do
+    test "forgetting a mirrored space puts its pages in the trash, not in the ground" do
+      space = space_fixture(%{key: "GONE"})
+      page = page_fixture(space)
+
+      assert {:ok, %{pages: 1}} = Trash.forget(ConfluencePhxMirror.Audit.system_actor(), "GONE")
+
+      assert Mirror.get_space_by_key("GONE") == nil
+      assert Repo.get(Space, space.id).deleted_at
+      assert Repo.get(Page, page.id).deleted_at
+      # A decision, not a vanished page: the next sync must not lift it.
+      assert Repo.get(Page, page.id).deleted_reason == "manual"
+    end
+
+    test "a space nobody mirrored only leaves the configured set" do
+      actor = ConfluencePhxMirror.Audit.system_actor()
+      {:ok, _added} = ConfluencePhxMirror.Sync.SpaceScope.add("NEVER", actor)
+
+      assert {:ok, %{pages: 0}} = Trash.forget(actor, "NEVER")
+      refute "NEVER" in ConfluencePhxMirror.Settings.wanted_spaces()
+    end
+  end
+
   describe "a space that disappears upstream" do
     test "is trashed with its pages and their comments, and stops being readable" do
       kept = space_fixture(%{key: "KEEP"})

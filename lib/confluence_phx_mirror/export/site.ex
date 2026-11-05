@@ -172,6 +172,9 @@ defmodule ConfluencePhxMirror.Export.Site do
     |> Enum.join("\n")
   end
 
+  # `@stylesheet_path` is a constant of this application's build, and the
+  # directory it is read from is the release's own.
+  # sobelow_skip ["Traversal.FileModule"]
   defp compiled_stylesheet do
     case File.read(Application.app_dir(:confluence_phx_mirror, @stylesheet_path)) do
       {:ok, css} -> css
@@ -186,6 +189,9 @@ defmodule ConfluencePhxMirror.Export.Site do
   It travels inside the folder rather than under a URL, so a copy opened from
   `file://` is filed under the same picture as the one on the site.
   """
+  # `@favicon_path` is a constant inside the release, written there by
+  # `scripts/favicon.sh`.
+  # sobelow_skip ["Traversal.FileModule"]
   @spec favicon() :: String.t()
   def favicon do
     case File.read(Application.app_dir(:confluence_phx_mirror, @favicon_path)) do
@@ -887,4 +893,31 @@ defmodule ConfluencePhxMirror.Export.Site do
 
   defp stamp(nil), do: nil
   defp stamp(%DateTime{} = at), do: Calendar.strftime(at, "%Y-%m-%d %H:%M") <> " UTC"
+
+  # Deliberately last in the module. The security review records what it has
+  # looked at by line, in `.sobelow-skips`, so a function inserted above the
+  # file reads it covers invalidates that record and fails the lint gate. A
+  # helper nobody calls yet belongs at the bottom, not in the middle of the
+  # paths.
+
+  @doc """
+  The two-level fan-out a page's files should live under.
+
+  A space can hold a million pages, and a directory holding a million entries is
+  slow to create, slow to list and awkward to back up — some filesystems refuse
+  it outright. Two levels of two digits, taken from the *low* end of the
+  Confluence id, gives ten thousand buckets: uniform, because ids are handed out
+  in sequence, and stable, because the same page always lands in the same one.
+
+  This is the scheme and the measurement, not yet the layout: changing
+  `page_path/2` and `attachment_path/4` to use it moves every file in every
+  archive and rewrites two dozen assertions in the export suite, so it is its own
+  change. `scripts/bench/archive_layout_bench.exs` is what says whether it is
+  worth making.
+  """
+  @spec shard(integer() | String.t()) :: {String.t(), String.t()}
+  def shard(confluence_id) do
+    digits = confluence_id |> to_string() |> String.pad_leading(4, "0")
+    {String.slice(digits, -4, 2), String.slice(digits, -2, 2)}
+  end
 end

@@ -38,6 +38,26 @@ defmodule ConfluencePhxMirror.DataCase do
   Sets up the sandbox based on the test tags.
   """
   def setup_sandbox(tags) do
+    # SQLite allows one writer, and it does not wait for one: a transaction that
+    # upgrades to a write while another connection holds the lock is answered
+    # "Database busy" at once, whatever `busy_timeout` says. `--max-cases 1` is
+    # not enough, because ExUnit runs a sync module while an async one is still
+    # finishing — so the suite takes the lock itself, for the length of a test,
+    # and only when it is pointed at SQLite. Postgres needs none of this.
+    #
+    # The lock is asked for by a process of its own rather than by the test:
+    # `:global` frees a lock when the process that called `set_lock` dies, and a
+    # test process dies *before* its `on_exit` callbacks run — so the next test
+    # could take the lock while this one's transaction was still rolling back,
+    # and its first write was answered "Database busy" (seen once on a CI
+    # runner, where the two windows overlap). The holder outlives the test, and
+    # the release is an `on_exit` registered *before* the sandbox owner's, which
+    # makes it run after the rollback has finished.
+    if Application.get_env(:confluence_phx_mirror, :sqlite_suite) do
+      holder = hold_writer_lock()
+      on_exit(fn -> release_writer_lock(holder) end)
+    end
+
     # The cached totals are keyed on the newest write in the mirror, and a
     # rolled-back transaction puts the mirror back to an older version without
     # moving that key; every test starts from an empty cache instead.
@@ -68,6 +88,40 @@ defmodule ConfluencePhxMirror.DataCase do
     end
 
     :ok
+  end
+
+  # The suite's one-writer lock, held by a process that outlives the test that
+  # asked for it. See the call site in `setup_sandbox/1` for why it cannot be
+  # the test process itself — and note that the *holder* is what asks: `:global`
+  # frees a lock when the process that called `set_lock` dies, whichever process
+  # the request was made in the name of (measured, not assumed).
+  @doc "Takes the suite's one-writer lock out, and answers the process holding it."
+  def hold_writer_lock do
+    parent = self()
+
+    holder =
+      spawn(fn ->
+        :global.set_lock({:sqlite_suite_writer, self()}, [node()], :infinity)
+        send(parent, {:holding, self()})
+
+        receive do
+          :stop -> :ok
+        end
+      end)
+
+    receive do
+      {:holding, ^holder} -> holder
+    end
+  end
+
+  @doc "Gives the lock back, and answers once its holder is gone."
+  def release_writer_lock(holder) do
+    ref = Process.monitor(holder)
+    send(holder, :stop)
+
+    receive do
+      {:DOWN, ^ref, :process, ^holder, _reason} -> :ok
+    end
   end
 
   @doc """

@@ -30,13 +30,18 @@ import "./confirm";
 import "./sidebar";
 import "./heading_anchors";
 import "./page_tree";
+import "./socket_status";
 import "./topbar_menus";
 
 const csrfToken = document
   .querySelector("meta[name='csrf-token']")
   .getAttribute("content");
 const liveSocket = new LiveSocket("/live", Socket, {
-  longPollFallbackMs: 2500,
+  // No `longPollFallbackMs`: LiveView's fallback quietly degrades a page to
+  // long-polling when the socket takes more than a moment, and everything on
+  // those pages is late by a poll interval — which reads as "notifications arrive
+  // late" and is impossible to diagnose from the outside. A page here is live
+  // over its socket or it says it is not; see the banner below.
   params: { _csrf_token: csrfToken },
   hooks: { ...colocatedHooks },
   // A patch re-renders the server's UTC text, so put the reader's zone back.

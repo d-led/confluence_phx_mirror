@@ -7,14 +7,51 @@ defmodule ConfluencePhxMirror.MixProject do
       version: "0.1.0",
       elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
+      test_paths: test_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
       package: package(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader],
-      dialyzer: dialyzer()
+      dialyzer: dialyzer(),
+      releases: releases()
     ]
+  end
+
+  # The desktop bundle carries this release inside it, and macOS will not launch
+  # a signed application whose innards are unsigned: Tauri signs the Rust half by
+  # itself, and every BEAM binary, port and escript in the release is the other
+  # half. `ElixirKit.Release.codesign/1` signs them, ad-hoc when no
+  # `APPLE_SIGNING_IDENTITY` is set, which is why this works before anyone has a
+  # certificate.
+  #
+  # Opt-in (`CONFLUENCE_SIGN_RELEASE=1`, set by `scripts/package.sh` and by the
+  # desktop workflow): signing 2 700 files on every `mix release` would tax the
+  # loop it is not needed in, and a Linux server release has nothing to sign.
+  defp releases do
+    [
+      confluence_phx_mirror: [
+        steps: release_steps(),
+        # Both flavours of launcher, whichever machine assembles the release.
+        # Mix's default is the *assembling* platform's, and the desktop build
+        # assembles on three — `src-tauri/src/main.rs` starts
+        # `bin/confluence_phx_mirror.bat` on Windows, and a Windows release
+        # without one is a window that starts nothing.
+        include_executables_for: [:unix, :windows],
+        entitlements: "#{__DIR__}/src-tauri/App.entitlements"
+      ]
+    ]
+  end
+
+  defp release_steps do
+    if System.get_env("CONFLUENCE_SIGN_RELEASE") == "1" do
+      # The entitlements the BEAM needs under the hardened runtime: it compiles
+      # code at run time, which is exactly what those switches are for.
+      [:assemble, &ElixirKit.Release.codesign/1]
+    else
+      [:assemble]
+    end
   end
 
   # The type check runs in whatever environment calls it — CI runs the whole
@@ -44,7 +81,7 @@ defmodule ConfluencePhxMirror.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {ConfluencePhxMirror.Application, []},
+      mod: {application_module(Mix.env()), []},
       # os_mon is what answers "how much memory is left": memsup samples the
       # machine, which is the number the admin overview shows next to the
       # mirror's own heap. It also raises a system alarm when the disk or the
@@ -62,8 +99,24 @@ defmodule ConfluencePhxMirror.MixProject do
   end
 
   # Specifies which paths to compile per environment.
+  #
+  # `:desktop` is the export tool: the same `lib/`, its own persistence and
+  # supervision tree in `lib_desktop/`. Dev, test and prod do not compile that
+  # path, so nothing the server ships contains the desktop code.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:desktop), do: ["lib", "lib_desktop"]
   defp elixirc_paths(_), do: ["lib"]
+
+  # The tool's tests live in their own directory, and in the desktop environment
+  # they are the *only* ones: `mix test` loads `<path>/test_helper.exs`, and the
+  # server's helper starts a sandbox for a repo the tool does not run in these
+  # tests. Two environments, two suites, one command each — `mix test` for the
+  # server, `scripts/test-desktop.sh` for the tool.
+  defp test_paths(:desktop), do: ["test_desktop"]
+  defp test_paths(_), do: ["test"]
+
+  defp application_module(:desktop), do: ConfluencePhxMirror.Desktop.Application
+  defp application_module(_), do: ConfluencePhxMirror.Application
 
   # Specifies your project dependencies.
   #
@@ -74,6 +127,20 @@ defmodule ConfluencePhxMirror.MixProject do
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
+      # The desktop export tool's store — and the engine the suite is run against
+      # a second time in CI (`CM_TEST_ADAPTER=sqlite`). `:desktop` and `:test`,
+      # never a release the server builds: the driver's C NIF has no business in
+      # a server image that talks to Postgres. See docs/desktop-tool.md.
+      {:ecto_sqlite3, "~> 0.17", only: [:desktop, :test]},
+      # Compiles `native/confluence_keyring` and loads it as a NIF. `:desktop`
+      # only, or every server build would need a Rust toolchain for a credential
+      # store it does not have.
+      {:rustler, "~> 0.38.0", only: :desktop, runtime: false},
+      # Signs the release for macOS (`ElixirKit.Release.codesign/1`), the half
+      # Tauri cannot sign for itself: the Erlang VM and every escript the release
+      # ships. `:desktop` only — the server image is Linux and has nothing to
+      # sign. See `release_steps/0`.
+      {:elixirkit, "~> 0.1", only: :desktop},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.2.0"},
@@ -105,7 +172,13 @@ defmodule ConfluencePhxMirror.MixProject do
        depth: 1},
       {:swoosh, "~> 1.16"},
       {:gen_smtp, "~> 1.3"},
-      {:argon2_elixir, "~> 4.1"},
+      # Every environment but `:desktop`. The library's Makefile has no Windows
+      # branch at all — no `-shared`, and it names the result `.so` — so it cannot
+      # build on the platform the tool must ship for, and its newest release
+      # (4.1.3) is the same. Nothing in the tool hashes or checks a token: it has
+      # one local reader, no sign-in, and no API clients. `Accounts.TokenHash`
+      # decides what a build without a hasher can do, in one place.
+      {:argon2_elixir, "~> 4.1", only: [:dev, :test, :prod]},
       {:req, "~> 0.5"},
       {:floki, "~> 0.38"},
       # Converted page bodies, for the MCP server and its repeated reads of one
@@ -120,7 +193,11 @@ defmodule ConfluencePhxMirror.MixProject do
       {:dns_cluster, "~> 0.3.1"},
       {:bandit, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      # `:desktop` too: the tool is a separate compile of this project, and the
+      # one tree no type check had seen was the one that only exists there.
+      # `runtime: false`, so it is a build-time tool in that environment and
+      # never a dependency of the release.
+      {:dialyxir, "~> 1.4", only: [:dev, :test, :desktop], runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:ex_crap, "~> 0.1.1", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false}
@@ -142,7 +219,11 @@ defmodule ConfluencePhxMirror.MixProject do
         "ecto.migrate --migrations-path=priv/repo/migrations --migrations-path=priv/repo/manual_migrations",
       "ecto.setup": ["ecto.create", "ecto.migrate_all", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate_all --quiet", "test"],
+      # Both directories on Postgres; the schema set alone on SQLite, where the
+      # manual ones cannot run by nature — they rewrite JSON the way only
+      # Postgres spells it, and the tool's own boot runs the same schema set
+      # (`Desktop.Setup`). See `config/test.exs` for the adapter switch.
+      test: ["ecto.create --quiet", test_migrations(), "test"],
       "assets.setup": ["assets.install --if-missing"],
       "assets.build": [
         "cmd --cd assets npm ci",
@@ -199,5 +280,29 @@ defmodule ConfluencePhxMirror.MixProject do
       # and prints one summary. `mix lint` and `mix cover` stay available alone.
       precommit: ["cmd scripts/quality.sh"]
     ]
+  end
+
+  # Which migrations `mix test` applies. `ecto.migrate_all` reaches into
+  # `priv/repo/manual_migrations`, which are Postgres-shaped on purpose (a JSON
+  # rewrite no other engine has); the SQLite suite runs what the tool runs.
+  # Which migrations a test run applies.
+  #
+  # The deployment's Postgres has two sets: `priv/repo/migrations` and the
+  # hand-run `priv/repo/manual_migrations` (statements somebody decides to run,
+  # like the one that moves a value out of a `jsonb` column). SQLite has only the
+  # first — the manual ones are written in Postgres's jsonb operators, and the
+  # tool's own boot applies the same single set (`Desktop.Setup`). A desktop test
+  # run that applied both failed on the first statement of a migration the app
+  # never runs, which is the sort of thing a test environment exists to tell you:
+  # the alias and the boot were disagreeing about which migrations a workspace
+  # has.
+  defp test_migrations do
+    if sqlite_store?(), do: "ecto.migrate --quiet", else: "ecto.migrate_all --quiet"
+  end
+
+  # SQLite is the store either because the second CI leg asks for it, or because
+  # this is the desktop environment, where it is the only adapter there is.
+  defp sqlite_store? do
+    System.get_env("CM_TEST_ADAPTER") == "sqlite" or Mix.env() == :desktop
   end
 end

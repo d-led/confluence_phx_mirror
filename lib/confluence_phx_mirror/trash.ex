@@ -22,6 +22,7 @@ defmodule ConfluencePhxMirror.Trash do
   alias ConfluencePhxMirror.{Audit, Blobs.Store, Mirror, Settings}
   alias ConfluencePhxMirror.Audit.Entry
   alias ConfluencePhxMirror.Mirror.{Counters, Page, Space}
+  alias ConfluencePhxMirror.Sync.SpaceScope
 
   @doc "Spaces in the trash, newest first, with how many pages go with each."
   def spaces, do: Mirror.trashed_spaces()
@@ -119,6 +120,43 @@ defmodule ConfluencePhxMirror.Trash do
       Counters.clear()
       Audit.log(actor, Page.audit_event_purged(page))
       {:ok, :page}
+    end
+  end
+
+  @doc """
+  Stops mirroring one space, and puts what is already here in the trash.
+
+  Two facts decide what happens to content, and they are not the same fact:
+
+    * a **listing** that stops naming a space is not evidence — a token that lost
+      access and a space that was deleted look identical, which is why a sync
+      only reports it (`Mirror.prune_missing_spaces/1`);
+    * a space **leaving the configured set** is evidence, because it is the
+      operator saying so. Nothing about it is guessed from the site.
+
+  So this is what the remove button means, and it is why removal is not only a
+  settings write: narrowing the set used to leave the mirror holding spaces it
+  was no longer configured to keep, with nothing to press to say so. The pages go
+  to the trash with reason `"manual"` — a decision, which the next sync will not
+  lift — and the holding period and the trash screen still apply to them.
+
+  A space nobody ever mirrored is simply taken out of the set.
+  """
+  @spec forget(Audit.actor(), String.t()) :: {:ok, %{pages: non_neg_integer()}} | {:error, term()}
+  def forget(actor, key) do
+    with {:ok, _settings} <- SpaceScope.remove(key, actor), do: trash_mirrored(actor, key)
+  end
+
+  defp trash_mirrored(actor, key) do
+    case Mirror.get_space_by_key(key) do
+      nil ->
+        {:ok, %{pages: 0}}
+
+      space ->
+        pages = Mirror.trash_space(space, "manual")
+        Counters.clear()
+        Audit.log(actor, Space.audit_event_space_deleted(space, pages))
+        {:ok, %{pages: pages}}
     end
   end
 

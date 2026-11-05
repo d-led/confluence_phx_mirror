@@ -188,7 +188,8 @@ defmodule ConfluencePhxMirror.SyncTest do
                    (run.stats["details_caught_up"] || 0),
                "in_mirror" => run.stats["total"],
                "attachments" => run.stats["attachments"],
-               "errors" => 0
+               "errors" => 0,
+               "attempts" => 1
              }
 
       assert entry.metadata["scope"] == "whole site"
@@ -370,7 +371,7 @@ defmodule ConfluencePhxMirror.SyncTest do
     end
   end
 
-  describe "people and groups" do
+  describe "identities and groups" do
     test "a people run reads memberships and statuses, and lists no page" do
       assert {:ok, _snapshot} = Sync.run(:snapshot)
       pages = Repo.aggregate(Page, :count)
@@ -378,7 +379,7 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert {:ok, run} = Sync.run(:people)
 
       assert run.mode == "people"
-      assert run.scope == "people and groups"
+      assert run.scope == "identities and groups"
       # Nothing was listed or re-read: the mirror holds the same pages, and the
       # run says it did no page work at all.
       assert Repo.aggregate(Page, :count) == pages
@@ -520,6 +521,9 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert page.body_text =~ "Page properties report"
     end
 
+    # Both macros ask their question as CQL, which the tool's SQLite answers
+    # with a notice instead (`Search.Lite`).
+    @tag :postgres_only
     test "draws the tree, the recent list and the report a page asks for" do
       demo_snapshot!()
 
@@ -538,6 +542,7 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert "Contributors" in texts(document, "p.mirror-dynamic-heading")
     end
 
+    @tag :postgres_only
     test "the product home lists the space's blog posts" do
       demo_snapshot!()
 

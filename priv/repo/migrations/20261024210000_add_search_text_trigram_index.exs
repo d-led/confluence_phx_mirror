@@ -17,16 +17,22 @@ defmodule ConfluencePhxMirror.Repo.Migrations.AddSearchTextTrigramIndex do
   @disable_ddl_transaction true
   @disable_migration_lock true
 
+  # `pg_trgm` is Postgres's. SQLite answers the same fragment pass from its FTS5
+  # table, so this one has nothing to add there.
   def up do
-    execute "CREATE EXTENSION IF NOT EXISTS pg_trgm"
+    if ConfluencePhxMirror.Migration.postgres?() do
+      execute "CREATE EXTENSION IF NOT EXISTS pg_trgm"
 
-    execute """
-    CREATE INDEX CONCURRENTLY IF NOT EXISTS pages_search_text_trgm_idx
-    ON pages USING gin (search_text gin_trgm_ops)
-    """
+      execute """
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS pages_search_text_trgm_idx
+      ON pages USING gin (search_text gin_trgm_ops)
+      """
+    end
   end
 
   def down do
-    execute "DROP INDEX CONCURRENTLY IF EXISTS pages_search_text_trgm_idx"
+    if ConfluencePhxMirror.Migration.postgres?() do
+      execute "DROP INDEX CONCURRENTLY IF EXISTS pages_search_text_trgm_idx"
+    end
   end
 end

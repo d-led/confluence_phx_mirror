@@ -220,10 +220,21 @@ defmodule ConfluencePhxMirror.Mirror.Search.Filters do
     end
   end
 
-  defp cutoff("today"), do: days_ago(0)
-  defp cutoff("yesterday"), do: days_ago(1)
+  # How far back "updated: 30d" reaches: an ISO date, or `nil` when the value is
+  # not one the UI offers. Public because the SQLite engine builds the same
+  # predicate from it — the cutoff is the query language, not the engine's.
+  @doc """
+  The date a "modified since" value means, as an ISO date, or `nil`.
 
-  defp cutoff(value) do
+  `"today"`, `"yesterday"`, `"7d"`, `"90d"`, `"365d"`, or an ISO date.
+  """
+  @spec cutoff(String.t() | nil) :: String.t() | nil
+  def cutoff(nil), do: nil
+  def cutoff("today"), do: days_ago(0)
+  def cutoff("yesterday"), do: days_ago(1)
+  def cutoff("any"), do: nil
+
+  def cutoff(value) do
     case Regex.run(~r/^(\d{1,3})d$/, value) do
       [_, days] -> days_ago(String.to_integer(days))
       nil -> iso(value)

@@ -30,14 +30,15 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   alias ConfluencePhxMirrorWeb.Plugs
   alias ConfluencePhxMirrorWeb.Time
 
-  # Two cadences, because two kinds of number live here. What a run is doing
-  # moves by the second and is the thing an operator sits and watches, so the
-  # strip above the totals is re-read every five seconds. The totals, the run
-  # table, the audit tail and the resource figures move slowly — a mirror's page
-  # count does not change between heartbeats — so they are re-read on their own,
-  # longer interval, which a deployment can set
-  # (`CM_ADMIN_STATS_REFRESH_SECONDS`, 30 by default).
-  @progress_ms 5_000
+  # Two cadences, because two kinds of number live here. What a run is doing is
+  # pushed the moment it happens (`Sync.subscribe_runs/0`), so the strip above
+  # the totals moves with the run rather than on a tick; the timer that remains
+  # is a heartbeat for the numbers that are not pushed — what the calls cost — and
+  # a safety net if a message is ever missed. The totals, the run table, the audit
+  # tail and the resource figures move slowly — a mirror's page count does not
+  # change between heartbeats — so they are re-read on their own, longer interval,
+  # which a deployment can set (`CM_ADMIN_STATS_REFRESH_SECONDS`, 30 by default).
+  @progress_ms 15_000
   @stats_seconds 30
 
   # A press on a download link is answered here within a tick of 250 ms: the
@@ -53,6 +54,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
+      Sync.subscribe_runs()
       :timer.send_interval(@progress_ms, self(), :progress)
       :timer.send_interval(stats_refresh_ms(), self(), :stats)
     end
@@ -96,7 +98,18 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
 
   def handle_info(:download_check, socket), do: {:noreply, socket}
 
+  # A run moved. The message says only which row, because the row is the state:
+  # reading it again is the one way a screen cannot show a number that never
+  # existed.
+  def handle_info({:sync_run_changed, _run_id}, socket) do
+    {:noreply, refresh_progress(socket)}
+  end
+
   def handle_info(:progress, socket) do
+    {:noreply, refresh_progress(socket)}
+  end
+
+  defp refresh_progress(socket) do
     refreshed = assign_progress(socket)
     # A download that started said so in the note; the next tick takes the note
     # away, because it is news and not furniture.
@@ -109,9 +122,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     # way an operator notices: the strip is gone and the row still says
     # "running". Catching the table up here costs one read, once per run.
     if socket.assigns.running && is_nil(refreshed.assigns.running) do
-      {:noreply, assign_stats(refreshed)}
+      assign_stats(refreshed)
     else
-      {:noreply, refreshed}
+      refreshed
     end
   end
 
@@ -277,29 +290,33 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     traffic = Traffic.summary()
     stats = run.stats || %{}
     elapsed_s = max(DateTime.diff(DateTime.utc_now(), run.started_at, :second), 1)
-    pages = Map.get(stats, "pages", 0)
+    {counted_label, counted} = SyncRun.counted(run)
 
     %{
       phase: phase_label(Map.get(stats, "phase")),
-      mode: run.mode,
+      mode: SyncRun.mode_label(run.mode),
       trigger: Map.get(stats, "trigger") || "the schedule",
       running_for: Time.duration(run.started_at, DateTime.utc_now()),
-      pages: pages,
+      counted_label: counted_label,
+      counted: counted,
+      counted_icon: if(counted_label == "Pages", do: "hero-document-text", else: "hero-users"),
       requests: traffic.requests,
       bytes: traffic.bytes,
       retries: traffic.retries,
       failed: traffic.failed,
-      pace: "#{Float.round(pages / elapsed_s, 1)} pages/s"
+      pace: "#{Float.round(counted / elapsed_s, 1)} #{String.downcase(counted_label)}/s"
     }
   end
 
   # The steps a run walks, in the order `Sync` walks them: a table, because the
-  # sentence for a phase is data, not a decision.
+  # sentence for a phase is data, not a decision. Every phase `Sync.record_phase/2`
+  # writes has a sentence here, or the strip shows the raw key.
   @phases %{
-    "people" => "reading people and groups",
+    "people" => "reading identities and their groups",
     "spaces" => "reading spaces",
     "pages" => "reading pages",
-    "details" => "reading comments, files and restrictions",
+    "details" => "reading page bodies, comments, files and restrictions",
+    "groups" => "reading who is in which group",
     "accounts" => "checking the site's accounts"
   }
 
@@ -325,6 +342,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
   defp phase_label(nil), do: "talking to the site"
   defp phase_label(phase), do: Map.get(@phases, phase, phase)
 
+  # A number a run never counted is not zero: zero means it looked and found
+  # none, a dash means the question was not asked.
+  defp page_number(true, count), do: count
+  defp page_number(false, _count), do: "—"
+
   # "58 GB free of 926 GB on /data": the sentence an operator reads when a sync
   # is about to run out of room.
   defp device_line(%{device: nil}), do: "the device did not report its size"
@@ -333,7 +355,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     "#{human_bytes(device.free_bytes)} free of #{human_bytes(device.total_bytes)} on #{device.mount}"
   end
 
-  defp table_line([]), do: "the database did not report its tables"
+  defp table_line([]), do: "per-table sizes are not reported by this store"
 
   defp table_line(tables) do
     "biggest: " <>
@@ -746,7 +768,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           </span>
         </div>
         <div class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1">
-          <.stat label="Pages" value={@progress.pages} icon="hero-document-text" />
+          <.stat
+            label={@progress.counted_label}
+            value={@progress.counted}
+            icon={@progress.counted_icon}
+          />
           <.stat label="Calls" value={@progress.requests} icon="hero-bolt" />
           <.stat label="Data" value={human_bytes(@progress.bytes)} icon="hero-circle-stack" />
           <.stat label="Retries" value={@progress.retries} icon="hero-arrow-path" />
@@ -816,13 +842,13 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
           />
           <.resource_meter
             id="resources-database"
-            label="Postgres"
+            label={ConfluencePhxMirror.Resources.database_label()}
             value={@database.bytes}
             percent={database_percent(@database, @database_capacity)}
             share={share_percent(@database.bytes, @database_capacity)}
             detail={database_line(@database, @database_capacity)}
             note={table_line(@database.tables)}
-            hint="size from Postgres itself; a percentage needs CM_DATABASE_CAPACITY_GB"
+            hint="size from the store itself; a percentage needs CM_DATABASE_CAPACITY_GB"
           />
           <.resource_meter
             id="resources-memory"
@@ -905,6 +931,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
               would look like a delivery. The trigger beside it says who asked. --%>
               <span :if={row.trigger} class="block text-[11px] text-base-content/70">
                 {row.trigger}
+              </span>
+              <span :if={row.members} class="block text-[11px] text-base-content/70">
+                {row.members} members read
+              </span>
+              <%!-- A job tried more than once is still one press: saying so here
+              keeps the run list and the jobs page telling the same story. --%>
+              <span :if={row.attempts > 1} class="block text-[11px] text-warning">
+                attempt {row.attempts}
               </span>
             </td>
             <td class="text-xs" title={row.scope}>{row.scope}</td>
@@ -1171,6 +1205,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       changed: "—",
       unchanged: "—",
       details: "—",
+      members: nil,
+      attempts: job.attempt,
       total: "—",
       attachments: "—",
       error: nil,
@@ -1183,11 +1219,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
     # The same numbers the audit entry records — one function, so the table and
     # the log cannot disagree about what a run did.
     numbers = SyncRun.summary(run)
+    reads_pages? = SyncRun.reads_pages?(run)
 
     %{
       run_id: run.id,
       at: run.started_at,
-      mode: run.mode,
+      mode: SyncRun.mode_label(run.mode),
       # Who asked for the run, and why: the schedule, a delivery, a person.
       trigger: SyncRun.trigger(run),
       # A run from before the scope column was always a whole-site pull.
@@ -1197,12 +1234,16 @@ defmodule ConfluencePhxMirrorWeb.Admin.DashboardLive do
       # What the site listed for this run's window, and of those, what had to be
       # fetched and what was already up to date. A run's numbers are its window,
       # not the mirror: the mirror's size is `Mirror.stats/0`, printed above.
-      listed: numbers.listed,
-      changed: numbers.changed,
-      unchanged: numbers.unchanged,
-      details: numbers.details,
+      # An identities run reads no page, so its page columns are dashes and the
+      # number it did move — the members it read — sits under its name.
+      listed: page_number(reads_pages?, numbers.listed),
+      changed: page_number(reads_pages?, numbers.changed),
+      unchanged: page_number(reads_pages?, numbers.unchanged),
+      details: page_number(reads_pages?, numbers.details),
+      members: if(reads_pages?, do: nil, else: SyncRun.members(run)),
       total: numbers.in_mirror,
-      attachments: numbers.attachments,
+      attachments: page_number(reads_pages?, numbers.attachments),
+      attempts: numbers.attempts,
       error: run.error,
       job_id: nil,
       dom_id: "sync-run-#{run.id}"

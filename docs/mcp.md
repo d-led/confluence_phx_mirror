@@ -5,12 +5,24 @@ an assistant can search the mirror, walk its space trees and read pages as
 Markdown. No tool call changes anything — content changes only through
 [Sync](site-admin-guide.md#pulling-content).
 
+The mirror also serves **`/mcp`**, a page that says the same thing with this
+installation's own addresses filled in, and the settings for
+[sooperset's `mcp-atlassian`](https://github.com/sooperset/mcp-atlassian) — a
+third-party MCP server that speaks Confluence, and so speaks to a mirror.
+
 ## Connect in two steps
 
 | Step | Local demo | Deployed mirror |
 | --- | --- | --- |
 | 1. point the client at | `http://localhost:4000/api/mcp` | `https://your-mirror-url/api/mcp` |
 | 2. credentials | none (development assumes an administrator) | nothing to paste: the client opens a browser and authorizes itself |
+
+The **desktop tool** serves the same endpoint on its own loopback port,
+`http://127.0.0.1:43100/api/mcp`, and takes no credentials from a process on the
+same machine. 43_100 is what it prefers; `CONFLUENCE_EXPORT_PORT` or the `port`
+key in its `settings.json` changes it, and when another copy already holds the
+port the window says which one it got behind **account menu → Assistant (MCP)**
+— the page whose URL you are reading, with the address filled in.
 
 In VS Code, put the block below in `.vscode/mcp.json` (the file is gitignored).
 The local one is the demo mirror:
@@ -141,6 +153,7 @@ here. What follows is what each tool answers.
 | `confluence_list_blog_posts` | mirror | a space's news, newest first |
 | `confluence_get_recent_changes` | mirror | content whose Confluence timestamp is newest — **not** the ingestion order |
 | `confluence_index_status` | mirror | **administrators only**: the last spaces indexed, when each was read, recent sync runs |
+| `confluence_mirror_configuration` | mirror | **administrators only**: the site, the sync intervals, the last successful run, the totals — and, in the desktop tool, the folder the catalogue lives in and the MCP address itself. Never a token |
 
 Two tools sound alike and are not. `confluence_get_recent_changes` answers "what
 changed upstream lately" from Confluence's own timestamps; `confluence_index_status`
@@ -150,7 +163,16 @@ answers "what did the mirror ingest, and when" and is administrator material, li
 ```
 @confluence-mirror what are the last spaces indexed?
 → confluence_index_status
+
+@confluence-mirror-desktop how many spaces do we sync?
+→ confluence_mirror_configuration
 ```
+
+`confluence_mirror_configuration` is the one an assistant needs first: it says
+which site this is, how often it is read, when it last succeeded and what is in
+there, so a follow-up question can be asked against the right installation. The
+desktop tool adds what only it knows — the workspace folder (the one
+`/__tool` will open in Finder for you) and the very address you are talking to.
 
 `page_id` and `parent_id` accept a Confluence content id **or** a page URL
 (`/spaces/ENG/pages/1002/Title`, `?pageId=1002`). Tiny links (`/wiki/x/N4CIO`) need the

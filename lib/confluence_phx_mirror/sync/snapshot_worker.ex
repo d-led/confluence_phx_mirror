@@ -37,18 +37,43 @@ defmodule ConfluencePhxMirror.Sync.SnapshotWorker do
 
   @impl true
   def perform(%Oban.Job{id: job_id, args: args}) do
-    case Sync.run(mode(args), job_id: job_id, actor: @actor, trigger: trigger(args)) do
-      {:ok, _run} ->
-        :ok
+    with :ok <- scoped?() do
+      case Sync.run(mode(args), job_id: job_id, actor: @actor, trigger: trigger(args)) do
+        {:ok, _run} ->
+          :ok
 
-      {:error, :paused} ->
-        # Nothing is read from the site while the pause is on; the job keeps its
-        # place in the queue and comes back after the operator resumes.
-        Sync.paused_wait()
+        {:error, :paused} ->
+          # Nothing is read from the site while the pause is on; the job keeps its
+          # place in the queue and comes back after the operator resumes.
+          Sync.paused_wait()
 
-      {:error, :already_running} ->
-        Logger.info("a sync is already running; this scheduled pull waits for the next tick")
-        :ok
+        {:error, :already_running} ->
+          Logger.info("a sync is already running; this scheduled pull waits for the next tick")
+          :ok
+      end
+    end
+  end
+
+  # A deployment that names no spaces mirrors the whole site, which is the right
+  # default for a server given one site to mirror. The tool is not that: somebody
+  # opened it to keep *their* spaces, and "everything" is a run nobody asked for —
+  # against a real site, at its rate limit. So an unscoped run is cancelled with a
+  # reason rather than started, and the reason is what `/admin/jobs` shows.
+  #
+  # Refusing is the only safe answer here: the other way of meaning "nothing" is an
+  # empty list, and the sync reads an empty whitelist as "everything outside it",
+  # which trashes it.
+  defp scoped? do
+    if Application.get_env(:confluence_phx_mirror, :desktop_tool, false) and
+         ConfluencePhxMirror.Sync.SpaceScope.wanted() == :all do
+      Logger.warning(
+        "sync cancelled: this tool has no spaces chosen, and a tool never mirrors " <>
+          "the whole site by itself. Choose one on the Desktop screen."
+      )
+
+      {:cancel, "no spaces chosen"}
+    else
+      :ok
     end
   end
 

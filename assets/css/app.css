@@ -330,6 +330,19 @@
   font-weight: 600;
 }
 
+/* daisyUI's `menu-active` takes its pair from the theme, and in the light theme
+   that pair lands near-white on near-white: a row highlighted with the keyboard —
+   the search suggestions, the export's page tree, the filter chips — was painted
+   white text on a pale background and could not be read. Both halves are pinned
+   here, once, instead of at each of the four places that toggle the class, so
+   the background and the text can never drift apart in either theme.
+   Unlayered on purpose: the plugin's own rules sit in a cascade layer, and
+   anything outside one outranks every layer. */
+.menu-active {
+  background-color: var(--color-base-200);
+  color: var(--color-base-content);
+}
+
 /* A cell Confluence coloured keeps its colour as `data-highlight-colour` and is
    painted by Confluence's own stylesheet. Matching the attribute here does the
    same, and does it for bodies mirrored before the rule existed: nothing has to

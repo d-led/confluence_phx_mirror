@@ -66,7 +66,9 @@ defmodule ConfluencePhxMirror.Blobs.LocalStore do
   defp written_at(path) do
     case File.stat(path, time: :posix) do
       {:ok, %File.Stat{mtime: mtime}} -> mtime
-      {:error, _reason} -> 0
+      # A file whose age cannot be read is not a file whose age is zero: zero is
+      # 1970, which every sweep would call old enough to delete.
+      {:error, _reason} -> :unknown
     end
   end
 

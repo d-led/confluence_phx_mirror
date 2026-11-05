@@ -54,6 +54,37 @@ defmodule ConfluencePhxMirror.Sync do
   @type mode :: :snapshot | :incremental | :space | :page | :people
   @type report :: {:ok, SyncRun.t()}
 
+  # Screens that watch a run subscribe here. A run's row moves many times a
+  # second while it works, and a screen that polled for it would show every
+  # phase up to a poll interval late.
+  @runs_topic "sync:runs"
+
+  @doc """
+  Tells the calling process when a run starts, moves or ends.
+
+  The message is `{:sync_run_changed, run_id}`: the row is the state, so a
+  reader asks for it again rather than trusting what was pushed.
+  """
+  @spec subscribe_runs() :: :ok | {:error, term()}
+  def subscribe_runs do
+    Phoenix.PubSub.subscribe(ConfluencePhxMirror.PubSub, @runs_topic)
+  end
+
+  @doc """
+  Tells the subscribers of `subscribe_runs/0` that this run's row has changed.
+
+  Anyone who writes a run row outside this module — a migration, a test, the
+  next feature with its own runs — calls this, or the screens watching it go
+  stale until their next heartbeat.
+  """
+  @spec announce(integer() | SyncRun.t()) :: :ok
+  def announce(%SyncRun{id: run_id}), do: announce(run_id)
+
+  def announce(run_id) do
+    Phoenix.PubSub.broadcast(ConfluencePhxMirror.PubSub, @runs_topic, {:sync_run_changed, run_id})
+    :ok
+  end
+
   # ---------------------------------------------------------------------------
   # Public entry points
   # ---------------------------------------------------------------------------
@@ -234,7 +265,7 @@ defmodule ConfluencePhxMirror.Sync do
         finish_cancelled(run, actor, trigger)
 
       error ->
-        fail_run(run, Exception.message(error), trigger)
+        fail_run(run, Exception.message(error), __STACKTRACE__, trigger)
 
         Logger.error("sync failed",
           sync_run_id: run.id,
@@ -246,7 +277,7 @@ defmodule ConfluencePhxMirror.Sync do
         reraise error, __STACKTRACE__
     catch
       kind, reason ->
-        fail_run(run, Exception.format(kind, reason, __STACKTRACE__), trigger)
+        fail_run(run, Exception.format(kind, reason, __STACKTRACE__), __STACKTRACE__, trigger)
 
         Logger.error("sync failed",
           sync_run_id: run.id,
@@ -340,8 +371,16 @@ defmodule ConfluencePhxMirror.Sync do
           {exception, stacktrace} when is_exception(exception) ->
             reraise(exception, stacktrace)
 
+          # An Erlang error (a bad argument to a BIF, an `:ets` miss) arrives as
+          # the reason itself with its frames. Raised as it is, it keeps both:
+          # the run's record then says what went wrong and where, instead of
+          # "the sync process exited" around a term `inspect/1` truncated.
+          {reason, stacktrace} when is_list(stacktrace) ->
+            :erlang.raise(:error, reason, stacktrace)
+
           other ->
-            raise "the sync process exited: #{inspect(other)}"
+            raise "the sync process exited: " <>
+                    inspect(other, limit: :infinity, printable_limit: :infinity)
         end
     end
   end
@@ -613,6 +652,8 @@ defmodule ConfluencePhxMirror.Sync do
       Repo.update_all(from(r in SyncRun, where: r.id == ^run_id),
         set: [stats: Map.merge(run.stats || %{}, changes)]
       )
+
+      announce(run_id)
     else
       _no_run -> :ok
     end
@@ -1301,7 +1342,19 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
-  defp personal_spaces? do
+  @doc """
+  Whether this mirror takes personal (`~account`) spaces.
+
+  Off by default: everyone has one, it holds their drafts, and mirroring it is a
+  decision rather than an accident — `CM_SYNC_PERSONAL_SPACES=true` is that
+  decision. Read here rather than from a copy, because more than the sync asks:
+  a picker must not *offer* what a discovery would skip, and the desktop tool
+  builds its bulk run out of a listing (a copy of this rule in another module is
+  how it came to import personal spaces while a deployment would have skipped
+  them).
+  """
+  @spec personal_spaces?() :: boolean()
+  def personal_spaces? do
     :confluence_phx_mirror
     |> Application.get_env(:sync, [])
     |> Keyword.get(:personal_spaces, false)
@@ -1948,22 +2001,65 @@ defmodule ConfluencePhxMirror.Sync do
        }, []}
 
     entries
-    |> Task.async_stream(&render_entry(source, &1, index, opts),
+    |> Task.async_stream(&render_entry_safely(source, &1, index, opts),
       max_concurrency: concurrency(),
       timeout: :infinity,
-      ordered: false
+      # In the order the entries were given, so a task that died can still be
+      # named: an exit carries no identity of its own, and "a page failed" with
+      # no page is a report nobody can act on.
+      ordered: true
     )
+    |> Enum.zip(entries)
     |> Enum.reduce(initial, fn
-      {:ok, {:ok, page_stats, entry_errors}}, {stats, errors} ->
+      {{:ok, {:ok, page_stats, entry_errors}}, _entry}, {stats, errors} ->
         {merge_stats(stats, page_stats), errors ++ entry_errors}
 
-      {:ok, {:error, reason, dto}}, {stats, errors} ->
+      {{:ok, {:error, reason, dto}}, _entry}, {stats, errors} ->
         Log.add(:warn, "page failed: #{dto.title}", page: dto.id, reason: format_error(reason))
         {stats, [error("page", dto.id, reason) | errors]}
 
-      {:exit, reason}, {stats, errors} ->
-        {stats, [error("page", nil, {:exit, inspect(reason)}) | errors]}
+      {{:ok, {:crashed, exception, stacktrace, dto}}, _entry}, {stats, errors} ->
+        Log.add(:warn, "page failed: #{dto.title}",
+          page: dto.id,
+          reason: Exception.message(exception)
+        )
+
+        {stats,
+         [
+           error(
+             "page",
+             dto.id,
+             "the page crashed: #{Exception.message(exception)}",
+             Exception.format_stacktrace(stacktrace)
+           )
+           | errors
+         ]}
+
+      # A stop is not a failure of the page it landed in: it is the run ending.
+      {{:exit, {%Cancelled{}, _stacktrace}}, _entry}, _work ->
+        raise Cancelled
+
+      {{:exit, reason}, entry}, {stats, errors} ->
+        Log.add(:warn, "page failed: #{entry.dto.title}",
+          page: entry.dto.id,
+          reason: format_error(reason)
+        )
+
+        {stats, [error("page", entry.dto.id, {:exit, format_error(reason)}) | errors]}
     end)
+  end
+
+  # One page's crash is one page's error, because the next page has nothing to
+  # do with it: the tasks these pages run in are linked to this process, so
+  # without this a single raise — a renderer bug, a malformed body — took the
+  # whole run with it, and the record could not even say which page. A
+  # `Cancelled` is not a crash: it is the run ending, and it must take the run
+  # with it.
+  defp render_entry_safely(source, entry, index, opts) do
+    render_entry(source, entry, index, opts)
+  rescue
+    error in Cancelled -> reraise(error, __STACKTRACE__)
+    error -> {:crashed, error, __STACKTRACE__, entry.dto}
   end
 
   # Detail work is network-bound (one attachments and one comments call per
@@ -1971,11 +2067,26 @@ defmodule ConfluencePhxMirror.Sync do
   # paces the requests.
   defp concurrency, do: Settings.sync_concurrency()
 
-  defp render_entry(source, %{space: space, dto: dto, page: page, change: change}, index, opts) do
+  defp render_entry(source, %{dto: dto, page: page} = entry, index, opts) do
     check_cancelled!(opts)
 
+    case fetch_restrictions(source, page) do
+      # Nothing is written, so the page keeps the restrictions it already had:
+      # a page stored as "open" because the answer was lost is the one mistake
+      # a mirror must not make.
+      {:error, reason} -> {:error, {:restrictions, reason}, dto}
+      read -> render_page(source, entry, index, opts, read)
+    end
+  end
+
+  defp render_page(
+         source,
+         %{space: space, dto: dto, page: page, change: change},
+         index,
+         opts,
+         restrictions
+       ) do
     {attachments, attachment_errors} = mirror_attachments(source, space, page)
-    restrictions = fetch_restrictions(source, page)
     attachment_map = Map.new(attachments, &attachment_ref(space, page, &1))
 
     context = %{
@@ -2022,7 +2133,6 @@ defmodule ConfluencePhxMirror.Sync do
          "notifications" => notifications
        },
        attachment_errors ++
-         restriction_errors(restrictions, page) ++
          comments.errors ++ notification_errors}
     else
       {:error, reason} -> {:error, reason, dto}
@@ -2074,6 +2184,10 @@ defmodule ConfluencePhxMirror.Sync do
   # A page's read restrictions decide access before its space does, so they are
   # synced per page; a source that cannot read them says nothing at all. The
   # read happens before the page's transaction; the write is inside it.
+  #
+  # "Cannot read them" and "there are none" are different answers and must not
+  # share a shape: `{:ok, []}` is Confluence saying anyone may read the page, and
+  # a failure written as an empty list would make a restricted page public.
   defp fetch_restrictions(source, page) do
     if function_exported?(source, :restrictions, 2) do
       source.restrictions(page.confluence_id, [])
@@ -2083,17 +2197,11 @@ defmodule ConfluencePhxMirror.Sync do
   end
 
   defp apply_restrictions(_page, :unsupported), do: :ok
-  defp apply_restrictions(_page, {:error, _reason}), do: :ok
 
   defp apply_restrictions(page, {:ok, restrictions}) do
     must!(Mirror.replace_page_restrictions(page, restrictions))
     :ok
   end
-
-  defp restriction_errors({:error, reason}, page),
-    do: [error("page", page.confluence_id, {:restrictions, reason})]
-
-  defp restriction_errors(_read, _page), do: []
 
   # Dynamic macros are resolved from the mirror, so the stored body and its
   # search text both contain what a reader actually sees.
@@ -2436,11 +2544,61 @@ defmodule ConfluencePhxMirror.Sync do
 
   # A run says why it happened as well as what it did: the trigger is what a
   # reader asks a sync first, and a run nobody asked for has none to show.
+  #
+  # A retry of the same job continues that job's run rather than opening a
+  # second one: the run is what its log lines hang from, so two rows for one
+  # press read as two syncs to whoever looks at them afterwards, and split the
+  # log in two — the failing attempt's lines land under a run nobody opens.
   defp start_run(source, mode, actor, trigger, opts) do
     # The traffic account covers one run: every call this run makes is counted
     # here and reported when it ends, so a reader never sees yesterday's totals.
     Traffic.reset()
 
+    case resumable_run(opts[:job_id]) do
+      nil -> insert_run(source, mode, actor, trigger, opts)
+      run -> resume_run(run)
+    end
+  end
+
+  defp resumable_run(nil), do: nil
+
+  defp resumable_run(job_id) do
+    import Ecto.Query
+
+    Repo.one(
+      from(run in SyncRun,
+        where: run.job_id == ^job_id and run.status == "failed",
+        order_by: [desc: run.id],
+        limit: 1
+      )
+    )
+  end
+
+  # The failed attempt's own words are kept, because the log that holds them is
+  # a view that may have dropped them by the time anyone asks.
+  defp resume_run(run) do
+    attempts = Map.get(run.stats, "attempts", 1)
+    earlier = Map.get(run.stats, "failed_attempts", [])
+
+    {:ok, run} =
+      run
+      |> SyncRun.changeset(%{
+        status: "running",
+        finished_at: nil,
+        error: nil,
+        stats:
+          run.stats
+          |> Map.put("attempts", attempts + 1)
+          |> Map.put("failed_attempts", earlier ++ List.wrap(run.error))
+      })
+      |> Repo.update()
+
+    announce(run.id)
+
+    run
+  end
+
+  defp insert_run(source, mode, actor, trigger, opts) do
     {:ok, run} =
       %SyncRun{}
       |> SyncRun.changeset(%{
@@ -2450,7 +2608,8 @@ defmodule ConfluencePhxMirror.Sync do
         trigger: trigger,
         job_id: opts[:job_id],
         status: "running",
-        started_at: now()
+        started_at: now(),
+        stats: %{"attempts" => 1}
       })
       |> Repo.insert()
 
@@ -2461,6 +2620,8 @@ defmodule ConfluencePhxMirror.Sync do
         trigger: trigger
       )
     )
+
+    announce(run.id)
 
     run
   end
@@ -2474,6 +2635,8 @@ defmodule ConfluencePhxMirror.Sync do
       stats
       |> Map.put("total", Mirror.count_pages())
       |> Map.put("errors", normalize_errors(errors))
+      |> Map.put("attempts", Map.get(run.stats, "attempts", 1))
+      |> Map.put("failed_attempts", Map.get(run.stats, "failed_attempts", []))
 
     {:ok, run} =
       run
@@ -2486,6 +2649,8 @@ defmodule ConfluencePhxMirror.Sync do
       |> Repo.update()
 
     Audit.log(actor, SyncRun.audit_event_finished(run, trigger: trigger))
+
+    announce(run.id)
 
     # The home page prints the mirror's totals; the reader who arrives after a
     # sync should not be the one who pays for the scans it made stale.
@@ -2541,10 +2706,18 @@ defmodule ConfluencePhxMirror.Sync do
 
   defp caught_up_clause(_stats), do: []
 
-  defp fail_run(run, message, trigger) do
+  # The message is what the screens print; the frames are what answers "where"
+  # once the log that showed them has rolled over — an Erlang error arrives as a
+  # bare `:badarg`, and its trace is the only thing that names the culprit.
+  defp fail_run(run, message, stacktrace, trigger) do
     {:ok, run} =
       run
-      |> SyncRun.changeset(%{status: "failed", finished_at: now(), error: message})
+      |> SyncRun.changeset(%{
+        status: "failed",
+        finished_at: now(),
+        error: message,
+        stats: Map.put(run.stats, "stacktrace", Exception.format_stacktrace(stacktrace))
+      })
       |> Repo.update()
 
     Log.add(:error, "sync failed: #{message}", sync_run_id: run.id, trigger: trigger)
@@ -2571,10 +2744,19 @@ defmodule ConfluencePhxMirror.Sync do
     errors
     |> Enum.map(fn err ->
       %{"scope" => err.scope, "id" => err.id, "reason" => format_error(err.reason)}
+      |> Map.merge(trace_of(err))
     end)
   end
 
+  # A page that crashed rather than answered keeps its frames: the message says
+  # what, and the trace says where — the same pair a failed run records.
+  defp trace_of(%{trace: trace}) when is_binary(trace), do: %{"trace" => trace}
+  defp trace_of(_error), do: %{}
+
   defp error(scope, id, reason), do: %{scope: scope, id: id, reason: reason}
+
+  defp error(scope, id, reason, trace),
+    do: %{scope: scope, id: id, reason: reason, trace: trace}
 
   defp format_error(nil), do: nil
   defp format_error(%{reason: reason}), do: format_error(reason)
@@ -2592,7 +2774,7 @@ defmodule ConfluencePhxMirror.Sync do
   # can be read without opening the job that asked for it.
   defp scope_of(:space, opts), do: "space #{Keyword.fetch!(opts, :space_key)}"
   defp scope_of(:page, opts), do: "page #{Keyword.fetch!(opts, :confluence_id)}"
-  defp scope_of(:people, _opts), do: "people and groups"
+  defp scope_of(:people, _opts), do: "identities and groups"
   defp scope_of(_mode, _opts), do: "whole site"
 
   defp default_since do

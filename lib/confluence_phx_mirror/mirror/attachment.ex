@@ -9,8 +9,10 @@ defmodule ConfluencePhxMirror.Mirror.Attachment do
   @type t :: %__MODULE__{}
 
   schema "attachments" do
-    # Confluence Cloud uses ids like "att164058"; older sites use numbers.
-    field :confluence_id, :string
+    # Confluence Cloud uses ids like "att164058"; older sites use numbers. The
+    # column is text, and a store with numeric affinity (the tool's SQLite)
+    # hands a number back for a numeric one — see `Ecto.IdString`.
+    field :confluence_id, ConfluencePhxMirror.Ecto.IdString
     field :filename, :string
     field :media_type, :string, default: "application/octet-stream"
     field :byte_size, :integer

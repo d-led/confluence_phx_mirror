@@ -33,16 +33,18 @@ defmodule ConfluencePhxMirror.Repo.Migrations.AddCommentAttachmentsAndDetailSync
       add :details_synced_at, :utc_datetime
     end
 
-    execute(
-      "CREATE INDEX CONCURRENTLY IF NOT EXISTS attachments_comment_id_index " <>
-        "ON attachments (comment_id)",
-      "DROP INDEX CONCURRENTLY IF EXISTS attachments_comment_id_index"
+    # `CONCURRENTLY` is how Postgres builds an index without blocking the release
+    # that is still serving; the helper drops the option where it does not exist.
+    ConfluencePhxMirror.Migration.build_index(
+      "attachments_comment_id_index",
+      :attachments,
+      [:comment_id]
     )
 
-    execute(
-      "CREATE INDEX CONCURRENTLY IF NOT EXISTS pages_details_synced_at_index " <>
-        "ON pages (details_synced_at)",
-      "DROP INDEX CONCURRENTLY IF EXISTS pages_details_synced_at_index"
+    ConfluencePhxMirror.Migration.build_index(
+      "pages_details_synced_at_index",
+      :pages,
+      [:details_synced_at]
     )
   end
 end

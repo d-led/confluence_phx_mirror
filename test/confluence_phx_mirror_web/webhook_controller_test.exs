@@ -172,9 +172,14 @@ defmodule ConfluencePhxMirrorWeb.WebhookControllerTest do
 
   describe "metering the intake" do
     setup do
+      # Hammer's fixed window is aligned to the wall clock, and a minute-wide one
+      # put an occasional "expected 429, got 202" in CI: the second request of a
+      # test landed in the next window and started counting again. A day-wide
+      # window turns a once-a-minute coincidence into a once-a-day one. What
+      # these tests assert is the cap, not the clock; expiry has its own test.
       TestConfig.put(:webhook_rate_limit,
         limit: 2,
-        period_ms: 60_000
+        period_ms: 24 * 60 * 60 * 1000
       )
 
       :ok

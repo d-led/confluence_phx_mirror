@@ -17,6 +17,20 @@ defmodule ConfluencePhxMirror.Mirror.Page do
   @types ~w(page blogpost)
   @statuses ~w(current draft archived)
 
+  # `text[]` where the database has an array type, JSON text where it has not.
+  # The rule is the one that chose the adapter and the column type the migration
+  # built, so all three agree by construction.
+  @string_list Application.compile_env(
+                 :confluence_phx_mirror,
+                 :string_list_type,
+                 {:array, :string}
+               )
+  @integer_list Application.compile_env(
+                  :confluence_phx_mirror,
+                  :integer_list_type,
+                  {:array, :integer}
+                )
+
   schema "pages" do
     field :confluence_id, :integer
     field :type, :string, default: "page"
@@ -32,8 +46,8 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     field :body_storage, :string
     field :body_export, :string
     field :body_text, :string
-    field :labels, {:array, :string}, default: []
-    field :ancestors, {:array, :integer}, default: []
+    field :labels, @string_list, default: []
+    field :ancestors, @integer_list, default: []
     field :version_number, :integer, default: 1
     field :version_message, :string
     field :external_url, :string
@@ -106,6 +120,22 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     |> validate_inclusion(:type, @types)
     |> validate_inclusion(:status, @statuses)
     |> unique_constraint(:confluence_id)
+    |> keep_empty_segment()
+  end
+
+  # `cast/3` reads `""` as "no value" and drops it, which left the insert writing
+  # NULL — and the tool's catalogue cannot hold one: SQLite has no `ALTER COLUMN`,
+  # so the `DROP NOT NULL` the deployment ran on this column
+  # (`SlugTitlesLikeConfluence`) never happened there, and every page with a
+  # Cyrillic, CJK or punctuation-only title failed at insert with `NOT NULL
+  # constraint failed: pages.slug`. The empty segment is a value like any other,
+  # and the two spellings of it are the same to every reader: `slug_match?/2`
+  # renders NULL as `""`, and a URL is built from either identically. So the
+  # column carries `""` and a deployment's older NULL rows keep working.
+  defp keep_empty_segment(changeset) do
+    if Ecto.Changeset.get_field(changeset, :slug) in [nil, ""],
+      do: Ecto.Changeset.put_change(changeset, :slug, ""),
+      else: changeset
   end
 
   @doc """

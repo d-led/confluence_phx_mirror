@@ -51,6 +51,36 @@ defmodule ConfluencePhxMirror.SitesTest do
     end
   end
 
+  describe "asking before deciding" do
+    test "an empty database has no site to disagree with" do
+      forget_recorded_site()
+
+      assert Sites.check() == :unrecorded
+    end
+
+    test "the first write records the site it is written for" do
+      forget_recorded_site()
+
+      assert Sites.verify!() == :ok
+      assert Repo.get!(ConfluencePhxMirror.Sites.Site, 1).key == "demo"
+      assert Sites.check() == :ok
+    end
+
+    test "a database of another site is reported, with both names" do
+      assert Sites.verify!() == :ok
+      with_site("https://dled.atlassian.net/wiki")
+
+      assert {:conflict, recorded, configured} = Sites.check()
+      assert recorded.key == "demo"
+      assert configured.key == "dled_atlassian_net"
+    end
+  end
+
+  # A recorded site can outlive a test that wrote it outside the sandbox — the
+  # boot check of a database somebody started by hand — so the question "what
+  # does an empty catalogue answer" starts by making it empty.
+  defp forget_recorded_site, do: Repo.delete_all(ConfluencePhxMirror.Sites.Site)
+
   # Pretends the deployment is configured for a real Confluence site.
   defp with_site(url) do
     TestConfig.put(:source, HttpSource)

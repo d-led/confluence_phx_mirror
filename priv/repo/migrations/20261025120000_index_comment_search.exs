@@ -27,16 +27,22 @@ defmodule ConfluencePhxMirror.Repo.Migrations.IndexCommentSearch do
   @disable_ddl_transaction true
   @disable_migration_lock true
 
+  # A `tsvector` expression index is Postgres's way of answering this. SQLite's
+  # is its FTS5 table, created by its own migration, so there is nothing here.
   def up do
-    execute """
-    CREATE INDEX CONCURRENTLY IF NOT EXISTS comments_search_vector_idx
-    ON comments USING gin (
-      to_tsvector('simple', coalesce(author_name, '') || ' ' || coalesce(body_text, ''))
-    )
-    """
+    if ConfluencePhxMirror.Migration.postgres?() do
+      execute """
+      CREATE INDEX CONCURRENTLY IF NOT EXISTS comments_search_vector_idx
+      ON comments USING gin (
+        to_tsvector('simple', coalesce(author_name, '') || ' ' || coalesce(body_text, ''))
+      )
+      """
+    end
   end
 
   def down do
-    execute "DROP INDEX CONCURRENTLY IF EXISTS comments_search_vector_idx"
+    if ConfluencePhxMirror.Migration.postgres?() do
+      execute "DROP INDEX CONCURRENTLY IF EXISTS comments_search_vector_idx"
+    end
   end
 end

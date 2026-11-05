@@ -1,0 +1,23 @@
+[package]
+name = "confluence_keyring"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "confluence_keyring"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+rustler = "0.38"
+
+# The default `v1` feature is exactly what this needs, and all of it: the Apple
+# keychain, Windows Credential Manager and the Secret Service, each compiled only
+# on the platform that has it. (macOS is enabled through
+# `apple-native-keyring-store/keychain`, which `v1` turns on — not through a
+# top-level feature, which is why naming the stores by hand does not work.)
+keyring = "4"
+
+[profile.release]
+lto = true

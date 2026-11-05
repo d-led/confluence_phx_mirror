@@ -229,3 +229,17 @@ priv/build_info.json
 
 # database dumps taken by scripts/fly-pg-backup.sh
 backups/
+
+# The desktop tool's keyring NIF: Cargo's build tree, and the `.so` Rustler
+# copies next to the build. Both are outputs, per platform and per machine.
+/native/*/target/
+/priv/native/
+
+# The window's build tree.
+/src-tauri/target/
+
+# The placeholder Tauri insists on at `frontendDist`. It is not a frontend: the
+# window points at the sidecar, so there is nothing to build — but the directory
+# has to exist, and the generic `dist` rule above would drop it from the repo.
+!/src-tauri/dist/
+!/src-tauri/dist/**

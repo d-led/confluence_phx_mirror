@@ -19,6 +19,7 @@ defmodule ConfluencePhxMirror.Catalog do
   """
 
   import Ecto.Query
+  import ConfluencePhxMirror.Query, only: [like_ci: 2]
 
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Authorization
@@ -85,7 +86,7 @@ defmodule ConfluencePhxMirror.Catalog do
     where(
       query,
       [s],
-      ilike(s.name, ^pattern) or ilike(s.key, ^pattern) or ilike(s.description, ^pattern)
+      like_ci(s.name, ^pattern) or like_ci(s.key, ^pattern) or like_ci(s.description, ^pattern)
     )
   end
 
@@ -127,7 +128,11 @@ defmodule ConfluencePhxMirror.Catalog do
   end
 
   defp author_contains(query, pattern) do
-    where(query, [p], ilike(p.author_name, ^pattern) or ilike(p.author_account_id, ^pattern))
+    where(
+      query,
+      [p],
+      like_ci(p.author_name, ^pattern) or like_ci(p.author_account_id, ^pattern)
+    )
   end
 
   @doc """
@@ -213,7 +218,7 @@ defmodule ConfluencePhxMirror.Catalog do
   end
 
   defp label_contains(query, pattern) do
-    where(query, [l], ilike(l.name, ^pattern))
+    where(query, [l], like_ci(l.name, ^pattern))
   end
 
   @doc """
@@ -297,7 +302,7 @@ defmodule ConfluencePhxMirror.Catalog do
   end
 
   defp content_contains(query, pattern) do
-    where(query, [p], ilike(p.title, ^pattern) or ilike(p.author_name, ^pattern))
+    where(query, [p], like_ci(p.title, ^pattern) or like_ci(p.author_name, ^pattern))
   end
 
   defp where_type(query, nil), do: query
@@ -326,7 +331,8 @@ defmodule ConfluencePhxMirror.Catalog do
     where(
       query,
       [a, p],
-      ilike(a.filename, ^pattern) or ilike(a.media_type, ^pattern) or ilike(p.title, ^pattern)
+      like_ci(a.filename, ^pattern) or like_ci(a.media_type, ^pattern) or
+        like_ci(p.title, ^pattern)
     )
   end
 

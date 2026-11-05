@@ -60,9 +60,22 @@ defmodule ConfluencePhxMirror.Sync.Log do
   def add(level, message, details \\ %{}) do
     details = Map.new(details)
 
-    Logger.log(logger_level(level), message, Map.to_list(details))
+    to_console(logger_level(level), message, Map.to_list(details))
 
     GenServer.cast(__MODULE__, {:append, level, message, details})
+  end
+
+  # A line goes to the ring and to the console, and only the console is allowed
+  # to be missing. On the desktop the console is a pipe the window reads: when it
+  # goes away, the very next write raises `:badarg` from `:erlang.display_string`
+  # (cause `:epipe`) *in the process that wrote the line*, which is how a sync
+  # once died in a page's task, seven frames below anything it had done. The ring
+  # still gets the line, so the page and the run's own log are unaffected.
+  defp to_console(level, message, metadata) do
+    Logger.log(level, message, metadata)
+    :ok
+  catch
+    _kind, _reason -> :ok
   end
 
   @doc "Marks the run its following lines belong to (or `nil` to end it)."

@@ -1,6 +1,21 @@
 # The scale suite builds a mirror a thousand spaces wide before it measures
 # anything, so it is opt-in: `mix test --only scale` (see `scale_test.exs`).
-ExUnit.start(exclude: [:scale])
+#
+# `:postgres_only` marks what the tool cannot do, as opposed to what it does
+# differently. The deployment answers search through the CQL its reader UI speaks,
+# matches comments too, and recalls a fragment from inside a word; the tool has
+# its own index (FTS5, `Search.Lite`), which takes filters rather than a query
+# language, indexes a page's own title and body, and ranks by `bm25`. Those tests
+# describe the deployment's search, so the SQLite job does not run them — and
+# says so, rather than skipping quietly.
+exclude =
+  if Application.get_env(:confluence_phx_mirror, :sqlite_suite) do
+    [:scale, :postgres_only]
+  else
+    [:scale]
+  end
+
+ExUnit.start(exclude: exclude)
 Ecto.Adapters.SQL.Sandbox.mode(ConfluencePhxMirror.Repo, :manual)
 
 # One committed copy of the demo site, before any test opens a transaction.

@@ -31,7 +31,12 @@ defmodule ConfluencePhxMirror.Repo.Migrations.MarkPermissionRemovalsHere do
              check: "granted_by_id IS NULL OR revoked_by_id IS NULL"
            )
 
-    create index(:space_permissions, [:revoked_by_id], concurrently: true)
-    create index(:page_restrictions, [:revoked_by_id], concurrently: true)
+    ConfluencePhxMirror.Migration.create_index(:space_permissions, [:revoked_by_id],
+      concurrently: true
+    )
+
+    ConfluencePhxMirror.Migration.create_index(:page_restrictions, [:revoked_by_id],
+      concurrently: true
+    )
   end
 end

@@ -118,6 +118,61 @@ jobs:
       # a line and what does not add up, and the job fails on the first one.
       - run: mix types
 
+  desktop:
+    name: Desktop tool
+    runs-on: ubuntu-24.04
+    # The tool's own environment, which nothing else here compiles: `:desktop`
+    # pulls `ecto_sqlite3`, `rustler` and the keyring NIF, and a module that
+    # compiles for the server says nothing about whether it compiles here. The
+    # desktop workflow builds the release and the window on three platforms; this
+    # is the cheap half that types the tool and tests the window's own logic.
+    timeout-minutes: 25
+    env:
+      MIX_ENV: desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        id: beam
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+      # The window links these even when no bundle is built; WebKitGTK has to be
+      # present for `tauri-build`'s pkg-config probes.
+      - name: Install the window's system libraries
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+            libayatana-appindicator3-dev libssl-dev patchelf
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build/desktop
+            src-tauri/target
+            ~/.cargo/registry
+          key: desktop-ci-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            desktop-ci-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+      - run: mix deps.get
+      # A warning in a tool nobody opens in a terminal is a warning nobody sees.
+      - name: The tool compiles without warnings
+        run: mix compile --warnings-as-errors
+      - name: The tool's types
+        run: mix dialyzer
+      # The tool's own suite, in its own environment with its own scratch `HOME`:
+      # the router's marker header, the port decision that makes the app a single
+      # instance, and the screens' answer to a missing file. `--no-start` inside
+      # the script, so it does not need the keychain or the listener.
+      - name: The tool's tests
+        run: scripts/test-desktop.sh
+      # The window's own logic: how a failure is classified, what the failure
+      # page says, and whether the announced address answers. It is the part of
+      # the shell that has sentences in it, so it is the part worth pinning.
+      - name: The window's tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
   test:
     name: Suite and complexity
     runs-on: ubuntu-24.04
@@ -177,6 +232,39 @@ jobs:
             default.coverdata
           if-no-files-found: ignore
           retention-days: 14
+
+  # The same suite on the other engine, beside the one above rather than after
+  # it: the deployment runs Postgres and the desktop tool runs SQLite on the same
+  # code, and the differences between them (`LIMIT NULL`, `OFFSET` alone,
+  # `now()`, `EXISTS` as 0/1, a list parameter in `IN`) are silent on whichever
+  # engine the suite is not running on. No service: SQLite is a file.
+  test-sqlite:
+    name: Suite on SQLite
+    runs-on: ubuntu-24.04
+    # One test at a time (SQLite has a single writer), so the same budget the
+    # Postgres job gets.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        id: beam
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+      # Its own build path and its own database file (`_build/sqlite`,
+      # `tmp/test.db`), which is why the cache key says sqlite: the adapter is
+      # chosen at compile time.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: test-sqlite-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            test-sqlite-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+      - run: mix deps.get
+      - name: Suite (SQLite)
+        run: scripts/test-sqlite.sh
 
   image:
     name: Image, scan, non-root, publish

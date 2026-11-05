@@ -93,9 +93,9 @@ defmodule ConfluencePhxMirror.Authorization do
     from(s in Space,
       as: :space,
       where: is_nil(s.deleted_at),
-      order_by: [asc: s.name],
-      limit: ^Keyword.get(opts, :limit)
+      order_by: [asc: s.name]
     )
+    |> Mirror.maybe_limit(Keyword.get(opts, :limit))
     |> Mirror.named_like(Keyword.get(opts, :query, ""))
     |> restrict_spaces(scope)
     |> Repo.all()

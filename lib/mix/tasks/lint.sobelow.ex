@@ -23,6 +23,14 @@ defmodule Mix.Tasks.Lint.Sobelow do
   real filename — still prints and still fails the build, and so does a
   quoted-key warning about anything this project does not lock. What was removed
   is counted and said out loud, rather than silently dropped.
+
+  The child cannot be done away with: sobelow calls `System.halt/1` when it is
+  done — `exit: :low` in `.sobelow-conf` asks it to — so running it in this
+  process would end `mix lint` before the filtering above could print what it
+  kept. What the child costs is one hazard worth naming: Elixir 1.20 locks the
+  deps directory per OS process, and a `mix lint` that prints *Waiting for lock
+  on the deps directory (held by process N)* and then sits there is waiting for a
+  `mix` that never exited — a stray process, not this task.
   """
 
   use Mix.Task

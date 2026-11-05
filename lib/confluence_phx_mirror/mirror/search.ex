@@ -32,6 +32,16 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   # stay in step.
   @comment_vector "to_tsvector('#{@language}', coalesce(c.author_name, '') || ' ' || coalesce(c.body_text, ''))"
 
+  # Which engine answers is a property of the store, not of the caller: a
+  # deployment's database has `search_vector` and GIN, and the code below is its
+  # SQL; the tool's has a file, and FTS5 is the index a file has
+  # (`ConfluencePhxMirror.Mirror.Search.Lite`). Read from configuration rather
+  # than from the repo module, because comparing the adapter module makes the
+  # other branch unreachable — a compile error under `--warnings-as-errors`,
+  # where a decision belongs.
+  defp sqlite?,
+    do: Application.get_env(:confluence_phx_mirror, :repo_adapter) == Ecto.Adapters.SQLite3
+
   # Paging is an administrator's decision, falling back to the deployment's own
   # configuration (`CM_SEARCH_*`); see ConfluencePhxMirror.Settings.
   defp default_limit, do: Settings.search_default_limit()
@@ -62,6 +72,14 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   @spec structured(map(), keyword()) ::
           {:ok, [result()], [String.t()]} | {:error, String.t()}
   def structured(params, opts \\ []) do
+    if sqlite?() do
+      ConfluencePhxMirror.Mirror.Search.Lite.structured(params, opts)
+    else
+      run(params, opts)
+    end
+  end
+
+  defp run(params, opts) do
     params = Filters.normalise(params)
     q = Filters.compose_text(params)
     field_params = Map.drop(params, ["q", "phrase", "any", "none"])
@@ -72,7 +90,7 @@ defmodule ConfluencePhxMirror.Mirror.Search do
         {:ok, [], []}
 
       q != "" and not fields? ->
-        {:ok, results} = text(q, scan_opts(opts))
+        {:ok, results} = text_postgres(q, scan_opts(opts))
         {:ok, page(results, opts), text_terms(q)}
 
       q == "" ->
@@ -94,7 +112,7 @@ defmodule ConfluencePhxMirror.Mirror.Search do
         {:ok, field_results} = search(field_cql, limit: max_result_scan())
         allowed = MapSet.new(field_results, & &1.page.id)
 
-        {:ok, text_results} = text(q, limit: max_result_scan())
+        {:ok, text_results} = text_postgres(q, limit: max_result_scan())
 
         results = Enum.filter(text_results, &MapSet.member?(allowed, &1.page.id))
         {:ok, page(results, opts), text_terms(q)}
@@ -170,6 +188,14 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   """
   @spec text(String.t(), keyword()) :: {:ok, [result()]}
   def text(query, opts \\ []) do
+    if sqlite?() do
+      ConfluencePhxMirror.Mirror.Search.Lite.text(query, opts)
+    else
+      text_postgres(query, opts)
+    end
+  end
+
+  defp text_postgres(query, opts) do
     query = String.trim(query || "")
     limit = min(Keyword.get(opts, :limit, default_limit()), max_limit())
     offset = max(Keyword.get(opts, :start, 0), 0)
@@ -387,8 +413,12 @@ defmodule ConfluencePhxMirror.Mirror.Search do
   """
   @spec search(String.t(), keyword()) :: {:ok, [result()]} | {:error, String.t()}
   def search(cql, opts \\ []) do
-    with {:ok, query} <- CQL.parse(cql) do
-      {:ok, execute(query, opts)}
+    if sqlite?() do
+      ConfluencePhxMirror.Mirror.Search.Lite.search(cql, opts)
+    else
+      with {:ok, query} <- CQL.parse(cql) do
+        {:ok, execute(query, opts)}
+      end
     end
   end
 

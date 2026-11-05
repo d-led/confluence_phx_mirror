@@ -79,6 +79,60 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
   def trigger(%__MODULE__{trigger: trigger}), do: trigger
 
   @doc """
+  The name a screen uses for the run's mode.
+
+  A `"people"` run is the question the identities screen asks — which groups
+  each identity is in — so a screen that showed it as a page pull would be
+  describing a different run. The stored mode keeps its name; only the words
+  change.
+  """
+  @spec mode_label(String.t() | nil) :: String.t()
+  def mode_label("people"), do: "identities"
+  def mode_label("page"), do: "one page"
+  def mode_label("space"), do: "one space"
+  def mode_label(mode) when is_binary(mode), do: mode
+  def mode_label(_missing), do: "sync"
+
+  @doc """
+  Whether the run's question is about pages at all.
+
+  Everything else the sync does reads pages; the identities run reads people
+  and the groups they are in, and lists none. Its row therefore reports no page
+  numbers, rather than a zero that would read as "found nothing".
+  """
+  @spec reads_pages?(t()) :: boolean()
+  def reads_pages?(%__MODULE__{mode: "people"}), do: false
+  def reads_pages?(%__MODULE__{}), do: true
+
+  @doc """
+  What the run counts, and the word for it: pages, unless the question was who
+  is who — in which case the identities and memberships it read are the only
+  numbers that move.
+  """
+  @spec counted(t()) :: {String.t(), non_neg_integer()}
+  def counted(%__MODULE__{mode: "people"} = run), do: {"Members", members(run)}
+
+  def counted(%__MODULE__{} = run),
+    do: {"Pages", (run.stats || %{})["pages"] || 0}
+
+  @doc """
+  The identities and memberships the run read. Not part of `summary/1`: that is
+  a run's page numbers, and an entry that carried members in every run's audit
+  would be noise for the runs that read no identity at all.
+  """
+  @spec members(t()) :: non_neg_integer()
+  def members(run), do: (run.stats || %{})["group_members"] || 0
+
+  @doc """
+  The run's own count in words: "120 pages", "341 members".
+  """
+  @spec counted_text(t()) :: String.t()
+  def counted_text(%__MODULE__{} = run) do
+    {label, count} = counted(run)
+    "#{count} #{String.downcase(label)}"
+  end
+
+  @doc """
   Audit entry for a run that just started.
 
   `site` is the address a reader would open to see the original, `trigger` the
@@ -122,7 +176,11 @@ defmodule ConfluencePhxMirror.Sync.SyncRun do
       details: details_read(stats),
       in_mirror: stats["total"] || 0,
       attachments: stats["attachments"] || 0,
-      errors: length(stats["errors"] || [])
+      errors: length(stats["errors"] || []),
+      # One press is one run however many times Oban had to try it: an attempt
+      # that failed and was retried leaves this above 1, and the failures it
+      # survived are kept under `failed_attempts`.
+      attempts: stats["attempts"] || 1
     }
   end
 

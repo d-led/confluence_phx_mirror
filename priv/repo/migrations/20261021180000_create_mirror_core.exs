@@ -36,8 +36,15 @@ defmodule ConfluencePhxMirror.Repo.Migrations.CreateMirrorCore do
       add :body_storage, :text
       add :body_export, :text
       add :body_text, :text
-      add :labels, {:array, :string}, null: false, default: []
-      add :ancestors, {:array, :bigint}, null: false, default: []
+
+      add :labels,
+          ConfluencePhxMirror.Migration.list_type(:string),
+          ConfluencePhxMirror.Migration.list_options(null: false)
+
+      add :ancestors,
+          ConfluencePhxMirror.Migration.list_type(:bigint),
+          ConfluencePhxMirror.Migration.list_options(null: false)
+
       add :version_number, :integer, null: false, default: 1
       add :version_message, :string
       add :external_url, :string
@@ -53,8 +60,8 @@ defmodule ConfluencePhxMirror.Repo.Migrations.CreateMirrorCore do
     create index(:pages, [:space_id, :type, :title])
     create index(:pages, [:parent_id])
     create index(:pages, [:external_updated_at])
-    create index(:pages, [:labels], using: :gin)
-    create index(:pages, [:ancestors], using: :gin)
+    ConfluencePhxMirror.Migration.search_index(:pages, [:labels])
+    ConfluencePhxMirror.Migration.search_index(:pages, [:ancestors])
 
     create table(:labels) do
       add :name, :string, null: false

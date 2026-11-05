@@ -110,6 +110,9 @@ defmodule ConfluencePhxMirror.BuildInfo do
   and the file `read/1` expects are one function pair, and a test can round-trip
   them.
   """
+  # `priv_dir` is a release's own `priv` directory, named by `mix build.info`;
+  # no request reaches either path.
+  # sobelow_skip ["Traversal.FileModule"]
   @spec write(Path.t(), t()) :: :ok
   def write(priv_dir, %{} = info) do
     File.mkdir_p!(priv_dir)
@@ -148,6 +151,9 @@ defmodule ConfluencePhxMirror.BuildInfo do
   No file is not an error: it is a checkout that was never released, and `dev`
   is the truth about it.
   """
+  # The directory is this application's `priv` — or one a test hands in — never
+  # a path from a request.
+  # sobelow_skip ["Traversal.FileModule"]
   @spec read(Path.t() | nil) :: t()
   def read(priv_dir \\ priv_dir()) do
     with dir when is_binary(dir) <- priv_dir,

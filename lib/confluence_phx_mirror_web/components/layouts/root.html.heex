@@ -21,9 +21,7 @@
       rel="stylesheet"
       href={~p"/assets/js/swagger.css"}
     />
-    <style :if={assigns[:skin_css] not in [nil, ""]}>
-      <%= Phoenix.HTML.raw(assigns[:skin_css]) %>
-    </style>
+    <.skin_style css={assigns[:skin_css]} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
     <script

@@ -171,21 +171,30 @@ defmodule ConfluencePhxMirrorWeb.AdminSiteExportTest do
     bytes
   end
 
+  # The same patience as the LiveView test that presses the same button: the
+  # archive is real work on a real file, this suite runs files concurrently, and
+  # a five-second budget passed alone and failed under load — a test reporting
+  # the machine rather than the code. The wait returns the moment the archive is
+  # ready, so a generous bound costs nothing when the build is quick.
+  @archive_deadline_ms 60_000
+
   defp wait_for_archive do
-    status =
-      Enum.reduce_while(1..200, nil, fn _attempt, _waited ->
-        case Artifact.status(Export.site_artifact()) do
-          {:ready, _} = ready ->
-            {:halt, ready}
+    wait_until_ready(System.monotonic_time(:millisecond) + @archive_deadline_ms)
+  end
 
-          _not_yet ->
-            Process.sleep(25)
-            {:cont, nil}
+  defp wait_until_ready(deadline) do
+    case Artifact.status(Export.site_artifact()) do
+      {:ready, _} = ready ->
+        ready
+
+      _not_yet ->
+        if System.monotonic_time(:millisecond) > deadline do
+          flunk("the archive was never prepared")
+        else
+          Process.sleep(25)
+          wait_until_ready(deadline)
         end
-      end)
-
-    assert status, "the archive was never prepared"
-    status
+    end
   end
 
   defp signed_in(conn, user), do: init_test_session(conn, %{"user_id" => user.id})
