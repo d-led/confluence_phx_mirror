@@ -220,7 +220,9 @@ defmodule ConfluencePhxMirrorWeb.ApiTest do
       page = conn |> get(~p"/wiki/rest/api/content/1002") |> json_response(200)
       assert page["id"] == "1002"
       assert page["space"]["key"] == "ENG"
-      assert page["version"]["number"] == 15
+      # Confluence's shape carries the stored version; the number itself belongs
+      # to the demo, which moves it whenever a page's body changes.
+      assert page["version"]["number"] == Mirror.get_page!(1002).version_number
     end
 
     test "descendants answer on Confluence's own descendant route", %{conn: conn} do
