@@ -466,13 +466,23 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
    an inline style, and the padding is the badge's room. */
 .confluence-content .panel:not(.code).confluence-information-macro {
   padding: 0.7rem 0.95rem 0.7rem 2.7rem;
-  background: color-mix(in oklab, var(--information-macro-tone) 8%, transparent) !important;
-  border-color: color-mix(in oklab, var(--information-macro-tone) 30%, transparent) !important;
+  background: color-mix(
+    in oklab,
+    var(--information-macro-tone) 8%,
+    transparent
+  ) !important;
+  border-color: color-mix(
+    in oklab,
+    var(--information-macro-tone) 30%,
+    transparent
+  ) !important;
   border-left: 3px solid var(--information-macro-tone) !important;
   color: inherit;
 }
 
-.confluence-content .panel:not(.code).confluence-information-macro .panelContent {
+.confluence-content
+  .panel:not(.code).confluence-information-macro
+  .panelContent {
   background: transparent !important;
   padding: 0;
 }
@@ -480,11 +490,17 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
 /* The body is a body, not a panel's content: the same margins an information
    macro's own body has, so the card comes out the same height as its neighbours
    and the badge sits level with the first line instead of above it. */
-.confluence-content .panel:not(.code).confluence-information-macro .panelContent > :first-child {
+.confluence-content
+  .panel:not(.code).confluence-information-macro
+  .panelContent
+  > :first-child {
   margin-top: 0;
 }
 
-.confluence-content .panel:not(.code).confluence-information-macro .panelContent > :last-child {
+.confluence-content
+  .panel:not(.code).confluence-information-macro
+  .panelContent
+  > :last-child {
   margin-bottom: 0;
 }
 
@@ -565,7 +581,9 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
   --note-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Crect x='5' y='3' width='14' height='18' rx='2'/%3E%3Cpath d='M9 8h6M9 12h6M9 16h4'/%3E%3C/svg%3E");
 }
 
-.confluence-content .confluence-information-macro-note .confluence-information-macro-icon::before {
+.confluence-content
+  .confluence-information-macro-note
+  .confluence-information-macro-icon::before {
   content: "";
   width: 0.72rem;
   height: 0.72rem;
