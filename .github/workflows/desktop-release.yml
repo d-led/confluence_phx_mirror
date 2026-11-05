@@ -210,6 +210,36 @@ jobs:
         shell: bash
         run: scripts/smoke-window.sh
 
+      # The installer is the shape a Windows person actually uses, and until now
+      # the one shape nothing had ever opened: the checks above all look at the
+      # portable folder, whose `rel\` is assembled by `scripts/package.sh`,
+      # while the installed copy gets its `rel\` from the bundler's resource
+      # copy. A download that installs fine and then crashes on start is exactly
+      # the difference between those two, so the installed window is opened too.
+      - name: Install the Windows package and open the installed window
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./_build/desktop/package/confluence-export-windows-setup.exe /S
+
+          # The install directory follows `productName`, and the executable's
+          # name follows the crate — so it is found rather than assumed, and a
+          # package that installs nothing says so instead of timing out.
+          installed=$(find "$LOCALAPPDATA" -maxdepth 3 -type f -iname "confluence*.exe" \
+            ! -iname "*uninstall*" | head -1)
+
+          if [ -z "$installed" ]; then
+            echo "the installer put no window under $LOCALAPPDATA:" >&2
+            find "$LOCALAPPDATA" -maxdepth 2 -iname "*confluence*" >&2 || true
+            exit 1
+          fi
+
+          echo "installed: $installed"
+          ls "$(dirname "$installed")" || true
+
+          scripts/smoke-window.sh --window "$installed"
+
       # What a person actually runs: the artifact, unpacked, with the release
       # inside it started the way the window starts one. `scripts/package.sh`
       # boots the staging folder; this boots the tarball, which is the only shape

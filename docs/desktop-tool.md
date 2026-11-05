@@ -795,6 +795,23 @@ on Windows the way the window does (`cmd //c call` with a `cygpath -w` path), an
 `cargo test` of the window runs on the Windows runner too, where those `cfg`
 branches are compiled at all.
 
+### When the window cannot start, it says what it tried
+
+The failure page names the log file, and the name is a link: clicking it opens the
+log in whatever program the machine uses for text files, and offers the way back
+to the page. It is served by the splash scheme (`/log`) because the window refuses
+to navigate anywhere else — this is the one navigation a person asks for that ends
+in a process, which is the whole point of it. Before that, the page printed a path
+somebody had to go and find.
+
+The log itself gained the line that makes a Windows failure diagnosable. Windows
+answers *"the system cannot find the file specified"* whether the program, one of
+its arguments, or a file the program then looked for was the missing thing, and
+the window used to throw the error away entirely (`map_err(|_error| …)`). It now
+writes the command before starting it — program, arguments, and working directory,
+which is also how a quoting mistake shows up as a quoting mistake — and writes the
+operating system's own words if the start fails.
+
 ### What a Windows install depends on
 
 Everything above is a defect that was fixed. These are the dependencies that

@@ -228,8 +228,14 @@ fn main() {
         .register_uri_scheme_protocol(SPLASH, {
             let shared = Arc::clone(&shared);
 
-            move |_app, _request| {
-                let page = startup_page(&shared.lock().unwrap());
+            move |_app, request| {
+                // The failure page's log link. Before this, the page printed the
+                // path and a person had to find the file themselves.
+                let page = if wants_the_log(request.uri().path()) {
+                    log_page(shared.lock().unwrap().failed.as_ref())
+                } else {
+                    startup_page(&shared.lock().unwrap())
+                };
 
                 tauri::http::Response::builder()
                     .header("Content-Type", "text/html; charset=utf-8")
@@ -383,6 +389,81 @@ fn splash_url(suffix: &str) -> String {
     }
 }
 
+/// The command as a person would type it, for the log.
+///
+/// A launch that fails on Windows says "the system cannot find the file
+/// specified" whatever was missing — the program, its argument, or the file the
+/// program went on to look for. The line this makes is the only way to tell
+/// which, and a quoting mistake shows up in it as a quoting mistake.
+fn describe(command: &Command) -> String {
+    std::iter::once(command.get_program())
+        .chain(command.get_args())
+        .map(|part| part.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Whether a request for the splash scheme is the failure page's log link.
+fn wants_the_log(path: &str) -> bool {
+    path == "/log" || path == "/log/"
+}
+
+/// Opens the log in whatever program the person's machine uses for it, and says
+/// so on a page.
+///
+/// A path printed in a page is a path somebody has to find and copy; a link is
+/// the file itself. It lives on the splash scheme rather than being a browser
+/// link because the window's navigation policy refuses everything else — and
+/// this is the one navigation a person asks for that ends in a process, which is
+/// the whole point of it.
+fn log_page(failure: Option<&Failure>) -> String {
+    let said = match failure.and_then(|failure| failure.log.as_ref()) {
+        None => "There is no log to open — this copy failed before it started one.".to_string(),
+        Some(path) => match open_file(path) {
+            Ok(()) => format!("Opening {}.", escape_html(&path.display().to_string())),
+            Err(error) => format!(
+                "The log could not be opened ({error}). It is at {}",
+                escape_html(&path.display().to_string())
+            ),
+        },
+    };
+
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">\
+         <title>Confluence Export</title>{STYLE}</head>\
+         <body><main><h1>The log</h1><p class=\"lead\">{said}</p>\
+         <p class=\"log\"><a href=\"/?failed=1\">Back to what went wrong</a></p>\
+         </main></body></html>"
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn open_file(path: &Path) -> std::io::Result<()> {
+    Command::new("open").arg(path).spawn().map(|_| ())
+}
+
+#[cfg(target_os = "windows")]
+fn open_file(path: &Path) -> std::io::Result<()> {
+    use std::os::windows::process::CommandExt;
+
+    /// `CREATE_NO_WINDOW`, from `winbase.h`.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    Command::new("cmd")
+        .arg("/C")
+        .arg("start")
+        .arg("")
+        .arg(path)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map(|_| ())
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_file(path: &Path) -> std::io::Result<()> {
+    Command::new("xdg-open").arg(path).spawn().map(|_| ())
+}
+
 /// Starts the release and blocks this thread until it says where it listens.
 fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String), Failure> {
     let path = sidecar_path(app);
@@ -425,6 +506,21 @@ fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
+    // What this launch is about to run, in the log, before it runs it. A spawn
+    // that fails says "the system cannot find the file specified" and nothing
+    // else — one line naming the command, its arguments and the directory it was
+    // given is the difference between a bug report and a guess. It goes to the
+    // same place the release's own output goes, so it is on the failure page as
+    // well as in the file.
+    Sink::new(log.as_ref(), Arc::clone(shared)).line(&format!(
+        "launching {} in {}",
+        describe(&command),
+        command
+            .get_current_dir()
+            .map(|directory| directory.display().to_string())
+            .unwrap_or_else(|| "the directory this window was started in".to_string())
+    ));
+
     if !path.exists() {
         return Err(Failure {
             trouble: Trouble::MissingRelease,
@@ -432,12 +528,19 @@ fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String
         });
     }
 
-    let mut child = command.spawn().map_err(|_error| Failure {
-        // A launcher that exists and cannot run is a broken install, not a
-        // misconfigured one: there is nothing a person can do but download it
-        // again.
-        trouble: Trouble::MissingRelease,
-        log: log_path.clone(),
+    let mut child = command.spawn().map_err(|error| {
+        // `_error` used to be thrown away here, which is how a launch could fail
+        // with the operating system's own words and nobody able to see them.
+        Sink::new(log.as_ref(), Arc::clone(shared))
+            .line(&format!("the launcher could not be started: {error}"));
+
+        Failure {
+            // A launcher that exists and cannot run is a broken install, not a
+            // misconfigured one: there is nothing a person can do but download
+            // it again.
+            trouble: Trouble::MissingRelease,
+            log: log_path.clone(),
+        }
     })?;
 
     // Both halves of what the release says are read, and both go where a person
@@ -661,7 +764,8 @@ fn failure_page(failure: &Failure, output: &VecDeque<String>) -> String {
 
     let log = match &failure.log {
         Some(path) => format!(
-            "<p class=\"log\">The app's log has the whole of it: <code>{}</code></p>",
+            "<p class=\"log\">The app's log has the whole of it: \
+             <a href=\"/log\"><code>{}</code></a></p>",
             escape_html(&path.display().to_string())
         ),
         None => String::new(),
@@ -1371,5 +1475,49 @@ mod tests {
         let page = "http://127.0.0.1:43100/spaces/ENG".parse().unwrap();
 
         assert_eq!(destination(&page, &[]), Destination::Elsewhere);
+    }
+
+    // A path printed on a failure page is a path somebody has to find and copy.
+    // The link is the file, and it is served by the splash scheme because the
+    // window refuses to navigate anywhere else.
+    #[test]
+    fn the_failure_page_offers_the_log_as_a_link() {
+        let failure = Failure {
+            trouble: Trouble::MissingRelease,
+            log: Some(std::path::PathBuf::from("/tmp/sidecar.log")),
+        };
+
+        let page = failure_page(&failure, &VecDeque::new());
+
+        assert!(page.contains("<a href=\"/log\"><code>/tmp/sidecar.log</code></a>"));
+    }
+
+    #[test]
+    fn only_the_log_link_is_the_log() {
+        assert!(wants_the_log("/log"));
+        assert!(wants_the_log("/log/"));
+        assert!(!wants_the_log("/"));
+        assert!(!wants_the_log("/logbook"));
+    }
+
+    #[test]
+    fn a_copy_that_never_opened_a_log_says_so_instead_of_opening_nothing() {
+        let page = log_page(None);
+
+        assert!(page.contains("There is no log to open"));
+        // The way back is the failure page, not the browser's back button: a
+        // window has none.
+        assert!(page.contains("href=\"/?failed=1\""));
+    }
+
+    // The line a spawn failure needs to be diagnosable at all: Windows says "the
+    // system cannot find the file specified" whether the program, its argument
+    // or something the program looked for was the thing that was missing.
+    #[test]
+    fn the_log_names_the_command_that_was_tried() {
+        let mut command = Command::new("cmd");
+        command.arg("/C").arg("call").arg("C:\\a b\\launch.bat");
+
+        assert_eq!(describe(&command), "cmd /C call C:\\a b\\launch.bat");
     }
 }
