@@ -977,6 +977,42 @@ html.whiteboard-viewer-open {
   }
 }
 
+/* The same list when Confluence rendered it itself: the export view carries the
+   groups as a numbered list (`<div class="labelsAlphaList"><ol>…`), and the four
+   columns are the site's client-side layout, not its markup. So the grid is
+   applied to the markup Confluence left us, and the two paths look alike. */
+.confluence-content .labelsAlphaList > ol {
+  display: grid;
+  gap: 1.25rem 1.5rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0.25rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.confluence-content .labelsAlphaList .labelsAlphaKey {
+  margin: 0 0 0.35rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  font-weight: 600;
+}
+
+.confluence-content .labelsAlphaList .labelList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.confluence-content .labelsAlphaList .labelList li {
+  margin: 0.1rem 0;
+}
+
+@media (max-width: 48rem) {
+  .confluence-content .labelsAlphaList > ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .confluence-content .mirror-label-group-title {
   margin: 0 0 0.35rem;
   padding-bottom: 0.3rem;
