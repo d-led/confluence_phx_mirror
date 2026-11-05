@@ -51,7 +51,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   @spec revision() :: pos_integer()
 
   # 2: a decision list keeps the state its export view drops (`Sync.Adf`).
-  def revision, do: 2
+  # 3: a whiteboard or database embed names and links to itself instead of
+  #    staying the unknown-macro placeholder the export view carries.
+  def revision, do: 3
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
