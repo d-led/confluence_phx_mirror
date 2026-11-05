@@ -61,7 +61,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 7: a drawn whiteboard is a figure whose picture opens a viewer, where it can
   #    be zoomed, panned and saved.
   # 8: a database names the database it embeds instead of saying "a database".
-  def revision, do: 8
+  # 9: a panel draws the icon its storage declares, which the export view drops.
+  def revision, do: 9
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -238,7 +239,11 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
         nodes
 
       names ->
-        {budgeted, _left} = budget_chrome(nodes, chrome_budget(names))
+        # The panels carry icons the export view drops, and the queue is what
+        # says which panel showed which glyph: declarations and drawn panels are
+        # matched by order alone. A panel with no icon still holds its place.
+        budget = {chrome_budget(names), panel_icons(context)}
+        {budgeted, _left} = budget_chrome(nodes, budget)
         budgeted
     end
   end
@@ -274,43 +279,125 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     end)
   end
 
+  # One entry per panel the storage declares, in reading order: the emoji a
+  # classic panel names, or nil — a panel without one still takes its turn in
+  # the queue, because the export view's panels and the storage's declarations
+  # are matched by order alone. A typed panel's tone is `Sync.Adf.Panel`'s half.
+  defp panel_icons(context) do
+    context
+    |> declared_panels()
+    |> Enum.map(&panel_icon/1)
+  end
+
+  # A classic panel names its emoji twice: `panelIcon` is the shortcode,
+  # `panelIconId` the Atlassian id or a Twemoji code point.
+  defp panel_icon({_tag, _attrs, children}) do
+    parameters = panel_parameters(children)
+
+    Emoticons.glyph(parameters["panelIconId"]) ||
+      Emoticons.glyph(parameters["panelIcon"])
+  end
+
+  defp declared_panels(%{storage: storage}) when is_binary(storage) do
+    storage
+    |> Floki.parse_fragment!()
+    |> elements()
+    |> Enum.filter(&declared_panel?/1)
+  end
+
+  defp declared_panels(_context), do: []
+
+  defp declared_panel?({"ac:structured-macro", attrs, _children}) do
+    case attribute(attrs, "ac:name") do
+      name when is_binary(name) -> String.downcase(String.trim(name)) == "panel"
+      _no_name -> false
+    end
+  end
+
+  # A panel the editor stored as an ADF node still takes its place in the queue,
+  # so the two kinds of panel cannot shift each other's icons.
+  defp declared_panel?({"ac:adf-node", attrs, _children}), do: attribute(attrs, "type") == "panel"
+
+  defp declared_panel?(_element), do: false
+
+  defp panel_parameters(children) do
+    children
+    |> Enum.filter(&match?({"ac:parameter", _, _}, &1))
+    |> Map.new(fn {"ac:parameter", attrs, value} ->
+      {attribute(attrs, "ac:name"), value |> Floki.text() |> String.trim()}
+    end)
+  end
+
+  defp take_icon("panel", [icon | rest]), do: {icon, rest}
+  defp take_icon(_token, icons), do: {nil, icons}
+
   # Reading order matters: a declared macro earns the first block of its family
   # in the document, and a paste that happens to come earlier keeps nothing.
   defp budget_chrome(nodes, budget), do: Enum.flat_map_reduce(nodes, budget, &budget_node/2)
 
-  defp budget_node({tag, attrs, children}, budget) do
+  defp budget_node({tag, attrs, children}, {budget, icons} = state) do
     case chrome_token(attrs) do
       nil ->
-        {children, budget} = budget_chrome(children, budget)
-        {[{tag, attrs, children}], budget}
+        {children, state} = budget_chrome(children, state)
+        {[{tag, attrs, children}], state}
 
       token ->
         case Map.get(budget, token, 0) do
           left when left > 0 ->
-            {children, budget} =
-              budget_chrome(children, Map.put(budget, token, left - 1))
+            {children, {budget, icons}} =
+              budget_chrome(children, {Map.put(budget, token, left - 1), icons})
 
-            {[{tag, attrs, children}], budget}
+            {icon, icons} = take_icon(token, icons)
+            {[{tag, attrs, with_icon(children, icon)}], {budget, icons}}
 
           _undeclared ->
             # The wrapper goes and its words stay: what Confluence shows.
-            unwrap_chrome(children, budget)
+            unwrap_chrome(children, {budget, icons})
         end
     end
   end
 
-  defp budget_node(other, budget), do: {[other], budget}
+  defp budget_node(other, state), do: {[other], state}
+
+  # Confluence draws a panel's emoji at the start of its body, beside the words.
+  defp with_icon(children, nil), do: children
+
+  defp with_icon(children, glyph) do
+    put_icon(children, {"span", [{"class", "mirror-panel-icon"}], [glyph]})
+  end
+
+  defp put_icon(children, node) do
+    case Enum.split_while(children, &(not panel_content?(&1))) do
+      {before, [content | after_content]} ->
+        before ++ [prepend_child(content, node)] ++ after_content
+
+      {_none, []} ->
+        [node | children]
+    end
+  end
+
+  defp panel_content?({_tag, attrs, _children}) do
+    attrs
+    |> attribute("class")
+    |> to_string()
+    |> String.split()
+    |> Enum.member?("panelContent")
+  end
+
+  defp panel_content?(_node), do: false
+
+  defp prepend_child({tag, attrs, children}, node), do: {tag, attrs, [node | children]}
 
   # Inside a block that is going away, so is every wrapper that belongs to it.
-  defp unwrap_chrome(children, budget) do
-    Enum.flat_map_reduce(children, budget, fn
-      {tag, attrs, inner}, budget ->
+  defp unwrap_chrome(children, state) do
+    Enum.flat_map_reduce(children, state, fn
+      {tag, attrs, inner}, state ->
         if chrome_wrapper?(attrs),
-          do: unwrap_chrome(inner, budget),
-          else: budget_node({tag, attrs, inner}, budget)
+          do: unwrap_chrome(inner, state),
+          else: budget_node({tag, attrs, inner}, state)
 
-      other, budget ->
-        {[other], budget}
+      other, state ->
+        {[other], state}
     end)
   end
 

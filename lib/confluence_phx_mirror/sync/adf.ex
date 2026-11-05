@@ -14,9 +14,9 @@ defmodule ConfluencePhxMirror.Sync.Adf do
   fallback is what the site itself ships, so silence is the safe answer.
   """
 
-  alias ConfluencePhxMirror.Sync.Adf.DecisionList
+  alias ConfluencePhxMirror.Sync.Adf.{DecisionList, Panel}
 
-  @nodes [DecisionList]
+  @nodes [DecisionList, Panel]
 
   @doc """
   Every registered node in `nodes`, repaired from `context[:storage]`.

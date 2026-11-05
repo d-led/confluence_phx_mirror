@@ -370,7 +370,7 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       result = Renderer.render(@pasted_chrome, Map.put(context(), :storage, storage))
 
-      assert result.html =~ ~s(class="panel")
+      assert result.html =~ ~s(class="panel)
     end
 
     test "chrome is earned one block per declaration, in reading order" do
@@ -382,6 +382,73 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert result.html =~ ~s(<div class="panel"><p>First.</p></div>)
       refute result.html =~ ~s(<div class="panel"><p>Second.)
       assert result.html =~ "Second."
+    end
+
+    test "a panel draws the icon its storage declares, which the export view drops" do
+      html =
+        ~s(<div class="panel" style="background-color: #EAE6FF;"><div class="panelContent"><p>An aside.</p></div></div>)
+
+      storage = """
+      <ac:structured-macro ac:name="panel">
+        <ac:parameter ac:name="panelIcon">:check_mark:</ac:parameter>
+        <ac:parameter ac:name="panelIconId">atlassian-check_mark</ac:parameter>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(html, Map.put(context(), :storage, storage))
+
+      assert result.html =~ ~s(<span class="mirror-panel-icon">✅</span>)
+      # Inside the panel's body, where Confluence puts it, not beside the panel.
+      assert result.html =~ ~r{<div class="panelContent"[^>]*><span class="mirror-panel-icon">}
+    end
+
+    test "a panel the editor typed is drawn as an information macro of that kind" do
+      # The modern palette stores a panel as an ADF node that names its kind.
+      # Confluence draws that kind's tone and badge; the export view carries
+      # neither, so the panel is drawn with the vocabulary that already exists.
+      html =
+        ~s(<div class="panel" style="background-color: #EAE6FF;"><div class="panelContent"><p>An aside.</p></div></div>)
+
+      storage = """
+      <ac:adf-extension><ac:adf-node type="panel">
+        <ac:adf-attribute key="panel-type">note</ac:adf-attribute>
+        <ac:adf-content><p>An aside.</p></ac:adf-content>
+      </ac:adf-node></ac:adf-extension>
+      """
+
+      result = Renderer.render(html, Map.put(context(), :storage, storage))
+
+      assert result.html =~ "confluence-information-macro-note"
+      assert result.html =~ ~s(<span class="confluence-information-macro-icon"></span>)
+    end
+
+    test "a panel with no declared icon is drawn without one" do
+      html = ~s(<div class="panel"><div class="panelContent"><p>Plain.</p></div></div>)
+      storage = ~s(<ac:structured-macro ac:name="panel"></ac:structured-macro>)
+
+      result = Renderer.render(html, Map.put(context(), :storage, storage))
+
+      assert result.html =~ ~s(class="panel")
+      refute result.html =~ "mirror-panel-icon"
+    end
+
+    test "an icon belongs to the panel that declared it, in reading order" do
+      html =
+        ~s(<div class="panel"><div class="panelContent"><p>First.</p></div></div><div class="panel"><div class="panelContent"><p>Second.</p></div></div>)
+
+      storage = """
+      <ac:structured-macro ac:name="panel">
+        <ac:parameter ac:name="panelIconId">1f308</ac:parameter>
+      </ac:structured-macro>
+      <ac:structured-macro ac:name="panel"></ac:structured-macro>
+      """
+
+      result = Renderer.render(html, Map.put(context(), :storage, storage))
+
+      [first, second] = String.split(result.html, ~s(<div class="panel">), parts: 3) |> tl()
+      assert first =~ "mirror-panel-icon"
+      assert first =~ "🌈"
+      refute second =~ "mirror-panel-icon"
     end
 
     test "chrome is left alone when there is no storage to judge it by" do

@@ -424,12 +424,63 @@
   border-radius: 0.6rem;
   margin: 1rem 0;
   padding: 0.15rem 0.95rem;
+}
+
+/* That dark ink belongs only to the panels carrying a background of their own.
+   An author's colour arrives as an inline `background-color` and is a pastel,
+   so the ink has to stay dark or a dark variant paints pale text on a light
+   card. A panel the author left uncoloured declares no background at all: it
+   sits on the page's own surface, where pinned navy ink made its words
+   disappear in a dark variant. So the ink follows the theme unless the page
+   declared a colour — nothing about the panel's frame or surface changes, and
+   bodies mirrored before this rule existed are covered too. */
+.confluence-content .panel:not(.code)[style*="background-color"] {
   color: #172b4d;
 }
 
-.confluence-content .panel:not(.code) a {
+.confluence-content .panel:not(.code)[style*="background-color"] a {
   color: #0052cc;
 }
+
+/* A typed panel — the modern editor's note, tip, warning — is drawn with the
+   same vocabulary as the information macros beside it, and not as its own kind
+   of card: the pastel Confluence wrote for a light page is replaced by the
+   mirror's tone, in both variants. `!important` because that colour arrives in
+   an inline style, and the padding is the badge's room. */
+.confluence-content .panel:not(.code).confluence-information-macro {
+  padding: 0.7rem 0.95rem 0.7rem 2.7rem;
+  background: color-mix(in oklab, var(--information-macro-tone) 8%, transparent) !important;
+  border-color: color-mix(in oklab, var(--information-macro-tone) 30%, transparent) !important;
+  border-left: 3px solid var(--information-macro-tone) !important;
+  color: inherit;
+}
+
+.confluence-content .panel:not(.code).confluence-information-macro .panelContent {
+  background: transparent !important;
+  padding: 0;
+}
+
+/* The body is a body, not a panel's content: the same margins an information
+   macro's own body has, so the card comes out the same height as its neighbours
+   and the badge sits level with the first line instead of above it. */
+.confluence-content .panel:not(.code).confluence-information-macro .panelContent > :first-child {
+  margin-top: 0;
+}
+
+.confluence-content .panel:not(.code).confluence-information-macro .panelContent > :last-child {
+  margin-bottom: 0;
+}
+
+.confluence-content .panel:not(.code) .panelHeader {
+  /* The export sets only `border-bottom-width`; without a style there is no
+     line at all, and with no padding the line reads as an underline of the
+     title rather than as the separator it is. */
+  border-bottom-style: solid;
+  border-color: color-mix(in oklab, currentColor 14%, transparent);
+  padding-bottom: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+
 .confluence-content .panel:not(.code) .panelContent {
   padding: 0.15rem 0;
 }
@@ -438,6 +489,16 @@
 }
 .confluence-content .panel:not(.code) .panelContent > :last-child {
   margin-bottom: 0.35rem;
+}
+
+/* A panel's icon, where Confluence draws it: at the start of the panel's own
+   words, with the text flowing beside it. The glyph comes from the storage —
+   `panelIcon`/`panelIconId` — because the export view carries none of it. */
+.confluence-content .mirror-panel-icon {
+  float: left;
+  margin: 0 0.55rem 0 0;
+  font-size: 1rem;
+  line-height: 1.4;
 }
 
 /* Information macros (tip, note, info, warning) ------------------------- */
@@ -468,9 +529,32 @@
   --information-macro-tone: var(--color-success);
 }
 
-.confluence-content .confluence-information-macro-note,
 .confluence-content .confluence-information-macro-info {
   --information-macro-tone: var(--color-info);
+}
+
+/* A note is purple, as it is in Confluence — a note and an `info` are two
+   different asides, and drawing both blue loses the one distinction the author
+   chose. The theme's own accent is black in the light palette, so the tone is
+   Confluence's own: the colour its note badge and border are drawn with. */
+.confluence-content .confluence-information-macro-note {
+  --information-macro-tone: #998dd9;
+}
+
+/* A note is a note: Confluence draws a page with lines on it, not the `i` an
+   `info` carries. The badge is a mask, so the glyph takes the badge's colour
+   and the circle stays. */
+.confluence-content {
+  --note-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Crect x='5' y='3' width='14' height='18' rx='2'/%3E%3Cpath d='M9 8h6M9 12h6M9 16h4'/%3E%3C/svg%3E");
+}
+
+.confluence-content .confluence-information-macro-note .confluence-information-macro-icon::before {
+  content: "";
+  width: 0.72rem;
+  height: 0.72rem;
+  background-color: currentColor;
+  -webkit-mask: var(--note-glyph) center / contain no-repeat;
+  mask: var(--note-glyph) center / contain no-repeat;
 }
 
 .confluence-content .confluence-information-macro-warning {

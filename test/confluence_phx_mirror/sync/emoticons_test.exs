@@ -58,6 +58,32 @@ defmodule ConfluencePhxMirror.Sync.EmoticonsTest do
     end
   end
 
+  describe "glyph/1" do
+    # A panel names its icon twice in the storage, and the export view carries
+    # neither — so the renderer asks this module for the glyph.
+    test "an Atlassian id answers with the character the mirror draws for it" do
+      assert Emoticons.glyph("atlassian-check_mark") == "✅"
+    end
+
+    test "a shortcode answers with its character" do
+      assert Emoticons.glyph(":check_mark:") == "✅"
+    end
+
+    test "a code point answers with the emoji it spells" do
+      assert Emoticons.glyph("1f308") == "🌈"
+    end
+
+    test "a flag is two code points" do
+      assert Emoticons.glyph("1f1e9-1f1ea") == "🇩🇪"
+    end
+
+    test "an emoji the mirror has no character for has none" do
+      assert Emoticons.glyph(":no_such_emoji:") == nil
+      assert Emoticons.glyph("") == nil
+      assert Emoticons.glyph(nil) == nil
+    end
+  end
+
   describe "from_storage/2" do
     test "the shortcode Confluence's export writes as text becomes the character" do
       storage = """

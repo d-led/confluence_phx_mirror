@@ -199,6 +199,48 @@ defmodule ConfluencePhxMirror.Sync.Emoticons do
     |> IO.iodata_to_binary()
   end
 
+  @doc """
+  The glyph a short name, a Twemoji code point or an Atlassian id stands for.
+
+  A panel's icon lives only in the storage — `panelIcon` is the shortcode,
+  `panelIconId` the Atlassian id or the code point — and the export view carries
+  nothing of it, so the renderer asks here for the glyph instead of keeping a
+  second table beside this one. `nil` is an honest answer: an emoji this mirror
+  has no character for is drawn as nothing rather than as a wrong face.
+  """
+  @spec glyph(String.t() | nil) :: String.t() | nil
+  def glyph(nil), do: nil
+
+  def glyph(value) when is_binary(value) do
+    case value |> String.trim() |> String.trim(":") |> String.downcase() do
+      "" -> nil
+      name -> glyph_codepoints(name) || glyph_emoji(name) || glyph_shortname(name)
+    end
+  end
+
+  def glyph(_value), do: nil
+
+  defp glyph_codepoints(name) do
+    if Regex.match?(@codepoints, name) do
+      name
+      |> String.split("-")
+      |> Enum.map_join(&(&1 |> String.to_integer(16) |> scalar()))
+    end
+  end
+
+  # A value outside Unicode names nothing; an empty piece leaves the rest alone.
+  defp scalar(integer) when integer in 0..0x10FFFF, do: <<integer::utf8>>
+  defp scalar(_out_of_range), do: ""
+
+  defp glyph_emoji(name) do
+    @emoji[name |> String.replace_prefix("atlassian-", "") |> String.replace("_", "-")]
+  end
+
+  defp glyph_shortname(name) do
+    bare = String.replace_prefix(name, "atlassian-", "")
+    @shortnames[bare] || @legacy[bare] || @legacy[String.replace(bare, "_", "-")]
+  end
+
   defp decode_runs(text) do
     Regex.replace(@escaped_run, text, fn run -> decode(run) || run end)
   end
