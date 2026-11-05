@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirrorWeb.PeopleController do
   use ConfluencePhxMirrorWeb, :controller
 
   alias ConfluencePhxMirror.Accounts.Scope
+  alias ConfluencePhxMirror.Blobs.LocalStore
   alias ConfluencePhxMirror.Catalog
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Publishing
@@ -47,10 +48,40 @@ defmodule ConfluencePhxMirrorWeb.PeopleController do
         render(conn, :show,
           page_title: author.name,
           author: author,
+          person: Mirror.find_person(author.account_id),
           pages: pages,
           offset: offset,
           more?: more?
         )
+    end
+  end
+
+  @doc """
+  The picture the site publishes for this person.
+
+  A face is the site's content like an attachment, so it lives in the blob store
+  and is served from here — the mirror never sends a reader to the site for it.
+
+  A deployment that publishes no names publishes no faces either: the same 404
+  its person page answers with.
+  """
+  # The key comes from `Blobs.Key`, whose segments are sanitised; nothing in the
+  # path reaches the file system unescaped.
+  # sobelow_skip ["Traversal.SendFile"]
+  def avatar(conn, %{"account_id" => account_id}) do
+    person = unless Publishing.anonymise_contributors?(), do: Mirror.find_person(account_id)
+    path = person && person.avatar_blob_key && LocalStore.absolute_path(person.avatar_blob_key)
+
+    if path && File.regular?(path) do
+      conn
+      |> put_resp_header("content-type", person.avatar_media_type || "application/octet-stream")
+      |> put_resp_header("cache-control", "private, max-age=86400")
+      |> put_resp_header("x-content-type-options", "nosniff")
+      |> send_file(200, path)
+    else
+      conn
+      |> put_resp_content_type("text/plain")
+      |> send_resp(404, "This mirror has no picture of that person.")
     end
   end
 

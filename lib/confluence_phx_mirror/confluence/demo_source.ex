@@ -93,6 +93,12 @@ defmodule ConfluencePhxMirror.Confluence.DemoSource do
     {:ok, %{account_status: status, email: nil, display_name: nil}}
   end
 
+  # The demo site has no pictures of its people — it is a snapshot of pages, not
+  # of an avatar directory — so the answer is honest and empty, and the person
+  # page keeps drawing initials.
+  @impl true
+  def person(_account_id, _opts), do: {:ok, %{display_name: nil, avatar: nil}}
+
   @impl true
   def attachments(confluence_id, _opts) do
     attachments =

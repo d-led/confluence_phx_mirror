@@ -298,6 +298,25 @@ defmodule ConfluencePhxMirror.Confluence.Source do
               {:ok, account_status()} | {:error, term()}
 
   @doc """
+  One person as the site describes them: the name it publishes, and the picture
+  when there is one.
+
+  This is the directory entry, not the account. A byline names people who never
+  sign in here, and a person whose address the site does not share cannot be an
+  account at all — but a name with a face is still worth having. The picture is
+  the bytes and the media type the site answered with, because avatar paths carry
+  no extension.
+
+  A source that cannot read people leaves the callback out, and the mirror keeps
+  drawing the initials it already draws.
+  """
+  @callback person(account_id :: String.t(), keyword()) ::
+              {:ok, %{display_name: String.t() | nil, avatar: avatar() | nil}}
+              | {:error, term()}
+
+  @type avatar :: %{body: binary(), media_type: String.t()}
+
+  @doc """
   The site's own configuration, as far as the mirror can see it.
 
   What Confluence says about *the site* rather than its content: the title it
@@ -330,6 +349,7 @@ defmodule ConfluencePhxMirror.Confluence.Source do
                       each_group_member_page: 3,
                       groups_of_account: 2,
                       user_status: 2,
+                      person: 2,
                       site_settings: 1,
                       web_url: 0
 

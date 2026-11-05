@@ -24,6 +24,7 @@ defmodule ConfluencePhxMirror.Mirror do
     Link,
     Page,
     PageProperty,
+    Person,
     Space
   }
 
@@ -3374,6 +3375,74 @@ defmodule ConfluencePhxMirror.Mirror do
       }
     )
     |> Repo.one()
+  end
+
+  @doc """
+  The name and picture the site publishes for one person, when the mirror has
+  read them.
+
+  `nil` is an ordinary answer: a person the mirror only knows from a byline has
+  no row until a sync asks the site about them, and a source that cannot read
+  people never fills one.
+  """
+  def find_person(account_id) when is_binary(account_id) and account_id != "" do
+    Repo.get_by(Person, account_id: account_id)
+  end
+
+  def find_person(_account_id), do: nil
+
+  @doc """
+  Records what the site said about a person: their name, and where their picture
+  lives.
+
+  One row per Confluence account, so a run replaces what a previous run wrote.
+  This is not an account — a person who never signs in here still has a face.
+  """
+  def upsert_person(attrs) do
+    attrs = Map.put(attrs, :updated_at, now())
+
+    %Person{}
+    |> Person.changeset(attrs)
+    |> Repo.insert(
+      on_conflict:
+        {:replace,
+         [
+           :display_name,
+           :avatar_blob_key,
+           :avatar_media_type,
+           :avatar_sha256,
+           :synced_at,
+           :updated_at
+         ]},
+      conflict_target: [:account_id]
+    )
+  end
+
+  @doc """
+  The people whose face and name the mirror should ask the site about.
+
+  The bylines and comment authors are where a person is first named, so that is
+  the set the sweep starts from. A person is due when the mirror has never asked,
+  or asked longer ago than a week: a face changes rarely, and asking about
+  everybody on every run is a request per person for a picture that did not move.
+  """
+  @person_refresh_seconds 7 * 24 * 60 * 60
+
+  def people_to_visit(opts \\ []) do
+    answered_since = DateTime.add(now(), -@person_refresh_seconds, :second)
+
+    fresh =
+      from(p in Person, where: p.synced_at > ^answered_since, select: p.account_id)
+      |> Repo.all()
+      |> MapSet.new()
+
+    due = Enum.reject(known_identities(), &MapSet.member?(fresh, &1.account_id))
+
+    case Keyword.get(opts, :limit) do
+      :all -> due
+      limit when is_integer(limit) -> Enum.take(due, limit)
+      _unbounded -> due
+    end
   end
 
   # ---------------------------------------------------------------------------

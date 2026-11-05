@@ -75,8 +75,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Nodes do
   word: a link to `/people/` is not a profile.
   """
   def person_name(name, account_id) when is_binary(account_id) and account_id != "" do
-    {"a", [{"href", URLs.person_path(account_id)}, {"class", "mirror-person-link"}],
-     [name]}
+    {"a", [{"href", URLs.person_path(account_id)}, {"class", "mirror-person-link"}], [name]}
   end
 
   def person_name(name, _account_id), do: {"span", [], [name]}

@@ -13,7 +13,18 @@
   sidebar?={false}
 >
   <header class="flex flex-wrap items-center gap-4 border-b border-base-300/70 pb-5">
-    <span class="grid size-14 place-items-center rounded-full bg-primary/10 text-lg font-semibold text-primary">
+    <img
+      :if={@person && @person.avatar_blob_key}
+      src={~p"/people/#{@author.account_id}/avatar"}
+      alt=""
+      width="56"
+      height="56"
+      class="size-14 shrink-0 rounded-full object-cover"
+    />
+    <span
+      :if={is_nil(@person) or is_nil(@person.avatar_blob_key)}
+      class="grid size-14 place-items-center rounded-full bg-primary/10 text-lg font-semibold text-primary"
+    >
       {initials(@author.name)}
     </span>
     <div>

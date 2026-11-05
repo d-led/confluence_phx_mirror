@@ -43,6 +43,23 @@ defmodule ConfluencePhxMirror.Blobs.Key do
     ])
   end
 
+  @doc """
+  Key for a person's picture:
+
+      people/557058-jane.doe/avatar.png
+
+  One picture per person: the site answers with one, so a new one replaces the
+  bytes under the same key. The extension comes from the media type, because the
+  site's avatar paths carry none.
+  """
+  def person_avatar(account_id, media_type) do
+    Path.join([
+      "people",
+      sanitise_segment(account_id, "person"),
+      "avatar" <> icon_extension(media_type)
+    ])
+  end
+
   defp icon_extension(media_type) do
     case media_type |> to_string() |> String.split(";") |> hd() |> String.trim() do
       "image/png" -> ".png"

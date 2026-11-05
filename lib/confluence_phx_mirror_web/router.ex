@@ -137,6 +137,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
     # inside the archive. See ExportController.site/2.
     get "/spaces/:key/site.zip", ExportController, :site
     get "/people/:account_id", PeopleController, :show
+    # The face the site publishes for that person; a deployment that publishes no
+    # names answers 404 here as it does on the person's own page.
+    get "/people/:account_id/avatar", PeopleController, :avatar
     get "/recent", PageController, :recent
     get "/labels/:name", PageController, :label
     get "/about", PageController, :about

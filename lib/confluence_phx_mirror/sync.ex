@@ -880,6 +880,11 @@ defmodule ConfluencePhxMirror.Sync do
         record_phase(opts, "groups")
         {group_rows, group_errors} = refresh_groups(source, opts)
 
+        # Last, because it is about people rather than content: the bylines are
+        # all in, so the faces can be asked for without asking twice.
+        record_phase(opts, "people")
+        {faces, face_errors} = sync_people(source, opts)
+
         stats =
           Map.merge(stats, %{
             "spaces" => length(spaces),
@@ -888,6 +893,7 @@ defmodule ConfluencePhxMirror.Sync do
             "spaces_unlisted" => unlisted,
             "spaces_trashed" => spaces_trashed,
             "pages_trashed" => pages_trashed,
+            "people" => faces,
             "group_members" => people + new_people + group_rows
           })
           |> Map.merge(page_counts(counts))
@@ -897,7 +903,7 @@ defmodule ConfluencePhxMirror.Sync do
            unlisted_errors ++
            icon_errors ++
            permission_errors ++
-           people_errors ++ newcomer_errors ++ detail_errors ++ group_errors}
+           people_errors ++ newcomer_errors ++ detail_errors ++ group_errors ++ face_errors}
 
       {:error, reason} ->
         raise_source_error(:spaces, nil, reason)
@@ -922,17 +928,24 @@ defmodule ConfluencePhxMirror.Sync do
       {stats, detail_errors} = sync_details(source, entries, index, opts)
       record_phase(opts, "groups")
       {group_rows, group_errors} = refresh_groups(source, opts)
+      record_phase(opts, "people")
+      {faces, face_errors} = sync_people(source, opts)
       members = people + new_people + group_rows
 
       stats =
-        Map.merge(stats, %{"spaces" => 1, "absent" => absent, "group_members" => members})
+        Map.merge(stats, %{
+          "spaces" => 1,
+          "absent" => absent,
+          "people" => faces,
+          "group_members" => members
+        })
         |> Map.merge(page_counts(counts))
 
       {stats,
        errors ++
          icon_errors ++
          permission_errors ++
-         people_errors ++ newcomer_errors ++ detail_errors ++ group_errors}
+         people_errors ++ newcomer_errors ++ detail_errors ++ group_errors ++ face_errors}
     end
   end
 
@@ -950,13 +963,15 @@ defmodule ConfluencePhxMirror.Sync do
 
     record_phase(opts, "groups")
     {group_rows, group_errors} = refresh_groups(source, opts)
+    {faces, face_errors} = sync_people(source, opts)
 
     stats =
       %{changed: 0, unchanged: 0}
       |> page_counts()
       |> Map.put("group_members", members + group_rows)
+      |> Map.put("people", faces)
 
-    {stats, people_errors ++ group_errors}
+    {stats, people_errors ++ group_errors ++ face_errors}
   end
 
   defp do_run(:page, source, opts) do
@@ -1017,6 +1032,8 @@ defmodule ConfluencePhxMirror.Sync do
         {caught_up, catch_up_errors} = catch_up_details(source, opts)
         record_phase(opts, "groups")
         {group_rows, group_errors} = refresh_groups(source, opts)
+        record_phase(opts, "people")
+        {faces, face_errors} = sync_people(source, opts)
 
         stats =
           stats
@@ -1028,6 +1045,7 @@ defmodule ConfluencePhxMirror.Sync do
             "skipped_spaces" => skipped_spaces,
             "skipped_personal" => skipped_personal,
             "details_relisted" => length(extra),
+            "people" => faces,
             "group_members" => people + new_people + group_rows
           })
           |> Map.merge(page_counts(counts))
@@ -1042,7 +1060,8 @@ defmodule ConfluencePhxMirror.Sync do
            newcomer_errors ++
            detail_errors ++
            catch_up_errors ++
-           group_errors}
+           group_errors ++
+           face_errors}
 
       {:error, :not_supported} ->
         do_run(:snapshot, source, opts)
@@ -1525,6 +1544,57 @@ defmodule ConfluencePhxMirror.Sync do
   defp sync_groups(source, opts, only \\ :everyone) do
     {refreshed, stored, errors} = refresh_memberships(source, opts, only)
     {stored, errors, refreshed}
+  end
+
+  # A face is one request per person, so the sweep is capped and ordered like the
+  # membership one. A source that cannot read people is skipped whole: the
+  # mirror keeps the initials it already draws.
+  @max_person_checks 200
+
+  defp sync_people(source, opts) do
+    if function_exported?(source, :person, 2) do
+      limit = Keyword.get(opts, :people_limit, @max_person_checks)
+
+      Mirror.people_to_visit(limit: limit)
+      |> Enum.reduce({0, []}, fn identity, {stored, errors} ->
+        case mirror_person(source, identity, opts) do
+          {:ok, :stored} -> {stored + 1, errors}
+          {:error, reason} -> {stored, [error("person", identity.account_id, reason) | errors]}
+        end
+      end)
+    else
+      {0, []}
+    end
+  end
+
+  defp mirror_person(source, identity, opts) do
+    with {:ok, person} <- source.person(identity.account_id, opts),
+         {:ok, picture} <- store_person_picture(identity.account_id, person[:avatar]),
+         {:ok, _row} <-
+           Mirror.upsert_person(
+             Map.merge(picture, %{
+               account_id: identity.account_id,
+               display_name: person[:display_name] || identity.display_name,
+               synced_at: now()
+             })
+           ) do
+      {:ok, :stored}
+    end
+  end
+
+  defp store_person_picture(_account_id, nil), do: {:ok, %{}}
+
+  defp store_person_picture(account_id, %{body: bytes, media_type: media_type}) do
+    key = Key.person_avatar(account_id, media_type)
+
+    with {:ok, _key} <- Store.put(key, bytes) do
+      {:ok,
+       %{
+         avatar_blob_key: key,
+         avatar_media_type: media_type,
+         avatar_sha256: :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
+       }}
+    end
   end
 
   # A snapshot meets a lot of people, and every one of them is a request, so the
