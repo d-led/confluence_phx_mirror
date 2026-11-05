@@ -61,22 +61,47 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
 
   defp drawn(document, attrs, url) do
     case Whiteboard.svg(document) do
-      {:ok, svg} -> [picture(svg, attrs), address(attrs, url)]
+      {:ok, svg} -> [figure(svg, attrs, url)]
       :error -> sorry(attrs, url)
     end
+  end
+
+  # A board is a canvas, and a canvas is wide: at the width of a column of prose
+  # the drawing is a thumbnail and its words are unreadable. So the picture is a
+  # control — a reader who wants to read it opens it over the page, where
+  # `assets/js/whiteboard.js` zooms, pans and saves it.
+  defp figure(svg, attrs, url) do
+    {"figure", [{"class", "mirror-figure"}], [picture(svg, attrs), caption(attrs, url)]}
   end
 
   # A data URI rather than inline markup: the renderer's tree is HTML, and Floki
   # lowercases attribute names — `viewBox` would not survive the round trip.
   defp picture(svg, attrs) do
-    src = "data:image/svg+xml;base64," <> Base.encode64(svg)
-
-    {"img",
+    {"button",
      [
-       {"class", "mirror-whiteboard"},
-       {"src", src},
-       {"alt", "#{kind(attrs)}, drawn from its document"}
-     ], []}
+       {"type", "button"},
+       {"class", "mirror-figure-open"},
+       {"data-whiteboard-zoom", ""},
+       {"data-whiteboard-name", name(attrs)},
+       {"aria-label", "Open the #{String.downcase(kind(attrs))} full screen"}
+     ],
+     [
+       {"img",
+        [
+          {"class", "mirror-whiteboard"},
+          {"src", "data:image/svg+xml;base64," <> Base.encode64(svg)},
+          {"alt", "#{kind(attrs)}, drawn from its document"}
+        ], []}
+     ]}
+  end
+
+  # What a saved copy is called: the board's own number, so two boards downloaded
+  # from one page do not fight over a filename.
+  defp name(attrs) do
+    case attrs |> Map.get("url", "") |> String.split("/") |> Enum.reject(&(&1 == "")) do
+      [] -> "whiteboard.svg"
+      parts -> "whiteboard-#{List.last(parts)}.svg"
+    end
   end
 
   defp sorry(attrs, url) do
@@ -92,11 +117,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   # A caption, not a citation: the address is long and says nothing a reader
   # wants to read, and the drawing above it already carries the content. The
   # link still goes where the words say it does.
+  defp caption(attrs, url) do
+    {"figcaption", [{"class", "mirror-embed-source"}], [source_link(attrs, url)]}
+  end
+
   defp address(attrs, url) do
-    {"p", [{"class", "mirror-embed-source"}],
-     [
-       {"a", [{"href", url}, {"class", "mirror-dynamic-link"}], ["#{kind(attrs)} in Confluence"]}
-     ]}
+    {"p", [{"class", "mirror-embed-source"}], [source_link(attrs, url)]}
+  end
+
+  defp source_link(attrs, url) do
+    {"a", [{"href", url}, {"class", "mirror-dynamic-link"}], ["#{kind(attrs)} in Confluence"]}
   end
 
   # A marker carries the macro it came from, which is the only place the kind is

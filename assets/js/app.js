@@ -32,6 +32,7 @@ import "./heading_anchors";
 import "./page_tree";
 import "./socket_status";
 import "./topbar_menus";
+import "./whiteboard";
 
 const csrfToken = document
   .querySelector("meta[name='csrf-token']")

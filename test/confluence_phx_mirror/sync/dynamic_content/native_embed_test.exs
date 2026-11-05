@@ -31,9 +31,20 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
 
     html = expand(marker("native-embed:whiteboard", @board))
 
+    assert html =~ "<figcaption"
     assert html =~ ~s(href="#{@board}")
     assert html =~ "Whiteboard in Confluence"
     refute html =~ ">#{@board}<"
+  end
+
+  test "the drawing opens over the page as a control, and a saved copy knows its board" do
+    StubContent.script(whiteboard: {:ok, document("January")})
+
+    html = expand(marker("native-embed:whiteboard", @board))
+
+    assert html =~ "data-whiteboard-zoom"
+    assert html =~ ~s(data-whiteboard-name="whiteboard-28344336.svg")
+    assert html =~ ~s(aria-label="Open the whiteboard full screen")
   end
 
   test "a board the mirror cannot read apologises and points at the original" do

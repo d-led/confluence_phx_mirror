@@ -58,7 +58,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 5: a macro's parameters are found wherever it is declared — inside another
   #    macro's body included — so an embed that sat in an excerpt keeps them.
   # 6: the link under a whiteboard or database is a caption, not its address.
-  def revision, do: 6
+  # 7: a drawn whiteboard is a figure whose picture opens a viewer, where it can
+  #    be zoomed, panned and saved.
+  def revision, do: 7
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
