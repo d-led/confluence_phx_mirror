@@ -660,6 +660,31 @@ changes one `Export.Site` code path without the other.
 
 **The server's suite**, unchanged, is the regression test for the seam.
 
+**The window, opened** — `scripts/smoke-window.sh`, run by the release workflow
+on all three platforms after packaging. Everything above asks the server a
+question, and a server that serves HTML has not drawn it. That is not a
+hypothetical gap: the window once judged its own splash page an outside link,
+opened a console window and the default browser instead of the tool, and every
+server-level check stayed green.
+
+So the tool's pages report what they drew. Every screen under `/__tool` carries
+one line of script that posts the path it painted to `/__tool/painted` (see
+`ConfluencePhxMirror.Desktop.Web.Paint`), and only a window runs a page's script.
+The smoke test starts the executable that ships, with a scratch `HOME` and a port
+of its own, asks `/health` first — "the window never started its server" — and
+then the paint report — "the server is up and no window drew a screen", which is
+the shape that shipped. It asserts structure, not pixels: a screenshot of a
+person's desktop is not something a test should take, and a Linux runner has no
+screen to photograph. The first picture this repository takes of a window will be
+a webview screenshot over CDP on Windows, where WebView2 exposes one.
+
+Two things it cannot cover, and they are worth knowing rather than fixing by
+pretending: macOS has no WebDriver for WKWebView at all (so `tauri-driver`-style
+tooling is Windows and Linux only), and Playwright's `_electron` driver does not
+apply to a Tauri app — Tauri is not Electron, and there is no Electron launcher to
+talk to. WebView2's CDP endpoint is the supported way to assert on a Tauri window's
+DOM on Windows; the paint report is the way that works on all three.
+
 `mix complexity` names two paths today. `lib_desktop` joins them, or the new
 code is the one place nobody measures.
 

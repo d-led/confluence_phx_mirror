@@ -24,6 +24,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
   use Plug.Router
 
   alias ConfluencePhxMirror.Desktop.{Archive, Catalogue, Jobs, Settings, Spaces, Web.Page}
+  alias ConfluencePhxMirror.Desktop.Web.Paint
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Trash
 
@@ -83,6 +84,35 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
 
   get "/__tool/state" do
     send_resp(conn, 200, JSON.encode_to_iodata!(state()))
+  end
+
+  # A window saying what it drew. `POST` is the window's own word, sent by the
+  # one line of script every tool screen carries (see `ConfluencePhxMirror.
+  # Desktop.Web.Paint`); `GET` is for whatever started the window and wants to
+  # know, which is the smoke test that launches the real executable.
+  #
+  # "Not yet" is 503 and not 404: a window that has drawn nothing and an endpoint
+  # that does not exist are different faults, and a test that cannot tell them
+  # apart reports the wrong one.
+  post "/__tool/painted" do
+    conn = fetch_query_params(conn)
+    Paint.drawn(conn.query_params["path"] || "/")
+
+    send_resp(conn, 204, "")
+  end
+
+  get "/__tool/painted" do
+    case Paint.last_drawn() do
+      nil ->
+        send_resp(conn, 503, "no window has drawn a screen yet\n")
+
+      {at, path} ->
+        send_resp(
+          conn,
+          200,
+          "painted #{path} at #{DateTime.to_iso8601(at)}\n"
+        )
+    end
   end
 
   # Reveals the workspace in the desktop's own file manager. It is the one place

@@ -893,8 +893,20 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     #{if opts[:status], do: ~s(<p class="status">#{escape(opts[:status])}</p>), else: ""}
     </main>
     #{if opts[:script], do: ~s(<script defer src="/__tool/assets/app.js"></script>), else: ""}
+    #{painted()}
     </body>
     </html>
+    """
+  end
+
+  # The one line that says a window drew this screen. It is here, in the shell
+  # every tool page is built from, because the claim is about the document and
+  # not about what any one screen does: the window is the only thing that runs a
+  # page's script, so this is the difference between "the server served HTML" and
+  # "somebody is looking at it" (see `ConfluencePhxMirror.Desktop.Web.Paint`).
+  defp painted do
+    ~S"""
+    <script>fetch("/__tool/painted?path=" + encodeURIComponent(location.pathname), {method: "POST"});</script>
     """
   end
 
