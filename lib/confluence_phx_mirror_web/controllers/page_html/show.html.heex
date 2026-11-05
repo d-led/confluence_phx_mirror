@@ -47,38 +47,18 @@
 
     <.rail_section title="Watch" icon="hero-bell">
       <%= if @current_user do %>
-        <%= if @subscribed? do %>
-          <p class="text-xs text-base-content/70">You get an e-mail when this page changes.</p>
-          <form action={~p"/subscriptions"} method="post" class="mt-2">
-            <input type="hidden" name="_method" value="delete" />
-            <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
-            <input type="hidden" name="target_type" value="page" />
-            <input type="hidden" name="target_id" value={@page.id} />
-            <button type="submit" class="btn btn-outline btn-xs w-full">Stop watching</button>
-          </form>
-        <% else %>
-          <p class="text-xs text-base-content/70">Get an e-mail when this page changes.</p>
-          <form action={~p"/subscriptions"} method="post" class="mt-2">
-            <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
-            <input type="hidden" name="target_type" value="page" />
-            <input type="hidden" name="target_id" value={@page.id} />
-            <button type="submit" class="btn btn-primary btn-xs w-full">Watch this page</button>
-          </form>
-        <% end %>
-        <div class="mt-3 border-t border-base-300/60 pt-2">
-          <%= if @space_subscribed? do %>
-            <p class="text-[11px] text-base-content/70">Watching the whole space.</p>
-          <% else %>
-            <form action={~p"/subscriptions"} method="post">
-              <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
-              <input type="hidden" name="target_type" value="space" />
-              <input type="hidden" name="target_id" value={@space.id} />
-              <button type="submit" class="btn btn-ghost btn-xs w-full">
-                Watch all of {@space.key}
-              </button>
-            </form>
-          <% end %>
-        </div>
+        <%!--
+          A LiveView rather than two forms: a form here is a POST and a redirect
+          back, which loses the reader's place for a button that adds one row.
+        --%>
+        {live_render(@conn, ConfluencePhxMirrorWeb.WatchLive,
+          id: "watch-page-#{@page.id}",
+          session: %{
+            "watch_page" => @page.id,
+            "watch_space" => @space.id,
+            "watch_space_key" => @space.key
+          }
+        )}
       <% else %>
         <p class="text-xs text-base-content/70">
           <a href={~p"/session"} class="link link-primary">Sign in</a>

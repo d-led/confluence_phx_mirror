@@ -395,7 +395,8 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
 
   # The watch panel asks after the page and after its space, and the two answers
   # decide different halves of it: a reader watching one is not watching the
-  # other.
+  # other. The panel is a LiveView island, so what a request returns is the state
+  # it mounted in — the same state its press turns over.
   describe "the watch panel" do
     setup %{conn: conn} do
       {:ok, page} = ConfluencePhxMirror.Mirror.find_page(1002)
@@ -408,31 +409,43 @@ defmodule ConfluencePhxMirrorWeb.PageControllerTest do
     test "a reader watching the page is offered to stop, and the space on its own", ctx do
       {:ok, _} = ConfluencePhxMirror.Notifications.subscribe(ctx.reader, "page", ctx.page.id)
 
-      html =
-        ctx.conn
-        |> init_test_session(%{user_id: ctx.reader.id})
-        |> get(ctx.path)
-        |> html_response(200)
+      document = watch_panel(ctx)
 
-      assert html =~ "Stop watching"
-      refute html =~ "Watch this page"
-      assert html =~ "Watch all of ENG"
-      refute html =~ "Watching the whole space."
+      assert control(document, "watch-page") == "Stop watching"
+      assert control(document, "watch-space") == "Watch all of ENG"
+      refute note?(document, "#watch-space-note")
     end
 
     test "a reader watching the space is offered the page on its own", ctx do
       {:ok, _} =
         ConfluencePhxMirror.Notifications.subscribe(ctx.reader, "space", ctx.page.space_id)
 
-      html =
-        ctx.conn
-        |> init_test_session(%{user_id: ctx.reader.id})
-        |> get(ctx.path)
-        |> html_response(200)
+      document = watch_panel(ctx)
 
-      assert html =~ "Watch this page"
-      refute html =~ "Stop watching"
-      assert html =~ "Watching the whole space."
+      assert control(document, "watch-page") == "Watch this page"
+      assert control(document, "watch-space") == "Stop watching ENG"
+      assert note?(document, "#watch-space-note")
     end
+
+    test "a reader watching neither is offered both", ctx do
+      document = watch_panel(ctx)
+
+      assert control(document, "watch-page") == "Watch this page"
+      assert control(document, "watch-space") == "Watch all of ENG"
+    end
+
+    defp watch_panel(ctx) do
+      ctx.conn
+      |> init_test_session(%{user_id: ctx.reader.id})
+      |> get(ctx.path)
+      |> html_response(200)
+      |> LazyHTML.from_document()
+    end
+
+    defp control(document, id) do
+      document |> LazyHTML.query("##{id}") |> LazyHTML.text() |> String.trim()
+    end
+
+    defp note?(document, selector), do: not Enum.empty?(LazyHTML.query(document, selector))
   end
 end

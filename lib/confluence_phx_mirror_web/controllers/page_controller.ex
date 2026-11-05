@@ -9,13 +9,11 @@ defmodule ConfluencePhxMirrorWeb.PageController do
   use ConfluencePhxMirrorWeb, :controller
 
   alias ConfluencePhxMirror.Accounts.Scope
-  alias ConfluencePhxMirror.Accounts.User
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Catalog
   alias ConfluencePhxMirror.Mirror
   alias ConfluencePhxMirror.Mirror.Page
   alias ConfluencePhxMirror.Mirror.URLs
-  alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync
@@ -252,12 +250,6 @@ defmodule ConfluencePhxMirrorWeb.PageController do
     # without a resync; on a body the sync already converted it changes nothing.
     page = with_emoticons(page)
     space = page.space
-    user = conn.assigns[:current_user]
-
-    # The reader's watch list for this page and its space, both asked in one
-    # query. A list rather than a set: two targets, and the template only asks
-    # whether one of them is on it.
-    watching = watched(user, [{"page", page.id}, {"space", space.id}])
     filter = readable_pages(conn)
 
     breadcrumbs =
@@ -282,8 +274,6 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       comments: page |> Mirror.comments() |> Enum.map(&with_emoticons/1),
       backlinks: Mirror.backlinks(page, filter: filter),
       outgoing_links: Mirror.outgoing_links(page, filter: filter),
-      subscribed?: {"page", page.id} in watching,
-      space_subscribed?: {"space", space.id} in watching,
       admin?: Scope.admin?(scope(conn)),
       resync_path: URLs.page_resync_path(space.key, page.confluence_id)
     )
@@ -338,14 +328,6 @@ defmodule ConfluencePhxMirrorWeb.PageController do
       homepage_confluence_id: space.homepage_confluence_id
     }
   end
-
-  @spec watched(User.t() | nil, [{String.t(), integer()}]) :: [{String.t(), integer()}]
-  defp watched(%User{} = user, targets),
-    do: Notifications.watching(user, targets) |> MapSet.to_list()
-
-  # A reader who is not signed in watches nothing, and asking the database on
-  # their behalf is a wasted round trip.
-  defp watched(_user, _targets), do: []
 
   defp scope(conn), do: Scope.from_assigns(conn.assigns)
 
