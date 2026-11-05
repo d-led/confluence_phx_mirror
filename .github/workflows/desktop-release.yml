@@ -192,11 +192,6 @@ jobs:
       # first Windows launch of this tool failed on exactly that difference —
       # `cannot get boot file` — so the code that builds the path is tested where
       # it runs.
-      - name: Test the window on the platform it ships to
-        if: runner.os == 'Windows'
-        shell: bash
-        run: cargo test --manifest-path src-tauri/Cargo.toml
-
       # One script, not a second implementation of it. The steps used to be
       # spelled out here — assets, release, window, bundle, boot check, zip — and
       # they drifted: this workflow zipped the window *without* carrying the
@@ -296,6 +291,22 @@ jobs:
 
           kill "$pid" 2>/dev/null || true
           wait "$pid" 2>/dev/null || true
+
+      # The window's own tests, on every platform it ships to — and here rather
+      # than before the packaging because a unit test is a fact about the build,
+      # not a reason to withhold the download.
+      #
+      # `#[cfg]` is the whole point. The branch that starts the release on
+      # Windows (`cmd /C call`, a path re-parsed by a second program) and the one
+      # that opens the bundled `.app` on macOS only exist on their own platform,
+      # and until this step the suite ran on Linux and Windows: macOS compiled
+      # those branches in its bundle and never executed a test against them. A
+      # green build that tests two thirds of the code is the kind of green that
+      # hides a `\\?\` for a day. `--release` reuses what the bundle build just
+      # produced instead of compiling the dependency graph a second time.
+      - name: The window's tests, on the platform they were written for
+        shell: bash
+        run: cargo test --release --manifest-path src-tauri/Cargo.toml
 
       # The window itself, and *after* the uploads on purpose: a check that fails
       # is a fact worth reporting, and it is not a reason to withhold the download
