@@ -58,13 +58,28 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Nodes do
   def person_list(people),
     do: {"ul", [{"class", "mirror-dynamic-list"}], Enum.map(people, &person_item/1)}
 
-  defp person_item(%{name: name, pages: pages}) do
+  defp person_item(%{name: name, pages: pages} = person) do
     {"li", [],
      [
-       {"span", [], [name]},
+       person_name(name, Map.get(person, :account_id)),
        {"span", [{"class", "mirror-dynamic-meta"}], [" · " <> written(pages)]}
      ]}
   end
+
+  @doc """
+  A person's name, and the way to their page here.
+
+  Every row a person appears in carries the Confluence account id it was read
+  from, and `/people/:account_id` answers for anybody the bylines name — so a
+  name with an account is a link. A byline the site left without one stays a
+  word: a link to `/people/` is not a profile.
+  """
+  def person_name(name, account_id) when is_binary(account_id) and account_id != "" do
+    {"a", [{"href", URLs.person_path(account_id)}, {"class", "mirror-person-link"}],
+     [name]}
+  end
+
+  def person_name(name, _account_id), do: {"span", [], [name]}
 
   defp written(1), do: "1 page"
   defp written(count), do: "#{count} pages"

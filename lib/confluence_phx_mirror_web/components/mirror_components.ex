@@ -264,6 +264,14 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
 
   def change_kind(_page), do: "updated"
 
+  # Confluence draws an author's name as the link to that person; the mirror drew
+  # it as a word, even though `/people/:account_id` already answers for anybody
+  # the bylines name. A byline the site left without an account is a word still.
+  defp author_path(%{author_account_id: id}) when is_binary(id) and id != "",
+    do: URLs.person_path(id)
+
+  defp author_path(_page), do: nil
+
   @doc "Author, timestamps, version, labels and the backlink to Confluence."
   attr :page, :map, required: true
 
@@ -281,7 +289,10 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
       "an administrator's further presses, drawn after this page's own in the same row — the space-wide resync on a space's home page"
 
   def page_meta(assigns) do
-    assigns = assign(assigns, :byline, Publishing.byline(assigns.page.author_name))
+    assigns =
+      assigns
+      |> assign(:byline, Publishing.byline(assigns.page.author_name))
+      |> assign(:author_path, author_path(assigns.page))
 
     ~H"""
     <div
@@ -290,7 +301,11 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     >
       <span :if={@byline} id="page-byline" class="inline-flex items-center gap-1">
         <.icon name="hero-user-circle" class="size-3.5" />
-        {@byline}
+        <%= if @author_path do %>
+          <a href={@author_path} class="hover:text-primary hover:underline">{@byline}</a>
+        <% else %>
+          {@byline}
+        <% end %>
       </span>
       <.local_time at={@page.external_updated_at} class="inline-flex items-center gap-1">
         <.icon name="hero-clock" class="size-3.5" /> Updated {Time.ago(@page.external_updated_at)}

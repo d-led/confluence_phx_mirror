@@ -38,6 +38,22 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.ContributorsTest do
     assert names(html) == ["Jane Doe · 12 pages", "Sam Rivera · 1 page"]
   end
 
+  # The rows carry the account id, and `/people/:account_id` is that person's
+  # page here — a list of names that nothing can be clicked is a dead end for a
+  # reader who wants to know who wrote the space.
+  test "each name leads to that person's page here" do
+    assert hrefs(expand()) == ["/people/acc-1", "/people/acc-2"]
+  end
+
+  test "a name the site gave no account stays a word, not a broken link" do
+    StubContent.script(contributors: {:ok, [%{name: "Anon", account_id: nil, pages: 3}]})
+
+    html = expand()
+
+    assert hrefs(html) == []
+    assert text(html) =~ "Anon · 3 pages"
+  end
+
   test "asks about the space the marker names, ten people at most" do
     expand()
     assert StubContent.questions() == [{:contributors, nil}]
@@ -79,5 +95,13 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.ContributorsTest do
     |> Floki.parse_fragment!()
     |> Floki.find("ul.mirror-dynamic-list li")
     |> Enum.map(&(&1 |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.trim()))
+  end
+
+  defp hrefs(html) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find("ul.mirror-dynamic-list li a")
+    |> Enum.map(&Floki.attribute(&1, "href"))
+    |> List.flatten()
   end
 end
