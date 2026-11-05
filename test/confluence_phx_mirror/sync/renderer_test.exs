@@ -444,7 +444,26 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       assert result.html =~ ~s(<span class="mirror-panel-icon">✅</span>)
       # Inside the panel's body, where Confluence puts it, not beside the panel.
-      assert result.html =~ ~r{<div class="panelContent"[^>]*><span class="mirror-panel-icon">}
+      assert result.html =~ ~r{<div class="panelContent"[^>]*><p><span class="mirror-panel-icon">}
+    end
+
+    # A sibling `<span>` before the body's first paragraph is the body's first
+    # child, so the margin rule meant for the paragraph misses it: the words sit
+    # one line lower and the card is taller than the panel beside it.
+    test "a panel's icon reads with its first words, not above them" do
+      html =
+        ~s(<div class="panel" style="background-color: #EAE6FF;"><div class="panelContent"><p>An aside.</p></div></div>)
+
+      storage = """
+      <ac:structured-macro ac:name="panel">
+        <ac:parameter ac:name="panelIconId">1f308</ac:parameter>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(html, Map.put(context(), :storage, storage))
+
+      assert result.html =~ ~r{<p><span class="mirror-panel-icon">🌈</span>An aside\.</p>}
+      refute result.html =~ ~r{<div class="panelContent"[^>]*><span class="mirror-panel-icon">}
     end
 
     test "a panel the editor typed is drawn as an information macro of that kind" do

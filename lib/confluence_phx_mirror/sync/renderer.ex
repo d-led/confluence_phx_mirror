@@ -86,7 +86,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     the body it wrapped — instead of dropping it behind the note.
   # 23: `anchor` and `profile-picture` are drawn: the first records the name a
   #     `#link` lands on, the second serves the face the mirror keeps.
-  def revision, do: 23
+  # 24: a panel's icon sits inside its first paragraph, so the panel is the same
+  #     height as the one beside it instead of one line taller.
+  def revision, do: 24
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -493,6 +495,22 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   end
 
   defp panel_content?(_node), do: false
+
+  # The glyph belongs beside the first *words*, and the words are a block inside
+  # the body: a sibling `<span>` before it would be the body's first child, so
+  # the margin rule meant for the paragraph would miss the paragraph and the
+  # panel would sit one line lower — and taller — than the one beside it.
+  @blocks ~w(p div ul ol blockquote table h1 h2 h3 h4 h5 h6 pre)
+
+  defp prepend_child({tag, attrs, [first | rest]}, node) do
+    case first do
+      {inner, _attrs, _children} when inner in @blocks ->
+        {tag, attrs, [prepend_child(first, node) | rest]}
+
+      _text_or_nothing ->
+        {tag, attrs, [node, first | rest]}
+    end
+  end
 
   defp prepend_child({tag, attrs, children}, node), do: {tag, attrs, [node | children]}
 

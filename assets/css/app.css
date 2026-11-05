@@ -525,13 +525,14 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
 }
 
 /* A panel's icon, where Confluence draws it: at the start of the panel's own
-   words, with the text flowing beside it. The glyph comes from the storage —
-   `panelIcon`/`panelIconId` — because the export view carries none of it. */
+   words, in the same line box. The glyph comes from the storage —
+   `panelIcon`/`panelIconId` — because the export view carries none of it. It is
+   inline on purpose: floated, it left the line box, and the paragraph beside it
+   started a line lower than the panel next door. */
 .confluence-content .mirror-panel-icon {
-  float: left;
-  margin: 0 0.55rem 0 0;
+  margin: 0 0.45rem 0 0;
   font-size: 1rem;
-  line-height: 1.4;
+  line-height: inherit;
 }
 
 /* Information macros (tip, note, info, warning) ------------------------- */
