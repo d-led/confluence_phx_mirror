@@ -855,9 +855,8 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     with {:ok, id} <- whiteboard_id(url),
          {:ok, ari} <- content_ari(id),
          {:ok, payload} <- graphql_whiteboard(ari),
-         {:ok, value} <- whiteboard_value(payload),
-         {:ok, document} <- decode_json(value) do
-      {:ok, document}
+         {:ok, value} <- whiteboard_value(payload) do
+      decode_json(value)
     end
   end
 

@@ -120,7 +120,7 @@ defmodule ConfluencePhxMirror.Sync.Whiteboard do
         [
           ~s(<text x="#{round(x + 12)}" y="#{round(y + h / 2 + 5)}" ),
           ~s(font-size="14" font-family="ui-sans-serif, system-ui" fill="#{ink(node)}">),
-          lines |> Enum.take(3) |> Enum.map(&escape/1) |> Enum.join(" "),
+          lines |> Enum.take(3) |> Enum.map_join(" ", &escape/1),
           "</text>"
         ]
     end
