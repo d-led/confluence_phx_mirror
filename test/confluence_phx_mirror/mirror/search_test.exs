@@ -120,10 +120,16 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
     end
 
     test "intersects text with field filters and keeps the text ranking" do
-      {:ok, results, terms} = Search.structured(%{"q" => "pipeline", "space" => "ENG"})
+      {:ok, ranked, _terms} = Search.structured(%{"q" => "pipeline"})
+      {:ok, scoped, terms} = Search.structured(%{"q" => "pipeline", "space" => "ENG"})
 
-      assert hd(results).page.title == "Architecture Overview"
-      assert Enum.all?(results, &(&1.space.key == "ENG"))
+      assert Enum.all?(scoped, &(&1.space.key == "ENG"))
+
+      # The filter narrows the ranking; it does not reorder it.
+      in_space = Enum.filter(ranked, &(&1.space.key == "ENG"))
+      assert scoped != []
+      assert Enum.map(scoped, & &1.page.title) == Enum.map(in_space, & &1.page.title)
+
       assert terms == ["pipeline"]
     end
 

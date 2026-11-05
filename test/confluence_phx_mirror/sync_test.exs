@@ -11,6 +11,7 @@ defmodule ConfluencePhxMirror.SyncTest do
 
   alias ConfluencePhxMirror.Confluence.{
     CountingSource,
+    DemoContent,
     EditedSource,
     EmptyListingSource,
     HttpSource,
@@ -50,6 +51,15 @@ defmodule ConfluencePhxMirror.SyncTest do
   # What the old code left behind: a space row nothing has ever listed.
   defp unlisted!(space) do
     Repo.update_all(from(s in Space, where: s.id == ^space.id), set: [pages_listed_at: nil])
+  end
+
+  # The version the demo source publishes for a page, so a test about what the
+  # mirror stored does not carry a copy of a number the demo legitimately bumps.
+  defp published_version(confluence_id) do
+    DemoContent.pages()
+    |> Enum.find(&(&1.id == confluence_id))
+    |> Map.fetch!(:version)
+    |> Map.fetch!(:number)
   end
 
   describe "snapshot" do
@@ -100,7 +110,12 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert page.title == "Architecture Overview"
       assert page.slug == "Architecture+Overview"
       assert page.labels == ["architecture", "design"]
-      assert page.version_number == 15
+
+      # The demo bumps a page's version whenever its body changes, so the number
+      # is asked of the source rather than copied here: what is under test is that
+      # the mirror stores the version the source published.
+      assert page.version_number == published_version(1002)
+
       assert page.external_url =~ "/wiki/spaces/ENG/pages/1002/"
       assert page.body_export =~ "/attachments/ENG/1002/9001/diagram.svg"
       assert page.body_text =~ "poll"
