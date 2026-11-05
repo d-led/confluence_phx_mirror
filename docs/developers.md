@@ -24,7 +24,7 @@ docker compose up -d && mix setup && mix phx.server
 ```
 
 Development and test assume an administrator (`MIRROR_AUTO_ADMIN`), so no
-sign-in is in the way. The two addresses beside the server: the mail sink
+sign-in is in the way. Three addresses beside the server: the mail sink
 (smtp4dev) at <http://localhost:3001>, the database UI (Adminer) at
 <http://localhost:8092>, LiveDashboard at <http://localhost:4000/dev/dashboard>.
 
