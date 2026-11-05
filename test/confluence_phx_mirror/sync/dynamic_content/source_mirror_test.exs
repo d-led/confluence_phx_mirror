@@ -102,4 +102,50 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.SourceMirrorTest do
       assert {:ok, [%{name: "Jane Doe"}]} = Source.Mirror.contributors(host, nil, limit: 1)
     end
   end
+
+  describe "labels" do
+    test "counts the pages carrying each label in the host's space, most used first" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      host = page_fixture(docs, %{title: "Home", confluence_id: 97_130})
+      {:ok, _} = Mirror.replace_labels(host, ["runbook", "incident"])
+
+      second = page_fixture(docs, %{title: "Two", confluence_id: 97_131})
+      {:ok, _} = Mirror.replace_labels(second, ["runbook"])
+
+      assert {:ok, [%{name: "runbook", pages: 2}, %{name: "incident", pages: 1}]} =
+               Source.Mirror.labels(host, nil, limit: 10)
+    end
+
+    test "leaves out a label only a page these readers cannot open carries" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      host = page_fixture(docs, %{title: "Home", confluence_id: 97_132})
+      {:ok, _} = Mirror.replace_labels(host, ["runbook"])
+
+      draft = page_fixture(docs, %{title: "Draft", confluence_id: 97_133})
+      {:ok, _} = Mirror.replace_labels(draft, ["secret"])
+
+      {:ok, _} =
+        Mirror.replace_page_restrictions(draft, [
+          %{subject_type: "group", subject_key: "docs-team"}
+        ])
+
+      assert {:ok, [%{name: "runbook"}]} = Source.Mirror.labels(host, nil, limit: 10)
+    end
+
+    test "takes the number of labels it was asked for" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      host = page_fixture(docs, %{title: "Home", confluence_id: 97_134})
+      {:ok, _} = Mirror.replace_labels(host, ["alpha", "beta"])
+
+      assert {:ok, [%{name: "alpha"}]} = Source.Mirror.labels(host, nil, limit: 1)
+    end
+
+    test "a space bigger than the cap is reported as truncated, not counted in part" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      page_fixture(docs, %{title: "Home", confluence_id: 97_135})
+      page_fixture(docs, %{title: "Two", confluence_id: 97_136})
+
+      assert %{pages: [_one_of_two], truncated?: true} = Mirror.space_labels(docs.id, limit: 1)
+    end
+  end
 end

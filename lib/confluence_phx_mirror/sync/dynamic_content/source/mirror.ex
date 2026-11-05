@@ -138,6 +138,39 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
     end
   end
 
+  # A labels list is about names and counts, not about bodies: the scan is one
+  # light row per page — two columns — and the audience rule decides which of
+  # those pages may be counted. Past the cap the answer is `:too_large`, for the
+  # same reason `contributors` gives one.
+  @label_scan 5_000
+
+  @impl true
+  def labels(%Page{} = host, space, opts) do
+    %{pages: pages, labels: labels, truncated?: truncated?} =
+      Mirror.space_labels(space_id(space, host), limit: @label_scan)
+
+    if truncated? do
+      {:error, :too_large}
+    else
+      {:ok, labels |> counted(visible_to(pages, host)) |> top_labels(opts)}
+    end
+  end
+
+  defp counted(labels, pages) do
+    allowed = MapSet.new(pages, & &1.id)
+
+    labels
+    |> Enum.filter(&MapSet.member?(allowed, &1.page_id))
+    |> Enum.frequencies_by(& &1.label)
+    |> Enum.map(fn {name, count} -> %{name: name, pages: count} end)
+  end
+
+  defp top_labels(labels, opts) do
+    labels
+    |> Enum.sort_by(&{-&1.pages, &1.name})
+    |> Enum.take(Keyword.get(opts, :limit, 30))
+  end
+
   defp ranked(rows, opts) do
     rows
     |> Enum.group_by(&{&1.name, &1.account_id})

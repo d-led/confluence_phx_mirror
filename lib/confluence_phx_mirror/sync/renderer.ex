@@ -62,7 +62,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #    be zoomed, panned and saved.
   # 8: a database names the database it embeds instead of saying "a database".
   # 9: a panel draws the icon its storage declares, which the export view drops.
-  def revision, do: 9
+  # 10: a labels list is drawn from the mirror's own labels instead of staying the
+  #     widget for a macro Confluence will not expand for a reader.
+  def revision, do: 10
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

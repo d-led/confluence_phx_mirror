@@ -69,6 +69,18 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Nodes do
   defp written(1), do: "1 page"
   defp written(count), do: "#{count} pages"
 
+  @doc "A list of labels: the name, linked to the mirror's own label page, and its count."
+  def label_list(labels),
+    do: {"ul", [{"class", "mirror-label-list"}], Enum.map(labels, &label_item/1)}
+
+  defp label_item(%{name: name, pages: pages}) do
+    {"li", [],
+     [
+       {"a", [{"href", URLs.label_path(name)}, {"class", "mirror-dynamic-link"}], [name]},
+       {"span", [{"class", "mirror-dynamic-meta"}], [" · " <> written(pages)]}
+     ]}
+  end
+
   @doc """
   A page's files: name linked to the mirrored blob, type and size beside it.
 

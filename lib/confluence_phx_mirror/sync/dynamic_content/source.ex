@@ -134,4 +134,18 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   lists the host's own files needs no audience of its own.
   """
   @callback attachments(page :: Page.t()) :: [ConfluencePhxMirror.Mirror.Attachment.t()]
+
+  @doc """
+  The labels a space's pages carry, most used first, with how many pages each.
+
+  A label's count is pages carrying it — the one number the mirror can state.
+  Both the labels and their counts are taken over the pages readable alongside
+  the host, so a label only a narrower page carries is not named here.
+
+  `space` is a key, or nil for the host's own space; `:limit` caps how many
+  labels come back. A space larger than the port is willing to scan is
+  `{:error, :too_large}` rather than a count that quietly stopped halfway.
+  """
+  @callback labels(host :: Page.t(), space :: String.t() | nil, keyword()) ::
+              {:ok, [%{name: String.t(), pages: pos_integer()}]} | {:error, :too_large}
 end

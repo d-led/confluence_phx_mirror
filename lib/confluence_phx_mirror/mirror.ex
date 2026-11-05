@@ -3242,6 +3242,43 @@ defmodule ConfluencePhxMirror.Mirror do
   defp order_labels_in_space(query, _name), do: order_by(query, [l], asc: l.name)
 
   @doc """
+  The labels each page of a space carries, as one light row per page and label.
+
+  A labels list is names and counts and reads no bodies: the space's pages as two
+  columns, then the label rows that hang off them. The page rows come back
+  beside the labels rather than filtered here, because the caller that narrows
+  them is the one that knows the audience (`Authorization.readable_alongside/2`).
+
+  Options: `:limit` — pages to read. Past it the answer says `truncated?: true`
+  instead of counting what it happened to see.
+  """
+  def space_labels(space_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit)
+
+    pages =
+      from(p in Page,
+        where: p.space_id == ^space_id and is_nil(p.deleted_at),
+        select: %{id: p.id, space_id: p.space_id}
+      )
+      |> limit_rows(limit && limit + 1)
+      |> Repo.all()
+
+    truncated? = is_integer(limit) and length(pages) > limit
+    pages = if truncated?, do: Enum.take(pages, limit), else: pages
+
+    labels =
+      from(pl in "page_labels",
+        join: l in Label,
+        on: l.id == pl.label_id,
+        where: pl.page_id in ^Enum.map(pages, & &1.id),
+        select: %{page_id: pl.page_id, label: l.name}
+      )
+      |> Repo.all()
+
+    %{pages: pages, labels: labels, truncated?: truncated?}
+  end
+
+  @doc """
   People who authored mirrored content, with page counts.
 
   Confluence's people directory is served from mirrored bylines rather than a

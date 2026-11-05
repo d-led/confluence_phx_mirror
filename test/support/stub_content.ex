@@ -99,6 +99,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.StubContent do
     answer(:contributors, {:ok, []})
   end
 
+  @impl true
+  def labels(_host, space, _opts) do
+    record({:labels, space})
+    answer(:labels, {:ok, []})
+  end
+
   defp record(question), do: Process.put(@asked, [question | Process.get(@asked, [])])
 
   defp answer(name, default), do: @key |> Process.get([]) |> Keyword.get(name, default)

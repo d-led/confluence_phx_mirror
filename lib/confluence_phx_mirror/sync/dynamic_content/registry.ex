@@ -30,6 +30,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "detailssummary" => Renderers.PagePropertiesReport,
     "excerpt-include" => Renderers.ExcerptInclude,
     "include" => Renderers.Include,
+    "labels-list" => Renderers.LabelsList,
     "native-embed:database" => Renderers.NativeEmbed,
     "native-embed:whiteboard" => Renderers.NativeEmbed,
     "pagetree" => Renderers.PageTree,
