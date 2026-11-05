@@ -608,7 +608,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     <div class="run" data-run data-status-url="/__tool/status">
       <span class="dot" aria-hidden="true"></span>
       <span data-run-text>#{escape(run_text(status))}</span>
-      <a href="/__tool/mirror">details</a>
+      <a href="/__tool/mirror">Go to sync log</a>
     </div>
     """
   end
@@ -618,7 +618,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     <div class="run" data-run data-status-url="/__tool/status">
       <span class="dot" aria-hidden="true"></span>
       <span data-run-text>#{escape(run_text(status))}</span>
-      <a href="/__tool/mirror">details</a>
+      <a href="/__tool/mirror">Go to sync log</a>
     </div>
     """
   end
@@ -638,7 +638,12 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     do: "Waiting to mirror #{status.label}#{waiting(status)}"
 
   defp run_text(status),
-    do: "Mirroring #{status.label} · #{status.done} pages read#{waiting(status)}"
+    do: "Mirroring #{status.label} · #{status.done} pages read#{calls(status)}#{waiting(status)}"
+
+  # What the run has cost the site so far. Absent on a status read before the
+  # run started, and on a source that makes no calls (the demo snapshot).
+  defp calls(%{calls: calls}) when is_integer(calls) and calls > 0, do: " · #{calls} calls"
+  defp calls(_status), do: ""
 
   @doc """
   The one script the tool serves: the live filter, and the run banner's pulse.
@@ -696,6 +701,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
         return status.queued > 0 ? " · " + status.queued + " more waiting" : "";
       }
 
+      function callsText(status) {
+        return status.calls > 0 ? " · " + status.calls + " calls" : "";
+      }
+
       function poll() {
         if (finished) return;
 
@@ -706,7 +715,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
 
             if (status.state === "running") {
               text.textContent = "Mirroring " + status.label + " · " + status.done +
-                " pages read" + waitingText(status);
+                " pages read" + callsText(status) + waitingText(status);
             } else if (status.state === "queued") {
               text.textContent = "Waiting to mirror " + status.label + waitingText(status);
             } else if (status.state === "done") {

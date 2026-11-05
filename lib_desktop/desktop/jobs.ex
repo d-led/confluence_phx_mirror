@@ -22,6 +22,7 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
 
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Confluence.Source
+  alias ConfluencePhxMirror.Confluence.Traffic
   alias ConfluencePhxMirror.Desktop.Spaces
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Sync
@@ -51,6 +52,7 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
           run_id: integer() | nil,
           label: String.t() | nil,
           done: non_neg_integer(),
+          calls: non_neg_integer(),
           queued: non_neg_integer(),
           error: String.t() | nil
         }
@@ -116,9 +118,17 @@ defmodule ConfluencePhxMirror.Desktop.Jobs do
       run_id: run && run.id,
       label: label(run),
       done: pages(run),
+      calls: calls(),
       queued: waiting,
       error: run && run.error
     }
+  end
+
+  # A run's cost in requests, which is the number that says whether the mirror
+  # is being kind to the site. `Traffic` counts them from the first call of the
+  # run; a status read before it is started has nothing to report.
+  defp calls do
+    if Process.whereis(Traffic), do: Traffic.summary().requests, else: 0
   end
 
   @doc """
