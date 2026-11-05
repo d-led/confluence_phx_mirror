@@ -2,219 +2,53 @@
 
 [![ci](https://github.com/d-led/confluence_phx_mirror/actions/workflows/ci.yml/badge.svg)](https://github.com/d-led/confluence_phx_mirror/actions/workflows/ci.yml)
 [![MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE)
-[![Elixir 1.20 / OTP 29](https://img.shields.io/badge/elixir-1.20%20%2F%20OTP%2029-4B275F.svg)](mix.exs)
 
-A **read-only** mirror of a Confluence site.
-
-Phoenix 1.8 · LiveView 1.2 · Ecto/Postgres · Elixir 1.20.
-
-It keeps Confluence's own `export_view` rendering, so macros look right. It
-rewrites internal links so mirrored pages cross-link each other, serves
-attachments from a blob store, indexes everything with Postgres full-text search
-behind a CQL subset, and keeps two logs: an audit log of decisions and a live
-log of what each sync is doing.
+**A read-only copy of a Confluence site that keeps answering when Confluence is
+slow, locked down, being retired — or simply not where you are.** Run it on a
+laptop or any container host. Everything it holds can leave as files that open
+without it.
 
 ![The bundled demo snapshot: the space's page tree, the page with its metadata, and the rail with its ids, version and upstream link](docs/images/reader.png)
 
-*The bundled demo snapshot: the branch of its space on the left, Confluence's
-own rendering in the middle, and a rail naming the Confluence id, version,
-author and the original URL.*
+*The bundled demo: the page tree on the left, Confluence's own rendering in the
+middle, the page's id, version and original URL in the rail.*
 
-## Pick a path
+## Why people run it
 
-| I want to… | Time | Jump to |
+| | |
+| --- | --- |
+| **It fills in gradually** | A large site answers within minutes and fills page by page while it reads. Progress is on screen, and one broken page is reported instead of failing the run. |
+| **Macros survive** | Pages keep Confluence's own rendering, so layout, expanders, task lists and most macros look right. A macro that cannot work offline names itself instead of leaving a hole. |
+| **Permissions come along** | Page restrictions and space permissions are mirrored: a page someone may not see is a `404` for them here too. |
+| **Open or closed** | Publish it as a read-only site anyone can open, or put it behind your existing sign-in proxy. |
+| **Nothing is trapped** | One page, one space or the whole site, as Markdown or as a static website, with attachments — readable from disk, no server. |
+| **Search stays local** | Titles, page bodies, labels and space filters; a static archive carries its own offline search. |
+
+It never writes back: no uploads, no edits, no page history.
+
+## Start here
+
+| I want… | Time | Go to |
 | --- | --- | --- |
-| **see it working** (bundled demo, no credentials) | ~4 min | [See it working](#1-see-it-working) |
-| **mirror a real site anyone can read** (no sign-in) | ~5 min, then the first pull | [Mirror a real site](#2-mirror-a-real-site) |
-| **deploy it** (Fly.io or Kubernetes) | ~20 min | [Deploy it](#3-deploy-it) |
-| **run the desktop app** (macOS, no Docker) | ~2 min | [The desktop app](#the-desktop-app) |
-| run it in production | — | [operations.md](docs/operations.md) |
-| change the code | — | [developers.md](docs/developers.md) |
-| find a command (`mix confluence.sync`, `mix precommit`, …) | — | [mix-tasks.md](docs/mix-tasks.md) |
+| **a copy on my laptop** (macOS, Windows, Linux app) | ~2 min | [The desktop app](#the-desktop-app) |
+| **to see it working** (demo content, Docker only) | ~4 min | [Try it, one command](#try-it-one-command) |
+| **to mirror my own site** (public read-only, no sign-in) | ~5 min, then the first pull | [Mirror your site](#mirror-your-site) |
+| **to deploy it** (Fly.io, or any container host) | ~20 min | [Deploy it](#deploy-it) |
 
-**Docker is the only prerequisite** for the first two: both run our image, and
-the database comes with it. Elixir 1.20+ and Node with npm are needed only to
-work on the code; mirroring a real site also needs an Atlassian API token.
-
-## 1. See it working
-
-The bundled demo snapshot needs no Confluence account.
-
-```bash
-docker compose -f docker-compose.demo.yml up
-```
-
-Then open:
-
-| What | Where |
-| --- | --- |
-| the mirror | <http://localhost:4000> |
-| admin dashboard | <http://localhost:4000/admin> |
-| live sync log | <http://localhost:4000/admin/sync-log> |
-| audit log | <http://localhost:4000/admin/audit> |
-
-**Done when** the home page says `40 pages` in two spaces and `/admin` shows one
-finished sync — that happens by itself, a second or two after the container
-starts: the first start against an empty database asks for one snapshot
-(`CM_BOOTSTRAP_SYNC`).
-
-`docker compose -f docker-compose.demo.yml down` stops it; add `-v` to drop the
-database and the files with it. What the container is made of, and the same
-image run by hand: [deployment.md](docs/deployment.md#the-image-with-the-demo-snapshot).
-
-### From a checkout instead
-
-For working on the code (this path needs Elixir and Node):
-
-```bash
-docker compose up -d     # only the services: Postgres, Adminer, smtp4dev
-mix setup                # deps, database, migrations, assets, demo content
-mix phx.server
-```
-
-Two more addresses come with those services:
-
-| What | Where |
-| --- | --- |
-| mail sink (smtp4dev) | <http://localhost:3001> |
-| database UI (Adminer) | <http://localhost:8092> |
-| LiveDashboard | <http://localhost:4000/dev/dashboard> |
-
-Development and test assume an administrator (`MIRROR_AUTO_ADMIN`), so nothing
-asks you to sign in. Reader accounts use passwordless magic links.
-
-**If it stops:** a missing `node`/`npm` is the usual first-run failure, and
-Postgres has to be up before `mix setup`.
-
-### Three setup commands that look alike
-
-| Command | What it does |
-| --- | --- |
-| `mix setup` | a fresh checkout: deps, database, migrations, assets |
-| `mix ecto.setup` | *only* the database for the configured source, plus a first sync |
-| `mix ecto.reset` | drop that database, then `ecto.setup` |
-
-## 2. Mirror a real site
-
-One command, for a mirror **anyone can read** — readers do not sign in:
-
-```bash
-export CM_CONFLUENCE_SITE=https://acme.atlassian.net   # "/wiki" optional
-export CM_ATL_EMAIL=you@acme.com            # the account the token belongs to
-export CM_ATL_TOKEN=...                    # see below
-export SECRET_KEY_BASE=$(openssl rand -hex 48)
-
-docker compose -f docker-compose.site.yml up
-```
-
-Then open <http://localhost:4000>. The first pull starts by itself and the page
-fills as it reads.
-
-**Done when** the home page lists your spaces. A big site takes hours on the
-first pull; the measured pace is in [performance.md](docs/performance.md#what-it-measured).
-
-**What "anyone can read" means.** `CM_PUBLIC_SITE=true` in that file makes a
-reader with no account a reader: they see what the site marks
-`anonymousAccess`, and a space whose permissions the sync never stored is
-closed to them rather than open. That rule and the two switches beside it
-(`CM_ANONYMIZE_CONTRIBUTORS`, `CM_EXCLUDE_COMMENTS`) are spelled out in
-[routes-auth.md](docs/routes-auth.md#public-documentation-sites). **Prefer it
-private?** Drop `CM_PUBLIC_SITE` and put an OAuth proxy in front —
-[deployment.md](docs/deployment.md). Administration is a separate door and off
-by default; the comments in `docker-compose.site.yml` name the three ways to
-open it.
-
-Create the token at
-<https://id.atlassian.com/manage-profile/security/api-tokens> (*Create API
-token*). It is shown once, so copy it straight into the variable. The account
-needs **Confluence product access** on that site. `CM_SPACES=ENG,PROD` narrows
-the mirror to some spaces instead of everything the token can see.
-
-### From a checkout instead
-
-```bash
-mix confluence.probe        # optional: are the URL and the token good?
-mix ecto.setup              # create this site's database, take a first snapshot
-scripts/start-mirrored.sh   # serve that site
-```
-
-**Done when** `mix confluence.probe` names your account and `/admin` shows a
-finished sync with pages.
-
-Three things that save a support round-trip:
-
-* **The first snapshot is the slow part.** Minutes to hours, depending on the
-  site; watch `/admin/sync-log`.
-* **Each source gets its own database** (`…_dev_acme_atlassian_net`), so demo
-  content and a real site never mix. Switching is only a matter of the
-  environment.
-* **The server logs to your terminal.** Redirect it for a file:
-  `scripts/start-mirrored.sh > /tmp/mirror_server.log 2>&1`.
-
-A token is read from the environment on purpose: nothing about it is written to
-the repo.
-
-Knobs worth knowing: `CM_REQUESTS_PER_SECOND` / `CM_BURST` (the client's token
-bucket), `CM_SYNC_CONCURRENCY`, `CM_RECONCILE_INTERVAL_SECONDS`, `PORT`. The
-exhaustive list is [configuration.md](docs/configuration.md).
-
-Accounts, permissions, webhooks, themes:
-[site-admin-guide.md](docs/site-admin-guide.md).
-
-## 3. Deploy it
-
-Two commands, one per question:
-
-```bash
-./scripts/fly-provision.sh live       # once: apps, database, volume, secrets
-./scripts/fly-deploy.sh live          # every version: the mirror
-./scripts/fly-deploy.sh live --proxy  # …and its front door, when that changed
-```
-
-`--check` verifies that a deploy would work without deploying anything;
-`--sync` also queues a full snapshot afterwards. A release ships the mirror and
-stops there — the oauth2-proxy has an image of its own and changes rarely, so it
-joins only with `--proxy`, or on its own with `--proxy-only`.
-
-**Done when** the proxy's URL answers and `/admin` shows the build you deployed.
-
-| | Where |
-| --- | --- |
-| step by step: Fly.io and its OAuth proxy | [deployment.md](docs/deployment.md) |
-| step by step: Kubernetes | [deployment.md](docs/deployment.md#kubernetes) |
-| environment contract, migrations, backups, pool sizing | [operations.md](docs/operations.md) |
-| every setting, and which ones need a restart | [configuration.md](docs/configuration.md) |
-
-Prefer another platform? It is a 12-factor release — configuration only from the
-environment, no state on disk except the blob root:
-
-```bash
-MIX_ENV=prod ./scripts/mix_release.sh
-bin/confluence_phx_mirror eval "ConfluencePhxMirror.Release.migrate"
-PHX_SERVER=true DATABASE_URL=… SECRET_KEY_BASE=… bin/confluence_phx_mirror start
-```
-
-A release that mirrors a real site **refuses to start** with the sign-in-free
-switches on (`MIRROR_AUTO_ADMIN`, `MIRROR_SELF_SIGNUP`, `CM_PROXY_AUTH`) unless
-`MIRROR_ALLOW_UNSAFE_IDENTITY=1` says you meant it.
+Docker is the only prerequisite for the middle two: both run our image, and the
+database comes with it. Mirroring a real site also needs an Atlassian API token.
 
 ## The desktop app
 
-The same mirror as one double-clickable app, with a SQLite catalogue in
-`~/Library/Application Support/confluence-export` (`%LOCALAPPDATA%\confluence-export`
-on Windows, `~/.local/share/confluence-export` on Linux) instead of Postgres and a
-container: no Docker, no server, no shell. It is the tool for pointing at one
-site and taking a copy of it.
+The same mirror as one double-clickable app: SQLite instead of Postgres, no
+Docker, no shell. Best for "point it at one site and take a copy of it". The
+site's token goes to your keychain on first launch.
 
-| platform | download | what you get |
-| --- | --- | --- |
-| macOS (Apple silicon) | [`confluence-export-macos.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-macos.zip) | `Confluence Export.app` — unzip, drag to `/Applications`, double-click |
-| Linux x64 | [`confluence-export-linux.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-linux.zip) | a folder with the window, `rel/` and a `README.txt`; needs GTK 3 and WebKitGTK 4.1 |
-| Windows x64 | [`confluence-export-windows.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-windows.zip) | one folder, `confluence-export-windows`, with `confluence-export.exe`, `rel\` and a `README.txt`; unzip it and run the `.exe` |
-
-Each link is the newest **successful** run of the `desktop-release` workflow on
-`main`; a `v*` tag attaches the same three builds to
-[Releases](https://github.com/d-led/confluence_phx_mirror/releases).
+| platform | download |
+| --- | --- |
+| macOS (Apple silicon) | [`confluence-export-macos.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-macos.zip) |
+| Linux x64 | [`confluence-export-linux.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-linux.zip) |
+| Windows x64 | [`confluence-export-windows.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-windows.zip) |
 
 Or one line, which is what most people want:
 
@@ -228,97 +62,163 @@ curl -fsSL https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/in
 powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.ps1 | iex"
 ```
 
-The shell one puts `Confluence Export.app` in `~/Applications` on macOS, and the
-tool in `~/.local/share/confluence-export` with a launcher in `~/.local/bin` on
-Linux. The PowerShell one puts the folder in `%LOCALAPPDATA%\Programs` and a
-Start Menu entry beside it. Run either again to take the newest build; both say
-what arrived, where it went, and what is missing (the Linux one checks that GTK 3
-and WebKitGTK 4.1 are there, and names the `apt` line if they are not).
+The shell one puts the app in `~/Applications` on macOS, and the tool in
+`~/.local/share/confluence-export` with a launcher in `~/.local/bin` on Linux;
+the PowerShell one uses `%LOCALAPPDATA%\Programs` and adds a Start Menu entry.
+Run either again to take the newest build.
 
-**Windows and Linux archives are named `.zip` by `nightly.link`**, because an
-artifact is served as the zip GitHub stores — a zip holding the Linux tarball, and
-one holding the Windows folder. None of the three is signed: macOS stops a
-downloaded copy before it offers to run it, so clear the quarantine flag once
-(`install-desktop.sh` does this for you); Windows shows a SmartScreen "unrecognised
-app" prompt under *More info → Run anyway*; Linux has nothing that stops it.
+Each link is the newest successful build on `main`; a `v*` tag also attaches the
+three builds to [Releases](https://github.com/d-led/confluence_phx_mirror/releases).
+Nothing is signed, so macOS stops the first launch of a downloaded copy
+(`install-desktop.sh` clears that flag), and Windows asks for *More info → Run
+anyway*. [The desktop tool](docs/desktop-tool.md) has the rest.
 
-```sh
-xattr -rd com.apple.quarantine "/Applications/Confluence Export.app"
+## Try it, one command
+
+Demo content, Docker only, no account:
+
+```bash
+docker compose -f docker-compose.demo.yml up
 ```
 
-The first launch of a copy also asks once for the keychain item
-`confluence-export` (Windows: Credential Manager, Linux: the Secret Service),
-where the site's token is kept. [The desktop tool](docs/desktop-tool.md)
-has the rest — what it shares with the server, and where it differs.
-
-## What it does
-
-```mermaid
-flowchart LR
-  C[Confluence site] -->|REST, rate-limited| S[Sync<br/>incremental · audited]
-  S --> DB[(Postgres<br/>content · links · FTS)]
-  S --> B[blob store<br/>attachments]
-  S --> M[mail<br/>notifications]
-  DB --> R[reader UI]
-  DB --> A[REST API · CQL]
-  DB --> X[MCP server]
-```
-
-* **Keeps Confluence's own rendering** — pages are stored as sanitised
-  `export_view`, so macros look right without re-implementing them. Browser-only
-  macros are resolved from the mirror's own data or reported as unavailable.
-* **Says whose wiki it is** — the site's name in the header, the original URL on
-  every page.
-* **Pulls only what changed** — a page whose Confluence version is unchanged is
-  not re-rendered and not asked for its attachments and comments.
-* **Stable, Confluence-shaped URLs** — content is keyed by `confluence_id` and
-  version, old slugs redirect, and Confluence's `/wiki` links work after
-  changing only the host.
-* **Mirrored permissions** — page restrictions and (where the source supplies
-  them) space permissions are replayed; a hidden page is a `404`.
-* **Search that stays in Postgres** — a CQL subset plus structured filters over
-  GIN-indexed `tsvector`, arrays and trigrams, with an advanced panel in the
-  reader UI and a REST API beside it.
-* **Attachments in a blob store** — path-based keys, atomic writes, never in
-  Postgres or `priv/static`.
-* **Two logs, for two questions** — the audit log says *who changed what*;
-  `/admin/sync-log` streams *what the sync is doing* while it runs.
-* **Nothing silently lost** — a failing page does not abort a run. It is
-  collected, reported, and the run ends `partial` instead of claiming success.
-* **Read-only by design** — no uploads, no write-back, no page history.
-
-## Requirements
-
-| Need | Why |
+| What | Where |
 | --- | --- |
-| Elixir 1.20+ / OTP 29 | `mix.exs` requires `~> 1.20`; the image builds on `hexpm/elixir:1.20.4-erlang-29.1.2-debian-trixie` |
-| Node.js with npm | `mix setup` runs `npm ci` in `assets/`; a missing `node` is what stops a first run |
-| Postgres 12+ | the search index is a stored generated column |
-| Docker | only for the local Postgres and the mail sink; anywhere else it is `DATABASE_URL` |
+| the mirror | <http://localhost:4000> |
+| admin dashboard | <http://localhost:4000/admin> |
+| live sync log | <http://localhost:4000/admin/sync-log> |
+| audit log | <http://localhost:4000/admin/audit> |
 
-## What it does not do
+**Done when** the home page says `40 pages` in two spaces and `/admin` shows one
+finished sync — that happens by itself a second or two after the container
+starts.
 
-Uploads and write-back, page history and templates. Space permissions exist only
-where the source can supply them, and browser-only macros cannot be resolved
-offline. Each edge and its reason:
+`docker compose -f docker-compose.demo.yml down` stops it; add `-v` to drop the
+database and the files with it.
+
+## Mirror your site
+
+One command, for a mirror **anyone can read** — readers do not sign in. You need
+an Atlassian API token ([create one](https://id.atlassian.com/manage-profile/security/api-tokens);
+it is shown once) on an account with Confluence product access:
+
+```bash
+export CM_CONFLUENCE_SITE=https://acme.atlassian.net   # "/wiki" optional
+export CM_ATL_EMAIL=you@acme.com            # the account the token belongs to
+export CM_ATL_TOKEN=...
+export SECRET_KEY_BASE=$(openssl rand -hex 48)
+
+docker compose -f docker-compose.site.yml up
+```
+
+Then open <http://localhost:4000>. The first pull starts by itself and the page
+fills as it reads. `CM_SPACES=ENG,PROD` narrows the mirror to some spaces
+instead of everything the token can see.
+
+**Done when** the home page lists your spaces. A big site takes hours on the
+first pull; the measured pace is in
+[performance.md](docs/performance.md#what-it-measured).
+
+**Public still means permissioned.** `CM_PUBLIC_SITE=true` in that file makes a
+reader with no account a reader, and that reader still sees only what the
+mirrored permissions allow: a space whose permissions the sync never stored is
+closed to them, not open. The exact rule, and the two switches that decide what
+a stranger sees inside a public page, are in
+[routes-auth.md](docs/routes-auth.md#public-documentation-sites).
+
+**Prefer it private?** Drop `CM_PUBLIC_SITE` and put an OAuth proxy in front —
+[deployment.md](docs/deployment.md). Administration is a separate door and off
+by default.
+
+Accounts, permissions, webhooks, themes:
+[site-admin-guide.md](docs/site-admin-guide.md).
+
+## Deploy it
+
+It is a normal 12-factor release, so **any host that runs containers works**. It
+needs three things:
+
+* a persistent volume for attachments;
+* a Postgres database (`DATABASE_URL`) — Fly's own, or any managed one;
+* the environment variables in [configuration.md](docs/configuration.md).
+
+### On Fly.io
+
+```bash
+./scripts/fly-provision.sh live       # once: apps, database, volume, secrets
+./scripts/fly-deploy.sh live          # every version: the mirror
+./scripts/fly-deploy.sh live --proxy  # …and its front door, when that changed
+```
+
+`--check` verifies that a deploy would work without deploying anything;
+`--sync` also queues a full snapshot afterwards.
+
+**Change the app name first.** Fly app names are unique across all of Fly, and
+the ones in this repo are ours: `confluence-mirror-app` (the mirror),
+`confluence-mirror` (its proxy) and `confluence-mirror-db` (the database). Pick
+your own in `fly.toml`, in `deploy/fly/proxy/fly.toml` (including
+`OAUTH2_PROXY_UPSTREAMS`, which names the backend app) and at the top of the two
+scripts — otherwise the deploy stops on a name that is already taken.
+
+**Done when** the proxy's URL answers and `/admin` shows the build you deployed.
+
+| | Where |
+| --- | --- |
+| step by step: Fly.io and its OAuth proxy | [deployment.md](docs/deployment.md) |
+| step by step: Kubernetes | [deployment.md](docs/deployment.md#kubernetes) |
+| environment contract, migrations, backups, pool sizing | [operations.md](docs/operations.md) |
+| every setting, and which ones need a restart | [configuration.md](docs/configuration.md) |
+
+### Anywhere else
+
+A release carries everything but the configuration: no compiler, no Node, no
+state on disk except the blob root. Build the image with the `Dockerfile` and
+run the three commands a deploy needs — migrate, then serve:
+
+```bash
+docker build -t confluence-mirror .
+docker run --rm -e DATABASE_URL=… -e SECRET_KEY_BASE=… confluence-mirror /app/bin/migrate
+docker run -p 4000:4000 -v mirror-blobs:/app/var/mirror -e … confluence-mirror
+```
+
+A release that mirrors a real site **refuses to start** with the sign-in-free
+switches on (`MIRROR_AUTO_ADMIN`, `MIRROR_SELF_SIGNUP`, `CM_PROXY_AUTH`) unless
+`MIRROR_ALLOW_UNSAFE_IDENTITY=1` says you meant it.
+
+
+## Take a copy with you
+
+| You want | What you get |
+| --- | --- |
+| one page | Markdown |
+| one page with its images and files | a ZIP: the `.md` plus `attachments/` |
+| a space | Markdown in the page hierarchy, each page's files beside it |
+| a space as a website | HTML pages, the same pages as Markdown, offline search, labels, attachments, the site's theme |
+| the whole site | every space in one static-site archive (administrators) |
+
+Everything works from disk — no server, no network, no build step — and an
+archive holds only what its reader may open. The buttons are under each space's
+**Export**, on the page rail, and on the admin dashboard. Details:
+[site-admin-guide.md](docs/site-admin-guide.md#exporting-the-mirror).
+
+## Honest limits
+
+No uploads or write-back, no page history, no templates. Space permissions exist
+only where Confluence still reports them — Cloud usually does not, so pages
+there are narrowed by page restrictions and by the administrator. A macro that
+needs the live site (a query, a form, a ticking clock) cannot be answered from a
+stored page: it says what it was instead of guessing. Each edge and its reason:
 [known limitations](docs/design-notes.md#known-limitations).
 
 ## Documentation
 
 | You are… | Read |
 | --- | --- |
-| in a hurry: one page of components, data, ingestion, search, authorization and deployment | [architecture.md](docs/architecture.md) |
 | the site administrator: syncing, accounts, permissions, webhooks, themes | [site-admin-guide.md](docs/site-admin-guide.md) |
-| deploying and operating it: build, env contract, migrations, monitoring, backups | [operations.md](docs/operations.md) |
-| deploying to Fly.io or Kubernetes, behind an OAuth proxy | [deployment.md](docs/deployment.md) |
+| deploying and operating it: build, env contract, migrations, backups | [operations.md](docs/operations.md) · [deployment.md](docs/deployment.md) |
 | looking for a setting | [configuration.md](docs/configuration.md) |
-| making sign-in links and watcher e-mail actually arrive | [brevo-mail.md](docs/brevo-mail.md) |
-| asking who may reach which route, and what they may read | [routes-auth.md](docs/routes-auth.md) |
-| integrating: JSON API, Confluence-compatible REST, CQL | [api.md](docs/api.md) |
-| letting an AI assistant read the wiki (MCP) | [mcp.md](docs/mcp.md) |
-| working on the code: invariants, tests, quality gates | [developers.md](docs/developers.md) |
-| measuring a reader's screens, or load-testing a server | [performance.md](docs/performance.md) |
-| wondering why it is built this way | [design-notes.md](docs/design-notes.md) |
+| integrating: JSON API, Confluence-compatible REST, MCP | [api.md](docs/api.md) · [mcp.md](docs/mcp.md) |
+| working on the code: the one-page map, invariants, tests, gates | [architecture.md](docs/architecture.md) · [developers.md](docs/developers.md) |
+| wondering why it is built this way, or what it cannot do | [design-notes.md](docs/design-notes.md) |
 | reporting a vulnerability | [SECURITY.md](SECURITY.md) |
 
 ## License
@@ -326,8 +226,7 @@ offline. Each edge and its reason:
 Mozilla Public License 2.0 — the full text is in [LICENSE](LICENSE), and
 `mix.exs` declares `MPL-2.0` to Hex and tooling.
 
-MPL is file-scoped copyleft: if you distribute a modified version of a file,
-that file has to stay under the MPL, while the rest of your system may be under
-other terms. Running the mirror as a service is not distribution. Contributions
-are accepted under the same licence.
+MPL is file-scoped copyleft: a modified file stays under the MPL, while the rest
+of your system may use other terms. Running the mirror as a service is not
+distribution. Contributions come in under the same licence.
 
