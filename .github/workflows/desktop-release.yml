@@ -82,6 +82,12 @@ jobs:
   package:
     name: package (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    # A build is five minutes a platform on a good day. The Windows one sat at a
+    # single step for three hours — its artifacts already uploaded, and therefore
+    # still unpublished, because a run that has not finished is a run nightly.link
+    # will not serve. This is the backstop for anything that waits; the steps that
+    # can wait carry their own, shorter deadline.
+    timeout-minutes: 40
     strategy:
       # One platform failing must not hide the other two: the point of the matrix
       # is to find out which one broke.
@@ -314,6 +320,13 @@ jobs:
       # Windows package was built, and a failed window check meant it was never
       # published.
       #
+      # `continue-on-error` is what makes that true rather than intended. A step
+      # that fails or runs out of time colours the run red, and nightly.link only
+      # serves the newest artifact of a *successful* run — so an advisory-sounding
+      # check still withheld the download, and a hanging one withheld it for six
+      # hours. What a check may do now is report: the step is red, the run
+      # succeeds, the download exists.
+      #
       # Every check before this one asks the *server* a question, and all of them
       # were green while the window judged its own splash page a foreign link,
       # opened a console window and the default browser instead, and showed the
@@ -321,6 +334,8 @@ jobs:
       # a person downloads and waits for it to report the screen it painted.
       - name: Open the window that was just built
         shell: bash
+        timeout-minutes: 8
+        continue-on-error: true
         run: |
           # Windows' portable folder lives in the runner's temp directory by now
           # (the step above moved it there so its zip unpacks into one folder).
@@ -337,12 +352,43 @@ jobs:
       # the installed copy gets its `rel\` from the bundler's resource copy. A
       # download that installs fine and then crashes on start is exactly the
       # difference between those two, so the installed window is opened too.
+      #
+      # What this step did once is hang: the installer was still running three
+      # hours later, with nobody to answer a prompt it may have put up and no
+      # deadline to end it. It is bounded twice now — `timeout` around the
+      # installer, so the log says *which* program waited, and a step deadline as
+      # the backstop — and it is advisory like the check above: the download is
+      # uploaded before this runs and a hang here must not withhold it.
       - name: Install the Windows package and open the installed window
         if: runner.os == 'Windows'
         shell: bash
+        timeout-minutes: 10
+        continue-on-error: true
         run: |
           set -euo pipefail
-          ./_build/desktop/package/confluence-export-windows-setup.exe /S
+
+          # The check above launched the portable window out of the same folder
+          # this install writes to, and a window that is still up makes the
+          # installer ask whether to close it — a question with nobody here to
+          # answer it. Nothing of ours should be running at this point.
+          powershell -NoProfile -Command \
+            "Get-Process confluence-export -ErrorAction SilentlyContinue | Stop-Process -Force" ||
+            true
+
+          echo "installing: confluence-export-windows-setup.exe /S"
+          code=0
+          timeout 300 ./_build/desktop/package/confluence-export-windows-setup.exe /S || code=$?
+
+          # 124 is `timeout`'s own word for "still running, so I stopped it", 127
+          # means this shell had no `timeout` to give it — either way the installer
+          # is the suspect and the log says so, with what was left running.
+          if [[ $code -ne 0 ]]; then
+            echo "the installer exited $code (124 = still running after 300s)" >&2
+            tasklist | grep -iE "confluence|setup|webview" >&2 || true
+            exit 1
+          fi
+
+          echo "the installer finished"
 
           # The install directory follows `productName`, and the executable's
           # name follows the crate — so it is found rather than assumed, and a
