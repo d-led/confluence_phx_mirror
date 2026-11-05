@@ -176,6 +176,34 @@ mix test --failed
 Tests start processes with `start_supervised!/1`; wait for a process with
 `Process.monitor/1` / `_ = :sys.get_state/1` rather than `Process.sleep/1`.
 
+### What the suite does not run
+
+`test/test_helper.exs` excludes two tags, and both are decisions rather than
+skips. `mix test` counts them under "excluded", so a green number is never a
+claim about them.
+
+* **`:scale` — excluded everywhere.** The seven tests in `scale_test.exs` build a
+  mirror of a thousand spaces of a thousand pages before they measure anything,
+  because a page view that reads its whole space looks fast on a dozen demo
+  pages. Opt in with `MIX_TEST_PARTITION=scale mix test --only scale`, and
+  `CM_SCALE_SPACES=20 CM_SCALE_PAGES=200` makes the same run cheap while
+  working.
+* **`:postgres_only` — excluded in the SQLite job only.** These describe what the
+  *deployment* does and the tool deliberately does not: CQL search, matching
+  comments, recalling a fragment from inside a word. `Search.Lite` takes filters
+  and a page's own title and body, so that job excludes them by tag and says so
+  rather than skipping quietly. They run on Postgres — same suite, one exclusion
+  list longer.
+
+Neither is a coverage error to be tidied away, and one of them is a gap worth
+knowing: **`:scale` runs in no CI job**, because no workflow has a `schedule:`.
+Shape regressions that only appear at size — a listing that grows with the
+space, a search that is paged in Elixir instead of SQL — therefore depend on
+somebody running it by hand. The small-mirror budgets in
+`query_budget_test.exs` (statements per screen) do run on every push and are the
+guard that catches the same class of mistake early; they cannot see a cost that
+scales with rows.
+
 ### Adding a macro renderer
 
 A dynamic macro is one module behind one behaviour, and teaching the mirror a new
@@ -312,14 +340,16 @@ The script is read-only: it runs `format --check-formatted` and
 
 ### What CI runs
 
-`.github/workflows/ci.yml` runs four jobs. The first three gate every push and
-pull request; the fourth gates every push, and publishes only when asked.
+`.github/workflows/ci.yml` runs six jobs. Five gate every push and pull
+request; the image job gates every push, and publishes only when asked.
 
 | Job | What it is | Cost |
 | --- | --- | --- |
 | **Static analysis** | `mix lint` — compile with warnings as errors, unused deps, format, `credo --strict`, sobelow | ~30 s |
 | **Types** | `mix types` — dialyzer over the app and its specs, against a PLT of OTP, Elixir and the deps | seconds warm; the PLT is minutes when the cache misses |
+| **Desktop tool** | `MIX_ENV=desktop`: the tool compiles without warnings, its dialyzer, `scripts/test-desktop.sh` (SQLite), and the window's own `cargo test` with clippy | ~3 min |
 | **Suite and complexity** | Postgres service, `mix cover`, then `mix complexity` (CRAP, threshold 30). This is the gate that matters | ~7.5 min |
+| **Suite on SQLite** | `scripts/test-sqlite.sh`: its own build path (`_build/sqlite`) and database file, `--max-cases 1`, excluding `:scale` and `:postgres_only` | ~5 min |
 | **Image, scan, non-root** | `docker build` (amd64), Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), `id -u` must be `10001`, then publish | ~2 min, plus ~15 min for the arm64 half under QEMU |
 
 The image job `needs` the other three, so nothing is published from a commit that
