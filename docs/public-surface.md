@@ -47,9 +47,9 @@ proxy skips, four assumptions break:
 1. **The identity header is not evidence.** `Plugs.ProxyAuth` trusts
    `X-Forwarded-Email` whenever `CM_PROXY_AUTH=true`; that trust rests entirely
    on the mirror being unreachable except through the proxy. oauth2-proxy 7.15
-   strips `X-Forwarded-*` and `Authorization` on skipped routes
-   (`--skip-auth-strip-headers`, default `true`), but the app must not depend on
-   one default of one version for its whole authorization model.
+   documents `--skip-auth-strip-headers` (default `true`) as stripping this class
+   of header on a skipped route, but the app must not build its authorization
+   model on one default of one version.
 2. **The session cookie is still sent.** Same origin, `Path=/`, so an
    administrator's cookie arrives on public requests. If a public request reads
    it, the "anonymous" surface silently becomes the staff surface.
@@ -153,7 +153,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
 end
 ```
 
-`Plugs.PublicSurface` does three things and nothing else:
+`Plugs.PublicSurface` does exactly this, and nothing else:
 
 ```elixir
 def call(conn, _opts) do
