@@ -96,15 +96,35 @@ The spike is the deliverable of the first day, and it is thrown away.
 
 ## Getting it
 
-The app is published as `Confluence Export.app`, zipped, by
-`.github/workflows/desktop-release.yml`: every push builds one, kept 90 days, and
-a `v*` tag attaches the same build to a release. Three ways in:
+The app is published by `.github/workflows/desktop-release.yml`: every push
+builds one per platform, kept 90 days, and a `v*` tag attaches the same builds to
+a release. One line installs it, the same line on macOS and Linux and its
+PowerShell twin on Windows:
 
 ```sh
-# the newest build of a branch, installed into ~/Applications
+# macOS (Apple silicon): Confluence Export.app into ~/Applications
+# Linux (x86_64): the tool into ~/.local/share/confluence-export, launcher in ~/.local/bin
 curl -fsSL https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.sh | sh
+```
 
-# from a checkout: the same build, written to _build/desktop/package/
+```powershell
+# Windows (x64): into %LOCALAPPDATA%\Programs\Confluence Export, with a Start Menu entry
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.ps1 | iex"
+```
+
+The scripts take the newest build of `main` through `nightly.link`, and they say
+what they did: what arrived, where it went, what is missing (the Linux one asks
+the loader whether GTK 3 and WebKitGTK 4.1 are there, and names the `apt` line if
+they are not). Neither reads standard input, neither retries more than three
+times, and each ends with a sentence rather than a stack. What they unpack is two
+layers, because `nightly.link` wraps the artifact in a zip of its own and the
+macOS and Linux artifacts **are** archives — a line that assumed one layer
+installed nothing and said the app was missing, which is how this was found.
+
+From a checkout, or by hand:
+
+```sh
+# the same build, written to _build/desktop/package/
 scripts/package.sh
 
 # or, if you would rather not run a downloader's script

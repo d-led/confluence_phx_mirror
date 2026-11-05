@@ -213,18 +213,31 @@ site and taking a copy of it.
 
 Each link is the newest **successful** run of the `desktop-release` workflow on
 `main`; a `v*` tag attaches the same three builds to
-[Releases](https://github.com/d-led/confluence_phx_mirror/releases). macOS has a
-one-line installer, which is the only platform it can install for:
+[Releases](https://github.com/d-led/confluence_phx_mirror/releases).
+
+Or one line, which is what most people want:
 
 ```sh
-# the newest build of a branch, installed into ~/Applications
+# macOS (Apple silicon) and Linux (x86_64)
 curl -fsSL https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.sh | sh
 ```
 
+```powershell
+# Windows (x64), in PowerShell
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/d-led/confluence_phx_mirror/main/install-desktop.ps1 | iex"
+```
+
+The shell one puts `Confluence Export.app` in `~/Applications` on macOS, and the
+tool in `~/.local/share/confluence-export` with a launcher in `~/.local/bin` on
+Linux. The PowerShell one puts the folder in `%LOCALAPPDATA%\Programs` and a
+Start Menu entry beside it. Run either again to take the newest build; both say
+what arrived, where it went, and what is missing (the Linux one checks that GTK 3
+and WebKitGTK 4.1 are there, and names the `apt` line if they are not).
+
 **Windows and Linux archives are named `.zip` by `nightly.link`**, because an
-artifact is served as the zip GitHub stores — for Linux, unpack it and run
-`./confluence-export`. None of the three is signed: macOS stops a downloaded copy
-before it offers to run it, so clear the quarantine flag once
+artifact is served as the zip GitHub stores — a zip holding the Linux tarball, and
+one holding the Windows folder. None of the three is signed: macOS stops a
+downloaded copy before it offers to run it, so clear the quarantine flag once
 (`install-desktop.sh` does this for you); Windows shows a SmartScreen "unrecognised
 app" prompt under *More info → Run anyway*; Linux has nothing that stops it.
 
