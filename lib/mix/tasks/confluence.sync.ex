@@ -6,6 +6,7 @@ defmodule Mix.Tasks.Confluence.Sync do
 
       mix confluence.sync
       mix confluence.sync --mode incremental
+      mix confluence.sync --mode people
       mix confluence.sync --mode space --space ENG
       mix confluence.sync --mode page --page 1002
       mix confluence.sync --mode incremental --since 2026-10-20T00:00:00Z
@@ -62,13 +63,19 @@ defmodule Mix.Tasks.Confluence.Sync do
       "space" ->
         {:space, [space_key: required!(opts, :space)]}
 
+      # The people half on request: who is in which group, and the name and face
+      # the site publishes for each of them. No page is listed, so it is the
+      # cheap run to take when a person's page shows initials it should not.
+      "people" ->
+        {:people, []}
+
       "page" ->
         # A person naming one page means read it: the live-doc floor that keeps
         # a webhook quiet is not what somebody at a prompt asked for.
         {:page, [confluence_id: required!(opts, :page), force: true]}
 
       other ->
-        Mix.raise("Unknown --mode #{inspect(other)} (snapshot, incremental, space, page)")
+        Mix.raise("Unknown --mode #{inspect(other)} (snapshot, incremental, people, space, page)")
     end
   end
 
@@ -94,6 +101,7 @@ defmodule Mix.Tasks.Confluence.Sync do
     #{run.status} · #{run.mode} · #{run.source}
     spaces: #{run.stats["spaces"]}  pages: #{run.stats["pages"]}  attachments: #{run.stats["attachments"]}
     comments: #{run.stats["comments"]}  links: #{run.stats["links"]}  notifications: #{run.stats["notifications"]}
+    people: #{run.stats["people"] || 0}  group members: #{run.stats["group_members"] || 0}
     errors: #{length(run.stats["errors"] || [])}
     """)
 

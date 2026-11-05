@@ -91,8 +91,15 @@ appear as chips beside the space name, in the directory and on the overview.
 mix confluence.sync                              # incremental pull
 mix confluence.sync --mode snapshot              # full re-read of every page
 mix confluence.sync --mode space --space ENG     # one space
+mix confluence.sync --mode people                # names and faces, no pages
 mix confluence.webhook --page 1002 --event page_updated
 ```
+
+`--mode people` is the cheap one: it reads no page and asks the site only about
+the people the content names — the name it publishes and the picture it keeps,
+which the mirror copies into its own blob store. A person's page shows initials
+until that sweep has run for them; every content run does it too, so the mode is
+for the mirror whose pages were mirrored before the sweep existed.
 
 A sync is recorded as a run (`running` → `succeeded` / `partial` / `failed`)
 with counters and errors. Failures are **per page**: one broken attachment or
