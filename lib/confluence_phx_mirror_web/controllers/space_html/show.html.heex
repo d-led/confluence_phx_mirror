@@ -35,6 +35,11 @@
     <p :if={@space.synced_at} class="mt-2 text-xs text-base-content/70">
       Space metadata synced {Time.ago(@space.synced_at)}.
     </p>
+    <%!-- Freshness is what this header is about, so the administrator's "read it
+    again" sits beside the stamp rather than a screen away. --%>
+    <div :if={@admin?} class="mt-2 flex items-center gap-2 text-xs">
+      <.space_sync space={@space} admin?={@admin?} />
+    </div>
     <%!--
       Watching a space is offered where the space is, not only in a page's rail:
       this is the screen somebody lands on when they want the whole space, and

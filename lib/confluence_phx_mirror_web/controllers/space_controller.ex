@@ -20,6 +20,9 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
   alias ConfluencePhxMirror.Authorization
   alias ConfluencePhxMirror.Blobs.LocalStore
   alias ConfluencePhxMirror.Mirror
+  alias ConfluencePhxMirror.Mirror.URLs
+  alias ConfluencePhxMirror.Sync
+  alias ConfluencePhxMirror.Sync.SpaceWorker
   alias ConfluencePhxMirrorWeb.NotFound
   alias ConfluencePhxMirrorWeb.PageController
 
@@ -64,6 +67,37 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
 
   def overview(conn, %{"key" => key}) do
     with_space(conn, key, &render_overview/2)
+  end
+
+  @doc """
+  Re-reads one whole space from Confluence, on an administrator's request.
+
+  A space's refresh is its pages, their attachments and comments, and who may
+  read them — everything the scheduled sync does for the space, done now. The
+  read happens in the background: the administrator gets the space back
+  immediately and the sync queue reports the outcome.
+  """
+  def resync(conn, %{"key" => key}) do
+    with_space(conn, key, fn conn, space ->
+      # A reader who may not resync learns nothing a stranger would not: the
+      # answer is the one an unknown space gets.
+      if Scope.admin?(scope(conn)) do
+        enqueue_resync(conn, space)
+      else
+        NotFound.call(conn, "Space #{key} is not mirrored.")
+      end
+    end)
+  end
+
+  defp enqueue_resync(conn, space) do
+    Sync.enqueue(SpaceWorker, %{
+      "space_key" => space.key,
+      "trigger" => "the space view, by #{conn.assigns[:current_user].email}"
+    })
+
+    conn
+    |> put_flash(:info, "Re-reading #{space.name} from Confluence.")
+    |> redirect(to: URLs.space_path(space.key))
   end
 
   @doc """
@@ -161,7 +195,8 @@ defmodule ConfluencePhxMirrorWeb.SpaceController do
       labels:
         Mirror.labels_in_space(space.id, limit: @label_chips, order: :popular, filter: filter),
       attachment_count: Mirror.count_attachments_in_space(space.id, filter: filter),
-      grants: space_grants(conn, space)
+      grants: space_grants(conn, space),
+      admin?: Scope.admin?(scope(conn))
     )
   end
 

@@ -118,6 +118,8 @@ defmodule ConfluencePhxMirrorWeb.Router do
     # space home page or, without one, the overview. See SpaceController.show/2.
     get "/spaces/:key", SpaceController, :show
     get "/spaces/:key/overview", SpaceController, :overview
+    # An administrator re-reads one whole space; see SpaceController.resync/2.
+    post "/spaces/:key/resync", SpaceController, :resync
     # A sidebar branch opens on demand; see `SpaceController.tree/2`.
     get "/spaces/:key/tree/:page_id", SpaceController, :tree
     get "/spaces/:key/blog/:id/:slug", PageController, :blog_post

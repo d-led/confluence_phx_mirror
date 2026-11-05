@@ -141,6 +141,14 @@
             )}
           </:presence>
         </.page_meta>
+        <%!-- A space's home page is the space's front door: an administrator
+        asking whether the space is fresh is standing here, not on the admin
+        screen. --%>
+        <.space_sync
+          :if={@page.confluence_id == @space.homepage_confluence_id}
+          space={@space}
+          admin?={@admin?}
+        />
       </:meta>
     </.page_header>
 

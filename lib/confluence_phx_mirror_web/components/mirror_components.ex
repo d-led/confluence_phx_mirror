@@ -328,6 +328,39 @@ defmodule ConfluencePhxMirrorWeb.MirrorComponents do
     """
   end
 
+  @doc """
+  The administrator's refresh of a whole space.
+
+  Offered where the space itself is: its landing page, its overview, and the
+  home page that is a space's front door. Freshness is the question those
+  screens answer, so the press that repairs it belongs there rather than one
+  screen away in the admin area. A reader is never offered it, and the
+  controller refuses it as well.
+  """
+  attr :space, :map, required: true
+  attr :admin?, :boolean, default: false
+
+  def space_sync(assigns) do
+    ~H"""
+    <form
+      :if={@admin?}
+      id="sync-space-form"
+      action={URLs.space_resync_path(@space.key)}
+      method="post"
+      class="inline-flex"
+    >
+      <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+      <button
+        type="submit"
+        class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-base-content/60 transition hover:bg-base-200 hover:text-primary"
+        title="Administrators only: read this space's pages, attachments and permissions from Confluence again"
+      >
+        <.icon name="hero-arrow-path-rounded-square" class="size-3.5" /> Resync space
+      </button>
+    </form>
+    """
+  end
+
   attr :status, :string, default: "current"
   attr :type, :string, default: "page"
   attr :subtype, :string, default: nil

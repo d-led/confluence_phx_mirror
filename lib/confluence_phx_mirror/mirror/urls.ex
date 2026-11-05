@@ -43,6 +43,14 @@ defmodule ConfluencePhxMirror.Mirror.URLs do
     "/spaces/#{encode_segment(space_key)}/pages/#{confluence_id}/resync"
   end
 
+  @doc """
+  Where an administrator asks the mirror to re-read one whole space.
+
+  Like a page's resync it serves no screen of its own: it starts a sync and goes
+  back to the space it names.
+  """
+  def space_resync_path(space_key), do: space_path(space_key) <> "/resync"
+
   @doc "A single blog post, mirroring Confluence's blog URL shape."
   def blog_post_path(space_key, confluence_id, slug) do
     with_slug(space_blog_path(space_key) <> "/#{confluence_id}", slug)
