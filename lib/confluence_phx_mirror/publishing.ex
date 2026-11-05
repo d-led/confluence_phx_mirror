@@ -79,6 +79,30 @@ defmodule ConfluencePhxMirror.Publishing do
   @spec public_space?(String.t() | nil) :: boolean()
   def public_space?(key), do: normalise_key(key) in public_spaces()
 
+  @doc """
+  One line for the boot log: what this deployment publishes, and to whom.
+
+  A wrong key in the list is the mistake this setting exists to make hard, so
+  the resolved list is named on every start rather than left to be inferred from
+  what a stranger happens to see.
+  """
+  @spec describe() :: String.t()
+  def describe do
+    case {public_site?(), public_spaces()} do
+      {false, []} ->
+        "publishing to admitted readers only"
+
+      {true, []} ->
+        "public site: a stranger reads every space the permissions leave open"
+
+      {false, keys} ->
+        "public spaces #{Enum.join(keys, ", ")} — inert without CM_PUBLIC_SITE"
+
+      {true, keys} ->
+        "public spaces #{Enum.join(keys, ", ")}: a stranger reads those, and they are anonymised"
+    end
+  end
+
   @doc "Whether contributor names are published."
   @spec anonymise_contributors?() :: boolean()
   def anonymise_contributors?, do: flag(:anonymize_contributors)

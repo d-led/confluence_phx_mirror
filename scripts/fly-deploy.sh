@@ -50,6 +50,7 @@ deploy_live() {
       DATABASE_URL SECRET_KEY_BASE RELEASE_COOKIE \
       CM_CONFLUENCE_SITE CM_ATL_EMAIL CM_ATL_TOKEN
     report_ready confluence-mirror-app
+    report_publishing confluence-mirror-app
   else
     # Nothing of the mirror is built, but the proxy's upstream is this app.
     require_app confluence-mirror-app "$provision"
@@ -81,6 +82,7 @@ deploy_demo() {
     require_secrets confluence-mirror-demo-app "$provision" \
       DATABASE_URL SECRET_KEY_BASE RELEASE_COOKIE
     report_ready confluence-mirror-demo-app
+    report_publishing confluence-mirror-demo-app
   else
     # Nothing of the demo mirror is built, but the proxy's upstream is this app.
     require_app confluence-mirror-demo-app "$provision"
@@ -118,6 +120,30 @@ report_ready() {
   for app in "$@"; do
     echo "deployable: $app is provisioned"
   done
+}
+
+# What a stranger will be able to read once this ships.
+#
+# `CM_PUBLIC_SPACES` is a secret, so `fly secrets list` shows the name and not
+# the value, and the list is the one setting whose typo is a leak. It is asked of
+# the app that is already running — the one that is about to be replaced — and an
+# app with no machine yet has nothing to ask: its boot log names the list on the
+# first start. Never fails the deploy: a check that cannot answer says so.
+report_publishing() {
+  local app=$1 list
+
+  if ! list=$(fly ssh console -a "$app" -C 'printenv CM_PUBLIC_SPACES' 2>/dev/null); then
+    echo "public spaces: not asked — $app has no machine to ask (its boot log names them)"
+    return 0
+  fi
+
+  list=$(printf '%s' "$list" | tr -d '\r' | tail -n 1)
+
+  if [ -z "$list" ]; then
+    echo "public spaces: unset — a public site, if this is one, is all-or-nothing"
+  else
+    echo "public spaces: $list — a stranger reads those, and they are anonymised"
+  fi
 }
 
 # The mirror. `--flycast --no-public-ips` is the topology the proxy depends on:

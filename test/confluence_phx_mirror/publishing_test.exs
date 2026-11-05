@@ -63,6 +63,32 @@ defmodule ConfluencePhxMirror.PublishingTest do
     assert Mirror.comments(page) == []
   end
 
+  describe "the boot report" do
+    test "no switches means the people this deployment admitted" do
+      assert Publishing.describe() == "publishing to admitted readers only"
+    end
+
+    test "a public site with no list leaves the permissions to decide" do
+      TestConfig.put(:public_site, true)
+
+      assert Publishing.describe() =~ "every space the permissions leave open"
+    end
+
+    test "a list names the spaces a stranger may read, and says they are anonymised" do
+      TestConfig.put(:public_site, true)
+      TestConfig.put(:public_spaces, ["eng", "ops"])
+
+      assert Publishing.describe() ==
+               "public spaces ENG, OPS: a stranger reads those, and they are anonymised"
+    end
+
+    test "a list without the public site says so, because it grants nothing on its own" do
+      TestConfig.put(:public_spaces, ["ENG"])
+
+      assert Publishing.describe() =~ "inert without CM_PUBLIC_SITE"
+    end
+  end
+
   describe "a public subset of the spaces" do
     test "no list means no space is public" do
       assert Publishing.public_spaces() == []

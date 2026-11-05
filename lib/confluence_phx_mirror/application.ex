@@ -67,6 +67,9 @@ defmodule ConfluencePhxMirror.Application do
     # Said once, at boot: which build this is, so a log from a container that
     # started for someone else's deploy can be identified.
     log_build()
+    # And what it publishes: a wrong key in the public list is the one mistake
+    # that is a leak, so the resolved list is named on every start.
+    Logger.info("publishing: #{ConfluencePhxMirror.Publishing.describe()}")
 
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
@@ -91,6 +94,11 @@ defmodule ConfluencePhxMirror.Application do
         # scheduled pull away. Two queries, and it settles the queue before the
         # first tick rather than leaving it to whoever opens `/admin` next.
         ConfluencePhxMirror.Sync.abandon_abandoned_runs()
+
+        # After the repo: a key that names no mirrored space is a typo, and a
+        # typo must not be a silent no-op on the one setting whose mistake is a
+        # leak.
+        warn_unknown_public_spaces()
 
         # Nothing has ever filled this database: ask for one snapshot now, so a
         # fresh container serves content instead of an empty mirror waiting for
@@ -128,6 +136,19 @@ defmodule ConfluencePhxMirror.Application do
 
   defp log_build do
     Logger.info("build: #{BuildInfo.description()}")
+  end
+
+  # The list is read from the environment and matched against what the sync has
+  # actually mirrored. A key that matches nothing is a typo today and a silent
+  # no-op tomorrow, so it is said out loud before anybody relies on it.
+  defp warn_unknown_public_spaces do
+    for key <- ConfluencePhxMirror.Publishing.public_spaces(),
+        is_nil(ConfluencePhxMirror.Mirror.get_space_by_key(key)) do
+      Logger.warning(
+        "publishing: CM_PUBLIC_SPACES names #{key}, which is not a mirrored space " <>
+          "— a typo, or a space the sync has not reached yet"
+      )
+    end
   end
 
   defp log_startup_pull(:off), do: :ok
