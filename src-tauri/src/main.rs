@@ -9,7 +9,11 @@
 //! What the window *does* owe a person is honesty while that happens. So it is
 //! on screen before the release is started, showing a page that says so, and it
 //! turns into that page's failure state — the reason, and the release's own last
-//! words — when the release refuses to come up.
+//! words — when the release refuses to come up. A server that ends *after* the
+//! window was pointed at it turns it back into that page: the screens are the
+//! server's, and a dead BEAM behind a webview is a blank tab nobody can read.
+//! Every one of those pages offers to report the failure, filled in with what the
+//! window already knows.
 
 // A release build on Windows is a window, not a console program. Without this
 // every launch opens a console beside the app — and a failure closes it again
@@ -62,6 +66,8 @@ enum Trouble {
     NotAnswering,
     /// No release where one should be: a broken or half-copied download.
     MissingRelease,
+    /// The release ran, answered, and then ended while the window was open.
+    Died,
 }
 
 impl Trouble {
@@ -77,6 +83,7 @@ impl Trouble {
             Trouble::Slow => "Confluence Export is taking longer than it should",
             Trouble::NotAnswering => "The window has nothing to show",
             Trouble::MissingRelease => "This copy of the app is incomplete",
+            Trouble::Died => "Confluence Export stopped",
         }
     }
 
@@ -119,6 +126,11 @@ impl Trouble {
             Trouble::MissingRelease => {
                 "The program this app runs is missing from it. Download it again — an \
                  interrupted unzip or a partial copy is the usual cause."
+            }
+            Trouble::Died => {
+                "Its server ended while the window was open, so the screens went\
+                 with it. Nothing in your folder was changed — open the app again.\
+                 If it stops a second time, report it below with what it said."
             }
         }
     }
@@ -220,16 +232,12 @@ fn main() {
                 Ok((child, url)) => {
                     handle.state::<Sidecar>().0.lock().unwrap().replace(child);
                     navigate(&window, &url);
-                }
-                Err(failure) => {
-                    if let Ok(mut state) = shared.lock() {
-                        state.failed = Some(failure);
-                    }
 
-                    // The same page, asked for again: what it serves is read
-                    // from the state above, so this swap is the whole redraw.
-                    navigate(&window, &format!("{SPLASH}://localhost/?failed=1"));
+                    // From here on the server is somebody else's process, and a
+                    // window pointed at a server that has ended is a blank tab.
+                    watch_sidecar(handle.clone(), window.clone(), Arc::clone(&shared));
                 }
+                Err(failure) => announce_failure(&window, &shared, failure),
             });
 
             Ok(())
@@ -491,12 +499,6 @@ fn waiting_page() -> String {
     )
 }
 
-/// What went wrong, in words the person in front of the window can act on.
-///
-/// The headline and the sentence come from `Trouble`; `output` is the release's
-/// own text, folded behind a summary so it is available to whoever wants it and
-/// out of the way of whoever does not.
-
 /// What went wrong, in the release's own words.
 ///
 /// The message says which step failed; `output` is where the *cause* usually is,
@@ -528,15 +530,141 @@ fn failure_page(failure: &Failure, output: &VecDeque<String>) -> String {
         None => String::new(),
     };
 
+    // Every failure offers the issue form, prefilled: the useful report carries
+    // what the window already knows, and nobody retypes a log.
+    let report = format!(
+        "<p class=\"log\">If this is the app's fault rather than something on your \
+         side, <a href=\"{}\">open an issue</a> — the page is filled in with the \
+         version, your platform and what the app said.</p>",
+        escape_html(&issue_url(failure.trouble, output))
+    );
+
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\
          <title>Confluence Export</title>{STYLE}</head>\
          <body><main><h1>{}</h1>\n         <p class=\"lead\">{}</p>\
          <p class=\"log\">Quit the app and open it again once that is dealt with.</p>\
-         {details}{log}</main></body></html>",
+         {report}{details}{log}</main></body></html>",
         escape_html(failure.trouble.title()),
         escape_html(failure.trouble.explain())
     )
+}
+
+/// Where a person reports a failure that is not theirs to fix.
+const ISSUES_URL: &str = "https://github.com/d-led/confluence_phx_mirror/issues/new";
+
+/// How many of the release's lines travel into the report: enough to hold a
+/// refusal and its reason, short enough that the link stays a link.
+const REPORTED_LINES: usize = 15;
+
+/// The issue form, carrying the window's own account of what happened.
+///
+/// A bare link asks somebody to describe a failure they cannot name; the form
+/// arrives with the headline, the platform, the version and the release's last
+/// words already in it, which is exactly what makes a report answerable.
+fn issue_url(trouble: Trouble, output: &VecDeque<String>) -> String {
+    let lines = output
+        .iter()
+        .rev()
+        .take(REPORTED_LINES)
+        .rev()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let body = format!(
+        "**What the window said**\n\n{}\n\n**Where**\n\n{} ({})\n\n\
+         **App version**\n\n{}\n\n**Last lines from the app**\n\n```\n{lines}\n```\n",
+        trouble.title(),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        env!("CARGO_PKG_VERSION"),
+    );
+
+    // GitHub refuses a query past ~8 KB, and a body nothing can receive is no
+    // report at all. Counted in characters, so a multi-byte line cannot be cut
+    // in half.
+    let body = body.chars().take(2_000).collect::<String>();
+
+    format!(
+        "{ISSUES_URL}?title={}&body={}",
+        url_encoded(&format!("Desktop: {}", trouble.title())),
+        url_encoded(&body)
+    )
+}
+
+/// A query value, encoded: everything a URL cannot carry becomes `%XX`, and the
+/// characters that are safe stay readable in the address bar.
+fn url_encoded(text: &str) -> String {
+    let mut encoded = String::with_capacity(text.len());
+
+    for byte in text.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+
+    encoded
+}
+
+/// Puts a failure in front of the person: the page, and the title bar.
+///
+/// The title matters because a webview that will not paint — or a window whose
+/// page has been replaced by a blank error — still has a title bar, and it is
+/// then the only place left to say that the app has stopped.
+fn announce_failure(window: &WebviewWindow, shared: &SharedState, failure: Failure) {
+    let trouble = failure.trouble;
+
+    if let Ok(mut state) = shared.lock() {
+        state.failed = Some(failure);
+    }
+
+    let _ = window.set_title(&failure_title(trouble));
+
+    // The same page, asked for again: what it serves is read from the state
+    // above, so this swap is the whole redraw.
+    navigate(window, &format!("{SPLASH}://localhost/?failed=1"));
+}
+
+/// What the title bar says while the page says the rest.
+fn failure_title(trouble: Trouble) -> String {
+    format!("Confluence Export — {}", trouble.title())
+}
+
+/// Watches the sidecar for as long as the window is open.
+///
+/// A server that ends after it said where it listens is a window showing a
+/// browser error nobody can read: every screen is the server's, so a dead BEAM
+/// is a blank tab. The child is polled rather than waited on — `RunEvent::Exit`
+/// also holds this handle (to kill it), and a thread parked in `wait()` would sit
+/// on the lock that stops it.
+fn watch_sidecar(handle: AppHandle, window: WebviewWindow, shared: SharedState) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        let ended = match handle.state::<Sidecar>().0.lock() {
+            Ok(mut sidecar) => match sidecar.as_mut() {
+                Some(child) => !matches!(child.try_wait(), Ok(None)),
+                None => false,
+            },
+            Err(_) => false,
+        };
+
+        if ended {
+            announce_failure(
+                &window,
+                &shared,
+                Failure {
+                    trouble: Trouble::Died,
+                    log: sidecar_log_path(&handle),
+                },
+            );
+            return;
+        }
+    });
 }
 
 /// Everything a page in this window shows is text from somewhere else, so the
@@ -779,6 +907,7 @@ mod tests {
             Trouble::Slow,
             Trouble::NotAnswering,
             Trouble::MissingRelease,
+            Trouble::Died,
         ];
 
         let titles: std::collections::HashSet<_> = troubles.iter().map(|t| t.title()).collect();
@@ -889,5 +1018,63 @@ mod tests {
         // A resolver path that means something to the shell must not be rewritten
         // by a helper that only exists for Windows.
         assert_eq!(separators(r"C:\a\b", false), r"C:\a\b");
+    }
+
+    #[test]
+    fn a_failure_is_offered_a_report_the_person_can_send() {
+        let failure = Failure {
+            trouble: Trouble::Died,
+            log: None,
+        };
+        let page = failure_page(&failure, &said(&["** (RuntimeError) boom"]));
+
+        // A page that explains a crash and offers no way to report it leaves the
+        // person with nothing to do about it.
+        assert!(page.contains(ISSUES_URL), "the page carries no report link");
+        assert!(page.contains("open an issue"));
+        assert!(page.contains("Desktop%3A%20Confluence%20Export%20stopped"));
+    }
+
+    #[test]
+    fn a_report_carries_what_the_window_already_knows() {
+        let url = issue_url(
+            Trouble::Died,
+            &said(&["announcing a port", "shutdown: the catalogue went away"]),
+        );
+
+        assert!(url.starts_with(ISSUES_URL));
+        assert!(url.contains(std::env::consts::OS));
+        assert!(url.contains(env!("CARGO_PKG_VERSION")));
+        assert!(
+            url.contains("shutdown%3A%20the%20catalogue%20went%20away"),
+            "the release's last line is missing from the report"
+        );
+    }
+
+    #[test]
+    fn a_query_value_is_encoded_and_the_readable_parts_are_left_alone() {
+        assert_eq!(url_encoded("a b\nc&d"), "a%20b%0Ac%26d");
+        assert_eq!(url_encoded("Az09-_.~"), "Az09-_.~");
+        // A byte that is part of a multi-byte character must survive as its own
+        // escape, never be cut in half.
+        assert_eq!(url_encoded("é"), "%C3%A9");
+    }
+
+    #[test]
+    fn a_report_stays_short_enough_to_be_a_link() {
+        let long = "x".repeat(500);
+        let output: VecDeque<String> = (0..REPORTED_LINES * 2).map(|_| long.clone()).collect();
+        let url = issue_url(Trouble::Stopped, &output);
+
+        // GitHub refuses a query past ~8 KB; a link nobody can open is no report.
+        assert!(url.len() < 8_000, "the report link is {} bytes", url.len());
+    }
+
+    #[test]
+    fn the_title_bar_says_the_app_stopped_even_if_the_page_cannot_paint() {
+        assert_eq!(
+            failure_title(Trouble::Died),
+            "Confluence Export — Confluence Export stopped"
+        );
     }
 }

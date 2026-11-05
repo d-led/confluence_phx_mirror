@@ -209,6 +209,20 @@ said* is one click below, the same text is appended to
 that file. A technical blob in a person's face is not an explanation; behind a
 summary it is the answer for whoever is debugging.
 
+A server that ends **after** the window was pointed at it is the same page, not a
+webview error nobody can read: every screen belongs to that server, so a dead BEAM
+is a blank tab. The window polls its sidecar once a second, and when it has gone it
+swaps back to the failure page — *Confluence Export stopped* — and puts the same
+words in the title bar, which is the part still readable if the page itself cannot
+paint. A window the person closed is not a failure: quitting takes the child out of
+the shell's hands first, so the watcher finds nothing to report.
+
+Every failure page — start-up or later — ends with a way to report it:
+**open an issue** links to this repository's issue form with the headline, the
+platform, the version and the release's last fifteen lines already filled in. A
+bare link would ask somebody to describe a failure they cannot name; the useful
+report is the one that carries what the window already knows.
+
 A launch also has a bound. The waiting page changes its own sentence at five and
 forty seconds, and at sixty the window becomes that failure page rather than
 claiming to be starting for ever — a spinner nobody can end is how a person is
