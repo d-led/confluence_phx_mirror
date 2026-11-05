@@ -19,10 +19,21 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.UserProfile do
 
   @behaviour ConfluencePhxMirror.Sync.DynamicContent.Renderer
 
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Sync.DynamicContent.{Attributes, Context, Nodes}
 
   @impl true
   def render(attrs, %Context{} = context) do
+    if Publishing.identities_in_space?(context.space.key) do
+      profile_or_nothing(attrs, context)
+    else
+      # Rendered once, at sync time, for every reader: a page a stranger may
+      # open is stored in the stranger's shape.
+      [Nodes.notice("This mirror does not publish its contributors.")]
+    end
+  end
+
+  defp profile_or_nothing(attrs, context) do
     case attrs |> Map.get("user", "") |> String.trim() do
       "" -> [Nodes.empty("This macro names no person, so there is no profile to show.")]
       account -> profile(account, Attributes.int(attrs, "limit", 20, 1..100), context)

@@ -17,7 +17,9 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.Contributors do
       large rather than give a number that is only partly true.
 
   A deployment that publishes no names (`CM_ANONYMIZE_CONTRIBUTORS`) has nothing
-  to show here, and says so.
+  to show here, and says so. So does a page in a space a stranger may read: its
+  body is rendered once, at sync time, and served to everybody, so it is stored
+  in the stranger's shape (`Publishing.identities_in_space?/1`).
   """
 
   @behaviour ConfluencePhxMirror.Sync.DynamicContent.Renderer
@@ -27,10 +29,10 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.Contributors do
 
   @impl true
   def render(attrs, %Context{} = context) do
-    if Publishing.anonymise_contributors?() do
-      [Nodes.notice("This mirror does not publish its contributors.")]
-    else
+    if Publishing.identities_in_space?(context.space.key) do
       list(context, space(attrs), Attributes.int(attrs, "limit", 10, 1..50))
+    else
+      [Nodes.notice("This mirror does not publish its contributors.")]
     end
   end
 

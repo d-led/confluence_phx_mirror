@@ -73,6 +73,24 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.ContributorsTest do
     assert text(expand()) == "This mirror does not publish its contributors."
   end
 
+  # One body is rendered at sync time and served to every reader, so a space a
+  # stranger may open has to be stored in the stranger's shape — there is no
+  # second copy to anonymise later.
+  test "a public space's body names nobody, whatever the reader" do
+    TestConfig.put(:public_spaces, ["ENG"])
+
+    html = expand()
+
+    assert text(html) == "This mirror does not publish its contributors."
+    assert hrefs(html) == []
+  end
+
+  test "a space off the public list keeps its names" do
+    TestConfig.put(:public_spaces, ["OPS"])
+
+    assert names(expand()) == ["Jane Doe · 12 pages", "Sam Rivera · 1 page"]
+  end
+
   test "a space too large to count says so instead of counting half of it" do
     StubContent.script(contributors: {:error, :too_large})
 

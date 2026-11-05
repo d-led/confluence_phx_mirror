@@ -80,7 +80,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 19: a contributor's name is the link to their page here, not a dead word.
   # 20: a face is served from the mirror's own blob store, instead of pointing at
   #     the site — which does not serve it, and redirects the reader to Gravatar.
-  def revision, do: 20
+  # 21: a page in a space the deployment publishes names nobody in its body, so
+  #     the one copy served to every reader is the stranger's copy.
+  def revision, do: 21
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

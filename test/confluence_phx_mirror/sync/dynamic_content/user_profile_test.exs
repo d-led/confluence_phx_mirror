@@ -9,10 +9,11 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.UserProfileTest do
   read — which is why the answer is a person and not a profile form.
   """
 
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias ConfluencePhxMirror.Sync.DynamicContent
   alias ConfluencePhxMirror.Sync.DynamicContent.StubContent
+  alias ConfluencePhxMirror.TestConfig
 
   @account "557058:12861f68-8857-4349-927d-e49dfb30bd52"
   @marker ~s(<div class="mirror-macro" data-macro="user-profile" data-user="#{@account}"></div>)
@@ -28,6 +29,17 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.UserProfileTest do
 
     assert html =~ "Jane Doe"
     assert hrefs(html) == ["/people/#{"557058%3A12861f68-8857-4349-927d-e49dfb30bd52"}"]
+  end
+
+  # The body is rendered once, at sync time, for every reader: a space a
+  # stranger may open is stored without the name or the link.
+  test "a page in a public space names nobody" do
+    TestConfig.put(:public_spaces, ["ENG"])
+
+    html = expand()
+
+    refute html =~ "Jane Doe"
+    assert hrefs(html) == []
   end
 
   test "lists the pages of theirs these readers may open" do
