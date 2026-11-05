@@ -209,7 +209,7 @@ site and taking a copy of it.
 | --- | --- | --- |
 | macOS (Apple silicon) | [`confluence-export-macos.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-macos.zip) | `Confluence Export.app` — unzip, drag to `/Applications`, double-click |
 | Linux x64 | [`confluence-export-linux.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-linux.zip) | a folder with the window, `rel/` and a `README.txt`; needs GTK 3 and WebKitGTK 4.1 |
-| Windows x64 | [`confluence-export-windows.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-windows.zip) | a folder with `Confluence Export.exe` and `rel\` beside it; run the `.exe` |
+| Windows x64 | [`confluence-export-windows.zip`](https://nightly.link/d-led/confluence_phx_mirror/workflows/desktop-release/main/confluence-export-windows.zip) | one folder, `confluence-export-windows`, with `confluence-export.exe`, `rel\` and a `README.txt`; unzip it and run the `.exe` |
 
 Each link is the newest **successful** run of the `desktop-release` workflow on
 `main`; a `v*` tag attaches the same three builds to

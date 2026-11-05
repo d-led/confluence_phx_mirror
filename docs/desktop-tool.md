@@ -585,7 +585,7 @@ What it writes depends on the platform, because what a person installs does:
 | --- | --- | --- |
 | macOS | `Confluence Export.app`, zipped with `ditto` | `Contents/Resources/rel` — `resource_dir()` |
 | Linux | `confluence-export-linux.tar.gz`: the window plus `rel/` and a `README.txt` | beside the binary |
-| Windows | a folder: `Confluence Export.exe` plus `rel\` | beside the binary — `resource_dir()` *is* the executable's directory there |
+| Windows | a folder: `confluence-export.exe` plus `rel\` | beside the binary — `resource_dir()` *is* the executable's directory there |
 
 The release is copied in by hand rather than through Tauri's `bundle.resources`:
 Tauri's own copy of that tree (2 700 files, addressed across a `..`) fails in its

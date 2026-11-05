@@ -33,7 +33,7 @@
 #            drops the ones that stop it launching.
 #   Linux    `confluence-export-linux.tar.gz`: the window plus `rel/` beside it,
 #            built on 22.04 so the glibc floor is a known one.
-#   Windows  a folder that `upload-artifact` zips: `Confluence Export.exe` with
+#   Windows  a folder that `upload-artifact` zips: `confluence-export.exe` with
 #            `rel\` beside it, which is what `resource_dir()` means there.
 #
 # Every platform runs the same `scripts/package.sh`, boot check included: a
@@ -91,8 +91,13 @@ jobs:
             artifact: confluence-export-windows
             # A folder, not an archive: `upload-artifact` zips it, and a
             # Windows runner has no `tar` we should depend on. The download is
-            # the `Confluence Export.exe` with `rel\` beside it.
-            path: _build/desktop/package/confluence-export-windows
+            # `confluence-export.exe` with `rel\` beside it.
+            #
+            # The upload path is the folder that *contains* it, because
+            # `upload-artifact` treats a directory's own path as the zip's root:
+            # pointing it at the folder itself unpacks the `.exe`, the note and
+            # `rel\` loose into whatever directory a person unzips in.
+            path: _build/desktop/package/unpack
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -169,6 +174,19 @@ jobs:
       - name: Package (build, carry the release, boot check, assemble)
         shell: bash
         run: scripts/package.sh
+
+      # The zip a person downloads has to unpack into one folder, and
+      # `upload-artifact` zips a directory's *contents*. So the folder is given
+      # the parent that becomes the zip's root. A move, not a copy: same volume,
+      # 165 MB renamed rather than duplicated.
+      - name: Give the Windows folder the name it unpacks into
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _build/desktop/package/unpack
+          mv _build/desktop/package/confluence-export-windows \
+            _build/desktop/package/unpack/
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -282,12 +282,14 @@ stage_window() {
   mkdir -p "$destination"
   cp "$window" "$destination/"
 
-  cat >"$destination/README.txt" <<'NOTE'
+  # The note names the file to run, because "the window binary in this folder" is
+  # only obvious to somebody who already knows which one that is.
+  {
+    cat <<'NOTE'
 Confluence Export — a desktop tool that reads a Confluence site into a folder.
 
-Run the window binary in this folder. It starts its own server and opens it; the
-mirror it serves is the same one the web deployment serves, and the tool's own
-screens live under /__tool.
+It starts its own server and opens it; the mirror it serves is the same one the
+web deployment serves, and the tool's own screens live under /__tool.
 
 Where things are kept (the catalogue, the mirrored attachments, the logs):
   macOS    ~/Library/Application Support/confluence-export
@@ -301,6 +303,13 @@ The release in `rel/` needs nothing installed: it carries its own Erlang.
 Nothing here is signed. macOS and Windows will both warn the first time; a macOS
 copy that was downloaded needs `xattr -rd com.apple.quarantine` first.
 NOTE
+    echo
+    if [[ $platform == linux ]]; then
+      echo "Start it in a terminal: ./${window##*/}"
+    else
+      echo "Start it: double-click ${window##*/}"
+    fi
+  } >"$destination/README.txt"
 
   echo "staged $(du -sh "$destination" | cut -f1) in ${destination#$PWD/}"
 }
