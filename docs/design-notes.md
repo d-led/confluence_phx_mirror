@@ -123,12 +123,13 @@ wide as the page listing it. Applying that once in
 Resolved today: `content-by-label`, `page-properties-report` (Confluence's key is
 `detailssummary`), `toc`, `children`, `pagetree`, `recently-updated`,
 `attachments`, `content-report-table`, `include`, `excerpt-include`, `excerpt`,
-`blog-posts` and `contributors`. Three are left, and none of them is a renderer
-away:
+`blog-posts`, `contributors`, `labels-list` and `user-profile` — plus `html`,
+whose answer is its own body, read from the storage because the export view only
+leaves a picture of the macro. What is left is not a renderer away:
 
 | Macro | Data it needs | Why it is not drawn |
 | --- | --- | --- |
-| `tasks-report-macro` | inline tasks across a space | the tasks are inside each page's stored body, so a report is a scan of the space's bodies at every expansion. It wants an index built while pages are rendered — a feature of its own, not a renderer. A page already shows its own tasks inline |
+| `tasks-report`, `decision-report` | the tasks and decisions inside every page's body | a report is a scan of the space's bodies at every expansion. It wants an index built while pages are rendered — a feature of its own, not a renderer. A page already shows its own tasks inline |
 | `jira`, `jiraissues`, `jirachart` | issue data | needs Jira credentials: out of scope for a mirror |
 | `livesearch`, `gadget`, `widget` | a client, or a third-party app | impossible statically |
 | Forge/Connect app macros | the app | a placeholder is the honest answer, and the body is kept |
