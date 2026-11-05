@@ -135,8 +135,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         "Architecture Overview",
         architecture_body(),
         ~w(architecture design),
-        version: 15,
-        message: "Document the sync pipeline",
+        version: 16,
+        message: "Record the decisions and the open work",
         updated_at: ~U[2026-10-20 08:10:00Z],
         storage:
           properties_storage(
@@ -145,8 +145,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
           )
       ),
       page(1003, "ENG", 1001, "Macros Gallery", macros_body(), ~w(macros demo),
-        version: 4,
-        message: "Show every macro we support",
+        version: 5,
+        message: "Show every macro the mirror draws",
         updated_at: ~U[2026-10-17 16:45:00Z],
         storage: properties_storage(macros_body(), [{"Owner", "Docs"}, {"Status", "Review"}])
       ),
@@ -338,6 +338,18 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     "<p>The storage format is the portable source and is exposed by the API. The export view is what Confluence itself renders, including macros we do not implement ourselves. Storing both lets the mirror show exactly what Confluence shows without re-implementing every macro.</p>")}
     #{panel(:info, "Decision record", "<p>Attachments are <strong>not</strong> stored in Postgres. They live under <code>spaces/&lt;KEY&gt;/pages/&lt;id&gt;/attachments/&lt;id&gt;/&lt;file&gt;</code> behind a blob-store behaviour.</p><p>Related: #{page_link(1005, "Attachments and Images")}.</p>")}
     <p>Data model details are mirrored in <a href="/wiki/download/attachments/1002/architecture.csv?version=1">architecture.csv</a>.</p>
+    <h2 id="decisions">Decisions</h2>
+    <ul class="decision-list">
+      <li data-decision-state="decided">Postgres holds the content; files live in the blob store.</li>
+      <li data-decision-state="decided">A macro is resolved at sync time, never in the reader's browser.</li>
+      <li data-decision-state="open">Whether to index task lists ahead of the first report.</li>
+    </ul>
+    <h2 id="open-work">Open work</h2>
+    <ul class="inline-task-list">
+      <li data-inline-task-id="1" class="checked"><span class="aui-icon aui-icon-small aui-iconfont-tick">✓</span> Store both the storage format and the export view</li>
+      <li data-inline-task-id="2"><span class="aui-icon aui-icon-small aui-iconfont-tick">☐</span> Draw every macro the editor offers</li>
+      <li data-inline-task-id="3"><span class="aui-icon aui-icon-small aui-iconfont-tick">☐</span> Measure a report over a space of a hundred thousand pages</li>
+    </ul>
     <p>Back to #{page_link(1001, "Getting Started")}.</p>
     """)
   end
@@ -411,6 +423,13 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     <p>An excerpt include reads the excerpt another page declares, not its body:</p>
     <div class="mirror-macro" data-macro="excerpt-include" data-page="Architecture Overview"></div>
     <div class="mirror-macro" data-macro="contributors" data-limit="5"></div>
+    <div class="mirror-macro" data-macro="labels-list"></div>
+    <div class="mirror-macro" data-macro="tasks-report"></div>
+    <div class="mirror-macro" data-macro="decision-report"></div>
+    <div class="mirror-macro" data-macro="user-profile" data-user="#{account_id("Jane Doe")}"></div>
+    <div class="mirror-macro" data-macro="attachments"></div>
+    <div class="mirror-macro" data-macro="include" data-page="Architecture Overview"></div>
+    <div class="mirror-macro" data-macro="toc"></div>
     """)
   end
 

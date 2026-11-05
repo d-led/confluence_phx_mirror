@@ -66,11 +66,14 @@ defmodule ConfluencePhxMirror.Sync.ChildChangesTest do
     end
 
     test "the page's own version is left exactly as it was" do
-      page!(CommentedSource.page_id())
+      # Read it rather than naming it: the claim is "unchanged", and a literal
+      # copied from the demo content goes stale the moment that content is
+      # edited — which says nothing about what this test is about.
+      before = page!(CommentedSource.page_id()).version_number
 
       assert {:ok, _run} = Sync.run(:incremental, source: CommentedSource, since: empty_window())
 
-      assert page!(CommentedSource.page_id()).version_number == 15
+      assert page!(CommentedSource.page_id()).version_number == before
     end
 
     test "the file pasted into the comment is mirrored and served under the page" do
