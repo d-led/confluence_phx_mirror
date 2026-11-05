@@ -422,7 +422,7 @@ fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                 if !matches!(child.try_wait(), Ok(None)) {
                     return Err(Failure {
-                        trouble: last_words(&arriving, &shared),
+                        trouble: last_words(&arriving, shared),
                         log: log_path,
                     });
                 }
@@ -431,7 +431,7 @@ fn start_sidecar(app: &AppHandle, shared: &SharedState) -> Result<(Child, String
             // what it last said.
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 return Err(Failure {
-                    trouble: last_words(&arriving, &shared),
+                    trouble: last_words(&arriving, shared),
                     log: log_path,
                 });
             }
