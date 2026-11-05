@@ -490,6 +490,17 @@ environment variable and by nothing else:
   apply inside them — the list never grants what Confluence restricts. Unset
   keeps today's meaning (every space the permissions leave open), so no existing
   deployment changes silently.
+* **What a stranger reads is anonymised, and that is the default — not a second
+  switch to remember.** A page a stranger may open is drawn without bylines,
+  without comment authors, without presence, without the people directory and
+  without links to anybody's profile. Today that needs
+  `CM_ANONYMIZE_CONTRIBUTORS=true`, and forgetting it publishes the identities of
+  exactly the pages meant to be public: a leak that looks like a working site. So
+  the rule is *public ⇒ anonymised*. A reader with an account reading the same
+  page keeps what they always saw, because the decision is made per reader and
+  per page rather than once per deployment. No UI for it and no per-space toggle
+  in the database: an exception, if a deployment ever needs one, is an
+  environment variable read at boot like the list itself.
 * Fail closed on the reading side: an anonymous request for a page outside the
   list gets the 404 an unknown page gets, so a wrong key reveals nothing.
 
