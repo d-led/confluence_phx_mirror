@@ -561,11 +561,21 @@ purpose, and indexing is what a documentation site wants).
   is synced again.
 * Space icons are mirrored from the download link Confluence publishes (translated
   into the REST attachment link, which is the one that accepts an API token). A
-  personal space's icon is the owner's avatar and Confluence redirects it to
-  gravatar, outside the hosts the client may download from, so such a space keeps
-  the key tile.
+* A personal space's icon is the owner's avatar, and Confluence answers that
+  path with a redirect to `gravatar.com`. `gravatar.com` is an allowed download
+  host, so the picture is fetched once into the blob store like any attachment,
+  and the reader is never sent there.
 * `include`-family macros are forwarded from `export_view` without an audience
   check (see the dynamic-content section above).
 * Live macros that need an Atlassian session (Jira issue detail, user hover
   cards) render as the link/placeholder Confluence puts in `export_view`.
 * S3 blob storage is an interface, not an implementation, in this PoC.
+* The desktop tool's Rust graph carries `glib` 0.18.5, which GitHub reports as
+  GHSA-wrw7-89jp-8q8g — unsoundness in the `Iterator` impls of
+  `glib::VariantStrIter`. It cannot be fixed by bumping: `tauri` asks for
+  `gtk ^0.18`, `gtk` asks for `glib ^0.18`, and the first fixed release
+  (`glib` 0.20.0) is one no `gtk` asks for yet — `gtk`'s newest release is 0.19.0.
+  Nothing in this crate names `glib` or `gtk`; they arrive through tauri's Linux
+  backend, and the tool is built for macOS and Windows. The alert is dismissed as
+  a tolerable risk and `.github/dependabot.yml` will not propose that bump; both
+  go away when tauri moves to `gtk` 0.19 or later.

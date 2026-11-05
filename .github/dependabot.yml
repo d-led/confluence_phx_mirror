@@ -38,3 +38,19 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+
+  # The desktop tool's Rust graph is watched for alerts, not bumped: every crate
+  # in it comes from `tauri`, and tauri is the thing that decides when they move.
+  # `glib` 0.18.5 carries GHSA-wrw7-89jp-8q8g and the only fixed release, 0.20.0,
+  # is one no `gtk` asks for yet (newest `gtk` is 0.19.0) — so a bump cannot be
+  # made, and a bot opening that PR every week would be noise. The reasoning and
+  # the condition for removing this block are in docs/design-notes.md, "Known
+  # limitations".
+  - package-ecosystem: cargo
+    directory: "/src-tauri"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: glib
+        versions: ["< 0.20.0"]
