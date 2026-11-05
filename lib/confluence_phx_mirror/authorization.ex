@@ -51,7 +51,8 @@ defmodule ConfluencePhxMirror.Authorization do
   @spec can_read_space?(Scope.t(), ConfluencePhxMirror.Mirror.Space.t()) :: boolean()
   def can_read_space?(%Scope{} = scope, space) do
     Scope.admin?(scope) or owns?(scope, space) or
-      (not personal_space?(space) and space_allows?(scope, space.id))
+      (not personal_space?(space) and space_allows?(scope, space.id) and
+         listed_for_strangers?(scope, space))
   end
 
   @doc "Whether the reader may open a page or blog post."
@@ -126,6 +127,7 @@ defmodule ConfluencePhxMirror.Authorization do
           (s.type == "personal" and fragment("lower(?)", s.key) == ^owner_key(scope))
       )
       |> deny_unlisted_to_strangers(scope)
+      |> deny_spaces_off_the_list_to_strangers(scope)
     end
   end
 
@@ -169,6 +171,7 @@ defmodule ConfluencePhxMirror.Authorization do
           (not exists(page_read_restrictions()) or exists(page_read_restrictions_for(scope)))
       )
       |> deny_unlisted_spaces_to_strangers(scope)
+      |> deny_pages_off_the_list_to_strangers(scope)
     end
   end
 
@@ -186,6 +189,45 @@ defmodule ConfluencePhxMirror.Authorization do
     if stranger?(scope),
       do: where(query, [p], exists(page_space_permissions())),
       else: query
+  end
+
+  # The list of public spaces narrows the site-wide answer: a stranger reads the
+  # spaces this deployment names, and nothing else. An unset list keeps the
+  # old meaning, because a deployment that never heard of the list must not
+  # change behaviour because it was added.
+  defp deny_spaces_off_the_list_to_strangers(query, %Scope{} = scope) do
+    if stranger?(scope) and Publishing.public_spaces() != [] do
+      keys = Publishing.public_spaces()
+      where(query, [s], fragment("upper(?)", s.key) in ^keys)
+    else
+      query
+    end
+  end
+
+  defp deny_pages_off_the_list_to_strangers(query, %Scope{} = scope) do
+    if stranger?(scope) and Publishing.public_spaces() != [] do
+      where(query, [p], p.space_id in subquery(listed_space_ids()))
+    else
+      query
+    end
+  end
+
+  defp listed_space_ids do
+    keys = Publishing.public_spaces()
+
+    from(s in Space, where: fragment("upper(?)", s.key) in ^keys, select: s.id)
+  end
+
+  # The same question as the two queries above, for a space already in hand.
+  defp listed_for_strangers?(%Scope{} = scope, %{key: key}),
+    do: listed_for_strangers?(scope, key)
+
+  defp listed_for_strangers?(%Scope{} = scope, space_key) do
+    not stranger?(scope) or
+      case Publishing.public_spaces() do
+        [] -> true
+        _keys -> Publishing.public_space?(space_key)
+      end
   end
 
   # A stranger is a reader with no account on a deployment that serves one: the
@@ -296,7 +338,8 @@ defmodule ConfluencePhxMirror.Authorization do
   Offline cousins of `restrict_spaces/2`: a caller that has pages in hand (an
   archive, a page of search results) asks once, and the answer costs a fixed
   three queries no matter how many pages there are — the spaces' permissions,
-  which of those spaces are personal, and the pages' restrictions.
+  which of those spaces are personal, and the pages' restrictions. A stranger
+  on a deployment with a public list costs one more: the spaces' keys.
   """
   @spec readable_pages(Scope.t(), [ConfluencePhxMirror.Mirror.Page.t()]) ::
           [ConfluencePhxMirror.Mirror.Page.t()]
@@ -307,8 +350,9 @@ defmodule ConfluencePhxMirror.Authorization do
       space_ids = Enum.map(pages, & &1.space_id)
       spaces = space_permissions_by(space_ids)
       owners = personal_spaces_by(space_ids)
+      keys = if stranger?(scope), do: space_keys_by(space_ids), else: %{}
       restrictions = page_restrictions_by(Enum.map(pages, & &1.id))
-      Enum.filter(pages, &visible?(scope, &1, spaces, owners, restrictions))
+      Enum.filter(pages, &visible?(scope, &1, spaces, owners, keys, restrictions))
     end
   end
 
@@ -360,8 +404,9 @@ defmodule ConfluencePhxMirror.Authorization do
     end
   end
 
-  defp visible?(scope, page, spaces, owners, restrictions) do
+  defp visible?(scope, page, spaces, owners, keys, restrictions) do
     space_visible?(scope, page.space_id, spaces, owners) and
+      listed_for_strangers?(scope, Map.get(keys, page.space_id)) and
       allows?(scope, Map.get(restrictions, page.id, []))
   end
 
@@ -502,6 +547,15 @@ defmodule ConfluencePhxMirror.Authorization do
     ids = ids(space_ids)
 
     from(s in Space, where: s.id in ^ids and s.type == "personal", select: {s.id, s.key})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  # Only asked for a stranger: the keys are what the public list is compared to.
+  defp space_keys_by(space_ids) do
+    ids = ids(space_ids)
+
+    from(s in Space, where: s.id in ^ids, select: {s.id, s.key})
     |> Repo.all()
     |> Map.new()
   end

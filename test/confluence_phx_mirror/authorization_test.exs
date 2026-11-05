@@ -127,6 +127,75 @@ defmodule ConfluencePhxMirror.AuthorizationTest do
     end
   end
 
+  describe "a public subset of the spaces" do
+    # Two spaces the site marks anonymous, so the only thing between a stranger
+    # and the second one is the list.
+    setup do
+      TestConfig.put(:public_site, true)
+      TestConfig.put(:public_spaces, ["openbook"])
+
+      spaces =
+        for key <- ~w(OPENBOOK SECRET) do
+          space = space_fixture(%{key: key, name: "Space #{key}"})
+
+          {:ok, _} =
+            Mirror.replace_space_permissions(space, [
+              %{operation: "read", subject_type: "anonymous", subject_key: nil}
+            ])
+
+          space
+        end
+
+      [open, secret] = spaces
+
+      %{
+        open: open,
+        secret: secret,
+        open_page: page_fixture(open, %{confluence_id: 91_101, title: "Runbook"}),
+        secret_page: page_fixture(secret, %{confluence_id: 91_102, title: "Salaries"})
+      }
+    end
+
+    test "a stranger reads the listed space", %{open: open, open_page: page} do
+      assert Authorization.can_read_space?(anonymous(), open)
+      assert Authorization.can_read_page?(anonymous(), page)
+    end
+
+    test "and not the one beside it, however open its permissions", %{
+      secret: secret,
+      secret_page: page
+    } do
+      refute Authorization.can_read_space?(anonymous(), secret)
+      refute Authorization.can_read_page?(anonymous(), page)
+      assert Authorization.readable_pages(anonymous(), [page]) == []
+    end
+
+    test "the catalogue and the sidebar agree with the predicate", %{
+      open_page: open_page,
+      secret_page: secret_page
+    } do
+      keys = Enum.map(Authorization.readable_spaces(anonymous()), & &1.key)
+
+      assert "OPENBOOK" in keys
+      refute "SECRET" in keys
+
+      ids =
+        from(p in Page,
+          as: :page,
+          where: p.confluence_id in ^[open_page.confluence_id, secret_page.confluence_id],
+          select: p.confluence_id
+        )
+
+      assert Repo.all(Authorization.restrict_pages(ids, anonymous())) == [open_page.confluence_id]
+    end
+
+    test "the same pages are still there for a reader with an account", %{
+      secret_page: page
+    } do
+      assert Authorization.can_read_page?(reader("someone@example.com"), page)
+    end
+  end
+
   describe "a personal space" do
     setup do
       personal =
