@@ -763,6 +763,20 @@ fn waiting_page() -> String {
 /// exits without the window ever hearing an address — `this database belongs to
 /// the site … but the mirror is configured for …` was one such refusal, and it is
 /// the whole answer.
+/// What build this window is, in one line.
+///
+/// The three facts come from `priv/build_info.json` through `build.rs`, which is
+/// the same file the release reports in its admin footer — so a crash report and
+/// the app's own "about" cannot disagree about which build is at fault.
+fn provenance() -> String {
+    format!(
+        "Confluence Export {} · commit {} · built {}",
+        env!("BUILD_VERSION"),
+        env!("BUILD_REVISION"),
+        env!("BUILD_BUILT_AT")
+    )
+}
+
 fn failure_page(failure: &Failure, output: &VecDeque<String>) -> String {
     // The release's own words, folded away. They are the answer for whoever is
     // debugging and noise for whoever is not, so the page leads with a sentence
@@ -801,10 +815,12 @@ fn failure_page(failure: &Failure, output: &VecDeque<String>) -> String {
         "<!doctype html><html><head><meta charset=\"utf-8\">\
          <title>Confluence Export</title>{STYLE}</head>\
          <body><main><h1>{}</h1>\n         <p class=\"lead\">{}</p>\
+         <p class=\"log\">This build: {}</p>\
          <p class=\"log\">Quit the app and open it again once that is dealt with.</p>\
          {report}{details}{log}</main></body></html>",
         escape_html(failure.trouble.title()),
-        escape_html(failure.trouble.explain())
+        escape_html(failure.trouble.explain()),
+        escape_html(&provenance())
     )
 }
 
@@ -836,7 +852,7 @@ fn issue_url(trouble: Trouble, output: &VecDeque<String>) -> String {
         trouble.title(),
         std::env::consts::OS,
         std::env::consts::ARCH,
-        env!("CARGO_PKG_VERSION"),
+        provenance(),
     );
 
     // GitHub refuses a query past ~8 KB, and a body nothing can receive is no
@@ -1335,7 +1351,12 @@ mod tests {
 
         assert!(url.starts_with(ISSUES_URL));
         assert!(url.contains(std::env::consts::OS));
-        assert!(url.contains(env!("CARGO_PKG_VERSION")));
+
+        // The build, not just a crate version: a maintainer has to be able to
+        // say which commit and which day produced the thing that broke.
+        assert!(url.contains(env!("BUILD_VERSION")));
+        assert!(url.contains(env!("BUILD_REVISION")));
+
         assert!(
             url.contains("shutdown%3A%20the%20catalogue%20went%20away"),
             "the release's last line is missing from the report"
