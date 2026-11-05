@@ -91,9 +91,18 @@ if [[ $platform == macos ]]; then
   bundle_config="$PWD/src-tauri/tauri.bundle.conf.json"
   asset="confluence-export-macos.zip"
   stage="$app/Contents/Resources/rel/$name"
+elif [[ $platform == windows ]]; then
+  # A setup.exe, which is what a person on Windows expects to double-click. Its
+  # config carries the release as `bundle.resources` — the copy step that fails on
+  # macOS toolchain and needs no workaround here — so the installed window finds
+  # `rel\` beside its own executable, which is what `resource_dir()` means there.
+  installer_config="$PWD/src-tauri/tauri.bundle.windows.json"
+  installer="$out/confluence-export-windows-setup.exe"
+  stage="$out/confluence-export-$platform/rel/$name"
+  asset="confluence-export-windows"
 else
   stage="$out/confluence-export-$platform/rel/$name"
-  asset=$([[ $platform == linux ]] && echo confluence-export-linux.tar.gz || echo confluence-export-windows)
+  asset="confluence-export-linux.tar.gz"
 fi
 
 install_after=no
@@ -193,12 +202,21 @@ boot_check() {
   # Windows it is the `.bat`, which is the launcher the release ships there.
   carried="$PWD/$stage/$launcher"
 
-  # Started directly on every platform: bash runs a `.bat` through `cmd` itself,
-  # and `cmd` will not resolve a POSIX path — handing one to `cmd /C` is how the
-  # Windows boot check failed with "'_build' is not recognized as an internal or
-  # external command".
-  HOME="$home" RELEASE_DISTRIBUTION=none "$carried" start >"$log" 2>&1 &
-  pid=$!
+  # Windows boots it the way the window does: `cmd`, `call`, a Windows path.
+  # Starting the `.bat` from bash instead is a different shape of invocation —
+  # bash hands `cmd` a POSIX path, `%~dp0` comes back with backslashes, and the
+  # release's launcher is happy. The window gives the same file a path built by
+  # Rust, and that is the one that has to work: a separator the batch file inherits
+  # turns the release's boot file into one `erl` cannot find ("cannot get boot
+  # file"), which is a download that opens on nothing.
+  if [[ $platform == windows ]]; then
+    HOME="$home" RELEASE_DISTRIBUTION=none \
+      cmd //c call "$(cygpath -w "$carried")" start >"$log" 2>&1 &
+    pid=$!
+  else
+    HOME="$home" RELEASE_DISTRIBUTION=none "$carried" start >"$log" 2>&1 &
+    pid=$!
+  fi
 
   for _ in $(seq 1 60); do
     url=$(sed -n 's/^desktop ui: //p' "$log" | head -1)
@@ -326,13 +344,33 @@ assemble() {
       rm -f "$out/$asset"
       assemble_tarball
       ;;
-    # Windows ships as a folder: `upload-artifact` zips it for the workflow, and
-    # a local run has the same folder to zip by hand. Choosing an archive format
-    # here would only add a zip tool to a platform that does not have `tar` —
-    # and there is nothing to assemble, so nothing to remove either (`rm -f` on
-    # the folder the staging step just filled says "Is a directory").
-    windows) echo "the artifact is $out/confluence-export-windows/" ;;
+    # Windows ships two shapes of the same build: the folder, which is a complete
+    # portable install, and the NSIS setup a person double-clicks. The installer is
+    # built by `tauri-bundler`; when it is not there, the folder is still a working
+    # download, so this reports the miss instead of failing a build that produced
+    # something usable.
+    windows)
+      copy_installer
+      echo "the artifact is $out/confluence-export-windows/"
+      ;;
   esac
+}
+
+# The setup.exe `tauri-bundler` left, named after the platform rather than after
+# the product version — the file a person downloads should not have to be
+# decoded.
+copy_installer() {
+  local built
+
+  built=$(find src-tauri/target/release/bundle/nsis -name '*-setup.exe' -print -quit 2>/dev/null || true)
+
+  if [[ -z $built ]]; then
+    echo "no setup.exe was bundled: the portable folder is the Windows download"
+    return 0
+  fi
+
+  cp "$built" "$installer"
+  ls -lh "$installer"
 }
 
 assemble_bundle() {
@@ -464,6 +502,18 @@ fi
 if [[ $platform == macos ]]; then
   run "building the application shell" \
     cargo tauri build --bundles app --config "$bundle_config"
+elif [[ $platform == windows ]]; then
+  # Bundling on, because the point of this platform's artifact is an installer:
+  # `tauri-bundler` builds the window, copies `rel\` in as a resource, and hands
+  # the lot to NSIS. The portable folder below is still staged from the same
+  # window binary, so a machine that downloads the zip gets what it always got.
+  #
+  # The bundle directory is cleared first: the workflow caches `src-tauri/target`,
+  # and a setup.exe left by a previous run is last week's release carrying this
+  # week's name.
+  rm -rf src-tauri/target/release/bundle
+  run "building the window and its installer" \
+    cargo tauri build --config "$installer_config"
 else
   # No bundling: on these platforms the artifact *is* a folder, and letting
   # Tauri bundle would run its resource copy — the step that fails on this
