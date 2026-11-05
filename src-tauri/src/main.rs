@@ -36,6 +36,10 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder}
 /// a database open.
 struct Sidecar(Mutex<Option<Child>>);
 
+/// Where the running mirror listens, once the release has said so. The window's
+/// navigation policy reads it to tell this window's own pages from the site's.
+static ORIGIN: Mutex<Option<String>> = Mutex::new(None);
+
 /// Why the release could not be started — as one of a few situations a person
 /// can act on, not as whatever the release happened to print.
 ///
@@ -286,12 +290,111 @@ fn splash_window(app: &tauri::App) -> Result<WebviewWindow, Box<dyn std::error::
             .title("Confluence Export")
             .inner_size(1024.0, 760.0)
             .min_inner_size(720.0, 560.0)
+            // A mirror is one origin. Rendered content still carries the links
+            // Confluence gave it — an attachment that fell back to its site, the
+            // byline that opens the original page — and a window that follows
+            // one of them leaves the mirror for a login page it cannot sign in
+            // to. On a site that bounces the browser between the login and the
+            // page, that is a window that reloads until Confluence answers "too
+            // many requests", which is the whole of what the person sees.
+            .on_navigation(leaves_for_the_browser)
             .build()?,
     )
 }
 
+/// Whether a click may load in this window; anything else leaves for the
+/// person's own browser, where they may already have a session.
+fn leaves_for_the_browser(target: &tauri::Url) -> bool {
+    let origin = mirror_origin();
+
+    match destination(target, origin.as_ref()) {
+        Destination::Window => true,
+        Destination::Browser => {
+            if matches!(target.scheme(), "http" | "https") {
+                open_externally(target);
+            }
+
+            false
+        }
+    }
+}
+
+/// Where a click belongs: in this window, or in the person's browser.
+#[derive(Debug, PartialEq, Eq)]
+enum Destination {
+    Window,
+    Browser,
+}
+
+fn destination(target: &tauri::Url, origin: Option<&tauri::Url>) -> Destination {
+    // The splash page is this window's own, and it is there before any server is.
+    if target.scheme() == SPLASH {
+        return Destination::Window;
+    }
+
+    match origin {
+        Some(origin) if same_origin(target, origin) => Destination::Window,
+        _ => Destination::Browser,
+    }
+}
+
+fn same_origin(target: &tauri::Url, origin: &tauri::Url) -> bool {
+    target.scheme() == origin.scheme()
+        && target.host_str() == origin.host_str()
+        && target.port_or_known_default() == origin.port_or_known_default()
+}
+
+fn mirror_origin() -> Option<tauri::Url> {
+    ORIGIN.lock().ok()?.as_ref().and_then(|url| url.parse().ok())
+}
+
+fn remember_mirror(url: &str) {
+    if let Ok(mut origin) = ORIGIN.lock() {
+        *origin = Some(url.to_string());
+    }
+}
+
+/// Hands a link to the system's browser. Failure is not worth a dialog: the
+/// window has already refused to go there.
+fn open_externally(url: &tauri::Url) -> bool {
+    let (program, mut args) = browser_command(url.as_str());
+
+    Command::new(program)
+        .args(&mut args)
+        .spawn()
+        .map(|_| true)
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn browser_command(url: &str) -> (&'static str, Vec<String>) {
+    ("open", vec![url.to_string()])
+}
+
+// `start` reads the first quoted argument as a window title, so the empty one
+// is not padding: without it a URL with no spaces opens as a title and nothing
+// happens.
+#[cfg(target_os = "windows")]
+fn browser_command(url: &str) -> (&'static str, Vec<String>) {
+    (
+        "cmd",
+        vec![
+            "/C".to_string(),
+            "start".to_string(),
+            String::new(),
+            url.to_string(),
+        ],
+    )
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn browser_command(url: &str) -> (&'static str, Vec<String>) {
+    ("xdg-open", vec![url.to_string()])
+}
+
 fn navigate(window: &WebviewWindow, url: &str) {
     if let Ok(url) = url.parse::<tauri::Url>() {
+        remember_mirror(url.as_str());
         let _ = window.navigate(url);
     }
 }
@@ -1201,5 +1304,55 @@ mod tests {
         drop(lines);
 
         assert_eq!(last_words(&arriving, &shared), Trouble::FolderInUse);
+    }
+
+    fn mirror() -> tauri::Url {
+        "http://127.0.0.1:43100".parse().unwrap()
+    }
+
+    // Rendered content keeps the links Confluence gave it. Following one used to
+    // leave the mirror for a site this window has no session on — and a login
+    // that bounces back and forth ends with the site answering "too many
+    // requests", which is not about the mirror at all.
+    #[test]
+    fn a_page_of_the_mirror_stays_in_the_window() {
+        let page = "http://127.0.0.1:43100/spaces/ENG/pages/1003/Macros+Gallery"
+            .parse()
+            .unwrap();
+
+        assert_eq!(destination(&page, Some(&mirror())), Destination::Window);
+    }
+
+    #[test]
+    fn a_link_to_the_site_leaves_for_the_browser() {
+        let site = "https://dled.atlassian.net/wiki/spaces/MFS/pages/1048577"
+            .parse()
+            .unwrap();
+
+        assert_eq!(destination(&site, Some(&mirror())), Destination::Browser);
+    }
+
+    #[test]
+    fn another_port_on_the_same_host_is_not_the_mirror() {
+        let neighbour = "http://127.0.0.1:4000/spaces/ENG".parse().unwrap();
+
+        assert_eq!(
+            destination(&neighbour, Some(&mirror())),
+            Destination::Browser
+        );
+    }
+
+    #[test]
+    fn the_splash_page_is_this_window_s_own() {
+        let splash = "splash://localhost/".parse().unwrap();
+
+        assert_eq!(destination(&splash, None), Destination::Window);
+    }
+
+    #[test]
+    fn nothing_but_the_splash_page_loads_before_the_mirror_is_known() {
+        let page = "http://127.0.0.1:43100/spaces/ENG".parse().unwrap();
+
+        assert_eq!(destination(&page, None), Destination::Browser);
     }
 }

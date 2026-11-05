@@ -496,6 +496,25 @@ The variable is opt-in on purpose. `scripts/package.sh` runs the release with an
 inherited stdin, which under CI may already be at end-of-file; a release that
 watched stdin unconditionally would exit immediately and fail the boot check.
 
+### A link cannot take the window off the mirror
+
+The window is pointed at one origin, and it stays there. `on_navigation` asks
+`destination/2`: a page of the mirror — same scheme, host and port — loads in the
+window, the splash scheme is always the window's own, and **everything else
+leaves for the person's browser** (`open` on macOS, `start` under `cmd` on
+Windows, `xdg-open` elsewhere). Before the release has announced its address,
+nothing but the splash page is allowed, so there is no window in which a link
+could be followed by accident.
+
+This is not tidiness. Rendered content keeps the links Confluence gave it — an
+attachment that fell back to its site, the byline that opens the original page —
+and a webview that follows one of them lands on a login page it has no session
+for. A site that bounces between its login and the page it was asked for turns
+that into a window that reloads until the site answers **"too many requests"**:
+the person sees a throttle that has nothing to do with the mirror, and the
+mirror's own screens never load. Handing the link to the browser instead is what
+makes the person's existing session, and the site's own rate limit, apply to it.
+
 ### When the folder and the configuration disagree
 
 The tool does not die of it. A mirror holds one site, so a folder that belongs to
