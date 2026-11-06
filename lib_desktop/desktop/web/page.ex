@@ -106,12 +106,12 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
           <h1>Ready</h1>
           #{site_warning()}
           <p class="lede">This workspace mirrors <strong>#{escape(Settings.site() || "")}</strong>.</p>
+          #{way_forward("/__tool/spaces", "Choose spaces to mirror")}
           <dl>
             <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
             <dt>Attachments</dt><dd>#{escape(Settings.blobs())}</dd>
           </dl>
           #{workspace_actions()}
-          <p class="note">Next: <a href="/__tool/spaces">choose the spaces to mirror</a>.</p>
           """,
           current: "/__tool"
         )
@@ -125,15 +125,22 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
           <p class="lede">Everything works on what is in the folder below — mirroring
           is what needs a site and a token.</p>
           <p class="error" role="status">Still needed: #{Enum.map_join(missing, ", ", &Atom.to_string/1)}</p>
+          #{way_forward("/__tool/setup", "Connect to Confluence")}
           <dl>
             <dt>Folder</dt><dd>#{escape(Settings.root())}</dd>
           </dl>
           #{workspace_actions()}
-          <p class="note">Next: <a href="/__tool/setup">connect to Confluence</a>.</p>
           """,
           current: "/__tool"
         )
     end
+  end
+
+  # The way forward is a button, and it is the only one: this screen used to lead
+  # with "Show the folder in Finder", so the biggest thing on it opened a file
+  # manager and the next step was a sentence with a link in it.
+  defp way_forward(href, label) do
+    ~s(<p class="actions"><a class="button primary" href="#{href}">#{label}</a></p>)
   end
 
   # A folder that belongs to one site and an app set up for another is what a
@@ -180,11 +187,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
   # The folder is the tool's own state, and Finder is where a person handles it:
   # deleting it is how somebody starts over, and a delete button in here would be
   # one click away from an empty mirror with no undo. Opening the folder leaves
-  # the decision where it can be seen.
+  # the decision where it can be seen — which is also why it is the quiet button.
   defp workspace_actions do
     """
     <form method="post" action="/__tool/open-folder" class="inline">
-      <button type="submit">Show the folder in #{file_manager()}</button>
+      <button type="submit" class="secondary">Show the folder in #{file_manager()}</button>
     </form>
     <p class="hint">To start over, quit the app and delete that folder; the next launch
     makes a new one.</p>
@@ -289,36 +296,21 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     # everything the filter shows; tick anything and it takes exactly that. The
     # checkboxes carry `form="selection"` so they drive that one form from
     # inside the list, instead of a form per row and one press per space.
+    #
+    # The picker is drawn whether or not a run is going. It used to be drawn only
+    # while the tool was idle, so a person who had just started one space's
+    # mirror saw no way to choose another and no word about why — a screen that
+    # says the choice is closed, which is the worst thing a control can say
+    # silently. While a run is going the picker is a named region under the run's
+    # own lead, and it says what pressing it does.
+    running? = going?(Map.get(meta, :run))
+    configured = Map.get(meta, :configured, 0)
+    query = Map.get(meta, :query, "")
+
     action =
-      if going?(Map.get(meta, :run)) do
-        """
-        <p class="note">
-          A run is going. <a href="/__tool/mirror">Go to sync log</a>
-        </p>
-        """
-      else
-        configured = Map.get(meta, :configured, 0)
-        noun = if configured > 0, do: "configured space", else: "space"
-
-        """
-        <form method="post" action="/__tool/mirror" id="selection" class="everything">
-          <input type="hidden" name="q" value="#{escape(Map.get(meta, :query, ""))}">
-          <button type="submit"#{blocked} data-mirror>Mirror <span data-count>#{if configured > 0, do: configured, else: matching}</span> <span data-noun>#{noun}</span></button>
-          <a href="/__tool/mirror" class="next">Go to sync log</a>
-        </form>
-        <p class="note">
-          #{if configured > 0, do: "The spaces you configured, one after another. Nothing is added to that set.", else: "Tick nothing to take every space the filter shows, or tick the ones you want."}
-        </p>
-        """
-      end
-
-    truncated =
-      if matching > length(spaces) do
-        """
-        <p class="note">
-          Showing #{length(spaces)} of #{matching}. Narrow the filter to reach the rest.
-        </p>
-        """
+      if matching > 0 do
+        lead = if running?, do: lead_actions(), else: ""
+        lead <> choose(matching, configured, running?, blocked, query)
       else
         ""
       end
@@ -337,7 +329,6 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
                placeholder="Filter by name or key" data-filter autofocus>
       </form>
       <ul class="spaces">#{rows}</ul>
-      #{truncated}
       <p class="note" data-empty #{if spaces != [], do: "hidden", else: ""}>Nothing matches that.</p>
       """,
       current: "/__tool/spaces",
@@ -345,6 +336,65 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       script: true
     )
   end
+
+  defp lead_actions do
+    """
+    <p class="actions">
+      <a class="button primary" href="/">Continue to the mirror</a>
+      <a class="button secondary" href="/__tool/mirror">Follow the run</a>
+    </p>
+    """
+  end
+
+  # The picker, and — while a run is going — the words that make it obvious what
+  # happens next: this one goes quiet and queues, it does not replace or
+  # interrupt anything. The heading is what a person skimming for "how do I add
+  # another space" is looking for, so the region has one instead of being a bare
+  # button under a note.
+  defp choose(matching, configured, running?, blocked, query) do
+    count = if configured > 0, do: configured, else: matching
+    noun = count_noun(count, configured > 0)
+    verb = if running?, do: "Queue", else: "Mirror"
+    quiet = if running?, do: ~s( class="secondary"), else: ""
+
+    heading =
+      if running? do
+        """
+        <h2 id="choose-heading">Choose more spaces</h2>
+        <p class="note">A run is going. What you choose here is added to the queue
+        and starts when the current run ends — nothing that is running is
+        interrupted.</p>
+        """
+      else
+        ""
+      end
+
+    note = if running?, do: "", else: ~s(<p class="note">#{selection_note(configured)}</p>)
+
+    """
+    #{heading}
+    <form method="post" action="/__tool/mirror" id="selection" class="everything"#{if running?, do: ~s( aria-labelledby="choose-heading"), else: ""}>
+      <input type="hidden" name="q" value="#{escape(query)}">
+      <button type="submit"#{quiet}#{blocked} data-mirror>#{verb} <span data-count>#{count}</span> <span data-noun>#{noun}</span></button>
+      #{if running?, do: "", else: ~s(<a href="/__tool/mirror" class="next">Follow the run</a>)}
+    </form>
+    #{note}
+    """
+  end
+
+  defp selection_note(configured) when configured > 0,
+    do: "The spaces you configured, one after another. Nothing is added to that set."
+
+  defp selection_note(_configured),
+    do: "Tick nothing to take every space the filter shows, or tick the ones you want."
+
+  # "Mirror 1 space", "Mirror 934 spaces": a count and its noun agree, which the
+  # screen did not do while the number was the server's and the noun was a
+  # constant.
+  defp count_noun(1, false), do: "space"
+  defp count_noun(_count, false), do: "spaces"
+  defp count_noun(1, true), do: "configured space"
+  defp count_noun(_count, true), do: "configured spaces"
 
   # Where the list came from is the list's own business, not the settings': a
   # screen that named the configured site while showing the bundled sample's two
@@ -384,7 +434,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       """
       <h1>Mirroring #{escape(status.label)}</h1>
       <p class="lede">#{status.done} pages read#{waiting(status)}</p>
-      <p class="note">This page follows the run itself, not a guess at it.</p>
+      #{continue_actions("The run keeps going while you read.")}
       #{cancel_form()}
       """,
       current: "/__tool/mirror",
@@ -399,6 +449,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       <h1>Next in line</h1>
       <p class="lede">#{waiting(status) |> String.trim_leading(" · ")}</p>
       <p class="note">The run starts as soon as the one in front of it finishes.</p>
+      #{continue_actions("Whatever is mirrored already reads in the mirror.")}
       #{cancel_form()}
       """,
       current: "/__tool/mirror",
@@ -412,8 +463,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       """
       <h1>Done</h1>
       <p class="lede">#{escape(status.label)} is in the catalogue — #{status.done} pages read.</p>
-      <p class="note">The pages are read in the mirror itself.</p>
-      <p><a href="/">Read what was mirrored</a></p>
+      #{continue_actions("The pages are read in the mirror itself.")}
       """,
       current: "/__tool/mirror"
     )
@@ -425,8 +475,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       """
       <h1>Stopped</h1>
       <p class="lede">#{escape(status.label || "The run")} was cancelled after #{status.done} pages.</p>
-      <p class="note">What was read before the stop is in the catalogue and stays there.</p>
-      <p><a href="/__tool/spaces">Back to spaces</a></p>
+      #{continue_actions("What was read before the stop is in the catalogue and stays there.")}
       """,
       current: "/__tool/mirror"
     )
@@ -439,7 +488,10 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       <h1>Mirror stopped</h1>
       <p class="lede">#{escape(status.label || "The run")} could not be finished.</p>
       <p class="error" role="alert">#{escape(describe_error(status.error))}</p>
-      <p><a href="/__tool/spaces">Back to spaces</a></p>
+      <p class="actions">
+        <a class="button primary" href="/__tool/spaces">Choose spaces to try again</a>
+        <a class="button secondary" href="/">Continue to the mirror</a>
+      </p>
       """,
       current: "/__tool/mirror"
     )
@@ -450,10 +502,24 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       "Nothing running",
       """
       <h1>Nothing is running</h1>
-      <p><a href="/__tool/spaces">Choose a space</a></p>
+      <p class="actions"><a class="button primary" href="/__tool/spaces">Choose a space</a></p>
       """,
       current: "/__tool/mirror"
     )
+  end
+
+  # The one action offered once a run exists: read what was mirrored. Beside it,
+  # and quieter, the way back to choosing more — a person who has mirrored
+  # something usually wants to look at it, and a person who wants more should not
+  # have to find it in a sidebar.
+  defp continue_actions(note) do
+    """
+    <p class="actions">
+      <a class="button primary" href="/">Continue to the mirror</a>
+      <a class="button secondary" href="/__tool/spaces">Choose more spaces</a>
+    </p>
+    <p class="note">#{escape(note)}</p>
+    """
   end
 
   # Cancel is a plain form: it posts, the run stops at its next page, and the
@@ -617,7 +683,6 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     <div class="run" data-run data-status-url="/__tool/status">
       <span class="dot" aria-hidden="true"></span>
       <span data-run-text>#{escape(run_text(status))}</span>
-      <a href="/__tool/mirror">Go to sync log</a>
     </div>
     """
   end
@@ -627,7 +692,6 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
     <div class="run" data-run data-status-url="/__tool/status">
       <span class="dot" aria-hidden="true"></span>
       <span data-run-text>#{escape(run_text(status))}</span>
-      <a href="/__tool/mirror">Go to sync log</a>
     </div>
     """
   end
@@ -686,7 +750,11 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
 
         counts.forEach(function (count) { count.textContent = number; });
         nouns.forEach(function (noun) {
-          noun.textContent = ticked > 0 ? (ticked === 1 ? "selected space" : "selected spaces") : "space";
+          if (ticked > 0) {
+            noun.textContent = ticked === 1 ? "selected space" : "selected spaces";
+          } else {
+            noun.textContent = number === 1 ? "space" : "spaces";
+          }
         });
       }
 
@@ -776,121 +844,245 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
       #{if opts[:refresh], do: ~s(<meta http-equiv="refresh" content="1">), else: ""}
       <title>#{escape(title)}</title>
       <style>
-        :root { color-scheme: light dark; --accent: #2f5fe0; --line: rgba(127,127,127,.25); }
+        /* Typography first, because everything else is a decision on top of it.
+           One system stack, a 16px base with a 1.6 line height, and a short scale
+           (13 / 14 / 15 / 16 / 18 / 22 / 28px) so a screen has three sizes at
+           most. Muted text is a colour with real contrast, never `opacity`: an
+           opacity-muted label went to 3.4:1 in the light theme, which is the
+           one thing a window read all day must not do. Prose stops at 66ch, and
+           every number a person compares is tabular. */
+        :root {
+          color-scheme: light dark;
+          --accent: #2f5fe0;
+          --accent-ink: #fff;
+          --accent-soft: rgba(47, 95, 224, .1);
+          --line: rgba(127, 127, 127, .28);
+          --muted: rgba(0, 0, 0, .68);
+          --hover: rgba(127, 127, 127, .12);
+          --danger: #b42318;
+          --radius: .5rem;
+        }
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --accent: #8aa8ff;
+            --accent-ink: #10151f;
+            --accent-soft: rgba(138, 168, 255, .16);
+            --line: rgba(255, 255, 255, .18);
+            --muted: rgba(255, 255, 255, .74);
+            --hover: rgba(255, 255, 255, .08);
+            --danger: #ff9b8f;
+          }
+        }
         * { box-sizing: border-box; }
         body {
           margin: 0; min-height: 100vh;
-          display: grid; grid-template-columns: 15rem minmax(0, 1fr);
-          font: 16px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+          display: grid; grid-template-columns: 16rem minmax(0, 1fr);
+          font: 400 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
           background: Canvas; color: CanvasText;
+          -webkit-font-smoothing: antialiased;
+          text-rendering: optimizeLegibility;
         }
         /* The first-run form is one question, so it gets the whole window and
            no way out of itself. Every other screen is a place you work in. */
-        body.plain { display: block; padding: 2rem 1rem; }
-        body.plain main { max-width: 27rem; margin: 0 auto; }
+        body.plain { display: block; padding: 3rem 1rem; }
+        body.plain main { max-width: 26rem; margin: 0 auto; }
         .sidebar {
           position: sticky; top: 0; align-self: start;
           height: 100vh; overflow-y: auto;
-          padding: 1.25rem 1rem 2rem;
+          padding: 1.5rem 1rem 2rem;
           border-right: 1px solid var(--line);
-          font-size: .875rem;
+          font-size: .9375rem;
         }
-        .brand { font-weight: 700; letter-spacing: -0.01em; }
+        .brand { font-size: 1rem; font-weight: 650; letter-spacing: -0.015em; }
         .where {
-          margin: .15rem 0 1.5rem; font-size: .75rem; opacity: .55;
+          margin: .25rem 0 1.75rem; font-size: .8125rem; color: var(--muted);
           overflow-wrap: anywhere;
         }
-        .section { margin: 0 0 1.35rem; }
+        .section { margin: 0 0 1.5rem; }
         .section > span {
-          display: block; margin: 0 0 .35rem; font-size: .6875rem;
-          text-transform: uppercase; letter-spacing: .07em; opacity: .5;
+          display: block; margin: 0 0 .4rem; padding: 0 .5rem;
+          font-size: .6875rem; font-weight: 600; color: var(--muted);
+          text-transform: uppercase; letter-spacing: .09em;
         }
         .sidebar a {
-          display: block; margin: 0 -.5rem; padding: .35rem .5rem;
+          display: flex; align-items: center; min-height: 2.25rem;
+          margin: 0 -.25rem; padding: .35rem .5rem;
           border-radius: .375rem; color: inherit; text-decoration: none;
-          opacity: .78; transition: background .12s ease, opacity .12s ease;
+          transition: background .12s ease;
         }
-        .sidebar a:hover { background: rgba(127,127,127,.13); opacity: 1; }
+        .sidebar a:hover { background: var(--hover); }
         .sidebar a[aria-current="page"] {
-          background: rgba(47,95,224,.12); color: var(--accent);
-          opacity: 1; font-weight: 600;
+          background: var(--accent-soft); color: var(--accent); font-weight: 600;
         }
-        main { padding: 2.25rem clamp(1rem, 4vw, 3rem); max-width: 54rem; }
+        .sidebar a:focus-visible, .button:focus-visible, a:focus-visible {
+          outline: 2px solid var(--accent); outline-offset: 2px;
+        }
+        main {
+          padding: 2.5rem clamp(1rem, 4vw, 3rem) 4rem;
+          max-width: 60rem; width: 100%;
+        }
         @media (max-width: 720px) {
-          body { grid-template-columns: 1fr; }
+          /* The nav row is as tall as its links and the rest of the window goes
+             to the screen: stretching both rows left an empty band under the
+             nav that read as a broken page. */
+          body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
           .sidebar {
             position: sticky; height: auto; border-right: 0;
-            border-bottom: 1px solid var(--line); padding-bottom: 1rem;
+            border-bottom: 1px solid var(--line); padding: 1rem 1rem .75rem;
           }
           .where { margin-bottom: .75rem; }
-          .section { display: inline-block; margin: 0 .9rem .3rem 0; }
-          .section > span { display: inline; margin-right: .35rem; }
-          .sidebar a { display: inline-block; margin: 0 .2rem .2rem 0; }
-          main { padding: 1.5rem 1rem; }
+          .section { display: inline-block; margin: 0 1rem .25rem 0; }
+          .section > span { display: inline; margin-right: .4rem; padding: 0; }
+          .sidebar a { display: inline-flex; margin: 0 .15rem .15rem 0; }
+          main { padding: 1.5rem 1rem 3rem; }
         }
-        h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 .5rem; }
-        .lede { margin: 0 0 1.75rem; opacity: .75; }
-        .note { opacity: .6; font-size: .875rem; }
-        label { display: block; margin-bottom: 1.1rem; }
-        label span { display: block; font-size: .8125rem; font-weight: 600; margin-bottom: .35rem; }
+        h1 {
+          font-size: 1.75rem; line-height: 1.2; font-weight: 650;
+          letter-spacing: -0.02em; margin: 0 0 .5rem;
+        }
+        /* A second level exists for the one screen that has two regions: what is
+           running, and what to choose for the next one. It is a size down from
+           h1 and a step up from body, so it reads as a heading without
+           competing with the page's own title. */
+        h2 {
+          font-size: 1.125rem; line-height: 1.3; font-weight: 650;
+          letter-spacing: -0.01em; margin: 1.75rem 0 .35rem;
+        }
+        .lede, .note, .hint, p { max-width: 66ch; }
+        .lede { margin: 0 0 1.5rem; font-size: 1.0625rem; color: var(--muted); }
+        .note { margin: .5rem 0 0; font-size: .9375rem; color: var(--muted); }
+        .hint { margin: 1rem 0 0; font-size: .875rem; color: var(--muted); }
+        label { display: block; margin-bottom: 1.25rem; }
+        label span {
+          display: block; margin-bottom: .35rem;
+          font-size: .9375rem; font-weight: 600;
+        }
         input {
-          width: 100%; padding: .6rem .7rem; font: inherit; color: inherit;
-          background: Field; border: 1px solid rgba(127,127,127,.45); border-radius: .5rem;
+          width: 100%; min-height: 2.5rem; padding: .5rem .7rem;
+          font: inherit; color: inherit;
+          background: Field; border: 1px solid var(--line); border-radius: var(--radius);
           transition: border-color .15s ease, box-shadow .15s ease;
         }
         input:focus {
           outline: none; border-color: var(--accent);
-          box-shadow: 0 0 0 3px rgba(79,124,255,.25);
+          box-shadow: 0 0 0 3px var(--accent-soft);
         }
-        small { display: block; margin-top: .35rem; font-size: .75rem; opacity: .6; }
+        small { display: block; margin-top: .4rem; font-size: .875rem; color: var(--muted); }
         button {
-          width: 100%; padding: .65rem; font: inherit; font-weight: 600;
-          color: #fff; background: #2f5fe0; border: 0; border-radius: .5rem;
-          cursor: pointer; transition: background .15s ease, transform .05s ease;
+          min-height: 2.5rem; padding: .5rem 1.1rem;
+          font: inherit; font-weight: 600; color: var(--accent-ink);
+          background: var(--accent); border: 0; border-radius: var(--radius);
+          cursor: pointer; transition: filter .15s ease, transform .05s ease;
         }
-        button:hover { background: #2a54c8; }
+        button:hover { filter: brightness(.94); }
         button:active { transform: translateY(1px); }
+        button:disabled { opacity: .55; cursor: not-allowed; }
+        body.plain button { width: 100%; }
         .error {
-          margin: 0 0 1.25rem; padding: .65rem .75rem; border-radius: .5rem;
-          background: rgba(220,60,60,.12); border: 1px solid rgba(220,60,60,.35);
-          font-size: .875rem;
+          margin: 0 0 1.5rem; padding: .7rem .85rem; border-radius: var(--radius);
+          background: color-mix(in srgb, var(--danger) 10%, transparent);
+          border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+          color: var(--danger); font-size: .9375rem;
         }
-        dl { display: grid; grid-template-columns: auto 1fr; gap: .35rem 1rem;
-             margin: 0 0 1.5rem; font-size: .875rem; }
+        dl { display: grid; grid-template-columns: auto 1fr; gap: .4rem 1.25rem;
+             margin: 0 0 1.75rem; font-size: .9375rem; }
         dt { font-weight: 600; }
-        dd { margin: 0; opacity: .75; overflow-wrap: anywhere; }
-        a { color: var(--accent); }
-        ul.spaces { list-style: none; margin: 0 0 1.5rem; padding: 0; }
-        ul.spaces li { display: flex; align-items: center; justify-content: space-between;
-                       gap: 1rem; padding: .75rem 0; border-bottom: 1px solid rgba(127,127,127,.2); }
-        ul.spaces li:first-child { border-top: 1px solid rgba(127,127,127,.2); }
-        ul.spaces form { margin: 0; }
-        ul.spaces label.pick { display: flex; align-items: center; gap: .65rem;
-                               margin-right: auto; cursor: pointer; }
-        ul.spaces label.pick input { width: 1.05rem; height: 1.05rem; accent-color: #2f5fe0; }
-        ul.spaces label.pick span { display: block; }
-        button.secondary { width: auto; padding: .4rem .9rem; font-size: .8125rem;
-                           background: transparent; color: #2f5fe0;
-                           border: 1px solid rgba(47,95,224,.4); }
-        button.secondary:hover { background: rgba(47,95,224,.08); }
+        dd { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+        a { color: var(--accent); text-underline-offset: 2px; }
+        /* One prominent action per screen, and it is the way forward: the run's
+           own screen and the spaces screen both lead into the mirror. A link
+           styled like the others in the sidebar is not a lead. */
+        .actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem;
+                   margin: 0 0 .75rem; }
+        .button {
+          display: inline-flex; align-items: center; justify-content: center;
+          min-height: 2.5rem; padding: .5rem 1.1rem;
+          font: inherit; font-weight: 600; border-radius: var(--radius);
+          border: 1px solid transparent; text-decoration: none; cursor: pointer;
+          transition: background .15s ease, border-color .15s ease, filter .15s ease;
+        }
+        .button.primary { background: var(--accent); color: var(--accent-ink); }
+        .button.primary:hover { filter: brightness(.94); }
+        .button.secondary {
+          background: transparent; color: var(--accent);
+          border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+        }
+        .button.secondary:hover { background: var(--accent-soft); }
+        button.secondary {
+          min-height: 2.125rem; padding: .35rem .85rem; font-size: .875rem;
+          background: transparent; color: var(--accent);
+          border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+        }
+        button.secondary:hover { background: var(--accent-soft); }
         form.everything { margin: 0 0 .5rem; display: flex; align-items: center; gap: .75rem; }
         form.everything button { flex: 1; }
-        a.next { font-size: .8125rem; white-space: nowrap; }
+        /* While a run is going this button is the quiet one, so it does not
+           stretch across the screen like the lead does. */
+        form.everything button.secondary { flex: 0 0 auto; }
+        form.inline { margin: 1.25rem 0 0; }
+        form.inline button { min-height: 2.25rem; font-size: .9375rem; }
+        a.next { font-size: .9375rem; white-space: nowrap; }
         form.filter { margin: 0 0 1rem; }
         form.filter input { width: 100%; }
-        .status { margin: 2rem 0 0; font-size: .8125rem; opacity: .5; }
+        ul.spaces { list-style: none; margin: 0; padding: 0; }
+        ul.spaces li {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 1rem; padding: .7rem .5rem;
+          border-bottom: 1px solid var(--line);
+          border-radius: .375rem;
+          transition: background .12s ease;
+        }
+        ul.spaces li:first-child { border-top: 1px solid var(--line); }
+        ul.spaces li:hover { background: var(--hover); }
+        ul.spaces li[hidden] { display: none; }
+        ul.spaces form { margin: 0; }
+        ul.spaces label.pick {
+          display: flex; align-items: flex-start; gap: .7rem;
+          margin: 0 auto 0 0; cursor: pointer;
+        }
+        ul.spaces label.pick input {
+          width: 1.125rem; height: 1.125rem; min-height: 0; margin-top: .2rem;
+          accent-color: var(--accent);
+        }
+        ul.spaces label.pick span { display: block; }
+        ul.spaces label.pick strong { font-weight: 600; }
+        ul.spaces label.pick small {
+          margin-top: .15rem; font-size: .875rem; color: var(--muted);
+          font-variant-numeric: tabular-nums;
+        }
+        a.read { font-size: .9375rem; font-weight: 600; }
+        /* A run in progress says so where the decision is: a dot, the words the
+           run reports, and the way to it. */
+        .run {
+          display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+          margin: 0 0 1rem; padding: .6rem .8rem;
+          border: 1px solid var(--line); border-radius: var(--radius);
+          background: var(--hover); font-size: .9375rem;
+        }
+        .run.error { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+        .dot {
+          width: .5rem; height: .5rem; border-radius: 50%;
+          background: var(--accent); animation: pulse 1.6s ease-in-out infinite;
+        }
+        .run.error .dot { background: var(--danger); animation: none; }
+        @keyframes pulse { 50% { opacity: .35; } }
+        .status { margin: 2.5rem 0 0; font-size: .875rem; color: var(--muted); }
         .spinner {
           width: 1.25rem; height: 1.25rem; margin: 0 0 1rem;
-          border: 2px solid rgba(127,127,127,.3); border-top-color: #2f5fe0;
+          border: 2px solid var(--line); border-top-color: var(--accent);
           border-radius: 50%; animation: spin .8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+        @media (prefers-reduced-motion: reduce) {
+          * { transition: none !important; animation: none !important; }
+          .spinner { animation-duration: 3s !important; }
+        }
       </style>
     </head>
     <body#{if opts[:nav] == false, do: ~s( class="plain"), else: ""}>
-    #{if opts[:nav] == false, do: "", else: sidebar(opts[:current])}<main>#{body}
-    #{if opts[:status], do: ~s(<p class="status">#{escape(opts[:status])}</p>), else: ""}
+    #{if opts[:nav] == false, do: "", else: sidebar(opts[:current])}<main>
+    #{if opts[:status], do: ~s(<p class="status" role="status">#{escape(opts[:status])}</p>), else: ""}
+    #{body}
     </main>
     #{if opts[:script], do: ~s(<script defer src="/__tool/assets/app.js"></script>), else: ""}
     #{painted()}
@@ -956,14 +1148,13 @@ defmodule ConfluencePhxMirror.Desktop.Web.Page do
 
       <div class="section">
         <span>This tool</span>
-        #{entry("/__tool", "Set up", current)}
+        #{entry("/__tool", "Overview", current)}
         #{entry("/__tool/setup", "Connection", current)}
       </div>
 
       <div class="section">
         <span>Mirror</span>
         #{entry("/__tool/spaces", "Spaces", current)}
-        #{entry("/__tool/mirror", "Runs", current)}
         #{entry("/__tool/export", "Export", current)}
       </div>
 

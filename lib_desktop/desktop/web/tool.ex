@@ -28,10 +28,12 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
   alias ConfluencePhxMirror.Export
   alias ConfluencePhxMirror.Trash
 
-  # A site can have a hundred thousand spaces. The screen renders a page of them
-  # and says how many it is not showing; nobody scrolls to the hundred
-  # thousandth, and rendering it would cost the request that found it.
-  @page_size 200
+  # Every space the source lists travels to the window, and the window's filter is
+  # the search: two filters over two different sets — a page of rows here, what
+  # that page held there — meant typing found only what the server had already
+  # sent, and pressing Enter was the only way to look further. A site's space list
+  # is a few hundred rows, and this is a local window with a list already in
+  # memory.
 
   plug :match
   plug Plug.Parsers, parsers: [:urlencoded]
@@ -173,7 +175,7 @@ defmodule ConfluencePhxMirror.Desktop.Web.Tool do
         send_resp(
           conn,
           200,
-          Page.spaces(Enum.take(matching, @page_size), Catalogue.page_counts(), %{
+          Page.spaces(matching, Catalogue.page_counts(), %{
             query: query,
             known: length(spaces),
             matching: length(matching),
