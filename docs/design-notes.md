@@ -25,6 +25,16 @@ they lose fidelity. Internal links are rewritten so mirrored pages cross-link
 each other; native `<details>` for expand macros, panels, lozenges, task lists,
 TOC, gallery and Jira macros come from Confluence's own markup.
 
+The price is paid where the export view itself is lossy, and the layout macros
+are the clearest case: a `section` of two `column`s arrives as the columns'
+contents in reading order — no wrapper, no widths — and the section's own
+`title` and `border` parameters do not arrive at all, so a laid-out page reads as
+one column and the layout's title is missing. The storage holds the whole
+structure, and drawing it would mean rendering storage bodies to HTML — links,
+macros, images and all — which is exactly the second renderer this design exists
+to avoid. A page's layout is therefore information the mirror does not carry;
+its words are.
+
 ## What we adopted from the export/backup ecosystem
 
 The design was checked against six Confluence export/backup tools (a Go backup
@@ -572,6 +582,9 @@ purpose, and indexing is what a documentation site wants).
   synced. Backlinks and outgoing links are computed live from the link table, so
   they never go stale, but link *text* baked into a body does — until that page
   is synced again.
+* A `section`/`column` layout is flattened by `export_view`: the columns' words
+  arrive in reading order, and the section's `title` and its rules do not arrive
+  at all (see "Rendering fidelity comes from `export_view`").
 * Space icons are mirrored from the download link Confluence publishes (translated
   into the REST attachment link, which is the one that accepts an API token). A
 * A personal space's icon is the owner's avatar, and Confluence answers that
