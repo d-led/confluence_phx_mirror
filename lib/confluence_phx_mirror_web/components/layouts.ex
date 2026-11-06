@@ -96,7 +96,7 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
         data-print="hide"
         class="sticky top-0 z-40 border-b border-base-300/70 bg-base-100/85 backdrop-blur"
       >
-        <div class="mx-auto flex w-full max-w-[1600px] items-center gap-2 px-3 py-2 sm:gap-3 sm:px-5">
+        <div class="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-2 px-3 py-2 sm:gap-3 sm:px-5 md:flex-nowrap">
           <button
             :if={@sidebar? and (@space || @spaces != [])}
             type="button"
@@ -161,22 +161,25 @@ defmodule ConfluencePhxMirrorWeb.Layouts do
           <%!-- The field's bottom sits on the brand's last line, which is what
           makes the header read as one line: bottom-aligned with the brand,
           less the brand link's own bottom padding (`pb-1` here). The island
-          keeps that shape and adds what matches to it as the reader types. --%>
-          <Layouts.header_search :if={@search?} live={@live} query={@search_query} />
+          keeps that shape and adds what matches to it as the reader types.
+          Below `md` it takes a line of its own rather than going away: a
+          reader on a phone searches the same mirror, and a header that hides
+          the only search box makes the catalogue unreachable. The classes sit
+          on this wrapper because `live_render` wraps an island in a div of its
+          own, and that div — not the island's root — is what the header lays
+          out. --%>
+          <div
+            :if={@search?}
+            id="header-search-slot"
+            class="order-last w-full min-w-0 pb-1 md:order-none md:ml-1 md:w-auto md:flex-1 md:self-end"
+          >
+            <Layouts.header_search live={@live} query={@search_query} />
+          </div>
 
           <%!-- The whole row sits on one bottom line: the brand's last line, the
           search field and these controls all end where that line ends (`pb-1` is
           the brand link's own bottom padding). --%>
           <div class="ml-auto flex items-center gap-1 self-end pb-1">
-            <.link
-              :if={@search?}
-              navigate={~p"/search"}
-              class="btn btn-ghost btn-sm md:hidden"
-              aria-label="Search"
-            >
-              <.icon name="hero-magnifying-glass" class="size-4" />
-            </.link>
-
             <%!-- One `name` for every top-bar menu: opening one closes the other,
             which is the native accordion behaviour of <details>. `.TopbarMenu`
             adds what <details> leaves out — a click elsewhere and Escape close

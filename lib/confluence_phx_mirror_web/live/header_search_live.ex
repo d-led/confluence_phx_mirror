@@ -48,7 +48,7 @@ defmodule ConfluencePhxMirrorWeb.HeaderSearchLive do
   # brand and the controls and sits on the same bottom line as both (`self-end
   # pb-1`), which is what makes the header read as a single line. Below `md` the
   # field would be a sliver, so the bar shows a search button instead.
-  defp container_class, do: "relative ml-1 hidden min-w-0 flex-1 self-end pb-1 md:block"
+  defp container_class, do: "relative w-full min-w-0"
 
   @impl true
   def handle_event("suggest", %{"q" => q}, socket) do
