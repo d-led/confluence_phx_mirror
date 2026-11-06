@@ -88,8 +88,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.MarkerTest do
 
   test "a macro the mirror cannot draw is left to the caller to explain" do
     assert Marker.build("jira", []) == :error
-    assert Marker.build("livesearch", []) == :error
     assert Marker.drawable?("children")
+  end
+
+  test "the live search box is a macro the mirror draws" do
+    assert {:ok, {"div", attributes, []}} = Marker.build("livesearch", [])
+    assert attribute(attributes, "data-macro") == "livesearch"
   end
 
   test "a parameter name keeps its case when it is turned into an attribute" do

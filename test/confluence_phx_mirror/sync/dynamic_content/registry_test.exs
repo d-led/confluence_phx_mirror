@@ -36,6 +36,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
              "excerpt-include",
              "include",
              "labels-list",
+             "livesearch",
              "native-embed:database",
              "native-embed:whiteboard",
              "pagetree",

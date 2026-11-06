@@ -65,6 +65,20 @@ defmodule ConfluencePhxMirror.Mirror.URLs do
     page_path(space_key, id, slug)
   end
 
+  @doc "The mirror's search screen."
+  def search_path, do: "/search"
+
+  @doc """
+  The mirror's search screen, narrowed to one space before it opens.
+
+  A search keeps its whole state in its URL, so naming the space is the whole
+  pre-fill: the screen opens with that space filtering and everything else a
+  reader does from there.
+  """
+  def search_path(space_key) when is_binary(space_key) and space_key != "" do
+    "/search?" <> URI.encode_query(%{"space" => space_key})
+  end
+
   @doc "The space directory."
   def spaces_path, do: "/spaces"
 

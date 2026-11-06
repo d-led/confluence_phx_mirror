@@ -114,7 +114,14 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 34: a two-column layout is macro chrome like a panel's — earned by a declared
   #     `section`, so a `sectionColumnWrapper` pasted into the storage as prose
   #     no longer draws columns the site never showed.
-  def revision, do: 34
+  # 35: a live search box is the way to the mirror's own search — narrowed to the
+  #     page's space, and with the link that searches everything — instead of
+  #     staying the widget for a macro Confluence will not expand for a reader.
+  # 36: a roadmap bar that names a page is a link to that page here, through the
+  #     audience rule, instead of a bar with no way to follow it.
+  # 37: a widget connector's declared height is the frame's height, so a player
+  #     is drawn in the band its vendor built it for.
+  def revision, do: 37
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -161,7 +168,6 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     "advanced-roadmaps-plan-macro" => "an Advanced Roadmaps plan",
     "space-attachments" => "a space attachments list",
     "spaces-list" => "a spaces list",
-    "livesearch" => "a live search box",
     "gadget" => "an external gadget",
     "iframe" => "an embedded page",
     "rss" => "an RSS feed",

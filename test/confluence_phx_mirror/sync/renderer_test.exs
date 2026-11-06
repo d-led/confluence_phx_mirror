@@ -409,10 +409,21 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     end
 
     test "the placeholder links back to the original page" do
-      html = ~s(<ac:structured-macro ac:name="livesearch"></ac:structured-macro>)
+      html = ~s(<ac:structured-macro ac:name="gadget"></ac:structured-macro>)
 
       assert Renderer.render(html, context(%{page: page()})).html =~
                ~s(href="#{page().external_url}")
+    end
+
+    # The editor stores the live search box as an empty macro — no query, no
+    # scope — and the mirror draws it, so it must not reach the placeholder.
+    test "a live search box is drawn by the mirror" do
+      html = ~s(<ac:structured-macro ac:name="livesearch" ac:schema-version="1" />)
+
+      rendered = Renderer.render(html, context(%{page: page()})).html
+
+      assert rendered =~ ~s(data-macro="livesearch")
+      refute rendered =~ "does not draw this macro"
     end
 
     test "an unknown macro is named as it is" do
@@ -429,11 +440,17 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       html = """
       <ac:structured-macro ac:name="widget">
         <ac:parameter ac:name="url"><ri:url ri:value="https://www.youtube.com/watch?v=ii1waoqualY" /></ac:parameter>
+        <ac:parameter ac:name="width">600px</ac:parameter>
+        <ac:parameter ac:name="height">300px</ac:parameter>
       </ac:structured-macro>
       """
 
-      assert Renderer.render(html, context()).html =~
-               ~s(data-url="https://www.youtube.com/watch?v=ii1waoqualY")
+      rendered = Renderer.render(html, context()).html
+
+      assert rendered =~ ~s(data-url="https://www.youtube.com/watch?v=ii1waoqualY")
+      # The size the editor records reaches the renderer as the page wrote it.
+      assert rendered =~ ~s(data-height="300px")
+      assert rendered =~ ~s(data-width="600px")
     end
 
     # Also from the capture page: a roadmap keeps its whole plan in one
@@ -656,6 +673,26 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       refute result.html =~ "sectionColumnWrapper"
       refute result.html =~ "columnMacro"
+      assert result.html =~ "<p>Left column</p>"
+      assert result.html =~ "<p>Right column</p>"
+    end
+
+    # The editor that inserted a two-column layout in 2026 stores bands of cells,
+    # not the `section` macro above, and serves them as `columnLayout` divs whose
+    # class names the shape (`two-equal`). Taken from what `export_view` returned
+    # for that page once it was published.
+    test "a two-column layout from the new editor keeps its two columns" do
+      html = """
+      <div class="contentLayout2">
+        <div class="columnLayout fixed-width" data-layout="fixed-width"><div class="cell normal" data-type="normal"><div class="innerCell"><p>Above the layout.</p></div></div></div>
+        <div class="columnLayout two-equal" data-layout="two-equal"><div class="cell normal" data-type="normal"><div class="innerCell"><p>Left column</p></div></div><div class="cell normal" data-type="normal"><div class="innerCell"><p>Right column</p></div></div></div>
+      </div>
+      """
+
+      result = Renderer.render(html, context())
+
+      assert result.html =~ ~s(class="columnLayout two-equal")
+      assert result.html =~ "<p>Above the layout.</p>"
       assert result.html =~ "<p>Left column</p>"
       assert result.html =~ "<p>Right column</p>"
     end

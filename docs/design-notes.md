@@ -150,7 +150,8 @@ Resolved today: `content-by-label` (and the editor's `contentbylabel`), `page-pr
 `detailssummary`), `toc`, `children`, `pagetree`, `recently-updated`,
 `attachments`, `content-report-table`, `include`, `excerpt-include`, `excerpt`,
 `blog-posts`, `contributors`, `labels-list`, `user-profile`, `tasks-report`,
-`decision-report`, `anchor`, `profile-picture`, `roadmap` and `widget` — plus
+`decision-report`, `anchor`, `profile-picture`, `roadmap`, `widget` and
+`livesearch` — plus
 `html`, whose
 answer is its own body, read from the
 storage because the export view only leaves a picture of the macro. What is left
@@ -159,8 +160,14 @@ is not a renderer away:
 | Macro | Data it needs | Why it is not drawn |
 | --- | --- | --- |
 | `jira`, `jiraissues`, `jirachart` | issue data | needs Jira credentials: out of scope for a mirror |
-| `livesearch`, `gadget` | a client, or a third-party app | impossible statically |
+| `gadget` | a third-party app | impossible statically |
 | Forge/Connect app macros | the app | a placeholder is the honest answer, and the body is kept |
+
+`livesearch` is an empty macro — the editor stores the box and nothing else, so
+there is no query and no scope to honour. It becomes the way to the mirror's own
+search: one line with the search narrowed to the page's space, and the link that
+looks at everything. The space is not a guess, it is the page's own, and a search
+keeps its whole state in its URL, so the narrowed link opens that same screen.
 
 `widget` is the one macro whose answer is *somebody else's page*, so it is drawn
 as a frame only where an operator allowed the host (`CM_EMBED_HOSTS`, empty by
@@ -170,7 +177,12 @@ to somebody nobody negotiated with. The address is printed under the frame in
 muted type and stays a link, so the block is useful when the frame is not there:
 an unnamed host, a public space, an export opened offline, or a party that is
 down. The renderer and `frame-src` read one list (`Sync.Embeds`), so a frame the
-mirror drew is never blocked and no host is permitted that it never draws.
+mirror drew is never blocked and no host is permitted that it never draws. Of the
+size the macro records, the height is the frame's — a player is built for its
+vendor's band of 300 or 315 pixels, and a frame drawn at 16:9 would be a different
+picture — while the width stays the mirror's, because the frame fills the reading
+column and a fixed 600px box is a narrow strip on a wide screen and a sideways
+scroll on a phone.
 
 `blog-posts` is one query the port already had: `type = blogpost`, ordered by
 `created`, with the `space`/`label` filters `recently-updated` also asks for —
@@ -182,11 +194,15 @@ parameter, so the mirror needs no network, no Jira and no credentials to draw th
 picture Confluence draws. The columns are the timeline's own `displayOption`
 units, and a bar's width is its `duration` in those units, which is what the
 site's own picture shows: under `MONTH`, a duration of 2 runs from 1 November to
-1 January and one of 2.5 stops midway through January. Two things are left out on
-purpose — a bar's `pageLink`, whose shape when filled in has never been captured
-(the Safari page stores `{}`), and any bar whose start or duration cannot be read,
-because a bar drawn in the wrong place is worse than no bar. A timeline of more
-than sixty columns is refused with a sentence rather than smeared across the page.
+1 January and one of 2.5 stops midway through January. A bar may also name a page
+(`pageLink`: the page's id, title, type, `wikiLink` and space key, written beside
+it in the plan), and that bar is a link to the page **here**, resolved through the
+content port so the audience rule applies to it like to every other page a macro
+names; a page the mirror cannot answer for leaves the bar a bar rather than
+sending the reader to the site. Any bar whose start or duration cannot be read is
+left out, because a bar drawn in the wrong place is worse than no bar. A timeline
+of more than sixty columns is refused with a sentence rather than smeared across
+the page.
 
 `tasks-report` and `decision-report` are the two whose data sits *inside* pages
 rather than in a table of their own: a task is an item of an `inline-task-list`,
