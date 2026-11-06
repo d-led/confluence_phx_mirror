@@ -26,6 +26,43 @@ defmodule ConfluencePhxMirror.Export.MarkdownTest do
     assert md =~ "[macros](../Macros/Macros.md)"
   end
 
+  describe "a link the zip has no file for" do
+    setup do
+      ctx =
+        Map.put(@ctx, :source_url, "https://demo.atlassian.net/wiki/spaces/ENG/pages/1002/Arch")
+
+      {:ok, ctx: ctx}
+    end
+
+    # A mirror path is an address on a server, and a zip has none: left as it is,
+    # the reader gets a dead link. The site's own address for the same thing is
+    # what the sync rewrote, so the export gives it back.
+    test "a person's page is the site's address again", %{ctx: ctx} do
+      md = Markdown.from_html(~s(<p><a href="/people/557058%3Aabc">Dana</a></p>), ctx)
+
+      assert md =~ "[Dana](https://demo.atlassian.net/wiki/people/557058%3Aabc)"
+    end
+
+    test "a label is the site's address again", %{ctx: ctx} do
+      md = Markdown.from_html(~s(<p><a href="/labels/runbook">runbook</a></p>), ctx)
+
+      assert md =~ "[runbook](https://demo.atlassian.net/wiki/label/runbook)"
+    end
+
+    test "a page the archive does not carry is the site's address again", %{ctx: ctx} do
+      md = Markdown.from_html(~s(<p><a href="/spaces/ENG/pages/999/Hidden">Hidden</a></p>), ctx)
+
+      assert md =~ "[Hidden](https://demo.atlassian.net/wiki/spaces/ENG/pages/999/Hidden)"
+    end
+
+    test "with no site to name, the words stay and the link goes" do
+      md = Markdown.from_html(~s(<p><a href="/people/557058%3Aabc">Dana</a></p>), @ctx)
+
+      assert md =~ "Dana"
+      refute md =~ "]("
+    end
+  end
+
   test "rewrites attachment links and images to the page folder" do
     md =
       Markdown.from_html(

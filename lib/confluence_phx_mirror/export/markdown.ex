@@ -265,7 +265,26 @@ defmodule ConfluencePhxMirror.Export.Markdown do
     cond do
       attachment = attachment_path(href, ctx) -> attachment
       page = page_path(href, ctx) -> page
+      site = site_address(href, ctx) -> site
       true -> href
+    end
+  end
+
+  # A mirror path the archive has no file for is an address on a server, and a zip
+  # has none — left alone it is a link a reader can press and nothing happens. The
+  # site's own address for the same thing is what the sync rewrote into the body,
+  # so the export gives it back; with no site named in the context, the words stay
+  # and the link goes, which is what the HTML export does with a target it cannot
+  # serve.
+  defp site_address("/people/" <> rest, ctx), do: site_piece("/wiki/people/" <> rest, ctx)
+  defp site_address("/labels/" <> rest, ctx), do: site_piece("/wiki/label/" <> rest, ctx)
+  defp site_address("/spaces/" <> rest, ctx), do: site_piece("/wiki/spaces/" <> rest, ctx)
+  defp site_address(_href, _ctx), do: nil
+
+  defp site_piece(path, ctx) do
+    case Map.get(ctx, :source_url) do
+      url when is_binary(url) and url != "" -> site_origin(url) <> path
+      _no_site -> ""
     end
   end
 
