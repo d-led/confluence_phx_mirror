@@ -23,15 +23,23 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.Roadmap do
   site's own picture shows: under `MONTH`, a bar of 2 runs from 1 November to 1
   January, and one of 2.5 stops midway through January.
 
-  Two things are deliberately not drawn:
+  A bar may also name a page. The editor writes that as the key and title of the
+  page, in the plan and beside it:
 
-    * a bar's `pageLink` — the capture page stores it empty (`{}`), so its shape
-      when it is filled in is unknown, and a link guessed from an imagined shape
-      is worse than no link; and
-    * anything the plan does not carry. A macro with no document, one that is not
-      JSON, and one the mirror cannot place a single bar on say so in words
-      rather than drawing an empty grid, because an empty grid is what "no plan
-      at all" and "a plan the mirror failed to read" look like.
+      "pageLink": {"id": "884738", "title": "Architecture Overview",
+                   "type": "page", "wikiLink": "[MFS:Architecture Overview]",
+                   "spaceKey": "MFS"}
+
+  The page is looked up through the content port, so the bar is a link only when
+  the mirror holds that page and this page's readers may open it — the same rule
+  every other macro that names a page obeys. A bar whose page the mirror cannot
+  answer for stays a bar: the reader is not sent to the site for it.
+
+  One thing is deliberately not drawn: anything the plan does not carry. A macro
+  with no document, one that is not JSON, and one the mirror cannot place a
+  single bar on say so in words rather than drawing an empty grid, because an
+  empty grid is what "no plan at all" and "a plan the mirror failed to read"
+  look like.
 
   A plan too long for a page — more than 60 columns of its own unit — is
   refused for the same reason: the picture would be a smear nobody can read.
@@ -39,6 +47,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.Roadmap do
 
   @behaviour ConfluencePhxMirror.Sync.DynamicContent.Renderer
 
+  alias ConfluencePhxMirror.Mirror.URLs
   alias ConfluencePhxMirror.Sync.DynamicContent.{Context, Nodes}
 
   # More columns than this is not a plan anyone reads at a glance, and the grid
@@ -63,10 +72,10 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.Roadmap do
   @hex_colour ~r/\A#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\z/
 
   @impl true
-  def render(attrs, %Context{}) do
+  def render(attrs, %Context{} = context) do
     case plan(attrs) do
       {:ok, plan} ->
-        [Nodes.heading(plan.title), chart(plan)]
+        [Nodes.heading(plan.title), chart(linked(plan, context))]
 
       {:error, :empty} ->
         [Nodes.notice("Roadmap: this macro carries no roadmap.")]
@@ -283,6 +292,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.Roadmap do
       title: String.trim(bar["title"]),
       description: blank(bar["description"]),
       row: row(bar["rowIndex"]),
+      page_link: bar["pageLink"],
       bar: paint(lane["color"], "bar", @default_bar),
       text: paint(lane["color"], "text", @default_text),
       left: percent(left, axis),
@@ -314,6 +324,42 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.Roadmap do
   end
 
   defp marker(_marker, _axis), do: []
+
+  # -- the pages the plan names ----------------------------------------------
+
+  # A bar that names a page is a link to it here, and an answer the mirror does
+  # not have leaves the bar as it was. The lookup is the content port's, so the
+  # audience rule is asked once, in the one place that owns it.
+  defp linked(plan, %Context{} = context) do
+    lanes =
+      Enum.map(plan.lanes, fn lane ->
+        %{lane | bars: Enum.map(lane.bars, &Map.put(&1, :href, href(&1.page_link, context)))}
+      end)
+
+    %{plan | lanes: lanes}
+  end
+
+  defp href(%{"title" => title} = link, context) when is_binary(title) and title != "" do
+    case context.source.page_by_title(context.page, reference(title, link["spaceKey"], context)) do
+      {:ok, page} -> URLs.content_path(page.space.key, page)
+      :error -> nil
+    end
+  end
+
+  defp href(_link, _context), do: nil
+
+  # A bar in another space is written the way Confluence writes one —
+  # `KEY/Page Title` — because that is the spelling the content port reads.
+  defp reference(title, space_key, context) do
+    cond do
+      not is_binary(space_key) or space_key == "" -> title
+      space_key == key(context.space) -> title
+      true -> "#{space_key}/#{title}"
+    end
+  end
+
+  defp key(%{key: key}), do: key
+  defp key(_space), do: nil
 
   # -- the picture ------------------------------------------------------------
 
@@ -359,14 +405,17 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.Roadmap do
   end
 
   defp bar_node(bar) do
-    {"span",
-     [
-       {"class", "mirror-roadmap-bar"},
-       {"style",
-        "left:#{bar.left}%;width:#{bar.width}%;--row:#{bar.row};" <>
-          "background:#{bar.bar};color:#{bar.text}"},
-       {"title", bar.description || bar.title}
-     ], [bar.title]}
+    {tag, ref} = if bar.href, do: {"a", [{"href", bar.href}]}, else: {"span", []}
+
+    {tag,
+     ref ++
+       [
+         {"class", "mirror-roadmap-bar"},
+         {"style",
+          "left:#{bar.left}%;width:#{bar.width}%;--row:#{bar.row};" <>
+            "background:#{bar.bar};color:#{bar.text}"},
+         {"title", bar.description || bar.title}
+       ], [bar.title]}
   end
 
   defp marker_row(%{markers: []}), do: []

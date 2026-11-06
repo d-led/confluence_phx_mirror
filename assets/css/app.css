@@ -1308,6 +1308,18 @@ html.whiteboard-viewer-open {
   text-overflow: ellipsis;
 }
 
+/* A bar the plan links to a page is that page's link. The bar's own paint is
+   the affordance, so an underline across it reads as a broken rule — it appears
+   only where hover or focus says the bar can be followed. */
+.confluence-content a.mirror-roadmap-bar {
+  text-decoration: none;
+}
+
+.confluence-content a.mirror-roadmap-bar:hover,
+.confluence-content a.mirror-roadmap-bar:focus-visible {
+  text-decoration: underline;
+}
+
 .confluence-content .mirror-roadmap-marker-row {
   position: relative;
   height: 1.4rem;

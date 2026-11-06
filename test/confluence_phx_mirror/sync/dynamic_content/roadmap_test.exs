@@ -15,6 +15,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RoadmapTest do
   @space %{key: "MFS"}
   @host %{id: 1, confluence_id: 32_001, slug: "page-32_001", title: "Plan", space: @space}
 
+  # The link the editor wrote when a bar was pointed at "Architecture Overview",
+  # word for word.
+  @page_link %{
+    "id" => "884738",
+    "title" => "Architecture Overview",
+    "type" => "page",
+    "wikiLink" => "[MFS:Architecture Overview]",
+    "spaceKey" => "MFS"
+  }
+
   # What the editor wrote on "Macro capture 2026-11-06", word for word.
   defp captured do
     %{
@@ -29,7 +39,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RoadmapTest do
           "title" => "Lane 1",
           "color" => %{"lane" => "#f6c342", "bar" => "#f6c342", "text" => "#594300", "count" => 1},
           "bars" => [
-            bar("Bar 1", "This is the first bar.", "2026-11-01 00:00:00", 2, 0),
+            bar("Bar 1", "This is the first bar.", "2026-11-01 00:00:00", 2, 0)
+            |> linked_to(@page_link),
             bar("Bar 2", "This is the second bar.", "2026-11-01 00:00:00", 1, 1)
           ]
         },
@@ -124,6 +135,58 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RoadmapTest do
     html = expand(%{captured() | "lanes" => [lane("Lane 1", [])]})
 
     assert text(html) =~ "nothing planned"
+  end
+
+  describe "a bar that names a page" do
+    test "is a link to that page in the mirror" do
+      StubContent.script(page_by_title: fn "Architecture Overview" -> {:ok, target()} end)
+
+      assert {"a", attributes, ["Bar 1"]} = bar_node(expand(captured()), "Bar 1")
+
+      assert Map.new(attributes)["href"] ==
+               "/spaces/MFS/pages/884738/Architecture+Overview"
+    end
+
+    # The page is asked of the content port, which is where the audience rule
+    # lives: a bar whose page these readers may not open is a bar, not an address
+    # and not a trip to the site.
+    test "is a plain bar when the mirror cannot answer for that page" do
+      assert {"span", _attributes, ["Bar 1"]} = bar_node(expand(captured()), "Bar 1")
+    end
+
+    test "asks for a page in another space by the name Confluence writes" do
+      StubContent.script(page_by_title: fn _title -> {:ok, target()} end)
+
+      elsewhere = %{@page_link | "spaceKey" => "OPS"}
+
+      plan =
+        update_in(captured()["lanes"], fn [lane | rest] -> [relinked(lane, elsewhere) | rest] end)
+
+      expand(plan)
+
+      assert {:page_by_title, "OPS/Architecture Overview"} in StubContent.questions()
+    end
+  end
+
+  defp bar_node(html, title) do
+    html
+    |> nodes(".mirror-roadmap-bar")
+    |> Enum.find(&(Floki.text(&1) == title))
+  end
+
+  defp target do
+    %ConfluencePhxMirror.Mirror.Page{
+      confluence_id: 884_738,
+      slug: "Architecture+Overview",
+      title: "Architecture Overview",
+      space: @space
+    }
+  end
+
+  defp linked_to(bar, page_link), do: %{bar | "pageLink" => page_link}
+
+  defp relinked(lane, page_link) do
+    %{lane | "bars" => Enum.map(lane["bars"], &linked_to(&1, page_link))}
   end
 
   defp expand(marker) when is_binary(marker), do: DynamicContent.expand(marker, context())
