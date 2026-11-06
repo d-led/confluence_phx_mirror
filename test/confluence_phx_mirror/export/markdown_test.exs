@@ -153,4 +153,38 @@ defmodule ConfluencePhxMirror.Export.MarkdownTest do
       assert md =~ "The table follows."
     end
   end
+
+  describe "a drawing and its decoration" do
+    # A roadmap is drawn from the plan's own document, and its picture is made of
+    # positioned boxes — which a text export cannot carry. What a reader of the
+    # Markdown needs is what the picture says: the range, the lanes, the bars.
+    test "a roadmap keeps its range, its lanes and its bars" do
+      md =
+        Markdown.from_html(
+          ~s(<figure class="mirror-roadmap"><figcaption class="mirror-roadmap-range">Nov 2026 – Oct 2027</figcaption><div class="mirror-roadmap-grid"><p aria-hidden="true"></p><p class="mirror-roadmap-months" aria-hidden="true"><span>Nov</span><span>Dec</span></p><p class="mirror-roadmap-lane-title">Lane 1</p><div class="mirror-roadmap-track"><span class="mirror-roadmap-bar">Bar 1</span></div></div></figure>),
+          @ctx
+        )
+
+      assert md =~ "Nov 2026 – Oct 2027"
+      assert md =~ "Lane 1"
+      assert md =~ "Bar 1"
+      # The months across the top are the picture's scale, hidden from a screen
+      # reader, so they are hidden from a text export too.
+      refute md =~ "NovDec"
+    end
+
+    # The gutter of a numbered code block is a column of digits drawn beside the
+    # code, and `aria-hidden` says so. Copied into Markdown it made the export
+    # read "1\n2\n3" and then the code.
+    test "a column drawn beside the text is not part of the text" do
+      md =
+        Markdown.from_html(
+          ~s(<div class="mirror-code"><pre class="mirror-code-gutter" aria-hidden="true">1\n2</pre><pre class="syntaxhighlighter-pre">a\nb</pre></div>),
+          @ctx
+        )
+
+      refute md =~ "1\n2"
+      assert md =~ "a\nb"
+    end
+  end
 end

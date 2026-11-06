@@ -34,7 +34,24 @@ defmodule ConfluencePhxMirror.Export.Markdown do
   # Blocks
   # ---------------------------------------------------------------------------
 
-  defp blocks(nodes, ctx), do: Enum.map_join(nodes, "", &block(&1, ctx))
+  defp blocks(nodes, ctx) do
+    nodes
+    |> Enum.reject(&hidden?/1)
+    |> Enum.map_join("", &block(&1, ctx))
+  end
+
+  # `aria-hidden` says a thing is drawn rather than read: the scale above a
+  # roadmap, the column of digits beside a numbered code block. A screen reader
+  # skips it, so a text export does too — copied in, the gutter read "1 2 3" and
+  # then the code.
+  defp hidden?({_tag, attrs, _kids}) do
+    case List.keyfind(attrs, "aria-hidden", 0) do
+      {_name, "true"} -> true
+      _not_hidden -> false
+    end
+  end
+
+  defp hidden?(_node), do: false
 
   defp block({"h" <> level, _attrs, kids}, ctx) when level in ~w(1 2 3 4 5 6) do
     "\n" <> String.duplicate("#", String.to_integer(level)) <> " " <> inline(kids, ctx) <> "\n\n"
@@ -58,6 +75,12 @@ defmodule ConfluencePhxMirror.Export.Markdown do
   defp block({tag, _, kids}, ctx) when tag in ~w(div section article header footer main) do
     blocks(kids, ctx)
   end
+
+  # A drawing is a picture to the page and a caption plus its words here: the
+  # roadmap's own figure carries what the picture says in text.
+  defp block({"figure", _, kids}, ctx), do: blocks(kids, ctx)
+
+  defp block({"figcaption", _, kids}, ctx), do: "\n" <> inline(kids, ctx) <> "\n\n"
 
   defp block({tag, _, kids}, ctx) when tag in ~w(span strong b em i code a u s del) do
     inline([{tag, [], kids}], ctx)
