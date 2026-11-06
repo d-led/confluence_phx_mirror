@@ -459,13 +459,12 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
   color: #0052cc;
 }
 
-/* A typed panel — the modern editor's note, tip, warning — is drawn with the
-   same vocabulary as the information macros beside it, and not as its own kind
-   of card: the pastel Confluence wrote for a light page is replaced by the
-   mirror's tone, in both variants. `!important` because that colour arrives in
-   an inline style, and the padding is the badge's room. */
-.confluence-content .panel:not(.code).confluence-information-macro {
-  padding: 0.7rem 0.95rem 0.7rem 2.7rem;
+/* A typed panel — the modern editor's note, tip, warning — carries no colour of
+   its own, and is drawn in the mirror's tone. A panel an author coloured keeps
+   the colour they gave it: `:not([style*="background-color"])` is that line,
+   and the two are the same card in every other way. */
+.confluence-content
+  .panel:not(.code).confluence-information-macro:not([style*="background-color"]) {
   background: color-mix(
     in oklab,
     var(--information-macro-tone) 8%,
@@ -477,7 +476,24 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
     transparent
   ) !important;
   border-left: 3px solid var(--information-macro-tone) !important;
+}
+
+/* Both kinds share the geometry: the badge's room, and a transparent body. */
+.confluence-content .panel:not(.code).confluence-information-macro {
+  padding: 0.7rem 0.95rem 0.7rem 2.7rem;
   color: inherit;
+}
+
+/* A panel that declares its own glyph draws *that* glyph, where the site draws
+   it: at the start of the words. The badge is Confluence's icon font, which
+   this site does not serve — replacing it, rather than adding a second icon
+   beside the author's, is what the site itself shows. */
+.confluence-content .panel:not(.code).mirror-panel-iconic {
+  padding-left: 0.95rem;
+}
+
+.confluence-content .panel.mirror-panel-iconic > .confluence-information-macro-icon {
+  display: none;
 }
 
 .confluence-content
@@ -528,10 +544,11 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
    words, in the same line box. The glyph comes from the storage —
    `panelIcon`/`panelIconId` — because the export view carries none of it. It is
    inline on purpose: floated, it left the line box, and the paragraph beside it
-   started a line lower than the panel next door. */
+   started a line lower than the panel next door. Its size is the text's, so the
+   glyph does not make its card a line taller than the one beside it. */
 .confluence-content .mirror-panel-icon {
   margin: 0 0.45rem 0 0;
-  font-size: 1rem;
+  font-size: 1em;
   line-height: inherit;
 }
 
@@ -1559,9 +1576,9 @@ html.whiteboard-viewer-open {
 
 /* A decision list is an ADF node, not a macro, and the export view keeps only
    its fallback: `<ul class="decision-list">`. The state the site shows is
-   restored by the renderer as `data-decision-state`, so the badge is drawn from
-   the attribute and the words stay the page's own. Neutral by design: the state
-   names itself, and "open" is as real a decision as "decided". */
+   restored by the renderer as `data-decision-state`, and the site draws it as a
+   mark at the start of the line — not as a word: "DECIDED" is a label the
+   mirror invented, and it read as if the author had typed it. */
 .confluence-content .decision-list {
   list-style: none;
   padding-left: 0;
@@ -1573,22 +1590,34 @@ html.whiteboard-viewer-open {
 .confluence-content .decision-list li {
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.55rem;
   padding: 0.4rem 0.75rem;
-  border-left: 3px solid
-    color-mix(in oklab, var(--color-base-content) 25%, transparent);
   background: color-mix(in oklab, var(--color-base-content) 5%, transparent);
-  border-radius: 0 0.35rem 0.35rem 0;
+  border-radius: 0.35rem;
 }
 
 .confluence-content .decision-list li[data-decision-state]::before {
-  content: attr(data-decision-state);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+  content: "✓";
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 999rem;
+  background: var(--color-success);
+  color: var(--color-base-100);
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* A decision not taken yet is an empty ring in the same place: the shape says
+   "not decided", which is what the site shows. */
+.confluence-content .decision-list li[data-decision-state="open"]::before {
+  content: "";
+  background: transparent;
+  border: 2px solid
+    color-mix(in oklab, var(--color-base-content) 30%, transparent);
 }
 
 /* Columns -------------------------------------------------------------- */

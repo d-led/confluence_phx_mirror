@@ -88,7 +88,11 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     `#link` lands on, the second serves the face the mirror keeps.
   # 24: a panel's icon sits inside its first paragraph, so the panel is the same
   #     height as the one beside it instead of one line taller.
-  def revision, do: 24
+  # 25: a panel an author coloured keeps that colour (it was drawn as the kind an
+  #     ADF panel declared, badge and all), a panel with its own glyph drops the
+  #     generic badge, and a decision's state is a mark rather than the word the
+  #     mirror had been printing.
+  def revision, do: 25
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -458,7 +462,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
               budget_chrome(children, {Map.put(budget, token, left - 1), icons})
 
             {icon, icons} = take_icon(token, icons)
-            {[{tag, attrs, with_icon(children, icon)}], {budget, icons}}
+            {[{tag, with_glyph(attrs, icon), with_icon(children, icon)}], {budget, icons}}
 
           _undeclared ->
             # The wrapper goes and its words stay: what Confluence shows.
@@ -474,6 +478,19 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp with_icon(children, glyph) do
     put_icon(children, {"span", [{"class", "mirror-panel-icon"}], [glyph]})
+  end
+
+  # A panel that declares a glyph draws *that* glyph, not the badge the mirror
+  # draws for a typed panel: two icons on one card is not what the site shows.
+  # The class is the renderer's word for "this panel has an icon of its own",
+  # and the stylesheet drops the badge (and its room) because of it.
+  defp with_glyph(attrs, nil), do: attrs
+
+  defp with_glyph(attrs, _glyph) do
+    Enum.map(attrs, fn
+      {"class", value} -> {"class", value <> " mirror-panel-iconic"}
+      other -> other
+    end)
   end
 
   defp put_icon(children, node) do

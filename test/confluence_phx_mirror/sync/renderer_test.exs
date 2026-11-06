@@ -466,6 +466,69 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       refute result.html =~ ~r{<div class="panelContent"[^>]*><span class="mirror-panel-icon">}
     end
 
+    # Two icons on one card is not what the site shows: a panel that declares a
+    # glyph draws that glyph *instead of* the badge the mirror draws for a typed
+    # panel. The class is how the stylesheet knows to drop the badge.
+    test "a panel with its own glyph is marked, so the badge is not drawn beside it" do
+      html =
+        ~s(<div class="panel" style="background-color: #E6FCFF;"><div class="panelContent"><p>An aside.</p></div></div>)
+
+      storage = """
+      <ac:structured-macro ac:name="panel">
+        <ac:parameter ac:name="panelIconId">1f308</ac:parameter>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(html, Map.put(context(), :storage, storage))
+
+      assert result.html =~ ~r{<div class="panel[^"]*mirror-panel-iconic[^"]*"}
+    end
+
+    test "a typed panel declares no glyph, so it keeps the badge" do
+      html =
+        ~s(<div class="panel confluence-information-macro confluence-information-macro-note"><div class="panelContent"><p>An aside.</p></div></div>)
+
+      storage = """
+      <ac:adf-extension><ac:adf-node type="panel">
+        <ac:adf-attribute key="panel-type">note</ac:adf-attribute>
+        <ac:adf-content><p>An aside.</p></ac:adf-content>
+      </ac:adf-node></ac:adf-extension>
+      """
+
+      result = Renderer.render(html, Map.put(context(), :storage, storage))
+
+      refute result.html =~ "mirror-panel-iconic"
+    end
+
+    # The storage's panels and the export's panels meet by order, and a classic
+    # `panel` macro takes its turn. Without that, the first ADF kind was handed
+    # to whichever panel came first in the body — an author's coloured panel
+    # drew itself as a purple note, badge and all.
+    test "a classic panel before a typed one keeps the colour the author gave it" do
+      html = """
+      <div class="panel" style="background-color: #E6FCFF;border-width: 1px;"><div class="panelContent"><p>Coloured.</p></div></div>
+      <div class="panel"><div class="panelContent"><p>Typed.</p></div></div>
+      """
+
+      storage = """
+      <ac:structured-macro ac:name="panel">
+        <ac:parameter ac:name="panelIconId">1f308</ac:parameter>
+      </ac:structured-macro>
+      <ac:adf-extension><ac:adf-node type="panel">
+        <ac:adf-attribute key="panel-type">note</ac:adf-attribute>
+        <ac:adf-content><p>Typed.</p></ac:adf-content>
+      </ac:adf-node></ac:adf-extension>
+      """
+
+      result = Renderer.render(html, Map.put(context(), :storage, storage))
+
+      [first, second] =
+        Regex.split(~r{<div class="panel(?=[\s">])}, result.html, parts: 3) |> tl()
+
+      refute first =~ "confluence-information-macro-note"
+      assert second =~ "confluence-information-macro-note"
+    end
+
     test "a panel the editor typed is drawn as an information macro of that kind" do
       # The modern palette stores a panel as an ADF node that names its kind.
       # Confluence draws that kind's tone and badge; the export view carries
@@ -509,7 +572,9 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       result = Renderer.render(html, Map.put(context(), :storage, storage))
 
-      [first, second] = String.split(result.html, ~s(<div class="panel">), parts: 3) |> tl()
+      [first, second] =
+        Regex.split(~r{<div class="panel(?=[\s">])}, result.html, parts: 3) |> tl()
+
       assert first =~ "mirror-panel-icon"
       assert first =~ "🌈"
       refute second =~ "mirror-panel-icon"

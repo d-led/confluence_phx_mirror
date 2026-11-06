@@ -17,7 +17,10 @@ defmodule ConfluencePhxMirror.Sync.Adf.Panel do
   for a light page is not part of it.
   """
 
-  @panel ~r/<ac:adf-node\b[^>]*\btype="panel"[^>]*>(.*?)<\/ac:adf-node>/us
+  # One scan, two shapes of declaration, in document order: the classic `panel`
+  # macro and the editor's ADF panel. The capture only participates in the
+  # second, which is how `kinds/1` tells them apart.
+  @declaration ~r/<ac:structured-macro\b[^>]*\bac:name="panel"[^>]*>|<ac:adf-node\b[^>]*\btype="panel"[^>]*>(.*?)<\/ac:adf-node>/us
   @kind ~r/<ac:adf-attribute\s+key="panel-type"\s*>([^<]+)</u
 
   # The mirror's information macros have no `success`: a green tick is a tip.
@@ -50,13 +53,24 @@ defmodule ConfluencePhxMirror.Sync.Adf.Panel do
 
   A panel with no kind answers `nil` rather than dropping out: the nth panel in
   the body meets the nth declaration, and an absent kind is not the next one.
+
+  **Both kinds of panel take their turn.** A classic `panel` macro declares no
+  kind — it carries its own colour and icon — and it is in the same list,
+  because the export's panels are matched to the storage by order alone. A list
+  that named only the ADF panels handed the first ADF kind to whichever panel
+  came first in the body: an author's coloured panel drew itself as a purple
+  note, badge and all.
   """
   @spec kinds(String.t()) :: [String.t() | nil]
   def kinds(storage) do
-    @panel
+    @declaration
     |> Regex.scan(storage, capture: :all_but_first)
-    |> List.flatten()
-    |> Enum.map(&kind/1)
+    |> Enum.map(fn
+      # The classic branch matched, so the group did not take part: no capture
+      # at all, or an empty one.
+      [block] when is_binary(block) and block != "" -> kind(block)
+      _classic -> nil
+    end)
   end
 
   defp kind(block) do
