@@ -464,7 +464,9 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
    the colour they gave it: `:not([style*="background-color"])` is that line,
    and the two are the same card in every other way. */
 .confluence-content
-  .panel:not(.code).confluence-information-macro:not([style*="background-color"]) {
+  .panel:not(.code).confluence-information-macro:not(
+    [style*="background-color"]
+  ) {
   background: color-mix(
     in oklab,
     var(--information-macro-tone) 8%,
@@ -492,7 +494,9 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
   padding-left: 0.95rem;
 }
 
-.confluence-content .panel.mirror-panel-iconic > .confluence-information-macro-icon {
+.confluence-content
+  .panel.mirror-panel-iconic
+  > .confluence-information-macro-icon {
   display: none;
 }
 
@@ -1563,7 +1567,8 @@ html.whiteboard-viewer-open {
 .confluence-content .inline-task-list {
   list-style: none;
   padding-left: 0;
-}.confluence-content .inline-task-list li {
+}
+.confluence-content .inline-task-list li {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
