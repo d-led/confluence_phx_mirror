@@ -493,6 +493,8 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     test "a widget connector's address is the reference it is stored as" do
       html = """
       <ac:structured-macro ac:name="widget">
+        <ac:parameter ac:name="overlay">youtube</ac:parameter>
+        <ac:parameter ac:name="_template">com/atlassian/confluence/extra/widgetconnector/templates/youtube.vm</ac:parameter>
         <ac:parameter ac:name="url"><ri:url ri:value="https://www.youtube.com/watch?v=ii1waoqualY" /></ac:parameter>
         <ac:parameter ac:name="width">600px</ac:parameter>
         <ac:parameter ac:name="height">300px</ac:parameter>
@@ -505,6 +507,10 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       # The size the editor records reaches the renderer as the page wrote it.
       assert rendered =~ ~s(data-height="300px")
       assert rendered =~ ~s(data-width="600px")
+      # The template is what knows *what the address is* — the vendor whose
+      # player needs an address of its own — so it reaches the renderer too.
+      assert rendered =~
+               ~s(data-template="com/atlassian/confluence/extra/widgetconnector/templates/youtube.vm")
     end
 
     # Also from the capture page: a roadmap keeps its whole plan in one

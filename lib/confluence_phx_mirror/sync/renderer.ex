@@ -127,7 +127,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 39: a page a stranger may read is drawn from the body the site serves a
   #     stranger (`anonymous_export_view`), so the one stored body carries no
   #     names or faces it does not have to.
-  def revision, do: 39
+  # 40: a widget connector's template names the vendor, so a YouTube address is
+  #     framed at the address its player is served from (`/embed/…`) instead of
+  #     at the page address the site refuses to frame.
+  def revision, do: 40
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

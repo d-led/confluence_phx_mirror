@@ -16,13 +16,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Marker do
 
   Parameter names stay Confluence's, in the attribute spelling the mirror uses:
   `minLevel` becomes `data-min-level`. The few the mirror calls something else
-  are in `@renamed`, because "the headings a report shows" is a column list and
-  "maximum results" is a limit, and a renderer should read the word it means.
+  are in `@renamed`, because "the headings a report shows" is a column list,
+  "maximum results" is a limit, and `_template` — the file a widget connector
+  would be drawn with — is the vendor a renderer reads it as; a renderer should
+  read the word it means.
   """
 
   alias ConfluencePhxMirror.Sync.DynamicContent.Registry
 
   @renamed %{
+    "_template" => "template",
     "first" => "limit",
     "headings" => "columns",
     "max" => "limit",

@@ -97,6 +97,64 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.WidgetConnectorTest do
     assert html =~ "not a web address"
   end
 
+  # The template is what knows what the address *is*. YouTube refuses to be
+  # framed and serves a player only from `/embed/`, so the frame gets that
+  # address while the page keeps the one the author pasted — timestamps and all.
+  describe "a widget connector whose template names the vendor" do
+    @youtube "com/atlassian/confluence/extra/widgetconnector/templates/youtube.vm"
+    @watch "https://www.youtube.com/watch?v=ii1waoqualY"
+
+    test "is framed at the address the vendor's player is served from" do
+      html = expand(templated(@watch, @youtube))
+
+      assert iframe(html)["src"] == "https://www.youtube.com/embed/ii1waoqualY"
+      assert hrefs(html) == [@watch]
+    end
+
+    # Only the frame's host is asked for, which is why a pasted short link needs
+    # no second host in the list.
+    test "is the same frame when the author pasted the short link" do
+      html = expand(templated("https://youtu.be/ii1waoqualY", @youtube))
+
+      assert iframe(html)["src"] == "https://www.youtube.com/embed/ii1waoqualY"
+      assert hrefs(html) == ["https://youtu.be/ii1waoqualY"]
+    end
+
+    test "is a frame only where the host it loads was named" do
+      TestConfig.put(:embed_hosts, [])
+
+      html = expand(templated(@watch, @youtube))
+
+      assert iframe(html) == %{}
+      assert hrefs(html) == [@watch]
+    end
+
+    # A template says what the address is, it never makes an address frameable:
+    # a video the player cannot take is the address, not a blank box.
+    test "falls back to the address when the vendor cannot play it" do
+      html = expand(templated("https://www.youtube.com/feed/subscriptions", @youtube))
+
+      assert iframe(html) == %{}
+      assert hrefs(html) == ["https://www.youtube.com/feed/subscriptions"]
+    end
+
+    # Nobody has seen this vendor's template, so nothing is known about how its
+    # player spells an address: the host is framed as it stands.
+    test "is framed as it stands when nobody here knows the vendor" do
+      TestConfig.put(:embed_hosts, ["vimeo.com"])
+
+      html =
+        expand(
+          templated(
+            "https://vimeo.com/123456",
+            "com/atlassian/confluence/extra/widgetconnector/templates/vimeo.vm"
+          )
+        )
+
+      assert iframe(html)["src"] == "https://vimeo.com/123456"
+    end
+  end
+
   test "a macro that names no address says so instead of drawing an empty box" do
     assert expand(~s(<div class="mirror-macro" data-macro="widget"></div>)) =~
              "names no address"
@@ -117,6 +175,11 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.WidgetConnectorTest do
   defp marked_at_height(height) do
     ~s(<div class="mirror-macro" data-macro="widget" data-url="#{@address}") <>
       ~s( data-height="#{height}"></div>)
+  end
+
+  defp templated(address, template) do
+    ~s(<div class="mirror-macro" data-macro="widget" data-url="#{address}") <>
+      ~s( data-template="#{template}"></div>)
   end
 
   defp iframe(html) do

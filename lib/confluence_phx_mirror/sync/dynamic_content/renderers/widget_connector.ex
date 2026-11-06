@@ -12,6 +12,14 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.WidgetConnector do
   a frame, when this deployment allows the host, with the address printed under
   it in muted type and still a link.
 
+  The macro also records the template Confluence would draw it with, and that is
+  the part which knows *what the address is*. For a vendor whose player needs an
+  address of its own — YouTube serves one from `/embed/` and refuses to be framed
+  anywhere else — the frame gets that address and the page keeps the one the
+  author pasted (`Sync.Embeds.Vendors`). A macro with no template, or with one
+  nobody has seen, is framed as the address it holds: guessing how a vendor
+  spells its player draws nothing at all.
+
   The address is always there, because the frame is the part that may be
   missing — a host nobody allowed (`Sync.Embeds`), a page in a space a stranger
   may read, which is stored without a frame because one copy of a body is served
@@ -32,6 +40,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.WidgetConnector do
   alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Sync.DynamicContent.{Context, Nodes}
   alias ConfluencePhxMirror.Sync.Embeds
+  alias ConfluencePhxMirror.Sync.Embeds.Vendors
 
   @sandbox "allow-scripts allow-same-origin allow-popups allow-presentation"
 
@@ -56,7 +65,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.WidgetConnector do
         [Nodes.notice("Widget connector: #{inspect(address)} is not a web address.")]
 
       {:ok, href} ->
-        case frame(address, context) do
+        case frame(address, attrs, context) do
           nil -> [address_line(["Embedded content: ", link(href)])]
           src -> [iframe(src, href, attrs), address_line([link(href)])]
         end
@@ -66,12 +75,22 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.WidgetConnector do
   # The frame is for an address this deployment allows *and* a space no stranger
   # can reach: a public deployment serves one stored body to everybody, so the
   # body a stranger opens must not load a third party for anyone.
-  defp frame(address, context) do
-    with {:ok, src} <- Embeds.embeddable?(address),
-         false <- stranger_reachable?(context) do
-      src
+  defp frame(address, attrs, context) do
+    with false <- stranger_reachable?(context),
+         {:ok, src} <- frame_address(address, attrs),
+         {:ok, allowed} <- Embeds.embeddable?(src) do
+      allowed
     else
       _refused -> nil
+    end
+  end
+
+  # The template is what knows what the address is, so a vendor it names decides
+  # the address the frame needs; a macro without one is framed as it stands.
+  defp frame_address(address, attrs) do
+    case Vendors.name(Map.get(attrs, "template"), Map.get(attrs, "overlay")) do
+      nil -> {:ok, address}
+      vendor -> Vendors.frame_source(vendor, address)
     end
   end
 

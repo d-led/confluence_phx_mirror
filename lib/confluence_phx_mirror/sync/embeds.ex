@@ -27,6 +27,12 @@ defmodule ConfluencePhxMirror.Sync.Embeds do
   in may be shown a third party at all (one copy of a body is served to
   everybody, so it is decided at sync time and per space), and `linkable?/1`
   is the narrower question of whether an address may be followed by a reader.
+
+  A third one belongs to the vendor: some players are served only from an address
+  of their own, which is what the macro's template names. `Sync.Embeds.Vendors`
+  turns a known vendor's page address into the one a frame needs, and the list
+  here is checked against *that* address — so the host the frame loads is the host
+  an operator has to name.
   """
 
   @doc """
