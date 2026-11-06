@@ -28,6 +28,7 @@ defmodule ConfluencePhxMirror.Sync do
   alias ConfluencePhxMirror.Mirror.{Attachment, Comment, Page, Space}
   alias ConfluencePhxMirror.Notifications
   alias ConfluencePhxMirror.PageUpdates
+  alias ConfluencePhxMirror.Publishing
   alias ConfluencePhxMirror.Repo
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sites
@@ -993,7 +994,7 @@ defmodule ConfluencePhxMirror.Sync do
   defp do_run(:incremental, source, opts) do
     since = Keyword.get(opts, :since, default_since())
 
-    case source.changed_since(since, opts) do
+    case source.changed_since(since, anonymous_body(opts, nil)) do
       {:ok, dtos} ->
         {extra, touched, touched_errors} = touched_pages(source, dtos, since, opts)
 
@@ -1760,7 +1761,7 @@ defmodule ConfluencePhxMirror.Sync do
                                                                         absent} ->
         check_cancelled!(opts)
 
-        case source.pages(space.key, opts) do
+        case source.pages(space.key, anonymous_body(opts, space.key)) do
           {:ok, dtos} ->
             {upserted, space_counts, page_errors} = upsert_entries(dtos, [space], opts)
             {flagged, guard_errors} = reconcile_deletions(space, dtos)
@@ -2157,6 +2158,42 @@ defmodule ConfluencePhxMirror.Sync do
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # What a stranger may be shown
+  # ---------------------------------------------------------------------------
+
+  # One stored body is served to every reader, so a body that may not name people
+  # is drawn from the body Confluence serves a stranger — the same markup, with
+  # the names and faces removed — and every other page from the signed-in
+  # rendering. The question is `Publishing.identities_in_space?/1`, the one the
+  # renderers ask, so a body and its macros agree about who may be named.
+  # Before this the mirror assumed the two renderings were alike; the site's own
+  # `anonymous_export_view` is where that is checked.
+  defp export_body(dto, space) do
+    if Publishing.identities_in_space?(space.key),
+      do: dto.body.export_view,
+      else: anonymous_rendering(dto)
+  end
+
+  # A site that answers with nothing is not a reason to store an empty body.
+  defp anonymous_rendering(dto) do
+    case Map.get(dto.body, :anonymous_export_view) do
+      body when is_binary(body) and body != "" -> body
+      _absent -> dto.body.export_view
+    end
+  end
+
+  # Whether the listing should carry that second rendering at all. It is one more
+  # rendering inside the same response, so it is asked for only where a page in it
+  # could have to be nameless: the space's own key when there is one, and "could
+  # any space be nameless" for a query that spans them.
+  defp anonymous_body(opts, space_key) do
+    Keyword.put(opts, :anonymous_body?, not identities_allowed?(space_key))
+  end
+
+  defp identities_allowed?(nil), do: Publishing.identities_anywhere?()
+  defp identities_allowed?(space_key), do: Publishing.identities_in_space?(space_key)
+
   defp render_page(
          source,
          %{space: space, dto: dto, page: page, change: change},
@@ -2180,7 +2217,7 @@ defmodule ConfluencePhxMirror.Sync do
     }
 
     rendered =
-      Renderer.render(Emoticons.from_storage(dto.body.export_view, dto.body.storage), context)
+      Renderer.render(Emoticons.from_storage(export_body(dto, space), dto.body.storage), context)
 
     with {:ok, read} <-
            read_page_details(source, page, rendered, attachments, restrictions),

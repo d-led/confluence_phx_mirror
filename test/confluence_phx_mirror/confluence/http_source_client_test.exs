@@ -50,7 +50,8 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
         },
         "body" => %{
           "storage" => %{"value" => "<p>storage body</p>"},
-          "export_view" => %{"value" => "<p>export body</p>"}
+          "export_view" => %{"value" => "<p>export body</p>"},
+          "anonymous_export_view" => %{"value" => "<p>anonymous body</p>"}
         },
         "metadata" => %{"labels" => %{"results" => [%{"name" => "architecture"}]}},
         "history" => %{"createdDate" => "2026-10-01T09:00:00.000Z"},
@@ -180,6 +181,22 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceClientTest do
 
       assert {:ok, page} = HttpSource.page(1002, [])
       assert page.space_key == "ENG"
+    end
+
+    # One page's space is only known once the answer arrives, so a single page
+    # always carries both renderings — the caller picks the one its readers may
+    # be shown. It is a second rendering in the same answer, never a second
+    # request.
+    test "asks for the stranger's rendering as well" do
+      stub(fn conn ->
+        assert conn.query_params["expand"] =~ "body.anonymous_export_view"
+        Req.Test.json(conn, page_json())
+      end)
+
+      assert {:ok, page} = HttpSource.page(1002, [])
+
+      assert page.body.export_view =~ "export body"
+      assert page.body.anonymous_export_view =~ "anonymous body"
     end
   end
 

@@ -32,6 +32,12 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
 
   @page_expand "body.storage,body.export_view,version,ancestors,metadata.labels,space,history"
 
+  # What the same page looks like to somebody who never signed in: the markup a
+  # stranger's browser would receive, which is the one a stored body must be when
+  # a stranger may read it. Asked for in the same request — it costs a rendering,
+  # not a round trip.
+  @anonymous_expand "body.anonymous_export_view"
+
   @comment_expand "body.storage,body.export_view,version,history"
 
   # Content that hangs off a page. A container of one of these is the owner the
@@ -77,23 +83,32 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   @impl true
-  def pages(space_key, _opts) do
+  def pages(space_key, opts) do
     # Confluence Cloud does not filter on a comma-separated type list (`type=page,
     # blogpost` silently returns nothing), so ask for one content type at a time.
-    with {:ok, pages} <- paginate_json("/content", content_params(space_key, "page")),
-         {:ok, posts} <- paginate_json("/content", content_params(space_key, "blogpost")) do
+    with {:ok, pages} <- paginate_json("/content", content_params(space_key, "page", opts)),
+         {:ok, posts} <- paginate_json("/content", content_params(space_key, "blogpost", opts)) do
       {:ok, Enum.map(pages ++ posts, &parse_page(&1, space_key))}
     end
   end
 
-  defp content_params(space_key, type) do
+  defp content_params(space_key, type, opts) do
     %{
       "spaceKey" => space_key,
       "type" => type,
       "status" => "current",
       "limit" => page_limit(),
-      "expand" => @page_expand
+      "expand" => page_expand(opts)
     }
+  end
+
+  # Whether a body no reader has to be signed in for is asked for too. The caller
+  # knows: it is the mirror's publishing rule, and one page's worth of it is
+  # decided by the space the page is in.
+  defp page_expand(opts) do
+    if Keyword.get(opts, :anonymous_body?, false),
+      do: @page_expand <> "," <> @anonymous_expand,
+      else: @page_expand
   end
 
   # The id-only listing a verify pass uses: same pagination, no bodies, no
@@ -142,7 +157,9 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   def page(confluence_id, _opts) do
     path = "/content/#{confluence_id}"
 
-    with {:ok, body} <- request_json(path, %{"expand" => @page_expand}) do
+    # Both renderings come back in the same answer: a single page's space is only
+    # known once the answer arrives, and one page is one page.
+    with {:ok, body} <- request_json(path, %{"expand" => page_expand(anonymous_body?: true)}) do
       {:ok, parse_page(body, space_key_of(body))}
     end
   end
@@ -487,10 +504,10 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   @impl true
-  def changed_since(since, _opts) do
+  def changed_since(since, opts) do
     cql = ~s[lastmodified >= "#{format_cql_time(since)}" and type in (page, blogpost)]
 
-    params = %{"cql" => cql, "limit" => page_limit(), "expand" => @page_expand}
+    params = %{"cql" => cql, "limit" => page_limit(), "expand" => page_expand(opts)}
 
     with {:ok, results} <- paginate_json("/content/search", params) do
       allowed = SpaceScope.wanted()
@@ -752,7 +769,8 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
       version: parse_version(content["version"]),
       body: %{
         storage: get_in(content, ["body", "storage", "value"]),
-        export_view: get_in(content, ["body", "export_view", "value"])
+        export_view: get_in(content, ["body", "export_view", "value"]),
+        anonymous_export_view: get_in(content, ["body", "anonymous_export_view", "value"])
       },
       labels: Enum.map(get_in(content, ["metadata", "labels", "results"]) || [], & &1["name"]),
       url: public_url(content["_links"]["webui"]),

@@ -584,6 +584,19 @@ badge, the `contributors` and `user-profile` macros, the people directory
 and the people links in the shell. A page in a public space must not say who
 wrote it, who commented, who is reading, or link to anybody's profile.
 
+**The body itself, not only the chrome around it (revision 39).** Drawing a page
+without its byline still left the *body* naming people: a mention is a link to
+`/wiki/people/…`, an avatar is an image the site serves, and both sat inside the
+one stored body every reader gets. Confluence already answers that question — an
+`anonymous_export_view` — so a page in a space a stranger may read is drawn from
+that rendering instead, and so is every page of a deployment that publishes no
+names at all. Measured on the 52-macro gallery page: 24,430 bytes with
+16 person links and one avatar as a signed-in reader, 10,509 bytes with none as a
+stranger, and the same structural classes and inline styles in both — so the
+mirror loses no fidelity, only the names. The second rendering is asked for in
+the same request (`expand=body.export_view,body.anonymous_export_view`) and only
+where publishing makes it usable, because it is a rendering, not a round trip.
+
 The stored body is the one surface that cannot be per reader: it is rendered
 once, at sync time, and served to everybody. So it is decided from the page's
 space — `Publishing.identities_in_space?/1` — and a page in a listed space is

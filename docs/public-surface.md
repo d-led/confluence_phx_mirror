@@ -8,8 +8,9 @@ Since this was written, the question *"which of our spaces may the internet
 read?"* was answered and shipped: `CM_PUBLIC_SPACES=ENG,OPS` narrows
 `CM_PUBLIC_SITE` to a subset of spaces, a page outside the list is the 404 an
 unknown page gets, and a listed space is anonymised by itself — bylines, comment
-authors, presence, `/people` and profile links, and the stored body's
-`contributors`/`user-profile` macros. That is
+authors, presence, `/people` and profile links, the stored body's
+`contributors`/`user-profile` macros, and the body itself, which is stored as the
+rendering the site serves a stranger (`anonymous_export_view`). That is
 [configuration.md](configuration.md#publishing) and
 [design-notes.md](design-notes.md#public-by-the-space-not-by-the-site), and it
 means the *reason* most deployments wanted a second audience is gone.

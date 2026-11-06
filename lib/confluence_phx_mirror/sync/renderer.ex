@@ -124,7 +124,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 38: a link the site writes for a person's own space (`/display/~account`), a
   #     space's overview, or the activity screen is a link inside the mirror,
   #     instead of a trip off it to a site the reader may have no account on.
-  def revision, do: 38
+  # 39: a page a stranger may read is drawn from the body the site serves a
+  #     stranger (`anonymous_export_view`), so the one stored body carries no
+  #     names or faces it does not have to.
+  def revision, do: 39
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

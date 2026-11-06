@@ -22,12 +22,19 @@ defmodule ConfluencePhxMirror.Confluence.Source do
         parent_id: 1001 | nil,
         ancestors: [1000, 1001],
         version: %{number: 7, message: "...", when: DateTime.t(), by: %{display_name: "...", account_id: "..."}},
-        body: %{storage: "<p>...</p>", export_view: "<p>...</p>"},
+        body: %{storage: "<p>...</p>", export_view: "<p>...</p>",
+                anonymous_export_view: "<p>...</p>" | nil},
         labels: ["architecture", "howto"],
         url: "https://site.atlassian.net/wiki/spaces/ENG/pages/1002/...",
         created_at: DateTime.t(),
         updated_at: DateTime.t()
       }
+
+  `anonymous_export_view` is the same body as the site gives somebody who never
+  signed in, and it is what the sync stores for a page whose stored copy may not
+  name people (`Publishing.identities_in_space?/1`). A source that does not offer
+  it — the demo snapshot, a synthetic one — is stored the signed-in way, so the
+  key is optional and `nil` means "not offered".
 
   ## Space DTO
 

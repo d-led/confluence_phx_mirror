@@ -214,8 +214,12 @@ remember: forgetting it would publish the identities of exactly the pages meant
 for the world. A reader with an account reading the same page keeps what the
 mirror always drew, because the question is asked per reader and per page. The
 one thing that cannot be per reader is the stored body, so a page in a listed
-space is rendered for the stranger and served that way to everybody — the
-`contributors` and `user-profile` macros on it name nobody.
+space — and every page of a deployment with `CM_ANONYMIZE_CONTRIBUTORS` set — is
+stored as the rendering Confluence serves somebody who never signed in
+(`anonymous_export_view`), which carries no person links and no faces, and its
+`contributors`/`user-profile` macros are not drawn either. The sync asks for that
+second rendering in the same request, so it costs a rendering per page, not a
+round trip.
 
 Three things this cannot promise: a page's **own prose** is not scrubbed (names
 in a sentence, a screenshot or an attachment stay); titles, space names and the
