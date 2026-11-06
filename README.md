@@ -244,6 +244,7 @@ stored page: it says what it was instead of guessing. Each edge and its reason:
 | looking for a setting | [configuration.md](docs/configuration.md) |
 | integrating: JSON API, Confluence-compatible REST, MCP | [api.md](docs/api.md) · [mcp.md](docs/mcp.md) |
 | working on the code: the one-page map, invariants, tests, gates | [architecture.md](docs/architecture.md) · [developers.md](docs/developers.md) |
+| changing something that has states: a run, a page, an account, a delivery | [state-machines.md](docs/state-machines.md) |
 | wondering why it is built this way, or what it cannot do | [design-notes.md](docs/design-notes.md) |
 | reporting a vulnerability | [SECURITY.md](SECURITY.md) |
 
