@@ -46,6 +46,22 @@ defmodule ConfluencePhxMirror.Accounts.LastAdminTest do
     assert {:error, :last_admin} = Accounts.change_role(admin, "member", {:system, "test"})
   end
 
+  test "an administrator the site switched off is not a way in" do
+    admin = user_fixture(%{email: "only@example.com", role: "admin"})
+    spare = user_fixture(%{email: "spare@example.com", role: "admin"})
+    assert 1 = Accounts.reconcile_site_status(nil, spare.email, :disabled)
+
+    assert {:error, :last_admin} = Accounts.set_disabled(admin, true, {:system, "test"})
+  end
+
+  test "an administrator the site deleted is not a way in" do
+    admin = user_fixture(%{email: "only@example.com", role: "admin"})
+    gone = user_fixture(%{email: "gone@example.com", role: "admin"})
+    assert 1 = Accounts.reconcile_site_status(nil, gone.email, :deleted)
+
+    assert {:error, :last_admin} = Accounts.set_disabled(admin, true, {:system, "test"})
+  end
+
   test "a member of an admin group is a way in, even with no account here" do
     TestConfig.put(:admin_groups, ["confluence-admins"])
     admin = user_fixture(%{email: "only@example.com", role: "admin"})

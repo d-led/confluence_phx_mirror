@@ -1993,24 +1993,40 @@ defmodule ConfluencePhxMirror.Mirror do
 
   `reason` is `"manual"` when an administrator chose the page and `"vanished"`
   when a listing left it out.
+
+  Asking twice means the same thing, so a repeated request leaves the row alone:
+  `deleted_at` is the retention clock, and a delivery that arrives again must not
+  extend how long the page is kept. The reason is monotonic — a decision outranks
+  an inference — because a sync lifts a `"vanished"` page the moment the site
+  lists it again, and it must not lift one somebody chose to remove.
   """
   def mark_deleted(confluence_id, reason \\ "manual") do
     case Repo.get_by(Page, confluence_id: confluence_id) do
-      nil ->
-        {:error, :not_found}
-
-      page ->
-        now = now()
-
-        page =
-          page
-          |> Ecto.Changeset.change(deleted_at: now, deleted_reason: reason)
-          |> Repo.update!()
-
-        trash_comments([page.id], now)
-        discard_page_overlays([page.id])
-        {:ok, page}
+      nil -> {:error, :not_found}
+      page -> trash_row(page, reason)
     end
+  end
+
+  defp trash_row(%Page{deleted_reason: "manual"} = page, _inference), do: {:ok, page}
+
+  defp trash_row(%Page{deleted_at: at, deleted_reason: reason} = page, reason)
+       when not is_nil(at),
+       do: {:ok, page}
+
+  # A trashed page is not also waiting for a listing that names it: the two are
+  # different answers to "why is this page not served", and carrying the absence
+  # across a trash makes the next run re-read a page it was told to leave alone.
+  defp trash_row(page, reason) do
+    now = now()
+
+    page =
+      page
+      |> Ecto.Changeset.change(deleted_at: now, deleted_reason: reason, absent_since: nil)
+      |> Repo.update!()
+
+    trash_comments([page.id], now)
+    discard_page_overlays([page.id])
+    {:ok, page}
   end
 
   # ---------------------------------------------------------------------------

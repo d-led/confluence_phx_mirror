@@ -36,6 +36,27 @@ defmodule ConfluencePhxMirror.TrashRetentionTest do
     assert audit_actions() == ["page.trashed"]
   end
 
+  test "a trashed page is no longer waiting for a listing that names it", %{
+    space: space,
+    page: page
+  } do
+    assert {1, 0} = Mirror.mark_absent(space, [])
+
+    assert {:ok, trashed} = Trash.trash_page(@actor, page, space)
+
+    assert trashed.deleted_reason == "vanished"
+    assert trashed.absent_since == nil
+  end
+
+  test "a person's trash survives an inference that says otherwise", %{page: page} do
+    assert {:ok, decided} = Mirror.mark_deleted(page.confluence_id, "manual")
+
+    assert {:ok, again} = Mirror.mark_deleted(page.confluence_id, "vanished")
+
+    assert again.deleted_reason == "manual"
+    assert again.deleted_at == decided.deleted_at
+  end
+
   test "retention purges what is old enough and keeps what is not", %{
     space: space,
     page: page

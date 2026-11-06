@@ -508,9 +508,15 @@ defmodule ConfluencePhxMirror.Accounts do
 
   defp account_by_confluence_id(_account_id), do: nil
 
+  # Everyone who is still a way in to the mirror. The rule is `User.disabled?/1`'s
+  # rule, spelled in SQL: an account the site deleted cannot sign in either, and
+  # counting it as another administrator is how the last real one gets switched
+  # off.
   defp enabled_accounts do
     from(u in User,
-      where: is_nil(u.disabled_at) and is_nil(u.site_disabled_at) and is_nil(u.banned_at)
+      where:
+        is_nil(u.disabled_at) and is_nil(u.site_disabled_at) and is_nil(u.site_deleted_at) and
+          is_nil(u.banned_at)
     )
   end
 
