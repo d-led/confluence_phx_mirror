@@ -113,6 +113,16 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       env: "CM_RATE_LIMIT_ATTACHMENTS_PER_MINUTE",
       ui: :settings
     },
+    "embeds.hosts" => %{
+      type: :csv,
+      default: :embed_hosts,
+      group: :reading,
+      label: "Hosts a widget connector may embed",
+      help:
+        "Third parties this mirror may load inside a page, by host name — `youtube.com` allows its subdomains too. Empty embeds nothing and leaves the address by itself. The same list builds the policy's `frame-src`, so what is drawn and what is allowed cannot disagree; a page keeps the frames it was drawn with until it is synced again.",
+      env: "CM_EMBED_HOSTS",
+      ui: :settings
+    },
     "search.page_size" => %{
       type: :pos_integer,
       default: {:search, :page_size, 30},
@@ -488,6 +498,7 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
     "reader.html_limit",
     "reader.api_limit",
     "reader.attachments_limit",
+    "embeds.hosts",
     "search.page_size",
     "search.default_limit",
     "search.max_results",

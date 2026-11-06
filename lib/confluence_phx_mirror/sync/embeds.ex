@@ -10,11 +10,17 @@ defmodule ConfluencePhxMirror.Sync.Embeds do
       CM_EMBED_HOSTS=youtube.com,player.vimeo.com
 
   Empty by default, which means nothing is embedded anywhere and a widget
-  connector is the address itself. Naming a host also covers its subdomains —
-  `youtube.com` allows `www.youtube.com` — and the same list builds `frame-src`
-  in the content security policy, so the renderer and the policy cannot
-  disagree: a host nobody named is not framed, and a frame the renderer wrote is
-  not blocked.
+  connector is the address itself. The list is an administrator's setting
+  (`/admin/settings`, “Hosts a widget connector may embed”) and the variable is
+  only what a deployment starts with, so naming a host needs no redeploy. Naming
+  a host also covers its subdomains — `youtube.com` allows `www.youtube.com` —
+  and the same list builds `frame-src` in the content security policy, so the
+  renderer and the policy cannot disagree: a host nobody named is not framed,
+  and a frame the renderer wrote is not blocked.
+
+  A body is drawn once, at sync time, so a host named *after* a page was
+  mirrored reaches that page at its next sync — the address a reader sees until
+  then is the honest one for the body that was stored.
 
   Two questions this does not answer, because they belong elsewhere:
   `Publishing.stranger_reachable?/1` decides whether a reader who never signed
@@ -22,8 +28,6 @@ defmodule ConfluencePhxMirror.Sync.Embeds do
   everybody, so it is decided at sync time and per space), and `linkable?/1`
   is the narrower question of whether an address may be followed by a reader.
   """
-
-  @app :confluence_phx_mirror
 
   @doc """
   The hosts an operator allowed, normalised: lower case, no scheme, no `*.`
@@ -36,8 +40,7 @@ defmodule ConfluencePhxMirror.Sync.Embeds do
   """
   @spec hosts() :: [String.t()]
   def hosts do
-    @app
-    |> Application.get_env(:embed_hosts, [])
+    ConfluencePhxMirror.Settings.embed_hosts()
     |> Enum.map(&normalise/1)
     |> Enum.reject(&(&1 == ""))
     |> Enum.uniq()

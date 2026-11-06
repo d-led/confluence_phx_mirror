@@ -27,6 +27,7 @@ defmodule ConfluencePhxMirror.Settings.CatalogueTest do
 
     assert reading.keys ==
              ["reader.html_limit", "reader.api_limit", "reader.attachments_limit"] ++
+               ["embeds.hosts"] ++
                ["search.page_size", "search.default_limit", "search.max_results"]
   end
 

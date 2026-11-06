@@ -359,6 +359,35 @@ defmodule ConfluencePhxMirror.SettingsTest do
     end
   end
 
+  describe "the hosts a widget may embed" do
+    # The variable only says where a deployment starts; naming a host is a
+    # decision an administrator makes while the mirror runs, and the renderer and
+    # the policy read the one value — so a frame the mirror wrote is never
+    # blocked by a `frame-src` that was built from something else.
+    test "are a setting whose stored list wins over the deployment's" do
+      assert {:ok, _applied} =
+               Settings.update(%{"embeds.hosts" => " YouTube.com , vimeo.com "}, @actor)
+
+      assert Settings.embed_hosts() == ["YouTube.com", "vimeo.com"]
+      assert ConfluencePhxMirror.Sync.Embeds.hosts() == ["youtube.com", "vimeo.com"]
+
+      assert ConfluencePhxMirror.Sync.Embeds.frame_src() == [
+               "https://youtube.com",
+               "https://*.youtube.com",
+               "https://vimeo.com",
+               "https://*.vimeo.com"
+             ]
+    end
+
+    test "hand the decision back to the deployment when cleared" do
+      Settings.update(%{"embeds.hosts" => "youtube.com"}, @actor)
+      Settings.update(%{"embeds.hosts" => ""}, @actor)
+
+      assert Settings.stored("embeds.hosts") == nil
+      assert Settings.embed_hosts() == Application.get_env(:confluence_phx_mirror, :embed_hosts, [])
+    end
+  end
+
   describe "webhook overrides" do
     test "are decisions like any other" do
       assert {:ok, _} = Settings.put_webhook_require_signature(true, @actor)

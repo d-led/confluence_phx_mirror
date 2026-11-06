@@ -82,6 +82,16 @@ defmodule ConfluencePhxMirror.Settings do
     end
   end
 
+  @doc """
+  The hosts a widget connector may embed, normalised by `Sync.Embeds`.
+
+  Empty means nothing is embedded anywhere, which is the safe default: a mirror
+  that must load a third party to draw a page is a mirror that talks to whoever
+  a page's author typed in.
+  """
+  @spec embed_hosts() :: [String.t()]
+  def embed_hosts, do: effective("embeds.hosts") || []
+
   @doc "The theme every reader wears."
   @spec theme() :: String.t() | nil
   def theme, do: effective("theme")
@@ -206,7 +216,6 @@ defmodule ConfluencePhxMirror.Settings do
   @doc "How many search hits one reader page shows."
   @spec search_page_size() :: pos_integer()
   def search_page_size, do: effective("search.page_size")
-
   @doc "How many results a caller gets when it names no limit."
   @spec search_default_limit() :: pos_integer()
   def search_default_limit, do: effective("search.default_limit")
@@ -655,6 +664,9 @@ defmodule ConfluencePhxMirror.Settings do
   # Where each default comes from: the same keys the environment sets, so a
   # setting and its variable can never drift apart.
   defp resolve(:theme), do: configured(:theme)
+
+  # `CM_EMBED_HOSTS` is the deployment's answer; a stored list replaces it.
+  defp resolve(:embed_hosts), do: configured(:embed_hosts) || []
 
   # What a deployment says about the mail queue: `MIRROR_MAIL_PAUSED`.
   defp resolve(:mail_paused), do: Application.get_env(:confluence_phx_mirror, :mail_paused, false)
