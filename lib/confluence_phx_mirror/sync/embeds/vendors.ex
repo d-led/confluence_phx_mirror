@@ -16,10 +16,9 @@ defmodule ConfluencePhxMirror.Sync.Embeds.Vendors do
   nothing.
 
   A row exists only where the vendor's embed address is documented **and** the
-  template name was seen in a real page — `youtube` is the row the capture page
-  of 2026-11-06 gave us. `vimeo`, `google`, `twitter` and the rest are not here
-  because their template names have not been seen, and a guessed row draws
-  nothing for everybody.
+  template name is known: `youtube` is the row this mirror has, and `vimeo`,
+  `google`, `twitter` and the rest are absent because their template names are
+  not known here. A guessed row draws nothing for everybody.
 
   Whether a third party may be loaded at all is not this module's question: the
   operator's list in `ConfluencePhxMirror.Sync.Embeds` checks the address this

@@ -2,12 +2,8 @@ defmodule ConfluencePhxMirror.Sync.Embeds.Frame do
   @moduledoc """
   The frame the mirror writes, wherever a third party's page is shown.
 
-  Two paths reach a frame and they produce the same node: a widget connector
-  whose macro the export left unexpanded (`Renderers.WidgetConnector`, which
-  knows the address the vendor's player is served from) and the site's own
-  `iframe`, which the export carries for a connector it rendered — kept by
-  `Sync.Renderer` where an operator allowed the host. One node means one set of
-  rules for the stylesheet and for the content security policy.
+  One node, so the stylesheet and the content security policy have one thing to
+  answer and two frames cannot be drawn by different rules.
 
   Every frame gets: the address, a title naming the party, `sandbox` so a third
   party's scripts cannot reach this page's, the site's origin and nothing more as
@@ -15,11 +11,10 @@ defmodule ConfluencePhxMirror.Sync.Embeds.Frame do
   nobody scrolled to.
 
   The referrer is `origin` rather than `no-referrer` because a player may refuse
-  to start without one: measured on the capture page, YouTube answers
-  `no-referrer` with "Error 153, player configuration error"
-  (`embedder.identity.missing.referrer`) and plays with `origin`. The origin is a
-  host, not a page, so the third party learns where the mirror is and not what a
-  reader is looking at.
+  to start without one: YouTube answers a referrer-less embed with "Error 153,
+  player configuration error"
+  (`embedder.identity.missing.referrer`). The origin is a host, not a page, so the
+  third party learns where the mirror is and not what a reader is looking at.
 
   A declared `height` is the frame's, inside the band a player is built for,
   because a player comes in its vendor's sizes and a frame drawn at the mirror's

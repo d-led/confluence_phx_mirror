@@ -69,8 +69,7 @@ defmodule ConfluencePhxMirror.Sync.Embeds do
 
   Confluence writes a widget's frame without a scheme — `//www.youtube.com/embed/…`
   — which means "the scheme of this page", and this mirror is served over https.
-  Read literally it has no scheme at all, so every such frame was "not a web
-  address" and a mirrored page showed "this content cannot be shown" for it.
+  Read literally it has no scheme at all, so such a frame was not a web address.
 
       iex> absolute("//www.youtube.com/embed/abc")
       "https://www.youtube.com/embed/abc"

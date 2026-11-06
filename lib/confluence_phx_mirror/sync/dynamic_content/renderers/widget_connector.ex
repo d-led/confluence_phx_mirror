@@ -6,11 +6,10 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.WidgetConnector do
         <ac:parameter ac:name="url">https://www.youtube.com/watch?v=abc</ac:parameter>
       </ac:structured-macro>
 
-  Confluence resolves this in the reader's browser, so `export_view` carries an
-  unexpanded macro and a static mirror used to print "an external widget" and
-  stop. What the macro holds is an address, and an address is enough to draw it:
-  a frame, when this deployment allows the host, with the address printed under
-  it in muted type and still a link.
+  Confluence resolves this in the reader's browser, so the export carries an
+  unexpanded macro. What it holds is an address, and an address is enough to draw
+  it: a frame, when this deployment allows the host, with the address printed
+  under it in muted type and still a link.
 
   The macro also records the template Confluence would draw it with, and that is
   the part which knows *what the address is*. For a vendor whose player needs an
