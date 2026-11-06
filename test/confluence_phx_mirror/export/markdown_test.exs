@@ -133,6 +133,26 @@ defmodule ConfluencePhxMirror.Export.MarkdownTest do
     assert md =~ "Because."
   end
 
+  # A widget connector is somebody else's page in a frame, with its address kept
+  # under it. A `.md` file cannot carry a frame, so the tag goes — and the
+  # address, which the renderer puts under every frame, is what a reader of the
+  # export keeps.
+  test "a widget's frame goes and the address under it stays a link" do
+    md =
+      Markdown.from_html(
+        """
+        <iframe class="mirror-embed" src="https://www.youtube.com/embed/abc"></iframe>
+        <p class="mirror-embed-source mirror-embed-address"><a href="https://www.youtube.com/watch?v=abc">https://www.youtube.com/watch?v=abc</a></p>
+        """,
+        @ctx
+      )
+
+    refute md =~ "iframe"
+
+    assert md =~
+             "[https://www.youtube.com/watch?v=abc](https://www.youtube.com/watch?v=abc)"
+  end
+
   # The macros resolve to HTML at sync time, so the Markdown export reads that
   # HTML like any other — but only if the shapes the renderers chose convert.
   # These three are the shapes that matter: a tab, a listing and a placeholder.

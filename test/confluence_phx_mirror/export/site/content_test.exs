@@ -36,6 +36,20 @@ defmodule ConfluencePhxMirror.Export.Site.ContentTest do
       assert html =~ ~s(href="../../../spaces/ENG/pages/1003.html")
     end
 
+    # The archive is a folder of files a reader opens offline: a frame keeps its
+    # third-party address (it loads when the reader is online, and says nothing
+    # when not), and the address under it is the link that always works.
+    test "a widget connector keeps its frame and the address under it" do
+      html =
+        rewrite(
+          ~s(<iframe class="mirror-embed" src="https://www.youtube.com/embed/abc"></iframe>) <>
+            ~s(<p class="mirror-embed-address"><a href="https://www.youtube.com/watch?v=abc">the video</a></p>)
+        )
+
+      assert html =~ ~s(src="https://www.youtube.com/embed/abc")
+      assert html =~ ~s(href="https://www.youtube.com/watch?v=abc")
+    end
+
     # A reader who presses a link to a heading lands on the heading, in the
     # archive as in the mirror: the fragment is not the file's business, so it
     # survives the path.
