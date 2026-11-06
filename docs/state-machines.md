@@ -18,11 +18,9 @@ changes in the same commit.
 transitions this document records as defects or accepted risks, with the reason
 and the impact given below the table.
 
-Defects 1 and 2 are fixed (issues
-[#12](https://github.com/d-led/confluence_phx_mirror/issues/12),
-[#13](https://github.com/d-led/confluence_phx_mirror/issues/13)); defects 3–6 and
-the accepted risks are tracked in
-[#14](https://github.com/d-led/confluence_phx_mirror/issues/14).
+Defects 1 and 2 are **fixed**. Defects 3–6 and the accepted risks are **open**:
+they are recorded here, and summarised in the hand-over notes — this project
+keeps its plan in its own documents, not in GitHub issues.
 
 The machines:
 
@@ -615,7 +613,7 @@ this codebase actually break.
 
 ### Defect 1 — A site-deleted administrator still counts as a way in (S11)
 
-*Issue #12, fixed.*
+*Fixed.*
 
 - **Impact: high.** The last administrator can be switched off, demoted, banned
   or deleted, leaving a mirror nobody can administer. A ban is unrecoverable by
@@ -633,7 +631,7 @@ this codebase actually break.
 
 ### Defect 2 — `mark_deleted/2` breaks two page invariants (S5)
 
-*Issue #13, fixed.*
+*Fixed.*
 
 - **Impact: medium.** (a) A trashed page can keep `absent_since`, which makes
   `change_of/4` re-read and rewrite it on the next snapshot, and — with reason
@@ -654,7 +652,7 @@ this codebase actually break.
 
 ### Defect 3 — A killed sync is recorded as a cancellation (S1)
 
-*Issue #14, open.*
+*Open — needs a decision, not a patch.*
 
 - **Impact: medium, but the fix is a decision, not a patch.** An OOM kill or a
   brutal supervisor shutdown writes `cancelled` with `error: "stopped on request"`,
@@ -666,7 +664,7 @@ this codebase actually break.
 
 ### Defect 4 — A lapsed gate lease does not stop the run (S2)
 
-*Issue #14, open.*
+*Open — needs a supervision change.*
 
 - **Impact: medium.** Two runs can write the same pages concurrently, with
   deadlocks between their upserts and a contradictory pair of audit entries.
@@ -678,7 +676,7 @@ this codebase actually break.
 
 ### Defect 5 — A webhook delivery can rest in `processing` (S9)
 
-*Issue #14, open.*
+*Open — needs a sweep.*
 
 - **Impact: low.** The record of a delivery that died mid-handling reads as
   "still going" for ever, and `/admin/webhooks` shows it.
@@ -689,7 +687,7 @@ this codebase actually break.
 
 ### Defect 6 — Removing the last scoped space widens the mirror (S8)
 
-*Issue #14, open.*
+*Open — needs a warning, not a semantic change.*
 
 - **Impact: high when it happens, and it is a surprise.** A narrowed server
   mirror returns to copying the whole site.
