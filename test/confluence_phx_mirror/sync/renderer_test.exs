@@ -29,6 +29,16 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     )
   end
 
+  # The `data-source` a rendered body carries: the one attribute a macro's own
+  # document reaches its renderer by.
+  defp source(html) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find("[data-source]")
+    |> Floki.attribute("data-source")
+    |> List.first()
+  end
+
   describe "page cross-linking" do
     test "rewrites links to mirrored pages into mirror paths" do
       html =
@@ -424,6 +434,29 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       assert Renderer.render(html, context()).html =~
                ~s(data-url="https://www.youtube.com/watch?v=ii1waoqualY")
+    end
+
+    # Also from the capture page: a roadmap keeps its whole plan in one
+    # URL-encoded parameter, so the marker has to carry it through untouched for
+    # the timeline to be drawn from the page's own words.
+    test "a roadmap's plan is read out of the parameter the editor writes" do
+      html = """
+      <ac:structured-macro ac:name="roadmap" ac:schema-version="1">
+        <ac:parameter ac:name="timeline">true</ac:parameter>
+        <ac:parameter ac:name="source">%7B%22title%22%3A%22Roadmap%20Planner%22%2C%22timeline%22%3A%7B%22startDate%22%3A%222026-11-06%2000%3A00%3A00%22%2C%22endDate%22%3A%222027-10-06%2000%3A00%3A00%22%2C%22displayOption%22%3A%22MONTH%22%7D%2C%22lanes%22%3A%5B%7B%22title%22%3A%22Lane%201%22%2C%22bars%22%3A%5B%7B%22title%22%3A%22Bar%201%22%2C%22startDate%22%3A%222026-11-01%2000%3A00%3A00%22%2C%22duration%22%3A2%7D%5D%7D%5D%7D</ac:parameter>
+        <ac:parameter ac:name="title">Roadmap%20Planner</ac:parameter>
+        <ac:parameter ac:name="hash">0beaea580d87d8054d0416dacb79faef</ac:parameter>
+      </ac:structured-macro>
+      """
+
+      rendered = Renderer.render(html, context()).html
+
+      assert rendered =~ ~s(data-macro="roadmap")
+
+      # The whole plan travels in that one parameter, so it has to arrive whole:
+      # the marker is where the renderer will read it from.
+      assert %{"lanes" => [%{"title" => "Lane 1", "bars" => [%{"title" => "Bar 1"}]}]} =
+               rendered |> source() |> URI.decode() |> Jason.decode!()
     end
 
     test "a macro nobody can draw keeps the body a reader came for" do

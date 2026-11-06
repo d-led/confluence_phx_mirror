@@ -41,6 +41,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
              "pagetree",
              "profile-picture",
              "recently-updated",
+             "roadmap",
              "tasks-report",
              "toc",
              "user-profile",

@@ -38,6 +38,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "pagetree" => Renderers.PageTree,
     "profile-picture" => Renderers.ProfilePicture,
     "recently-updated" => Renderers.RecentlyUpdated,
+    "roadmap" => Renderers.Roadmap,
     "tasks-report" => Renderers.TasksReport,
     "toc" => Renderers.Toc,
     "user-profile" => Renderers.UserProfile,

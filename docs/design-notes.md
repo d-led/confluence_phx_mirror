@@ -135,7 +135,8 @@ Resolved today: `content-by-label` (and the editor's `contentbylabel`), `page-pr
 `detailssummary`), `toc`, `children`, `pagetree`, `recently-updated`,
 `attachments`, `content-report-table`, `include`, `excerpt-include`, `excerpt`,
 `blog-posts`, `contributors`, `labels-list`, `user-profile`, `tasks-report`,
-`decision-report`, `anchor`, `profile-picture` and `widget` — plus `html`, whose
+`decision-report`, `anchor`, `profile-picture`, `roadmap` and `widget` — plus
+`html`, whose
 answer is its own body, read from the
 storage because the export view only leaves a picture of the macro. What is left
 is not a renderer away:
@@ -159,6 +160,18 @@ mirror drew is never blocked and no host is permitted that it never draws.
 `blog-posts` is one query the port already had: `type = blogpost`, ordered by
 `created`, with the `space`/`label` filters `recently-updated` also asks for —
 `Sync.DynamicContent.Listing` writes those filters once for both.
+
+`roadmap` is the one macro whose *whole answer* is in the page: the planner
+stores its document — timeline, lanes, bars, markers — in one URL-encoded
+parameter, so the mirror needs no network, no Jira and no credentials to draw the
+picture Confluence draws. The columns are the timeline's own `displayOption`
+units, and a bar's width is its `duration` in those units, which is what the
+site's own picture shows: under `MONTH`, a duration of 2 runs from 1 November to
+1 January and one of 2.5 stops midway through January. Two things are left out on
+purpose — a bar's `pageLink`, whose shape when filled in has never been captured
+(the Safari page stores `{}`), and any bar whose start or duration cannot be read,
+because a bar drawn in the wrong place is worse than no bar. A timeline of more
+than sixty columns is refused with a sentence rather than smeared across the page.
 
 `tasks-report` and `decision-report` are the two whose data sits *inside* pages
 rather than in a table of their own: a task is an item of an `inline-task-list`,

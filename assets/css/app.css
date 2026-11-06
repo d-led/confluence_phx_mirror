@@ -1170,6 +1170,115 @@ html.whiteboard-viewer-open {
   border-left: 1px solid var(--color-base-300);
 }
 
+/* A roadmap is a plan on a timeline, so it is drawn as a timeline: the plan's
+   own units across the top, one row per lane, and a bar where each item sits.
+   The positions come from the macro's dates, so the picture is the plan rather
+   than a list that reads like one. */
+.confluence-content .mirror-roadmap {
+  margin: 0;
+  overflow-x: auto;
+}
+
+.confluence-content .mirror-roadmap-range {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+/* The timeline is wider than a phone, so it scrolls sideways instead of being
+   squeezed into columns nobody can tell apart. A column keeps a width a bar's
+   own name fits in. */
+.confluence-content .mirror-roadmap-grid {
+  --row-height: 1.75rem;
+
+  display: grid;
+  grid-template-columns: minmax(4.5rem, max-content) minmax(22rem, 1fr);
+  gap: 0.3rem 0.6rem;
+  align-items: center;
+  min-width: max(22rem, calc(var(--columns, 1) * 3.4rem));
+}
+
+.confluence-content .mirror-roadmap-months {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  margin: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
+}
+
+.confluence-content .mirror-roadmap-month {
+  padding-left: 0.2rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.confluence-content .mirror-roadmap-lane-title {
+  margin: 0;
+  padding: 0.15rem 0 0.15rem 0.5rem;
+  border-left: 3px solid var(--lane, var(--color-primary));
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* The columns are one repeating gradient rather than a node each: how many
+   there are is the chart's own `--columns`. */
+.confluence-content .mirror-roadmap-track {
+  position: relative;
+  height: calc(var(--rows, 1) * var(--row-height));
+  border-left: 1px solid var(--color-base-300);
+  background-image: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--color-base-content) 15%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: calc(100% / var(--columns, 1)) 100%;
+}
+
+/* Two bars may start on the same day, so each sits on the row the plan gives
+   it rather than on its neighbour. */
+.confluence-content .mirror-roadmap-bar {
+  position: absolute;
+  top: calc(var(--row, 0) * var(--row-height) + 0.075rem);
+  height: 1.6rem;
+  padding: 0 0.35rem;
+  overflow: hidden;
+  border-radius: 0.3rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.6rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.confluence-content .mirror-roadmap-marker-row {
+  position: relative;
+  height: 1.4rem;
+}
+
+.confluence-content .mirror-roadmap-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid currentColor;
+  color: #c9372c;
+}
+
+.confluence-content .mirror-roadmap-marker-label {
+  position: absolute;
+  top: 0.15rem;
+  left: 0.3rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
 .confluence-content .mirror-files {
   margin: 0;
   padding-left: 1.1rem;

@@ -105,7 +105,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 31: a widget connector's address is read from the reference it is stored as,
   #     so a body mirrored under 30 (where the address read as empty) is re-read
   #     instead of keeping "the macro names no address".
-  def revision, do: 31
+  # 32: a roadmap planner is drawn from the plan the editor stores in it — its
+  #     lanes, bars and markers on the plan's own timeline — instead of staying
+  #     the widget for a macro Confluence will not expand for a reader.
+  def revision, do: 32
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
