@@ -102,7 +102,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     is the same person and the same catalogue, not a link to the site.
   # 30: a widget connector is the page it names — a frame when the deployment
   #     allows that host, and always the address under it.
-  def revision, do: 30
+  # 31: a widget connector's address is read from the reference it is stored as,
+  #     so a body mirrored under 30 (where the address read as empty) is re-read
+  #     instead of keeping "the macro names no address".
+  def revision, do: 31
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -843,7 +846,11 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     "ri:page" => ["ri:content-title", "ri:content-id"],
     "ri:user" => ["ri:account-id", "ri:username", "ri:userkey"],
     "ri:attachment" => ["ri:filename"],
-    "ri:space" => ["ri:space-key"]
+    "ri:space" => ["ri:space-key"],
+    # A widget connector's address is a reference too, and its element carries no
+    # text: read for text alone, the marker had no address and every widget from
+    # the editor said it named none.
+    "ri:url" => ["ri:value"]
   }
 
   defp reference(nodes) when is_list(nodes), do: Enum.find_value(nodes, &reference/1)
@@ -864,6 +871,7 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   defp kind_word("ri:user"), do: "user"
   defp kind_word("ri:attachment"), do: "attachment"
   defp kind_word("ri:space"), do: "space"
+  defp kind_word("ri:url"), do: "url"
   defp kind_word(_other), do: ""
 
   # The link is written as a plain Confluence URL so the usual anchor rewriting

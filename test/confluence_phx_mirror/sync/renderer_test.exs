@@ -411,6 +411,21 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert Renderer.render(html, context()).html =~ "The acme-widget macro"
     end
 
+    # Taken from what the editor really writes ("Macro capture 2026-11-06"):
+    # the address is a reference whose own text is empty, so a reader that took
+    # the text found no address and every widget connector from Confluence said
+    # it named none.
+    test "a widget connector's address is the reference it is stored as" do
+      html = """
+      <ac:structured-macro ac:name="widget">
+        <ac:parameter ac:name="url"><ri:url ri:value="https://www.youtube.com/watch?v=ii1waoqualY" /></ac:parameter>
+      </ac:structured-macro>
+      """
+
+      assert Renderer.render(html, context()).html =~
+               ~s(data-url="https://www.youtube.com/watch?v=ii1waoqualY")
+    end
+
     test "a macro nobody can draw keeps the body a reader came for" do
       html = """
       <ac:structured-macro ac:name="confiform-table">
