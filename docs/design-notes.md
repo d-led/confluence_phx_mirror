@@ -21,9 +21,10 @@ does not cover.
 Confluence's `body.export_view` is the server-rendered HTML Confluence itself
 serves to a browser. The mirror keeps it (sanitised) instead of re-implementing
 macros from `body.storage`, which is what the markdown exporters do and where
-they lose fidelity. Internal links are rewritten so mirrored pages and spaces
-cross-link each other; native `<details>` for expand macros, panels, lozenges,
-task lists, TOC, gallery and Jira macros come from Confluence's own markup.
+they lose fidelity. Internal links are rewritten so mirrored pages, spaces, people
+and labels cross-link each other; native `<details>` for expand macros, panels,
+lozenges, task lists, TOC, gallery and Jira macros come from Confluence's own
+markup.
 
 The price is paid where the export view itself is lossy, and the layout macros
 are the clearest case: a `section` of two `column`s arrives as the columns'
