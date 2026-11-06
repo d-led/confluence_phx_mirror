@@ -17,8 +17,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.ContentByLabel do
 
   @impl true
   def render(attrs, %Context{} = context) do
-    labels = Attributes.list(attrs, "labels")
+    case Attributes.list(attrs, "labels") do
+      # Nothing to ask: an empty query is not a question, and the macro can say
+      # what it means without one.
+      [] -> [Nodes.empty("The macro names no label, so there is nothing to list.")]
+      labels -> list(labels, attrs, context)
+    end
+  end
 
+  defp list(labels, attrs, context) do
     pages =
       context.source.pages_by_label(context.page, labels,
         match: match(attrs),
@@ -28,7 +35,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.ContentByLabel do
 
     case pages do
       [] ->
-        [Nodes.empty(empty_message(labels))]
+        [Nodes.empty("No content carries these labels yet.")]
 
       pages ->
         [Nodes.heading("Content by label: " <> Enum.join(labels, ", ")), Nodes.page_list(pages)]
@@ -39,7 +46,4 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.ContentByLabel do
   defp match(_attrs), do: :all
 
   defp space(attrs), do: Map.get(attrs, "space")
-
-  defp empty_message([]), do: "The macro names no label, so there is nothing to list."
-  defp empty_message(_labels), do: "No content carries these labels yet."
 end

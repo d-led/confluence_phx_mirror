@@ -34,8 +34,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.StubContent do
   def questions, do: @asked |> Process.get([]) |> Enum.reverse()
 
   @impl true
-  def pages_by_label(_host, labels, _opts) do
-    record({:pages_by_label, labels})
+  def pages_by_label(_host, labels, opts) do
+    record({:pages_by_label, labels, opts})
     answer(:pages_by_label, [])
   end
 
