@@ -20,6 +20,11 @@ defmodule ConfluencePhxMirror.Export.Site.Content do
   a one-space archive) links to Confluence instead of to a file that is not in
   the zip.
 
+  A space and a label are files here too — `spaces/KEY/index.html` and
+  `labels/<key>.html` — so a body that names one links to it, and only targets
+  the archive has no file for keep their words with the link removed: a person's
+  page, and a label no page in the archive carries.
+
   It also adds the heading permalinks the reader screens add in JavaScript, so
   an exported page needs no script at all.
   """
