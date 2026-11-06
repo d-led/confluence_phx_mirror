@@ -161,6 +161,16 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
                ~s(href="/people/557058%3Aabc")
     end
 
+    # Confluence appends `?ref=confluence` to the mentions it writes, and the
+    # address is still the person's page.
+    test "a mention with the site's tracking query is the same person" do
+      html =
+        ~s(<a href="https://dled.atlassian.net/people/557058:abc?ref=confluence">Dana</a>)
+
+      assert Renderer.render(html, context(%{person_lookup: &author_named/1})).html =~
+               ~s(href="/people/557058%3Aabc")
+    end
+
     defp author_named(account_id) when is_binary(account_id) do
       if account_id == "557058:abc", do: %{account_id: account_id}
     end
@@ -190,6 +200,14 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     test "a label link the mirror wrote itself is left alone" do
       assert Renderer.render(~s(<a href="/labels/architecture">architecture</a>), context()).html =~
                ~s(href="/labels/architecture")
+    end
+
+    test "a label address with a query names the same catalogue" do
+      assert Renderer.render(
+               ~s(<a href="/wiki/label/MFS/runbook?src=sidebar">runbook</a>),
+               context()
+             ).html =~
+               ~s(href="/labels/runbook")
     end
   end
 
