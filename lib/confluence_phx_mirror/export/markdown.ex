@@ -15,6 +15,8 @@ defmodule ConfluencePhxMirror.Export.Markdown do
     * `:attachments` – `%{"/attachments/..." => "attachments/file.ext"}`
   """
 
+  alias ConfluencePhxMirror.Export.Fragment
+
   @doc "Converts an HTML fragment to Markdown."
   @spec from_html(String.t() | nil, map()) :: String.t()
   def from_html(html, ctx \\ %{})
@@ -282,6 +284,7 @@ defmodule ConfluencePhxMirror.Export.Markdown do
   # ---------------------------------------------------------------------------
 
   defp resolve(nil, _ctx), do: ""
+
   defp resolve("", _ctx), do: ""
 
   defp resolve(href, ctx) do
@@ -291,6 +294,7 @@ defmodule ConfluencePhxMirror.Export.Markdown do
       site = site_address(href, ctx) -> site
       true -> href
     end
+    |> Fragment.keep(href)
   end
 
   # A mirror path the archive has no file for is an address on a server, and a zip

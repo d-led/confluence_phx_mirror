@@ -26,6 +26,24 @@ defmodule ConfluencePhxMirror.Export.MarkdownTest do
     assert md =~ "[macros](../Macros/Macros.md)"
   end
 
+  # A link that names a heading is a place in a document, and a zip holds
+  # documents: the fragment survives the path, as it does in the mirror.
+  test "keeps the place a link names in another page" do
+    md =
+      Markdown.from_html(
+        ~s(<p><a href="/spaces/ENG/pages/1003/macros#Overview">macros</a></p>),
+        @ctx
+      )
+
+    assert md =~ "[macros](../Macros/Macros.md#Overview)"
+  end
+
+  test "keeps an anchor inside the page" do
+    md = Markdown.from_html(~s(<p><a href="#Overview">top</a></p>), @ctx)
+
+    assert md =~ "[top](#Overview)"
+  end
+
   describe "a link the zip has no file for" do
     setup do
       ctx =

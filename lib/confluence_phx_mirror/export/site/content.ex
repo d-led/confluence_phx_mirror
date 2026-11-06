@@ -29,6 +29,7 @@ defmodule ConfluencePhxMirror.Export.Site.Content do
   an exported page needs no script at all.
   """
 
+  alias ConfluencePhxMirror.Export.Fragment
   alias ConfluencePhxMirror.Export.Site
 
   @type context :: %{
@@ -131,6 +132,7 @@ defmodule ConfluencePhxMirror.Export.Site.Content do
       "/labels/" <> rest -> label_href(rest, context, href)
       path -> page_href(path, context, urls, href)
     end
+    |> Fragment.keep(href)
   end
 
   # A label the archive carries is a file of its own, so the name stays a link.

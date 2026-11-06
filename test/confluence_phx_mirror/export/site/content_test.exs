@@ -36,6 +36,22 @@ defmodule ConfluencePhxMirror.Export.Site.ContentTest do
       assert html =~ ~s(href="../../../spaces/ENG/pages/1003.html")
     end
 
+    # A reader who presses a link to a heading lands on the heading, in the
+    # archive as in the mirror: the fragment is not the file's business, so it
+    # survives the path.
+    test "a link that names a heading keeps the heading" do
+      html = rewrite(~s(<a href="/spaces/ENG/pages/1003/Release+Notes#Setup">Release</a>))
+
+      assert html =~ ~s(href="../../../spaces/ENG/pages/1003.html#Setup")
+    end
+
+    test "a link to a page the archive lacks keeps the heading too" do
+      html = rewrite(~s(<a href="/spaces/ENG/pages/1009/Old#Setup">Old</a>))
+
+      assert html =~
+               ~s(href="https://demo.atlassian.net/wiki/pages/viewpage.action?pageId=1009#Setup")
+    end
+
     test "a page the archive does not carry goes back to Confluence" do
       html = rewrite(~s(<a href="/spaces/ENG/pages/1009/Deprecated+Setup">Old</a>))
 
