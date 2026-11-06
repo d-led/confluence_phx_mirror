@@ -30,11 +30,12 @@ than the mirror, it is usually a question for whoever runs the Confluence site.
   the proxy's pods.
 * **One public door.** The proxy terminates TLS and strips the identity headers a
   client sends before setting them from its own session.
-* **The identity shortcut is asked for, not inherited.** The reference proxy sets
-  `CM_PROXY_AUTH` *and* `MIRROR_ALLOW_UNSAFE_IDENTITY=1`, because a release that
-  mirrors a real site cannot claim the demo's exemption: the second line is the
-  deliberate act the boot check exists to force, and it is visible in the app's
-  own configuration rather than implied by the first.
+* **The identity shortcut is asked for, not inherited.** The reference deployment
+  sets `CM_PROXY_AUTH` *and* `MIRROR_ALLOW_UNSAFE_IDENTITY=1` on the mirror
+  itself, because a release behind a proxy that mirrors a real site cannot claim
+  the demo's exemption: the second line is the deliberate act the boot check
+  exists to force, and it is visible in the app's own configuration rather than
+  implied by the first.
 
 ## Known limitations
 
