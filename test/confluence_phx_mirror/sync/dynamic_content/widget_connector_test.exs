@@ -65,6 +65,28 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.WidgetConnectorTest do
     assert iframe(expand()) == %{}
   end
 
+  # The macro records the size the vendor's player is built for. The height is
+  # that band; the width is the reading column's, so a page cannot hand a phone
+  # a sideways scroll.
+  test "a declared height is the frame's height, and the width is not taken from the macro" do
+    html =
+      expand(
+        ~s(<div class="mirror-macro" data-macro="widget" data-url="#{@address}") <>
+          ~s(data-width="600px" data-height="315px"></div>)
+      )
+
+    assert iframe(html)["style"] == "height:315px"
+  end
+
+  test "a height no player comes in is clamped to a frame a reader can use" do
+    assert iframe(expand(marked_at_height("10px")))["style"] == "height:120px"
+    assert iframe(expand(marked_at_height("5000px")))["style"] == "height:1200px"
+  end
+
+  test "a height that is not a pixel count leaves the frame at its own shape" do
+    assert iframe(expand(marked_at_height("100%")))["style"] == nil
+  end
+
   test "an address that is not a web address is named, not linked" do
     html =
       expand(
@@ -91,6 +113,11 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.WidgetConnectorTest do
 
   defp expand(marker \\ @marker),
     do: DynamicContent.expand(marker, %{space: @space, page: @host, source: StubContent})
+
+  defp marked_at_height(height) do
+    ~s(<div class="mirror-macro" data-macro="widget" data-url="#{@address}") <>
+      ~s( data-height="#{height}"></div>)
+  end
 
   defp iframe(html) do
     html
