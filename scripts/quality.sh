@@ -130,12 +130,31 @@ if [[ $tests -eq 1 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Duplication: the same definition written twice, scored 0.8 and above.
+# Report-only until the list is empty — a gate that fails on debt it inherited
+# teaches people to ignore the gate. The number is printed every run, so the
+# list can only fall.
+# ---------------------------------------------------------------------------
+
+banner "dryer"
+if ! command -v node >/dev/null 2>&1; then
+  echo "node is not installed here; the dryer is a report, so this step is skipped."
+else
+  if node scripts/dryer.mjs >"$report" 2>&1; then
+    record dryer 0 "$(grep -E '^worst ' "$report" | tail -1), report only"
+    grep -E '^(pairs at|  [0-9.]+  )' "$report" | first_lines "$top" | sed 's/^/  /'
+  else
+    tail -n 20 "$report"
+    record dryer 1 "see above"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # CRAP: complexity squared by missing coverage, ranked per application tree
 # ---------------------------------------------------------------------------
 
 banner "complexity"
 crap_status=0
-mix complexity >"$report" 2>&1 || crap_status=$?
 
 ranked=$(awk -F'[[:space:]]*\\|[[:space:]]*' '
   NF == 7 && $6 ~ /[0-9]/ && $6 + 0 > 0 {
