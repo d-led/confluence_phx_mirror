@@ -28,7 +28,9 @@ defmodule ConfluencePhxMirror.Sync.Embeds do
   @doc """
   The hosts an operator allowed, normalised: lower case, no scheme, no `*.`
 
-      iex> Application.put_env(:confluence_phx_mirror, :embed_hosts, [" YouTube.com ", "*.vimeo.com"])
+  `CM_EMBED_HOSTS=" YouTube.com , *.vimeo.com "` is two hosts, in the spelling
+  the policy needs:
+
       iex> hosts()
       ["youtube.com", "vimeo.com"]
   """
@@ -57,13 +59,13 @@ defmodule ConfluencePhxMirror.Sync.Embeds do
   The address to put in a frame, when this deployment may embed it.
 
   `https` only, and only a host an operator named; anything else is `:error` and
-  the caller shows the address instead of a frame.
+  the caller shows the address instead of a frame. With `youtube.com` named:
 
-      iex> Application.put_env(:confluence_phx_mirror, :embed_hosts, ["youtube.com"])
       iex> embeddable?("https://www.youtube.com/watch?v=abc")
       {:ok, "https://www.youtube.com/watch?v=abc"}
 
-      iex> Application.put_env(:confluence_phx_mirror, :embed_hosts, [])
+  With nothing named, the same address is not a frame:
+
       iex> embeddable?("https://www.youtube.com/watch?v=abc")
       :error
   """
