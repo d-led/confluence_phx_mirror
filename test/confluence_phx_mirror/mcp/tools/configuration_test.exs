@@ -15,7 +15,7 @@ defmodule ConfluencePhxMirror.Mcp.Tools.ConfigurationTest do
 
   alias ConfluencePhxMirror.Accounts.Scope
   alias ConfluencePhxMirror.Mcp.Tools
-  alias ConfluencePhxMirror.TestConfig
+  alias ConfluencePhxMirror.{Settings, TestConfig}
 
   describe "confluence_mirror_configuration" do
     test "an administrator is told how this installation is set up" do
@@ -32,6 +32,21 @@ defmodule ConfluencePhxMirror.Mcp.Tools.ConfigurationTest do
 
       assert text =~ "spaces mirrored"
       assert text =~ "sync every"
+    end
+
+    # A cadence is stated in the unit a reader thinks in: hours when it is hours,
+    # minutes when it is minutes, seconds when it is seconds — and the minutes
+    # are said only when an hour was not whole.
+    test "the cadence is said in the unit it is measured in" do
+      scope = admin_scope("cadence@example.com")
+
+      for {seconds, said} <- [{7200, "2h"}, {5400, "1h 30m"}, {300, "5m"}, {45, "45s"}] do
+        {:ok, _applied} =
+          Settings.update(%{"sync.interval_seconds" => seconds}, {:system, "test"})
+
+        assert {:ok, %{text: text}} = Tools.call("confluence_mirror_configuration", %{}, scope)
+        assert text =~ "sync every #{said}"
+      end
     end
 
     test "a reader who is not an administrator is told nothing" do

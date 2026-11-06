@@ -13,6 +13,7 @@ defmodule ConfluencePhxMirrorWeb.Live.Admin.MailLiveTest do
   import ConfluencePhxMirror.Fixtures
   import Phoenix.LiveViewTest
 
+  alias ConfluencePhxMirror.Mail.Budget
   alias ConfluencePhxMirror.{Notifications, Settings, TestConfig}
 
   setup do
@@ -102,6 +103,33 @@ defmodule ConfluencePhxMirrorWeb.Live.Admin.MailLiveTest do
     reader = user_fixture(%{email: "no.mail.admin@example.com"})
 
     assert {:error, {:redirect, %{to: "/"}}} = live(sign_in(conn, reader), ~p"/admin/mail")
+  end
+
+  # A row in the ledger is a message somebody asked for, and the key is where the
+  # asking is written down (`<kind>:<subject>`). An operator scanning the queue
+  # needs the words, not the key.
+  test "the ledger names each kind of message it holds", %{conn: conn} do
+    keys = [
+      nil,
+      "test:ENG:one",
+      "digest:ENG:two",
+      "welcome:ops@example.com",
+      "notification:42",
+      "manual:EXTRA"
+    ]
+
+    for key <- keys, do: {:ok, _send} = Budget.claim(key)
+
+    {:ok, view, _html} = live(sign_in(conn), ~p"/admin/mail")
+
+    ledger = view |> element("#mail-today") |> render()
+
+    assert ledger =~ "sent by hand"
+    assert ledger =~ "test message (#ENG, one)"
+    assert ledger =~ "digest (#ENG, two)"
+    assert ledger =~ "welcome (#ops@example.com)"
+    assert ledger =~ "notification #42"
+    assert ledger =~ "manual:EXTRA"
   end
 
   defp sign_in(conn, user \\ nil),

@@ -271,22 +271,42 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       # Confluence's placeholder is a picture served by the site under the
       # reader's session; copied into a mirror it is a broken image where a macro
       # was, and a blank box in a window that is not signed in.
+      #
+      # `drawio` is the example because the mirror draws none of it: a diagram's
+      # picture lives in the vendor's service, and the placeholder names what
+      # the readership is missing instead of showing a frame that cannot load.
       html =
         ~s(<img class="wysiwyg-unknown-macro" ) <>
-          ~s(src="https://dled.atlassian.net/wiki/plugins/servlet/confluence/placeholder/unknown-macro?name=pageproperties&amp;locale=en_US&amp;version=2" />)
+          ~s(src="https://dled.atlassian.net/wiki/plugins/servlet/confluence/placeholder/unknown-macro?name=drawio&amp;locale=en_US&amp;version=2" />)
 
       rendered = Renderer.render(html, context()).html
 
       refute rendered =~ "<img"
       refute rendered =~ "unknown-macro"
       assert rendered =~ "mirror-macro-placeholder"
-      assert rendered =~ "pageproperties"
+      assert rendered =~ "drawio"
     end
 
     test "an ordinary picture is still a picture" do
       html = ~s(<img src="https://example.test/photo.png" />)
 
       assert Renderer.render(html, context()).html =~ "https://example.test/photo.png"
+    end
+
+    # A parameter with no name of its own names its *subject*: the storage
+    # writes `<ac:parameter ac:name=""><ri:user …/></ac:parameter>`, where the
+    # kind of thing the reference points at is the only name the parameter has.
+    # Read for text alone it is empty, and the macro names nothing.
+    test "a nameless parameter is named by the kind of thing it points at" do
+      assert subject(~s(<ri:user ri:account-id="acc-1"/>)) == {"data-user", "acc-1"}
+
+      assert subject(~s(<ri:attachment ri:filename="plan.csv"/>)) ==
+               {"data-attachment", "plan.csv"}
+
+      assert subject(~s(<ri:space ri:space-key="MFS"/>)) == {"data-space", "MFS"}
+
+      assert subject(~s(<ri:url ri:value="https://example.test/x"/>)) ==
+               {"data-url", "https://example.test/x"}
     end
 
     test "a face points at the mirror, not at the site" do
@@ -1234,5 +1254,29 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert Renderer.render(html, context(%{storage: storage})).html =~
                ~s(data-url="https://site/wiki/spaces/MFS/whiteboard/7")
     end
+  end
+
+  # The marker a macro becomes, and the one attribute that says what the macro
+  # was given: a parameter with no name of its own arrives under the kind of
+  # thing it points at.
+  defp subject(reference) do
+    storage = """
+    <ac:structured-macro ac:name="widget">
+      <ac:parameter ac:name="">#{reference}</ac:parameter>
+    </ac:structured-macro>
+    """
+
+    html =
+      Renderer.render(
+        ~s(<img class="wysiwyg-unknown-macro" src="/wiki/plugins/servlet/confluence/placeholder/unknown-macro?name=widget" />),
+        context(%{storage: storage})
+      ).html
+
+    {"div", attributes, _children} =
+      html |> Floki.parse_fragment!() |> Floki.find("div.mirror-macro") |> hd()
+
+    Enum.find(attributes, fn {name, _value} ->
+      name not in ["class", "data-macro", "data-template"]
+    end)
   end
 end

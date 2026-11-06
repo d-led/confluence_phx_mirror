@@ -102,10 +102,13 @@ defmodule ConfluencePhxMirror.Fixtures do
   end
 
   defp delete_from_every_table do
-    # Children first: the foreign keys point up at pages and spaces.
+    # Children first: the foreign keys point up at pages and spaces. `people` has
+    # no parent, but leaving it out made "an empty mirror" a mirror that still
+    # held the demo's faces — and a fresh `synced_at` on them means a run asks
+    # nobody about anybody, so the person pass was never exercised.
     for table <- ~w(
           page_properties page_labels page_restrictions links labels group_members
-          comments attachments pages spaces
+          comments attachments pages spaces people
           sync_runs audit_events sync_gate
         ) do
       ConfluencePhxMirror.Repo.query!("DELETE FROM #{table}")

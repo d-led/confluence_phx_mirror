@@ -144,6 +144,43 @@ defmodule ConfluencePhxMirrorWeb.AdminSpacesLiveTest do
     assert queued_space_keys() == ["ENG"]
   end
 
+  describe "asking the site again" do
+    test "the listing is what the site answers now, and the screen says it asked", %{conn: conn} do
+      configured_spaces(["ENG"])
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces")
+
+      html = view |> element("#refresh-spaces") |> render_click()
+
+      assert html =~ "Confluence was asked again."
+    end
+
+    # A mirror can be paused from another tab while this screen is open, and the
+    # button in front of the reader is the one drawn before the pause. Asking
+    # then is answered without a call, and the sentence says how to resume.
+    test "a mirror paused after the screen opened is not asked", %{conn: conn} do
+      configured_spaces(["ENG"])
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces")
+
+      {:ok, _applied} = Settings.update(%{"sync.paused" => true}, {:system, "test"})
+
+      html = view |> element("#refresh-spaces") |> render_click()
+
+      assert html =~ "Confluence calls are paused, so nothing was asked."
+    end
+
+    test "a site that does not answer is named, not hidden", %{conn: conn} do
+      configured_spaces(["ENG"])
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces")
+
+      html =
+        TestConfig.with([source: ConfluencePhxMirrorWeb.AdminSpacesLiveTest.RefusingSource], fn ->
+          view |> element("#refresh-spaces") |> render_click()
+        end)
+
+      assert html =~ "Confluence did not answer: :timeout"
+    end
+  end
+
   defp queued_space_keys do
     Repo.all(from j in Oban.Job, where: j.queue == "sync", select: j.args["space_key"])
   end
@@ -159,4 +196,12 @@ defmodule ConfluencePhxMirrorWeb.AdminSpacesLiveTest do
   end
 
   defp sign_in(conn, user), do: Plug.Test.init_test_session(conn, %{"user_id" => user.id})
+end
+
+# A source that refuses the space listing, for the sentence the screen has for a
+# site that did not answer.
+defmodule ConfluencePhxMirrorWeb.AdminSpacesLiveTest.RefusingSource do
+  def kind, do: :live
+
+  def spaces(_opts), do: {:error, :timeout}
 end
