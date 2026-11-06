@@ -29,6 +29,13 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   end
 
   @impl true
+  def page_properties(%Page{} = page) do
+    page
+    |> Mirror.properties()
+    |> Enum.map(&%{key: &1.key, value: &1.value})
+  end
+
+  @impl true
   def children(%Page{} = host, %Page{} = page, opts) do
     page
     |> Mirror.children(opts)

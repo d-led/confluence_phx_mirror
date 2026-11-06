@@ -226,4 +226,32 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.SourceMirrorTest do
       })
     end
   end
+
+  describe "page_properties" do
+    test "the pairs a page declares are the pairs the port answers, by key" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      page = page_fixture(docs, %{title: "Architecture", confluence_id: 97_146})
+
+      {:ok, _} =
+        Mirror.replace_properties(page, [
+          %{key: "Status", value: "Active"},
+          %{key: "Owner", value: "Platform"}
+        ])
+
+      assert Source.Mirror.page_properties(page) == [
+               %{key: "Owner", value: "Platform"},
+               %{key: "Status", value: "Active"}
+             ]
+    end
+
+    test "a page that declares none answers nothing, not another page's table" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      declaring = page_fixture(docs, %{title: "Architecture", confluence_id: 97_147})
+      plain = page_fixture(docs, %{title: "Notes", confluence_id: 97_148})
+
+      {:ok, _} = Mirror.replace_properties(declaring, [%{key: "Owner", value: "Platform"}])
+
+      assert Source.Mirror.page_properties(plain) == []
+    end
+  end
 end

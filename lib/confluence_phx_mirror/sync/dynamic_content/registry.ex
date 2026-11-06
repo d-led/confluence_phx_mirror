@@ -36,6 +36,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "livesearch" => Renderers.LiveSearch,
     "native-embed:database" => Renderers.NativeEmbed,
     "native-embed:whiteboard" => Renderers.NativeEmbed,
+    "pageproperties" => Renderers.PageProperties,
     "pagetree" => Renderers.PageTree,
     "profile-picture" => Renderers.ProfilePicture,
     "recently-updated" => Renderers.RecentlyUpdated,
@@ -58,6 +59,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
   # side — so both are answered here, and the canonical name stays the one that
   # reads like the macro's own words.
   @aliases %{
+    "page-properties" => "pageproperties",
     "page-properties-report" => "detailssummary",
     "table-of-contents" => "toc",
     "listlabels" => "labels-list",

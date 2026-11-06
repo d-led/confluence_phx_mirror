@@ -46,6 +46,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.StubContent do
   end
 
   @impl true
+  def page_properties(page) do
+    record({:page_properties, page.confluence_id})
+    answer(:page_properties, [])
+  end
+
+  @impl true
   def children(_host, _page, opts) do
     record({:children, opts})
     answer(:children, [])

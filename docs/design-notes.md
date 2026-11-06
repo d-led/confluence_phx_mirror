@@ -84,6 +84,9 @@ database:
   `pages.labels`, GIN-indexed) and renders a static list of links.
 * `page-properties-report` renders a table from `pageproperties` values that
   the sync extracted from each page's storage format into `page_properties`.
+* `pageproperties` — the macro that *declares* those values — is drawn from the
+  same rows, so a page's own properties are a table rather than the widget the
+  export view leaves for a macro it does not expand without a browser.
 * The marker element stays in the body and only its children are replaced, so
   expanding is idempotent. After a page sync (webhook included) every page
   carrying a marker is re-expanded from the database, which keeps listings and

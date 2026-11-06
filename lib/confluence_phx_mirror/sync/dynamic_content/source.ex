@@ -42,6 +42,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
               %{columns: [String.t()], rows: [%{page: Page.t(), values: map()}]}
 
   @doc """
+  The properties `page` declares for itself: the key/value rows of its own
+  `pageproperties` macro, by key.
+
+  They sit on the host page, so they need no audience of their own — whoever may
+  read the page may read the table it declares.
+  """
+  @callback page_properties(page :: Page.t()) :: [%{key: String.t(), value: String.t()}]
+
+  @doc """
   The pages directly below `page`, by title.
 
   Options: `:limit`. The host decides the audience: a child the host's readers

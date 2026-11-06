@@ -39,6 +39,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
              "livesearch",
              "native-embed:database",
              "native-embed:whiteboard",
+             "pageproperties",
              "pagetree",
              "profile-picture",
              "recently-updated",
@@ -56,6 +57,13 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
     assert Registry.fetch("table-of-contents") == Registry.fetch("toc")
     assert Registry.fetch("widget-connector") == Registry.fetch("widget")
     assert "page-properties-report" in Registry.names()
+  end
+
+  # The data macro and the report it feeds are different things with names one
+  # letter apart: one declares a page's properties, the other lists a space's.
+  test "a page's own properties are not the report over a space" do
+    assert Registry.canonical("page-properties") == "pageproperties"
+    assert Registry.fetch("page-properties") != Registry.fetch("page-properties-report")
   end
 
   # Both spellings sit on one page in the wild: the editor writes

@@ -139,7 +139,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     `/spaces` screen instead of a trip off it.
   # 43: a profile picture links to a person's page here only when the mirror holds
   #     that person; the people route answers 404 for anybody else.
-  def revision, do: 43
+  # 44: a page's own properties are drawn as the table its `pageproperties` macro
+  #     declares, instead of staying the widget for a macro the export view does
+  #     not expand.
+  def revision, do: 44
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

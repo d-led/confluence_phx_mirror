@@ -190,7 +190,7 @@ One row per thing the source can answer, because those are exactly the
 | the groups of each account the content names | `group_member` |
 | account status: active, inactive, gone | the `users` columns that switch reading off |
 | `systemInfo`: site title, default locale, time zone | the `site_settings` singleton |
-| the `pageproperties` tables inside pages | `page_properties`, so a property report renders without a browser |
+| the `pageproperties` tables inside pages | `page_properties`, so a page's own properties and a property report render without a browser |
 | names and counts only (the reconcile pass) | `pages.absent_since` |
 
 What it never reads: a user list (Cloud has no endpoint), page history,
