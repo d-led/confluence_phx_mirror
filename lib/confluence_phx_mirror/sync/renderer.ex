@@ -94,7 +94,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     mirror had been printing.
   # 26: a body that names a space links to the mirror's own space screen when the
   #     mirror holds it, instead of sending the reader to the site.
-  def revision, do: 26
+  # 27: a body's mention of a person is that person's page here, and a label name
+  #     is the mirror's label catalogue.
+  def revision, do: 27
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -104,7 +106,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
           optional(:pages) => %{integer() => page_ref()},
           optional(:attachments) => %{{integer(), String.t()} => attachment_ref()},
           optional(:attachment_lookup) => (integer(), String.t() -> attachment_ref() | nil),
-          optional(:space_lookup) => (String.t() -> ConfluencePhxMirror.Mirror.Space.t() | nil)
+          optional(:space_lookup) => (String.t() -> ConfluencePhxMirror.Mirror.Space.t() | nil),
+          optional(:person_lookup) => (String.t() -> map() | nil)
         }
 
   @type link :: %{
@@ -1078,14 +1081,56 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       space_key = space_key_from_path(href) ->
         space_link(space_key, href, context)
 
+      account_id = person_account(href) ->
+        person_link(account_id, href, context)
+
       account_id = avatar_account(href) ->
         {:attachment, people_avatar_path(account_id)}
 
       attachment = attachment_from_path(href) ->
         attachment_link(attachment, href, context)
 
+      label_name = label_name_from_path(href) ->
+        {:internal, URLs.label_path(label_name)}
+
       true ->
         {:external, absolutise(href, context)}
+    end
+  end
+
+  # A mention is the site's people page for one account, and the mirror has a page
+  # per author — so the name stays a link here, where a reader of a closed
+  # deployment has an account. Only when the mirror holds a page for that person:
+  # an author it has never seen keeps the site's link, as a page nobody mirrored
+  # does.
+  defp person_account(href) do
+    case Regex.run(~r{/(?:wiki/)?people/([^/?#]+)/?$}, href) do
+      [_, account_id] -> URI.decode(account_id)
+      nil -> nil
+    end
+  end
+
+  defp person_link(account_id, href, context) do
+    case person_of(account_id, context) do
+      %{} -> {:internal, URLs.person_path(account_id)}
+      _ -> {:external, absolutise(href, context)}
+    end
+  end
+
+  defp person_of(account_id, context) do
+    case Map.get(context, :person_lookup) do
+      lookup when is_function(lookup, 1) -> lookup.(account_id)
+      _ -> nil
+    end
+  end
+
+  # A label is a catalogue the mirror draws from its own pages, so the name is a
+  # link here whatever the label holds: a label no mirrored page carries answers
+  # with an empty catalogue, which is a true thing to say about this mirror.
+  defp label_name_from_path(href) do
+    case Regex.run(~r{/(?:wiki/)?labels?/([^/?#]+)/?$}, href) do
+      [_, name] -> URI.decode(name)
+      nil -> nil
     end
   end
 

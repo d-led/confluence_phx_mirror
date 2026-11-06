@@ -175,8 +175,13 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
 
       assert page =~ ~s(id="comments")
       assert page =~ ~s(>Anonymous</span>)
-      refute page =~ ~s(>Sam Rivera</span>)
-      refute page =~ ~s(>Jane Doe</span>)
+
+      # The comments, and only them: the page's own sentence — "ping Jane Doe
+      # for architecture" — is prose, and a mention in it is a word the author
+      # typed. Both are in the file; only the chrome may not say who wrote what.
+      [_prose, comments] = String.split(page, ~s(id="comments"), parts: 2)
+      refute comments =~ ~s(>Sam Rivera</span>)
+      refute comments =~ ~s(>Jane Doe</span>)
     end
 
     test "carries a label catalogue and a page for each label", %{files: files} do

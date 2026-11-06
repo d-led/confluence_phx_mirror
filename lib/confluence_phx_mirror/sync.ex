@@ -2175,6 +2175,7 @@ defmodule ConfluencePhxMirror.Sync do
       attachments: attachment_map,
       attachment_lookup: &Mirror.attachment_ref/2,
       space_lookup: &Mirror.get_space_by_key/1,
+      person_lookup: &Mirror.find_author/1,
       storage: dto.body.storage
     }
 

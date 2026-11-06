@@ -124,8 +124,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         updated_at: ~U[2026-10-19 14:05:00Z]
       ),
       page(1001, "ENG", 1000, "Getting Started", getting_started_body(), ~w(onboarding howto),
-        version: 8,
-        message: "Add first-week checklist",
+        version: 9,
+        message: "Mention a colleague the way the site does",
         updated_at: ~U[2026-10-18 09:30:00Z]
       ),
       page(
@@ -148,8 +148,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
           )
       ),
       page(1003, "ENG", 1001, "Macros Gallery", macros_body(), ~w(macros demo),
-        version: 7,
-        message: "Show a code block with line numbers",
+        version: 8,
+        message: "Mention a colleague the way the site does",
         updated_at: ~U[2026-10-17 16:45:00Z],
         storage:
           properties_storage(macros_body(), [{"Owner", "Docs"}, {"Status", "Review"}],
@@ -182,8 +182,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         updated_at: ~U[2026-10-14 10:15:00Z]
       ),
       page(1007, "ENG", 1000, "Meeting Notes", meeting_body(), ~w(meeting notes),
-        version: 21,
-        message: "Weekly sync notes",
+        version: 22,
+        message: "Mention the attendees the way the site does",
         updated_at: ~U[2026-10-20 15:40:00Z],
         author: "Sam Rivera",
         subtype: "live"
@@ -679,7 +679,7 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
   defp excerpt(html), do: ~s(<div class="excerpt-macro">#{html}</div>)
 
   defp user_link(username, name) do
-    ~s(<a class="confluence-userlink" href="#{@base_url}/wiki/people/#{username}" data-username="#{username}">#{name}</a>)
+    ~s(<a class="confluence-userlink" href="#{@base_url}/wiki/people/#{account_id(username)}" data-username="#{username}">#{name}</a>)
   end
 
   defp page_link(id, text), do: ~s(<a href="#{page_href(id)}">#{text}</a>)

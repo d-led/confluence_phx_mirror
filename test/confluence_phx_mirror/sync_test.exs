@@ -130,6 +130,17 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert links =~ ~s(href="https://demo.atlassian.net/wiki/spaces/UNKNOWN")
     end
 
+    test "a body that mentions somebody links to their page here" do
+      demo_snapshot!()
+
+      # Jane Doe writes in the demo, so the mirror has a page for her; the
+      # mention the site wrote is a link to it rather than off to the site.
+      notes = Repo.get_by!(Page, confluence_id: 1007).body_export
+
+      assert notes =~ ~s(href="/people/557058%3Ajane.doe")
+      refute notes =~ "/wiki/people/"
+    end
+
     test "stores attachment bytes outside Postgres under a readable key" do
       demo_snapshot!()
 

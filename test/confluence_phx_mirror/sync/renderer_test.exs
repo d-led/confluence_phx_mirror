@@ -133,6 +133,59 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     end
   end
 
+  describe "a name in a body" do
+    # Confluence writes a mention as a link to the site's people page. The mirror
+    # has a page per author, so the name stays a link here — a reader of a closed
+    # deployment has no account on the site to be sent to.
+    test "a name is the person's page here" do
+      html =
+        ~s(<a class="url fn confluence-userlink" href="https://dled.atlassian.net/wiki/people/557058:abc">Dana</a>)
+
+      result = Renderer.render(html, context(%{person_lookup: &author_named/1}))
+
+      assert result.html =~ ~s(href="/people/557058%3Aabc")
+      assert [%{kind: "internal", label: "Dana"}] = result.links
+    end
+
+    test "a person the mirror holds no page for keeps the link to the site" do
+      html = ~s(<a href="/wiki/people/557058:nobody">Nobody</a>)
+
+      assert Renderer.render(html, context(%{person_lookup: &author_named/1})).html =~
+               ~s(href="https://dled.atlassian.net/wiki/people/557058:nobody")
+    end
+
+    test "a mention that already names this mirror is not sent back to the site" do
+      html = ~s(<a href="/people/557058%3Aabc">Dana</a>)
+
+      assert Renderer.render(html, context(%{person_lookup: &author_named/1})).html =~
+               ~s(href="/people/557058%3Aabc")
+    end
+
+    defp author_named(account_id) when is_binary(account_id) do
+      if account_id == "557058:abc", do: %{account_id: account_id}
+    end
+  end
+
+  describe "a label in a body" do
+    # The site spells a label page `/label/<name>` and the mirror draws that
+    # catalogue itself, so the name is a link here whatever the label holds — an
+    # empty catalogue is a true answer about this mirror.
+    test "a label name is the mirror's catalogue" do
+      assert Renderer.render(~s(<a href="/wiki/label/architecture">architecture</a>), context()).html =~
+               ~s(href="/labels/architecture")
+    end
+
+    test "the plural spelling names the same catalogue" do
+      assert Renderer.render(~s(<a href="/wiki/labels/my-label">my-label</a>), context()).html =~
+               ~s(href="/labels/my-label")
+    end
+
+    test "a label link the mirror wrote itself is left alone" do
+      assert Renderer.render(~s(<a href="/labels/architecture">architecture</a>), context()).html =~
+               ~s(href="/labels/architecture")
+    end
+  end
+
   describe "macros the site only draws for a signed-in reader" do
     test "an unknown-macro placeholder becomes a sentence, not a broken image" do
       # Confluence's placeholder is a picture served by the site under the
