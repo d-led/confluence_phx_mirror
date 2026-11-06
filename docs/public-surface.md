@@ -1,6 +1,8 @@
 # The public surface: one instance, two audiences
 
-**Status: the audience half is built; the path half is still a proposal.**
+**Status: the audience half is built; the path half is still a proposal** —
+re-confirmed 2026-11-06: keep it a proposal, do not build the `/public` path
+split yet.
 
 Since this was written, the question *"which of our spaces may the internet
 read?"* was answered and shipped: `CM_PUBLIC_SPACES=ENG,OPS` narrows

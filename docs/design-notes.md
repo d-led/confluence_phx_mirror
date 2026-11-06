@@ -555,9 +555,11 @@ log naming the public spaces it resolved, a startup warning for a key that
 matches no mirrored space (not a silent no-op), and a line in
 `scripts/fly-deploy.sh --check` that prints the list before anything ships.
 
-Deliberately left open: whether a personal space may ever be public (default:
-no), and whether public pages should carry `noindex` (they are public on
-purpose, and indexing is what a documentation site wants).
+Settled 2026-11-06, so neither comes back as a question: a personal space is
+**never** public — `CM_PUBLIC_SPACES` names spaces an operator chose, and a
+personal space is somebody's scratch space — and public pages carry **no**
+`noindex`, because they are public on purpose and being indexed is what a
+documentation site wants.
 
 ## Known limitations
 
