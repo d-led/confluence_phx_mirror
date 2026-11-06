@@ -31,6 +31,7 @@ defmodule ConfluencePhxMirror.Export.Site.Content do
           required(:pages) => %{integer() => String.t()},
           required(:external) => ([integer()] -> %{integer() => String.t()}),
           optional(:space_keys) => MapSet.t(String.t()),
+          optional(:label_keys) => MapSet.t(String.t()),
           optional(:origins) => [String.t()],
           optional(:external_attachment) => (integer(), String.t() -> String.t() | nil)
         }
@@ -122,26 +123,48 @@ defmodule ConfluencePhxMirror.Export.Site.Content do
     case site_path(href, context) do
       nil -> href
       "/attachments/" <> rest -> attachment_href(rest, context, href)
+      "/labels/" <> rest -> label_href(rest, context, href)
       path -> page_href(path, context, urls, href)
     end
   end
 
-  # A screen of the mirror is not a file of the archive. A person's page and a
-  # label catalogue are drawn by the mirror from its own tables, and macros write
-  # links to them into a body (`/people/<account>`, `/labels/<name>`); the archive
-  # carries documents, so those links would point at nothing once unzipped. The
-  # name stays and the link goes — a word is better than a dead address.
+  # A label the archive carries is a file of its own, so the name stays a link.
+  defp label_href(rest, context, href) do
+    case carried_label(rest, context) do
+      nil -> href
+      file -> context.prefix <> file
+    end
+  end
+
+  defp carried_label(rest, context) do
+    name = rest |> String.split("/") |> List.last() |> URI.decode()
+    keys = Map.get(context, :label_keys, MapSet.new())
+
+    if MapSet.member?(keys, Site.label_key(name)), do: Site.label_path(name)
+  end
+
+  # A screen of the mirror is not a file of the archive. A person's page is drawn
+  # by the mirror from its own tables, and macros write links to it into a body
+  # (`/people/<account>`); the archive carries documents, so the link would point
+  # at nothing once unzipped. The name stays and the link goes — a word is better
+  # than a dead address. A label is a screen only when the archive has no file for
+  # it: the catalogue is carried per label (`labels/<key>.html`), and a label no
+  # page in the archive carries has none.
   # The page's own label chips still lead into the catalogue, because the archive
   # rewrites those itself.
   defp screen_href(attrs, context) do
     with {_, href} when is_binary(href) <- List.keyfind(attrs, "href", 0),
          "/" <> rest <- site_path(href, context),
-         true <- String.starts_with?(rest, ~w(people/ labels/)) do
+         true <- screen?(rest, context) do
       "/" <> rest
     else
       _not_a_screen -> nil
     end
   end
+
+  defp screen?("people/" <> _rest, _context), do: true
+  defp screen?("labels/" <> rest, context), do: is_nil(carried_label(rest, context))
+  defp screen?(_rest, _context), do: false
 
   # A path on the mirror's own site, with the site's address stripped when the
   # body used the full URL. Nothing else is ours to rewrite.

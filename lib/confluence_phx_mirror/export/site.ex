@@ -85,9 +85,14 @@ defmodule ConfluencePhxMirror.Export.Site do
       spaces
       |> Enum.filter(&Authorization.can_read_space?(scope, &1))
 
+    # Read once: the front pages list the labels and every page body links to
+    # them, so the two must be the same set — a body that named a label the
+    # archive does not carry would point at a file that is not there.
+    labels = label_groups(spaces, scope)
+
     Stream.concat(
-      front_entries(spaces, scope, generated, opts),
-      space_stream(spaces, scope, generated)
+      front_entries(spaces, scope, generated, opts, labels),
+      space_stream(spaces, scope, generated, labels)
     )
   end
 
@@ -215,7 +220,7 @@ defmodule ConfluencePhxMirror.Export.Site do
   # Entries
   # ---------------------------------------------------------------------------
 
-  defp front_entries(spaces, scope, generated, opts) do
+  defp front_entries(spaces, scope, generated, opts, labels) do
     cards = Enum.map(spaces, &card(&1, scope))
 
     search =
@@ -223,7 +228,7 @@ defmodule ConfluencePhxMirror.Export.Site do
         search_index_entry(spaces, scope) ++
         [{search_script_path(), Search.script()}]
 
-    labels = label_entries(spaces, scope, generated)
+    labels = label_entries(spaces, scope, generated, labels)
     index = [{index_path(), fn -> render_site(cards, generated) end} | search ++ labels]
 
     chrome = [
@@ -297,10 +302,11 @@ defmodule ConfluencePhxMirror.Export.Site do
   # the whole-site export of a large mirror must not need every page's row at
   # once. The context is site-wide because a page may link into another space,
   # but it holds ids and paths only.
-  defp space_stream(spaces, scope, generated) do
+  defp space_stream(spaces, scope, generated, labels) do
     context = %{
       pages: page_paths(spaces, scope),
       space_keys: MapSet.new(spaces, & &1.key),
+      label_keys: MapSet.new(Map.keys(labels)),
       origins: origins(),
       external: &external_urls/1,
       external_attachment: &external_attachment/2
@@ -388,8 +394,7 @@ defmodule ConfluencePhxMirror.Export.Site do
   # about deployment", whichever space it lives in. The mirror has a label
   # catalogue; the archive carries the same two screens, built one space at a
   # time so that a site of a hundred thousand pages needs one space's rows.
-  defp label_entries(spaces, scope, generated) do
-    groups = label_groups(spaces, scope)
+  defp label_entries(spaces, scope, generated, groups) do
     cards = Enum.map(spaces, &card(&1, scope))
 
     [{labels_path(), fn -> render_labels(cards, groups, generated) end}] ++
@@ -449,7 +454,13 @@ defmodule ConfluencePhxMirror.Export.Site do
     |> elem(0)
   end
 
-  defp label_key(name) do
+  @doc """
+  The archive's file name for a label, without the folder or the extension.
+
+  Confluence's label names are free text; a file name is not. This is the one
+  rule both the file and a link to it are written by.
+  """
+  def label_key(name) do
     name
     |> to_string()
     |> String.downcase()

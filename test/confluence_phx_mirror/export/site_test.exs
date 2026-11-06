@@ -375,6 +375,15 @@ defmodule ConfluencePhxMirror.Export.SiteTest do
       refute page =~ ~s(href="/spaces/)
     end
 
+    # A labels list in a body names labels the archive carries a file for, so the
+    # name stays a link — the mirror's own label catalogue, as a file.
+    test "a label named in a body is the archive's label page" do
+      page = archive(admin())["spaces/ENG/pages/1003.html"]
+
+      assert page =~ ~s(href="../../../labels/#{Demo.shared_label()}.html")
+      refute page =~ ~s(href="/labels/)
+    end
+
     test "a page the archive does not carry links back to Confluence" do
       reader = Scope.for_user(user_fixture())
       files = archive(reader)

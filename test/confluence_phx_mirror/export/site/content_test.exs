@@ -11,6 +11,7 @@ defmodule ConfluencePhxMirror.Export.Site.ContentTest do
         1003 => "spaces/ENG/pages/1003.html"
       },
       space_keys: MapSet.new(["ENG", "PROD"]),
+      label_keys: MapSet.new(["architecture"]),
       origins: ["https://demo.atlassian.net/wiki", "https://demo.atlassian.net"],
       external: fn ids ->
         Map.new(ids, fn id ->
@@ -105,6 +106,30 @@ defmodule ConfluencePhxMirror.Export.Site.ContentTest do
       href = "https://demo.atlassian.net/wiki/spaces/GONE"
 
       assert rewrite(~s(<a href="#{href}">Gone</a>)) =~ ~s(href="#{href}")
+    end
+  end
+
+  describe "a name in a body" do
+    # The archive carries a file per label, so a label named in a body is a link
+    # to it. A label the archive does not carry has no file to point at, and a
+    # word is better than a dead address — the same rule a person's name gets.
+    test "a label the archive carries is a link to its page" do
+      assert rewrite(~s(<a href="/labels/architecture">architecture</a>)) =~
+               ~s(href="../../../labels/architecture.html")
+    end
+
+    test "a label the archive does not carry keeps its words and loses the link" do
+      html = rewrite(~s(<a href="/labels/nobody-uses-this">nobody-uses-this</a>))
+
+      assert html =~ "nobody-uses-this"
+      refute html =~ "href"
+    end
+
+    test "a person's page is never a file here, so the name stays a word" do
+      html = rewrite(~s(<a href="/people/557058%3Aabc">Dana</a>))
+
+      assert html =~ "Dana"
+      refute html =~ "href"
     end
   end
 
