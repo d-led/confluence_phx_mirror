@@ -243,12 +243,13 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.Roadmap do
 
   defp lane(lane, axis) do
     bars = bars_in(lane, axis)
+    rows = Enum.max(Enum.map(bars, & &1.row), fn -> 0 end) + 1
 
     %{
       title: blank(lane["title"]) || "Untitled lane",
       colour: paint(lane["color"], "lane", @default_lane),
       bars: bars,
-      rows: bars |> Enum.map(& &1.row) |> Enum.max(fn -> 0 end) |> Kernel.+(1)
+      rows: rows
     }
   end
 
@@ -274,7 +275,9 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.Roadmap do
   # months is two columns, two and a half is two and a half). A bar that runs off
   # the end of the timeline stops at its edge instead of painting past it.
   defp placed(bar, lane, axis, start, duration) do
-    left = min(position(axis, start), length(axis.units) * 1.0)
+    columns = length(axis.units)
+    left = min(position(axis, start), columns * 1.0)
+    width = duration |> min(columns - left) |> max(0.0)
 
     %{
       title: String.trim(bar["title"]),
@@ -283,7 +286,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.Roadmap do
       bar: paint(lane["color"], "bar", @default_bar),
       text: paint(lane["color"], "text", @default_text),
       left: percent(left, axis),
-      width: percent(min(duration, length(axis.units) - left) |> max(0.0), axis)
+      width: percent(width, axis)
     }
   end
 
