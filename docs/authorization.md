@@ -96,7 +96,7 @@ therefore loses the names inside its macros and keeps the ones in its chrome.
 | --- | --- |
 | a typo in `CM_PUBLIC_SPACES` | boot warning: "not a mirrored space" |
 | a list without `CM_PUBLIC_SITE` | boot line says `inert without CM_PUBLIC_SITE` |
-| a route added later that leaks | hidden is 404, and `access_test.exs` walks the routes as a stranger |
+| a route added later that leaks | hidden answers 404, and `access_test.exs` walks the reader surfaces as a stranger — catalogue, home rail, labels, children, outgoing links, backlinks, breadcrumbs, the people directory, and a space whose permissions were never stored |
 | a cached reader's copy shown to a stranger | the ETag names three shapes: `admin` / `reader` / `anonymous` |
 | a macro that names people | decided by the page's space at render time, `revision/0` re-reads bodies |
 
