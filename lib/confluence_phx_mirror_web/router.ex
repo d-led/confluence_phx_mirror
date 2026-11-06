@@ -22,6 +22,13 @@ defmodule ConfluencePhxMirrorWeb.Router do
     }
   end
 
+  # sobelow_skip ["Config.Headers"]
+  # The policy is `secure_browser_headers/0` above, applied by the `:put_policy`
+  # plug because `frame-src` is built per request. Sobelow only recognises
+  # `plug :put_secure_browser_headers` and cannot see through a function call;
+  # the header it wants is asserted instead, in
+  # `test/confluence_phx_mirror_web/widget_frame_policy_test.exs` and
+  # `test/confluence_phx_mirror_web/live/admin/dashboard_csp_test.exs`.
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -111,6 +118,8 @@ defmodule ConfluencePhxMirrorWeb.Router do
 
   # The API description and its page are static: no token, no database, no
   # rate-limit budget. `CM_API_DOCS` decides at boot whether they are served.
+  # sobelow_skip ["Config.Headers"]
+  # The same policy, for the same reason as the pipeline above.
   pipeline :docs do
     plug :accepts, ["html", "json"]
     # The description page is HTML like every other screen, so it wears the
