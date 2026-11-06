@@ -21,9 +21,9 @@ does not cover.
 Confluence's `body.export_view` is the server-rendered HTML Confluence itself
 serves to a browser. The mirror keeps it (sanitised) instead of re-implementing
 macros from `body.storage`, which is what the markdown exporters do and where
-they lose fidelity. Internal links are rewritten so mirrored pages cross-link
-each other; native `<details>` for expand macros, panels, lozenges, task lists,
-TOC, gallery and Jira macros come from Confluence's own markup.
+they lose fidelity. Internal links are rewritten so mirrored pages and spaces
+cross-link each other; native `<details>` for expand macros, panels, lozenges,
+task lists, TOC, gallery and Jira macros come from Confluence's own markup.
 
 The price is paid where the export view itself is lossy, and the layout macros
 are the clearest case: a `section` of two `column`s arrives as the columns'
@@ -585,6 +585,10 @@ purpose, and indexing is what a documentation site wants).
 * A `section`/`column` layout is flattened by `export_view`: the columns' words
   arrive in reading order, and the section's `title` and its rules do not arrive
   at all (see "Rendering fidelity comes from `export_view`").
+* A date Confluence wrote as words is the moment it wrote them. A recent-updates
+  list in a body says "about 5 hours ago" for ever, because that sentence was
+  the export view's, not the mirror's; the page's own metadata row shows the
+  dates the mirror stores, which move.
 * Space icons are mirrored from the download link Confluence publishes (translated
   into the REST attachment link, which is the one that accepts an API token). A
 * A personal space's icon is the owner's avatar, and Confluence answers that
