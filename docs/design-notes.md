@@ -338,20 +338,34 @@ because for most of these there is none to promise. The widget is a
 survives the site archive as a note rather than being flattened into prose — the
 same node serves both outputs, so the two cannot drift apart.
 
-### A macro the site draws nothing for stays empty
+### What the gallery's "empty" macros actually do
 
-An `index`, `spaces`, `contributors-summary`, `content-by-user`, `favpages`,
-`global-reports`, `space-details`, `recently-used-labels` or `related-labels`
-instance as the gallery page holds it — no parameters — comes back from
-Confluence with a caption and nothing under it. Measured 2026-11-06: 76–119 bytes
-of markup each, which is the heading, and `favpages`/`global-reports` add a title
-with no rows. The mirror shows what the site shows. A page index or a favourites
-list written here would put content on the page that Confluence never put there,
-and a mirror whose content is its own is not a mirror.
+An earlier revision of this note claimed that a `spaces`, `favpages`, `search` …
+instance comes back from Confluence with a caption and nothing under it, and
+concluded that there was nothing to draw. That was wrong, and the way it was
+measured is worth keeping: the body was split on the string `Legacy macro:` — a
+string the page's own table of contents also contains — so every block was cut
+short. Walking the rendered body as a tree and reading each heading's siblings
+gives the truth (gallery `1048577`, 2026-11-06):
 
-Two of the long-standing "not drawn" names do render, and are drawn from the
-site's markup like any other export: `index`, as an A–Z "Space Index", and
-`search`, as *"Found 10 search result(s) for mirror."*
+| Macro | What the site renders |
+| --- | --- |
+| `spaces` | the full space directory: 177 kB of markup, 910 links for 151 spaces |
+| `search` | ten results, *"Found 10 search result(s) for mirror."*, 20 links |
+| `space-details` | the space's detail screen, "Edit Space Details" included |
+| `related-labels` | 25 label links · `global-reports` six · `contributors-summary` a contributors table |
+| `recently-used-labels` | "runbook, platform" · `favpages` "There are currently no pages on your favourites list" |
+| `content-by-user` | Confluence's own *"Error rendering macro 'content-by-user': null"* |
+| `index` | an A–Z "Space Index" under its own headings |
+
+All of it is drawn, because the mirror draws what the site draws — including the
+error text, which is what an author who opens that page sees. What is left in
+those blocks is not drawing but **linking**, and the rule is the one for every
+other link: a screen the mirror has is a link inside it (`browsespace.action` is
+`/spaces`), while `createpage.action` and `space-details`' "Edit" are write
+surfaces this read-only mirror does not offer, so they keep saying where they
+lead. Links to pages and people the mirror has not mirrored stay the site's, for
+the same reason a page nobody mirrored does.
 
 ## Space and site customisation
 

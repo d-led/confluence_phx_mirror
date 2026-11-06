@@ -406,6 +406,21 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       assert Renderer.render(html, context()).html =~ ~s(href="/recent")
     end
+
+    # The `spaces` macro renders the site's space directory, one such link per
+    # space, and the mirror draws that directory at `/spaces`. `browsespace.action`
+    # is spelled like a space key — the space clause would have looked it up — so
+    # this is the case that has to be answered first.
+    test "the site's space directory is the mirror's" do
+      html =
+        ~s(<a href="/wiki/spaces/browsespace.action?key=ENG">Browse</a>) <>
+          ~s(<a href="https://dled.atlassian.net/wiki/spaces/browsespace.action">All</a>)
+
+      rendered = Renderer.render(html, context()).html
+
+      assert rendered =~ ~s(href="/spaces")
+      refute rendered =~ "browsespace.action"
+    end
   end
 
   describe "sanitising" do

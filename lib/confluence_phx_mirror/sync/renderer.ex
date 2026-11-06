@@ -135,7 +135,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     operator allowed the host — read the way a browser reads it (`//host` is
   #     https) — instead of being replaced by "this content cannot be shown",
   #     which is what a mirrored page showed for every embed.
-  def revision, do: 41
+  # 42: the `spaces` macro's own directory (`browsespace.action`) is the mirror's
+  #     `/spaces` screen instead of a trip off it.
+  def revision, do: 42
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -1195,12 +1197,13 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   end
 
   # The site's own spellings of screens the mirror draws itself: the activity
-  # feed, a person's space, a space and its overview, a label's catalogue. Each
-  # answers nil when the path is none of those, which leaves the href to the
-  # clauses below.
+  # feed, the space directory, a person's space, a space and its overview, a
+  # label's catalogue. Each answers nil when the path is none of those, which
+  # leaves the href to the clauses below.
   defp site_screen(href, context) do
     cond do
       activity_screen?(href) -> {:internal, URLs.recent_path()}
+      directory_screen?(href) -> {:internal, URLs.spaces_path()}
       account_id = personal_space_account(href) -> person_link(account_id, href, context)
       space_key = space_key_from_path(href) -> space_link(space_key, href, context)
       label = label_name_from_path(href) -> {:internal, URLs.label_path(label)}
@@ -1231,6 +1234,12 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # and the mirror answers that question itself.
   defp activity_screen?(href),
     do: String.contains?(href, "/plugins/recently-updated/changes.action")
+
+  # The `spaces` macro's own directory is the screen `/spaces` here. It is asked
+  # before the space key, because `browsespace.action` is spelled like a key and
+  # no space is called that: measured on the gallery, the `spaces` macro was 151
+  # of these links, all of them leaving the mirror.
+  defp directory_screen?(href), do: String.contains?(href, "/spaces/browsespace.action")
 
   # A personal space is spelled `/display/~<account-id>` — a person's page
   # written as a space — and the macros that list people write it as the
