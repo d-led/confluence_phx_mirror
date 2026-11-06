@@ -307,6 +307,21 @@ because for most of these there is none to promise. The widget is a
 survives the site archive as a note rather than being flattened into prose — the
 same node serves both outputs, so the two cannot drift apart.
 
+### A macro the site draws nothing for stays empty
+
+An `index`, `spaces`, `contributors-summary`, `content-by-user`, `favpages`,
+`global-reports`, `space-details`, `recently-used-labels` or `related-labels`
+instance as the gallery page holds it — no parameters — comes back from
+Confluence with a caption and nothing under it. Measured 2026-11-06: 76–119 bytes
+of markup each, which is the heading, and `favpages`/`global-reports` add a title
+with no rows. The mirror shows what the site shows. A page index or a favourites
+list written here would put content on the page that Confluence never put there,
+and a mirror whose content is its own is not a mirror.
+
+Two of the long-standing "not drawn" names do render, and are drawn from the
+site's markup like any other export: `index`, as an A–Z "Space Index", and
+`search`, as *"Found 10 search result(s) for mirror."*
+
 ## Space and site customisation
 
 Confluence lets a site and a space look different; a mirror that ignores this
