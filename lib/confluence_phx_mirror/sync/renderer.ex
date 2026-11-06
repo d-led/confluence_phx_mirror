@@ -137,7 +137,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     which is what a mirrored page showed for every embed.
   # 42: the `spaces` macro's own directory (`browsespace.action`) is the mirror's
   #     `/spaces` screen instead of a trip off it.
-  def revision, do: 42
+  # 43: a profile picture links to a person's page here only when the mirror holds
+  #     that person; the people route answers 404 for anybody else.
+  def revision, do: 43
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -670,12 +672,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     end)
   end
 
-  # The one framed thing the mirror may keep: a widget connector, which the site
-  # renders into the export as the vendor's own `iframe`. Where an operator
-  # allowed that host and no stranger may read the body, the frame *is* the
-  # content, so it is rebuilt as the mirror's frame node (`Sync.Embeds.Frame`) —
-  # sandboxed, no referrer, lazy — and the stylesheet and the policy apply to it
-  # as they do to a frame a macro built.
+  # A frame is content only where this deployment allowed the host it loads and no
+  # stranger may read the body; anything else is replaced below like every other
+  # live-only element.
   defp replace_node({"iframe", attrs, _children}, declarations, context) do
     case embedded_frame(attrs, context) do
       nil -> {List.wrap(unavailable("this embedded content", context)), declarations}
@@ -755,9 +754,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp replace_node(other, declarations, _context), do: {[other], declarations}
 
-  # A frame the export carried is kept only where an operator allowed the host
-  # it loads and nobody who never signed in may read the body — the same two
-  # questions `Renderers.WidgetConnector` asks before it writes a frame.
+  # Two questions, the same two `Renderers.WidgetConnector` asks before it writes a
+  # frame: may this host be framed, and may a stranger read this body?
   defp embedded_frame(attrs, context) do
     with address when is_binary(address) <- attribute(attrs, "src"),
          {:ok, src} <- Embeds.embeddable?(address),
@@ -768,9 +766,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     end
   end
 
-  # The site writes the size of the frame it drew into a `style` — a macro
-  # records it as a `height` parameter — so the height is looked for in both
-  # spellings and the width is the reading column's either way.
+  # The site writes the frame's size into a `style`; a macro records it as a
+  # `height`. The width is the reading column's either way.
   defp declared_height(attrs),
     do: attribute(attrs, "height") || style_height(attribute(attrs, "style"))
 
@@ -1235,10 +1232,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   defp activity_screen?(href),
     do: String.contains?(href, "/plugins/recently-updated/changes.action")
 
-  # The `spaces` macro's own directory is the screen `/spaces` here. It is asked
-  # before the space key, because `browsespace.action` is spelled like a key and
-  # no space is called that: measured on the gallery, the `spaces` macro was 151
-  # of these links, all of them leaving the mirror.
+  # The `spaces` macro's own directory is the `/spaces` screen here. It is asked
+  # before the space key, because `browsespace.action` is spelled like a key.
   defp directory_screen?(href), do: String.contains?(href, "/spaces/browsespace.action")
 
   # A personal space is spelled `/display/~<account-id>` — a person's page

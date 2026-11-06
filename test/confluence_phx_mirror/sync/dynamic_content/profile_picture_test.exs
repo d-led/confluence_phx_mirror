@@ -21,6 +21,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.ProfilePictureTest do
   @marker ~s(<div class="mirror-macro" data-macro="profile-picture" data-user="acc-jane"></div>)
 
   test "shows the picture the mirror keeps, and links to the person" do
+    held_person()
+
     html = expand()
 
     assert Floki.find(
@@ -30,10 +32,21 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.ProfilePictureTest do
              []
   end
 
+  # The people route answers 404 for somebody the mirror never saw: the macro says
+  # so rather than drawing a face and a link to nowhere.
+  test "a person the mirror does not hold is named, not linked" do
+    html = expand()
+
+    assert html =~ "not in the mirror, or not readable here"
+    refute html =~ "/people/"
+    refute html =~ "<img"
+  end
+
   # The avatar route answers a stranger with a 404 — a face is a name spelled in
   # pixels — and this body is stored once and served to everybody.
   test "a space the deployment publishes names nobody, face included" do
     TestConfig.put(:public_spaces, ["ENG"])
+    held_person()
 
     html = expand()
 
@@ -45,6 +58,9 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.ProfilePictureTest do
     assert expand(~s(<div class="mirror-macro" data-macro="profile-picture"></div>)) =~
              "names no person"
   end
+
+  defp held_person,
+    do: StubContent.script(authored: {:ok, %{name: "Jane", pages: []}})
 
   defp expand(marker \\ @marker),
     do: DynamicContent.expand(marker, %{space: @space, page: @host, source: StubContent})

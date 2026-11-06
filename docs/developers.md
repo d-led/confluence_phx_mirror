@@ -279,6 +279,17 @@ Do not query the database from a renderer: add a callback to
 audience rule is applied — a macro is resolved once, for every reader of the
 page, so what it lists may only be what those readers may open.
 
+**A link the renderer writes must resolve here.** A macro names its target in an
+`<ac:parameter>` — a page title, an account id, a space key, a `<ri:page>` — and
+a parameter can name anything, including things this mirror does not hold. Writing
+`URLs.page_path/3` or `URLs.person_path/1` from such a value without asking first
+puts a link to a 404 into the page. Ask the port (`page_by_title/2`,
+`authored/2`, …) and answer with `Nodes.notice/1` when it says `:error`, the way
+`include`, `pagetree`, `user-profile` and `profile-picture` do. The same rule
+applies to the links found in a body: `Sync.Renderer.classify_href/2` is internal
+only when `Mirror.page_index/0` holds the target. `mix mirror.links` counts what
+is left.
+
 ### Adding a vendor extension
 
 A third-party macro that needs nothing but its own page is an *extension*, not a

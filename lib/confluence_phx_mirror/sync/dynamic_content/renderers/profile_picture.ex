@@ -19,6 +19,10 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.ProfilePicture do
 
   With no picture on file the browser draws a broken image; the link beside it
   still goes somewhere, and `alt` says what the picture would have been.
+
+  A face and a person's page are only drawn for somebody this mirror holds: the
+  people route answers 404 for anybody else, and a link to it would be a link to
+  nowhere.
   """
 
   @behaviour ConfluencePhxMirror.Sync.DynamicContent.Renderer
@@ -39,7 +43,17 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.ProfilePicture do
         [Nodes.empty("This macro names no person, so there is no picture to show.")]
 
       true ->
-        [picture(account)]
+        case context.source.authored(context.page, account, limit: 1) do
+          {:ok, _person} ->
+            [picture(account)]
+
+          :error ->
+            [
+              Nodes.notice(
+                "The person this macro names is not in the mirror, or not readable here."
+              )
+            ]
+        end
     end
   end
 
