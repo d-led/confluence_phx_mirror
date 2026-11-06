@@ -91,6 +91,34 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert Renderer.render(html, context()).html =~
                ~s(href="https://dled.atlassian.net/pages/viewpage.action?pageId=999#Notes")
     end
+
+    # "Copy link address" gives a full URL, and it is the same page as the path
+    # above: the fragment has to survive that spelling too.
+    test "keeps the place in a full address to another page" do
+      html =
+        ~s(<a href="https://dled.atlassian.net/wiki/spaces/ENG/pages/101/Architecture+Overview#Design">Design</a>)
+
+      assert Renderer.render(html, context()).html =~
+               ~s(href="/spaces/ENG/pages/101/Architecture+Overview#Design")
+    end
+
+    test "keeps the place in a full address to the page itself" do
+      html =
+        ~s(<a href="https://dled.atlassian.net/wiki/spaces/ENG/pages/100/Home#Details">Details</a>)
+
+      assert Renderer.render(html, context()).html =~
+               ~s(href="/spaces/ENG/pages/100/home#Details")
+    end
+
+    # The overview is a space's own screen here, not its home: a link that names
+    # it lands on the catalogue of that space, which is what the site's overview
+    # is, rather than on the space's first page.
+    test "the space's overview is the mirror's own overview screen" do
+      html = ~s(<a href="/wiki/spaces/PROD/overview">PROD</a>)
+
+      assert Renderer.render(html, context(%{space_lookup: &space_named/1})).html =~
+               ~s(href="/spaces/PROD/overview")
+    end
   end
 
   describe "space cross-linking" do
@@ -169,6 +197,23 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
       assert Renderer.render(html, context(%{person_lookup: &author_named/1})).html =~
                ~s(href="/people/557058%3Aabc")
+    end
+
+    # Confluence spells a personal space `/display/~<account-id>`, and the macros
+    # that list people (the index, a user profile) write it as the author's link.
+    # The mirror has a page per author, so the name stays a link here too.
+    test "a personal space is the person's page here" do
+      html = ~s(<a href="/wiki/display/~557058%3Aabc">Dana</a>)
+
+      assert Renderer.render(html, context(%{person_lookup: &author_named/1})).html =~
+               ~s(href="/people/557058%3Aabc")
+    end
+
+    test "a person the mirror holds no page for keeps the link to their space" do
+      html = ~s(<a href="/wiki/display/~557058%3Anobody">Nobody</a>)
+
+      assert Renderer.render(html, context(%{person_lookup: &author_named/1})).html =~
+               ~s(href="https://dled.atlassian.net/wiki/display/~557058%3Anobody")
     end
 
     # Confluence appends `?ref=confluence` to the mentions it writes, and the
@@ -344,13 +389,22 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
 
   describe "external links" do
     test "makes relative links absolute and adds safe rel attributes" do
-      html = ~s(<a href="/browse/ENG-42">ENG-42</a> <a href="https://example.com/x">x</a>)
+      html =
+        ~s(<a href="/browse/ENG-42">ENG-42</a> <a href="https://example.com/x">x</a>)
 
       result = Renderer.render(html, context())
 
       assert result.html =~ ~s(href="https://dled.atlassian.net/browse/ENG-42")
       assert result.html =~ ~s(rel="noopener noreferrer")
       assert result.html =~ ~s(target="_blank")
+    end
+
+    # The recently-updated macro's "view all" is the site's activity screen, and
+    # the mirror draws that screen at `/recent`.
+    test "the site's activity screen is the mirror's" do
+      html = ~s(<a href="/wiki/plugins/recently-updated/changes.action">View all</a>)
+
+      assert Renderer.render(html, context()).html =~ ~s(href="/recent")
     end
   end
 

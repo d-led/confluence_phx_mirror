@@ -121,7 +121,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     audience rule, instead of a bar with no way to follow it.
   # 37: a widget connector's declared height is the frame's height, so a player
   #     is drawn in the band its vendor built it for.
-  def revision, do: 37
+  # 38: a link the site writes for a person's own space (`/display/~account`), a
+  #     space's overview, or the activity screen is a link inside the mirror,
+  #     instead of a trip off it to a site the reader may have no account on.
+  def revision, do: 38
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -1121,8 +1124,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       page_id = page_id_from_path(href) ->
         page_link(page_id, fragment(href), context)
 
-      space_key = space_key_from_path(href) ->
-        space_link(space_key, href, context)
+      screen = site_screen(href, context) ->
+        screen
 
       account_id = person_account(href) ->
         person_link(account_id, href, context)
@@ -1133,11 +1136,22 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       attachment = attachment_from_path(href) ->
         attachment_link(attachment, href, context)
 
-      label_name = label_name_from_path(href) ->
-        {:internal, URLs.label_path(label_name)}
-
       true ->
         {:external, absolutise(href, context)}
+    end
+  end
+
+  # The site's own spellings of screens the mirror draws itself: the activity
+  # feed, a person's space, a space and its overview, a label's catalogue. Each
+  # answers nil when the path is none of those, which leaves the href to the
+  # clauses below.
+  defp site_screen(href, context) do
+    cond do
+      activity_screen?(href) -> {:internal, URLs.recent_path()}
+      account_id = personal_space_account(href) -> person_link(account_id, href, context)
+      space_key = space_key_from_path(href) -> space_link(space_key, href, context)
+      label = label_name_from_path(href) -> {:internal, URLs.label_path(label)}
+      true -> nil
     end
   end
 
@@ -1157,6 +1171,23 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     case person_of(account_id, context) do
       %{} -> {:internal, URLs.person_path(account_id)}
       _ -> {:external, absolutise(href, context)}
+    end
+  end
+
+  # The recently-updated macro names the site's activity screen with this path,
+  # and the mirror answers that question itself.
+  defp activity_screen?(href),
+    do: String.contains?(href, "/plugins/recently-updated/changes.action")
+
+  # A personal space is spelled `/display/~<account-id>` — a person's page
+  # written as a space — and the macros that list people write it as the
+  # author's link. It is the same link as a mention, so it goes to the person's
+  # page here. A deeper path (`/display/~id/Page+Title`) is a page *inside* that
+  # space, which is not a person's page and is left to the site.
+  defp personal_space_account(href) do
+    case Regex.run(~r{/(?:wiki/)?display/~([^/?#]+)(?:[?#].*)?$}, href) do
+      [_, account_id] -> URI.decode(account_id)
+      nil -> nil
     end
   end
 
@@ -1209,9 +1240,18 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp space_link(key, href, context) do
     case space_of(key, context) do
-      %{key: space_key} -> {:internal, URLs.space_path(space_key)}
+      %{key: space_key} -> {:internal, space_screen(space_key, href)}
       _ -> {:external, absolutise(href, context)}
     end
+  end
+
+  # A space's overview and its home are two screens here, as they are on the
+  # site: `/spaces/KEY/overview` is the catalogue, `/spaces/KEY` is the space's
+  # first page.
+  defp space_screen(key, href) do
+    if String.contains?(href, "/overview"),
+      do: URLs.space_overview_path(key),
+      else: URLs.space_path(key)
   end
 
   defp space_of(key, context) do
