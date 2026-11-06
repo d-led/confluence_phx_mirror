@@ -180,6 +180,13 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
                ~s(href="/labels/my-label")
     end
 
+    # A label Confluence scoped to a space keeps the space in the address. The
+    # catalogue is the label's either way — the mirror lists what it holds.
+    test "a label scoped to a space is the same catalogue" do
+      assert Renderer.render(~s(<a href="/wiki/label/MFS/runbook">runbook</a>), context()).html =~
+               ~s(href="/labels/runbook")
+    end
+
     test "a label link the mirror wrote itself is left alone" do
       assert Renderer.render(~s(<a href="/labels/architecture">architecture</a>), context()).html =~
                ~s(href="/labels/architecture")

@@ -96,7 +96,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     mirror holds it, instead of sending the reader to the site.
   # 27: a body's mention of a person is that person's page here, and a label name
   #     is the mirror's label catalogue.
-  def revision, do: 27
+  # 28: a label Confluence scoped to a space (`/wiki/label/KEY/NAME`) is the same
+  #     catalogue, and no longer a link to the site.
+  def revision, do: 28
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -1127,8 +1129,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # A label is a catalogue the mirror draws from its own pages, so the name is a
   # link here whatever the label holds: a label no mirrored page carries answers
   # with an empty catalogue, which is a true thing to say about this mirror.
+  # Confluence writes a label scoped to a space as `/label/KEY/NAME`; the
+  # catalogue is the label's either way, so the key is dropped.
   defp label_name_from_path(href) do
-    case Regex.run(~r{/(?:wiki/)?labels?/([^/?#]+)/?$}, href) do
+    case Regex.run(~r{/(?:wiki/)?labels?/(?:[\w~.-]+/)?([^/?#]+)/?$}, href) do
       [_, name] -> URI.decode(name)
       nil -> nil
     end
