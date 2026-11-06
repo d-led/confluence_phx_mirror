@@ -20,7 +20,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   """
 
   alias ConfluencePhxMirror.Mirror.URLs
-  alias ConfluencePhxMirror.Sync.{Adf, Emoticons, MacroPlaceholder, VendorMacros}
+  alias ConfluencePhxMirror.Publishing
+  alias ConfluencePhxMirror.Sync.{Adf, Embeds, Emoticons, MacroPlaceholder, VendorMacros}
   alias ConfluencePhxMirror.Sync.DynamicContent.Marker
 
   @type page_ref :: %{space_key: String.t(), confluence_id: integer(), slug: String.t()}
@@ -130,7 +131,11 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 40: a widget connector's template names the vendor, so a YouTube address is
   #     framed at the address its player is served from (`/embed/…`) instead of
   #     at the page address the site refuses to frame.
-  def revision, do: 40
+  # 41: the frame the site itself renders for a widget connector is kept where an
+  #     operator allowed the host — read the way a browser reads it (`//host` is
+  #     https) — instead of being replaced by "this content cannot be shown",
+  #     which is what a mirrored page showed for every embed.
+  def revision, do: 41
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -154,7 +159,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   @type result :: %{html: String.t(), links: [link()], text: String.t()}
 
   # iframe/object/embed are not stripped here: they are replaced by an honest
-  # placeholder in `replace_live_only_content/2`, which runs later.
+  # placeholder in `replace_live_only_content/2`, which runs later — except a
+  # frame this deployment allowed, which that step keeps.
   @unsafe_elements ~w(script applet form input button)
   @url_attributes ~w(href src action formaction poster)
 
@@ -662,6 +668,19 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     end)
   end
 
+  # The one framed thing the mirror may keep: a widget connector, which the site
+  # renders into the export as the vendor's own `iframe`. Where an operator
+  # allowed that host and no stranger may read the body, the frame *is* the
+  # content, so it is rebuilt as the mirror's frame node (`Sync.Embeds.Frame`) —
+  # sandboxed, no referrer, lazy — and the stylesheet and the policy apply to it
+  # as they do to a frame a macro built.
+  defp replace_node({"iframe", attrs, _children}, declarations, context) do
+    case embedded_frame(attrs, context) do
+      nil -> {List.wrap(unavailable("this embedded content", context)), declarations}
+      frame -> {[frame], declarations}
+    end
+  end
+
   defp replace_node({tag, _attrs, _children}, declarations, context)
        when tag in @live_only_elements,
        do: {List.wrap(unavailable("this embedded content", context)), declarations}
@@ -733,6 +752,34 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   end
 
   defp replace_node(other, declarations, _context), do: {[other], declarations}
+
+  # A frame the export carried is kept only where an operator allowed the host
+  # it loads and nobody who never signed in may read the body — the same two
+  # questions `Renderers.WidgetConnector` asks before it writes a frame.
+  defp embedded_frame(attrs, context) do
+    with address when is_binary(address) <- attribute(attrs, "src"),
+         {:ok, src} <- Embeds.embeddable?(address),
+         false <- Publishing.stranger_reachable?(Map.get(context, :space_key)) do
+      Embeds.Frame.node(src, height: declared_height(attrs))
+    else
+      _refused -> nil
+    end
+  end
+
+  # The site writes the size of the frame it drew into a `style` — a macro
+  # records it as a `height` parameter — so the height is looked for in both
+  # spellings and the width is the reading column's either way.
+  defp declared_height(attrs),
+    do: attribute(attrs, "height") || style_height(attribute(attrs, "style"))
+
+  defp style_height(style) when is_binary(style) do
+    case Regex.run(~r/(?:\A|;)\s*height\s*:\s*(\d{1,4}(?:px)?)/i, style) do
+      [_all, height] -> height
+      _none -> nil
+    end
+  end
+
+  defp style_height(_style), do: nil
 
   # The parameters each macro name declares, in document order. The storage is
   # walked as the tree it is, not scanned: a macro may sit inside another, or

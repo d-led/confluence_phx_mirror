@@ -65,6 +65,28 @@ defmodule ConfluencePhxMirror.Sync.Embeds do
   end
 
   @doc """
+  The address as a browser on an https site reads it.
+
+  Confluence writes a widget's frame without a scheme — `//www.youtube.com/embed/…`
+  — which means "the scheme of this page", and this mirror is served over https.
+  Read literally it has no scheme at all, so every such frame was "not a web
+  address" and a mirrored page showed "this content cannot be shown" for it.
+
+      iex> absolute("//www.youtube.com/embed/abc")
+      "https://www.youtube.com/embed/abc"
+
+      iex> absolute("https://example.com/x")
+      "https://example.com/x"
+  """
+  @spec absolute(String.t()) :: String.t()
+  def absolute(address) when is_binary(address) do
+    case String.trim(address) do
+      "//" <> rest -> "https://" <> rest
+      other -> other
+    end
+  end
+
+  @doc """
   The address to put in a frame, when this deployment may embed it.
 
   `https` only, and only a host an operator named; anything else is `:error` and
@@ -80,9 +102,9 @@ defmodule ConfluencePhxMirror.Sync.Embeds do
   """
   @spec embeddable?(String.t()) :: {:ok, String.t()} | :error
   def embeddable?(address) when is_binary(address) do
-    uri = URI.parse(String.trim(address))
+    uri = address |> absolute() |> URI.parse()
 
-    if embeddable_uri?(uri), do: {:ok, URI.to_string(uri)}, else: :error
+    if embeddable_uri?(uri), do: {:ok, String.trim(absolute(address))}, else: :error
   end
 
   def embeddable?(_address), do: :error
@@ -101,10 +123,10 @@ defmodule ConfluencePhxMirror.Sync.Embeds do
   """
   @spec linkable?(String.t()) :: {:ok, String.t()} | :error
   def linkable?(address) when is_binary(address) do
-    uri = URI.parse(String.trim(address))
+    uri = address |> absolute() |> URI.parse()
 
     if uri.scheme in ["http", "https"] and is_binary(uri.host) and uri.host != "",
-      do: {:ok, URI.to_string(uri)},
+      do: {:ok, String.trim(absolute(address))},
       else: :error
   end
 

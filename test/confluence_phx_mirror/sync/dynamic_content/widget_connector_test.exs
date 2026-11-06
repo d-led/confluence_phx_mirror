@@ -29,7 +29,9 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.WidgetConnectorTest do
 
     assert iframe(html)["src"] == @address
     assert iframe(html)["loading"] == "lazy"
-    assert iframe(html)["referrerpolicy"] == "no-referrer"
+    # The origin, never the page: a player may refuse to start with no referrer
+    # at all, and the page's address is not the third party's business.
+    assert iframe(html)["referrerpolicy"] == "origin"
     # A third party's page runs its own scripts; it does not get to reach ours.
     assert iframe(html)["sandbox"] =~ "allow-scripts"
 

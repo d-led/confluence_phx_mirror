@@ -184,19 +184,36 @@ picture — while the width stays the mirror's, because the frame fills the read
 column and a fixed 600px box is a narrow strip on a wide screen and a sideways
 scroll on a phone.
 
-The macro also records the template Confluence would draw it with
+The first thing to know is that the mirror never used to draw one at all.
+Confluence renders the connector into `export_view` itself — measured on the
+capture page:
+
+    <iframe class="youtube-player" type="text/html" style="width: 600px; height: 300px"
+            src="//www.youtube.com/embed/ii1waoqualY?wmode=opaque" frameborder="0"></iframe>
+
+and the mirror replaced *every* `iframe` with "this content cannot be shown",
+which is what a mirrored page said for every embed. It now keeps a frame whose
+address this deployment allows, written as the mirror's own node
+(`Sync.Embeds.Frame`, the same node the macro path builds): sandboxed, lazy, the
+frame's declared height, and the site's **origin** as the referrer — never the
+page's address, because YouTube answers `no-referrer` with "Error 153, player
+configuration error" and plays with `origin`, measured on that same page. The
+address came without a scheme, `//host` being "this page's scheme"; read literally
+it was not a web address at all, so nothing was ever embedded.
+
+Where the export carries the macro unexpanded instead, the template is what knows
+what the address *is*. The macro records it
 (`…/widgetconnector/templates/youtube.vm`, and `overlay` = `youtube` beside it),
-and that is the part which knows what the address *is*. For YouTube it is what
-makes a frame possible at all: the site refuses framing
-(`X-Frame-Options: sameorigin`) and serves a player only from `/embed/`, so the
-frame is given `https://www.youtube.com/embed/<id>` while the page keeps the
-address the author pasted, timestamp and all. Only the host the frame *loads* has
-to be in the list, which is why a pasted `youtu.be` link needs no second entry
-and no request reaches the shortener. A template nobody here has seen is not
-guessed at — the address is framed as it stands — and a YouTube address the
-player cannot take (`/feed/subscriptions`) is the address, not a blank box.
-`Sync.Embeds.Vendors` holds the one row and says what earns another: a documented
-embed address *and* a template name seen in a real page.
+and for YouTube that is the difference between a player and a blank box: the site
+refuses framing (`X-Frame-Options: sameorigin`) and serves one only from
+`/embed/`, so the frame is given `https://www.youtube.com/embed/<id>` while the
+page keeps the address the author pasted, timestamp and all. Only the host the
+frame *loads* has to be in the list, which is why a pasted `youtu.be` link needs
+no second entry and no request reaches the shortener. A template nobody here has
+seen is not guessed at — the address is framed as it stands — and a YouTube
+address the player cannot take (`/feed/subscriptions`) is the address, not a
+blank box. `Sync.Embeds.Vendors` holds the one row and says what earns another: a
+documented embed address *and* a template name seen in a real page.
 
 `blog-posts` is one query the port already had: `type = blogpost`, ordered by
 `created`, with the `space`/`label` filters `recently-updated` also asks for —

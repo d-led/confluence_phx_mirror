@@ -42,6 +42,19 @@ defmodule ConfluencePhxMirror.Sync.EmbedsTest do
     assert Embeds.embeddable?("http://www.youtube.com/watch?v=abc") == :error
   end
 
+  # How Confluence writes a widget's frame: no scheme, meaning "this page's",
+  # which on this mirror is https. Read literally it had none at all, so every
+  # embedded widget answered "this content cannot be shown".
+  test "an address the site wrote without a scheme is https" do
+    TestConfig.put(:embed_hosts, ["youtube.com"])
+
+    assert Embeds.embeddable?("//www.youtube.com/embed/abc") ==
+             {:ok, "https://www.youtube.com/embed/abc"}
+
+    assert Embeds.embeddable?("  //www.youtube.com/embed/abc  ") ==
+             {:ok, "https://www.youtube.com/embed/abc"}
+  end
+
   test "the policy names the same hosts, so the two cannot disagree" do
     TestConfig.put(:embed_hosts, ["youtube.com"])
 
