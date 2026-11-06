@@ -60,6 +60,18 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   @callback descendants(host :: Page.t(), page :: Page.t(), keyword()) :: [Page.t()]
 
   @doc """
+  The top page of a space — the one Confluence's macros call `@home`.
+
+  `space` is a space key, or nil for the host's own space. It is asked of the port
+  rather than looked up by title because `@home` is not a title, and because a
+  tree that crosses into another space must still go through the audience rule.
+  A space whose top page these readers may not open is `:error`, exactly as an
+  unreadable title is: a macro baked into a public page may not confirm that a
+  page is there.
+  """
+  @callback home_page(host :: Page.t(), space :: String.t() | nil) :: {:ok, Page.t()} | :error
+
+  @doc """
   The page titled `title` in the host's space — or in the space `title` names as
   `KEY/Page Title`, the way Confluence writes a cross-space reference — when the
   host's readers may open it.

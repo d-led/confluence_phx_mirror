@@ -131,6 +131,18 @@ into the page for everybody, so everything a macro lists must be at least as
 wide as the page listing it. Applying that once in
 `Sync.DynamicContent.Source.Mirror` means a macro written next year inherits it.
 
+`pagetree` is the case where the *editor's* storage, not the macro's, decides
+what is drawn. A content tree inserted in Confluence does not name a title: it
+writes its root as a link (`<ri:page ri:content-title="@home"/>`, where `@home`
+is the space's top page), the space key beside it (`spaces`) and the level the
+site folds open (`startDepth`). `@home` is read as a question for the port
+(`home_page/2`), never as a title, and a cross-space tree still passes through
+the audience rule. `startDepth` is not applied: probing the site's own
+`naturalchildren.action` on the capture space shows it counts the levels shown
+*open* (default 1, which renders the root and nothing under it), and a mirror has
+no chevrons to open the rest — a tree that stopped there would say nothing a
+reader came for. So the mirror draws every level it holds.
+
 Resolved today: `content-by-label` (and the editor's `contentbylabel`), `page-properties-report` (Confluence's key is
 `detailssummary`), `toc`, `children`, `pagetree`, `recently-updated`,
 `attachments`, `content-report-table`, `include`, `excerpt-include`, `excerpt`,

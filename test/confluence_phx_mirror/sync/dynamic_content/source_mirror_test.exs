@@ -67,6 +67,42 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.SourceMirrorTest do
     assert Source.Mirror.page_by_title(host, "OPS/Runbooks") == :error
   end
 
+  describe "home_page" do
+    test "a space's @home is the page its own row records" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs", homepage_confluence_id: 97_130})
+      home = page_fixture(docs, %{title: "Docs home", confluence_id: 97_130})
+      host = page_fixture(docs, %{title: "Runbook", confluence_id: 97_131})
+
+      assert {:ok, found} = Source.Mirror.home_page(host, nil)
+      assert found.id == home.id
+    end
+
+    test "a space that recorded no homepage starts at its first root page" do
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      first = page_fixture(docs, %{title: "Alpha", confluence_id: 97_132})
+      host = page_fixture(docs, %{title: "Zeta", confluence_id: 97_133})
+
+      assert {:ok, found} = Source.Mirror.home_page(host, nil)
+      assert found.id == first.id
+    end
+
+    test "another space's home page is reached only when these readers may open it" do
+      ops = space_fixture(%{key: "OPS", name: "Ops", homepage_confluence_id: 97_134})
+
+      {:ok, _} =
+        Mirror.replace_space_permissions(ops, [
+          %{operation: "read", subject_type: "group", subject_key: "ops-team"}
+        ])
+
+      page_fixture(ops, %{title: "Ops home", confluence_id: 97_134})
+
+      docs = space_fixture(%{key: "DOCS", name: "Docs"})
+      host = page_fixture(docs, %{title: "Home", confluence_id: 97_135})
+
+      assert Source.Mirror.home_page(host, "OPS") == :error
+    end
+  end
+
   describe "contributors" do
     test "counts the pages each person wrote in the host's space, most first" do
       docs = space_fixture(%{key: "DOCS", name: "Docs"})

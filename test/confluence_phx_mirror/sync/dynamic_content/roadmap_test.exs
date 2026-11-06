@@ -13,7 +13,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RoadmapTest do
   alias ConfluencePhxMirror.Sync.DynamicContent.StubContent
 
   @space %{key: "MFS"}
-  @host %{id: 1, confluence_id: 32001, slug: "page-32001", title: "Plan", space: @space}
+  @host %{id: 1, confluence_id: 32_001, slug: "page-32_001", title: "Plan", space: @space}
 
   # What the editor wrote on "Macro capture 2026-11-06", word for word.
   defp captured do

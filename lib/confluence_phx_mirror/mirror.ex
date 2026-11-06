@@ -2340,6 +2340,33 @@ defmodule ConfluencePhxMirror.Mirror do
     |> Repo.all()
   end
 
+  @doc """
+  A space's top page — the one Confluence's macros call `@home`.
+
+  The space row holds the site's own choice of homepage, which is the page a
+  content tree starts from. A mirror that was never told one falls back to the
+  space's first root page, which is where a tree would grow from anyway; a space
+  with neither is `nil`, and the caller says so rather than drawing nothing.
+  """
+  @spec space_home(integer()) :: Page.t() | nil
+  def space_home(space_id) do
+    with %Space{homepage_confluence_id: id} when not is_nil(id) <- Repo.get(Space, space_id),
+         {:ok, page} <- find_page(id) do
+      page
+    else
+      _no_homepage -> first_root_page(space_id)
+    end
+  end
+
+  defp first_root_page(space_id) do
+    from(p in Page,
+      where: p.space_id == ^space_id and is_nil(p.parent_id) and is_nil(p.deleted_at),
+      order_by: [asc: p.title],
+      limit: 1
+    )
+    |> Repo.one()
+  end
+
   @doc "The pages directly below `page`, by title; `:limit` takes a window."
   def children(page, opts \\ []) do
     from(p in Page,

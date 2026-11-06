@@ -58,6 +58,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.StubContent do
   end
 
   @impl true
+  def home_page(_host, space) do
+    record({:home_page, space})
+    answer(:home_page, :error)
+  end
+
+  @impl true
   def page_by_title(_host, title) do
     record({:page_by_title, title})
 

@@ -53,6 +53,20 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
     end
   end
 
+  # The space's top page, which is what the editor writes as `@home` when a
+  # person inserts a content tree. It goes through the same audience rule as a
+  # title: a tree in a space these readers may not open is not a tree they learn
+  # exists.
+  @impl true
+  def home_page(%Page{} = host, space) do
+    with %Page{} = home <- Mirror.space_home(space_id(space, host)),
+         true <- readable?(host, home) do
+      {:ok, home}
+    else
+      _ -> :error
+    end
+  end
+
   # Confluence writes a page in another space as `KEY/Page Title`. A title that
   # merely contains a slash — "A/B testing" — is a title, so the prefix only
   # counts when it is shaped like a key *and* names a space this mirror holds.

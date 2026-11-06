@@ -108,7 +108,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 32: a roadmap planner is drawn from the plan the editor stores in it — its
   #     lanes, bars and markers on the plan's own timeline — instead of staying
   #     the widget for a macro Confluence will not expand for a reader.
-  def revision, do: 32
+  # 33: a content tree reads the root the editor writes (`@home`, the space key
+  #     beside it), so a tree a person inserted is drawn instead of answering
+  #     "the root is not in the mirror".
+  def revision, do: 33
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -858,10 +861,17 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp reference(nodes) when is_list(nodes), do: Enum.find_value(nodes, &reference/1)
 
-  defp reference({tag, attrs, _children}) do
+  # A reference is not always the parameter's *direct* child: a content tree
+  # writes its root as `<ac:link><ri:page ri:content-title="@home"/></ac:link>`,
+  # so a reader that only looked one level down found an empty parameter and the
+  # tree arrived naming no root at all. Anything else is looked inside, and the
+  # first typed reference found is the one the parameter means.
+  defp reference({tag, attrs, children}) do
     with keys when is_list(keys) <- Map.get(@references, tag),
          value when is_binary(value) <- Enum.find_value(keys, &attribute(attrs, &1)) do
       {tag, value}
+    else
+      _itself_not_a_reference -> reference(children)
     end
   end
 

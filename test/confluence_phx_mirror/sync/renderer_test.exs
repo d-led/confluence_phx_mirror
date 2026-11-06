@@ -459,6 +459,27 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
                rendered |> source() |> URI.decode() |> Jason.decode!()
     end
 
+    # Also from the capture page: a content tree writes its root as a link to a
+    # page — `@home` for the space's top page — with the space key beside it and
+    # the level the site folds open. Read as a title, `@home` found nothing, so
+    # every tree a person inserted answered "the root is not in the mirror".
+    test "a content tree keeps the root the editor writes" do
+      html = """
+      <ac:structured-macro ac:name="pagetree" ac:schema-version="1">
+        <ac:parameter ac:name="root"><ac:link><ri:page ri:content-title="@home" /></ac:link></ac:parameter>
+        <ac:parameter ac:name="spaces"><ri:space ri:space-key="MFS" /></ac:parameter>
+        <ac:parameter ac:name="startDepth">1</ac:parameter>
+      </ac:structured-macro>
+      """
+
+      rendered = Renderer.render(html, context()).html
+
+      assert rendered =~ ~s(data-macro="pagetree")
+      assert rendered =~ ~s(data-root="@home")
+      assert rendered =~ ~s(data-spaces="MFS")
+      assert rendered =~ ~s(data-start-depth="1")
+    end
+
     test "a macro nobody can draw keeps the body a reader came for" do
       html = """
       <ac:structured-macro ac:name="confiform-table">

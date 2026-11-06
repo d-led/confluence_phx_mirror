@@ -72,6 +72,81 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.PageTreeTest do
            ]
   end
 
+  # The editor's own shape: `@home` is Confluence's word for the space's top
+  # page, not a title, so a renderer that reads it as one answers "not in the
+  # mirror" for every content tree a person inserts.
+  test "a root written as @home is the space's home page" do
+    StubContent.script(
+      home_page: {:ok, page(9, "My first space", nil)},
+      descendants: [page(10, "On call", 9)]
+    )
+
+    marker =
+      ~s(<div class="mirror-macro" data-macro="pagetree" data-root="@home"></div>)
+
+    assert outline(expand(marker)) == [{"On call", 1}]
+
+    assert StubContent.questions() == [
+             {:home_page, nil},
+             {:descendants, [limit: 50]}
+           ]
+  end
+
+  # A macro may name another space, and then the home page it means is that
+  # space's — resolved through the port, so a page these readers may not open is
+  # never drawn.
+  test "a tree in another space is rooted in that space" do
+    StubContent.script(
+      home_page: {:ok, page(9, "Docs", nil)},
+      descendants: [page(10, "Install", 9)]
+    )
+
+    marker =
+      ~s(<div class="mirror-macro" data-macro="pagetree" data-root="@home" data-spaces="DOCS"></div>)
+
+    assert outline(expand(marker)) == [{"Install", 1}]
+    assert StubContent.questions() == [{:home_page, "DOCS"}, {:descendants, [limit: 50]}]
+  end
+
+  test "a named root in another space is looked up there" do
+    StubContent.script(
+      page_by_title: {:ok, page(9, "Runbooks", nil)},
+      descendants: [page(10, "On call", 9)]
+    )
+
+    marker =
+      ~s(<div class="mirror-macro" data-macro="pagetree" data-root="Runbooks" data-spaces="OPS"></div>)
+
+    assert outline(expand(marker)) == [{"On call", 1}]
+
+    assert StubContent.questions() == [
+             {:page_by_title, "OPS/Runbooks"},
+             {:descendants, [limit: 50]}
+           ]
+  end
+
+  test "a home page the port cannot resolve is said out loud" do
+    html = expand(~s(<div class="mirror-macro" data-macro="pagetree" data-root="@home"></div>))
+
+    assert text(html) == "The page tree's root is not in the mirror, or not readable here."
+  end
+
+  # `startDepth` says how much of the site's tree is folded open, and the mirror
+  # has no chevrons to open the rest with: a tree that stopped at level 1 would
+  # be a root and nothing else, which is what a reader would come to the macro
+  # to avoid.
+  test "the levels the site folds open are not a depth the mirror can fold" do
+    marker =
+      ~s(<div class="mirror-macro" data-macro="pagetree" data-root="@home" data-start-depth="1"></div>)
+
+    StubContent.script(
+      home_page: {:ok, page(9, "Docs", nil)},
+      descendants: [page(10, "Install", 9), page(11, "Upgrade", 10)]
+    )
+
+    assert outline(expand(marker)) == [{"Install", 1}, {"Upgrade", 2}]
+  end
+
   test "a root the port cannot resolve is said out loud, not drawn empty" do
     html = expand(~s(<div class="mirror-macro" data-macro="pagetree" data-root="Typo"></div>))
 

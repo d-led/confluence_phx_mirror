@@ -11,6 +11,20 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.PageTree do
   readers may not open — says so instead of drawing an empty tree, because the
   two are different answers.
 
+  The editor's own shape is the one to read, though. A content tree inserted in
+  Confluence writes its root as a link — `@home` for the space's top page — the
+  space key beside it (`spaces`), and the level the site folds open
+  (`startDepth`). `@home` is not a title, so a renderer that read it as one
+  answered "the root is not in the mirror" for every tree a person inserts; it is
+  asked of the port instead, which is where the audience rule also lives for a
+  tree that names another space.
+
+  `startDepth` is deliberately not a depth the mirror draws. It says how much of
+  the tree the *site* shows folded open, and the mirror has no chevrons to open
+  the rest with: a tree that stopped at level 1 would be a root and nothing else,
+  which is exactly what a reader comes to the macro to get past. So every level
+  the mirror holds is drawn.
+
   The subtree is a column on every page (`pages.ancestors`), so it is one
   statement however deep it is (`Mirror.descendants/2`), and it arrives in level
   order, so grouping by parent keeps the title order it was read in. A descendant
@@ -33,12 +47,33 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.PageTree do
     end
   end
 
+  # A root is one of three things: nothing (this page), the space's home page
+  # (`@home`), or a page by title — which a `spaces` parameter moves to another
+  # space.
   defp root(attrs, context) do
+    space = space(attrs)
+
     case title(attrs) do
-      nil -> {:ok, context.page}
-      title -> context.source.page_by_title(context.page, title)
+      nil -> own_root(space, context)
+      title -> resolve(title, space, context)
     end
   end
+
+  defp own_root(nil, context), do: {:ok, context.page}
+  defp own_root(space, context), do: context.source.home_page(context.page, space)
+
+  defp resolve(title, space, context) do
+    if String.downcase(title) == "@home",
+      do: context.source.home_page(context.page, space),
+      else: context.source.page_by_title(context.page, qualified(title, space))
+  end
+
+  # Confluence writes a page in another space as `KEY/Page Title`, which is the
+  # form the port reads.
+  defp qualified(title, nil), do: title
+  defp qualified(title, space), do: "#{space}/#{title}"
+
+  defp space(attrs), do: attrs |> Attributes.list("spaces") |> List.first()
 
   defp title(attrs) do
     case attrs |> Map.get("root", "") |> String.trim() do
