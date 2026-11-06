@@ -384,7 +384,9 @@ defmodule ConfluencePhxMirror.SettingsTest do
       Settings.update(%{"embeds.hosts" => ""}, @actor)
 
       assert Settings.stored("embeds.hosts") == nil
-      assert Settings.embed_hosts() == Application.get_env(:confluence_phx_mirror, :embed_hosts, [])
+
+      assert Settings.embed_hosts() ==
+               Application.get_env(:confluence_phx_mirror, :embed_hosts, [])
     end
   end
 
