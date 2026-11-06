@@ -10,6 +10,7 @@ defmodule ConfluencePhxMirror.Export.Site.ContentTest do
         1002 => "spaces/ENG/pages/1002.html",
         1003 => "spaces/ENG/pages/1003.html"
       },
+      space_keys: MapSet.new(["ENG", "PROD"]),
       origins: ["https://demo.atlassian.net/wiki", "https://demo.atlassian.net"],
       external: fn ids ->
         Map.new(ids, fn id ->
@@ -84,6 +85,26 @@ defmodule ConfluencePhxMirror.Export.Site.ContentTest do
       href = "https://other.atlassian.net/wiki/pages/viewpage.action?pageId=1002"
 
       assert rewrite(~s(<a href="#{href}">A</a>)) =~ ~s(href="#{href}")
+    end
+  end
+
+  describe "space names" do
+    # A body that names a space names the archive's own space page, where that
+    # space's page tree is. On the site the mirror serves the same screen.
+    test "a mirrored space becomes the archive's own space page" do
+      assert rewrite(~s(<a href="/spaces/PROD">Product</a>)) =~
+               ~s(href="../../../spaces/PROD/index.html")
+    end
+
+    test "the space's overview address names the same page" do
+      assert rewrite(~s(<a href="/spaces/PROD/overview">Product</a>)) =~
+               ~s(href="../../../spaces/PROD/index.html")
+    end
+
+    test "a space the archive does not carry keeps its address on the site" do
+      href = "https://demo.atlassian.net/wiki/spaces/GONE"
+
+      assert rewrite(~s(<a href="#{href}">Gone</a>)) =~ ~s(href="#{href}")
     end
   end
 

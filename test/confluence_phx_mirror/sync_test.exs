@@ -121,6 +121,15 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert page.body_text =~ "poll"
     end
 
+    test "a body that names a mirrored space links into the mirror" do
+      demo_snapshot!()
+
+      links = Repo.get_by!(Page, confluence_id: 1006).body_export
+
+      assert links =~ ~s(href="/spaces/PROD")
+      assert links =~ ~s(href="https://demo.atlassian.net/wiki/spaces/UNKNOWN")
+    end
+
     test "stores attachment bytes outside Postgres under a readable key" do
       demo_snapshot!()
 

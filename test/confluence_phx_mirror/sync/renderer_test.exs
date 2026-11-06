@@ -83,6 +83,56 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
     end
   end
 
+  describe "space cross-linking" do
+    # A body that names a space names a screen the mirror has. Left as it came
+    # out of the export, the name is a link off the mirror to the site — where a
+    # reader of a public mirror has no account at all.
+    test "a link that names a space stays in the mirror" do
+      html =
+        ~s(<p>The <a href="https://dled.atlassian.net/wiki/spaces/PROD">release space</a></p>)
+
+      result = Renderer.render(html, context(%{space_lookup: &space_named/1}))
+
+      assert result.html =~ ~s(href="/spaces/PROD")
+      assert [%{kind: "internal", label: "release space"}] = result.links
+    end
+
+    test "the legacy address of a space home is the same space" do
+      html = ~s(<a href="/wiki/display/PROD">release space</a>)
+
+      assert Renderer.render(html, context(%{space_lookup: &space_named/1})).html =~
+               ~s(href="/spaces/PROD")
+    end
+
+    test "a space nobody mirrored keeps its link to the site" do
+      html = ~s(<a href="https://dled.atlassian.net/wiki/spaces/ELSEWHERE">elsewhere</a>)
+
+      assert Renderer.render(html, context(%{space_lookup: &space_named/1})).html =~
+               ~s(href="https://dled.atlassian.net/wiki/spaces/ELSEWHERE")
+    end
+
+    test "a page inside a space is still a page, not the space" do
+      html = ~s(<a href="/wiki/spaces/ENG/pages/101/Architecture+Overview">Architecture</a>)
+
+      assert Renderer.render(html, context(%{space_lookup: &space_named/1})).html =~
+               ~s(href="/spaces/ENG/pages/101/Architecture+Overview")
+    end
+
+    # The mirror's own spelling of the key is what a path must carry: the site
+    # writes keys in capitals, a body may link them any way it likes.
+    test "the mirror's spelling of the key is the one written into the path" do
+      html = ~s(<a href="/wiki/spaces/prod">release space</a>)
+
+      assert Renderer.render(html, context(%{space_lookup: &space_named/1})).html =~
+               ~s(href="/spaces/PROD")
+    end
+
+    defp space_named(key) when is_binary(key) do
+      key = String.upcase(key)
+      if key == "PROD", do: %ConfluencePhxMirror.Mirror.Space{key: key}
+    end
+  end
+
   describe "macros the site only draws for a signed-in reader" do
     test "an unknown-macro placeholder becomes a sentence, not a broken image" do
       # Confluence's placeholder is a picture served by the site under the

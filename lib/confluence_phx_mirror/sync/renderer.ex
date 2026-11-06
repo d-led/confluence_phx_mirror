@@ -92,7 +92,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     ADF panel declared, badge and all), a panel with its own glyph drops the
   #     generic badge, and a decision's state is a mark rather than the word the
   #     mirror had been printing.
-  def revision, do: 25
+  # 26: a body that names a space links to the mirror's own space screen when the
+  #     mirror holds it, instead of sending the reader to the site.
+  def revision, do: 26
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -101,7 +103,8 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
           optional(:storage) => String.t() | nil,
           optional(:pages) => %{integer() => page_ref()},
           optional(:attachments) => %{{integer(), String.t()} => attachment_ref()},
-          optional(:attachment_lookup) => (integer(), String.t() -> attachment_ref() | nil)
+          optional(:attachment_lookup) => (integer(), String.t() -> attachment_ref() | nil),
+          optional(:space_lookup) => (String.t() -> ConfluencePhxMirror.Mirror.Space.t() | nil)
         }
 
   @type link :: %{
@@ -1072,6 +1075,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
       page_id = page_id_from_path(href) ->
         page_link(page_id, fragment(href), context)
 
+      space_key = space_key_from_path(href) ->
+        space_link(space_key, href, context)
+
       account_id = avatar_account(href) ->
         {:attachment, people_avatar_path(account_id)}
 
@@ -1097,6 +1103,32 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
 
   defp people_avatar_path(account_id) do
     "/people/" <> URI.encode_www_form(account_id) <> "/avatar"
+  end
+
+  # A body names a space at the site's own address — `/wiki/spaces/KEY` today,
+  # `/wiki/display/KEY` before that. The mirror has that screen, so the name stays
+  # a link inside it: left alone it sends a reader off the mirror to a site they
+  # may have no account on. Only when the mirror holds the space, which is the
+  # rule a page link follows too — a key nobody mirrored keeps its site link.
+  defp space_key_from_path(href) do
+    case Regex.run(~r{/(?:spaces|display)/([^/?#]+)(?:/overview)?/?$}, href) do
+      [_, key] -> URI.decode(key)
+      nil -> nil
+    end
+  end
+
+  defp space_link(key, href, context) do
+    case space_of(key, context) do
+      %{key: space_key} -> {:internal, URLs.space_path(space_key)}
+      _ -> {:external, absolutise(href, context)}
+    end
+  end
+
+  defp space_of(key, context) do
+    case Map.get(context, :space_lookup) do
+      lookup when is_function(lookup, 1) -> lookup.(key)
+      _ -> nil
+    end
   end
 
   defp page_link(confluence_id, fragment, context) do

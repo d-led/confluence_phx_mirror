@@ -300,6 +300,7 @@ defmodule ConfluencePhxMirror.Export.Site do
   defp space_stream(spaces, scope, generated) do
     context = %{
       pages: page_paths(spaces, scope),
+      space_keys: MapSet.new(spaces, & &1.key),
       origins: origins(),
       external: &external_urls/1,
       external_attachment: &external_attachment/2

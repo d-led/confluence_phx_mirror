@@ -30,12 +30,14 @@ defmodule ConfluencePhxMirror.Export.Site.Content do
           required(:prefix) => String.t(),
           required(:pages) => %{integer() => String.t()},
           required(:external) => ([integer()] -> %{integer() => String.t()}),
+          optional(:space_keys) => MapSet.t(String.t()),
           optional(:origins) => [String.t()],
           optional(:external_attachment) => (integer(), String.t() -> String.t() | nil)
         }
 
   @headings ~w(h1 h2 h3 h4 h5 h6)
   @page_path ~r{^/spaces/([^/?#]+)/(?:pages|blog)/(\d+)}
+  @space_path ~r{^/spaces/([^/?#]+)(?:/overview)?/?$}
   @viewpage "/pages/viewpage.action?pageId="
 
   @doc """
@@ -162,7 +164,7 @@ defmodule ConfluencePhxMirror.Export.Site.Content do
   defp page_href("/spaces/" <> _rest = path, context, urls, href) do
     case Regex.run(@page_path, path) do
       [_, _space_key, id] -> known_page(String.to_integer(id), context, urls, href)
-      nil -> href
+      nil -> space_href(path, context, href)
     end
   end
 
@@ -174,6 +176,21 @@ defmodule ConfluencePhxMirror.Export.Site.Content do
   end
 
   defp page_href(_path, _context, _urls, href), do: href
+
+  # A body that names a space names a screen the mirror draws and the archive
+  # holds as a file: the space's page with its tree. Naming it is not a page
+  # link, so the page pattern above passes it over.
+  defp space_href(path, context, href) do
+    case Regex.run(@space_path, path) do
+      [_, space_key] ->
+        if MapSet.member?(Map.get(context, :space_keys, MapSet.new()), space_key),
+          do: context.prefix <> Site.space_index_path(space_key),
+          else: href
+
+      nil ->
+        href
+    end
+  end
 
   defp known_page(confluence_id, context, urls, href) do
     case Map.get(context.pages, confluence_id) do

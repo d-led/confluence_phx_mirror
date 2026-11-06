@@ -177,8 +177,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
         updated_at: ~U[2026-10-15 13:00:00Z]
       ),
       page(1006, "ENG", 1000, "Cross-links and Backlinks", crosslinks_body(), ~w(links backlinks),
-        version: 3,
-        message: "Demonstrate internal and external links",
+        version: 4,
+        message: "Show how a space name is linked",
         updated_at: ~U[2026-10-14 10:15:00Z]
       ),
       page(1007, "ENG", 1000, "Meeting Notes", meeting_body(), ~w(meeting notes),
@@ -498,6 +498,8 @@ defmodule ConfluencePhxMirror.Confluence.DemoContent do
     <p>#{page_link(2000, "Product Home")} and the blog post #{page_link(2001, "Release 2.0")} live in another space and are still mirrored.</p>
     <h2 id="unmirrored">Unmirrored page</h2>
     <p><a href="/wiki/spaces/ENG/pages/9999/Secret+Notes">Secret Notes</a> is not mirrored; the link points back to Confluence.</p>
+    <h2 id="spaces">Spaces</h2>
+    <p><a href="/wiki/spaces/PROD">Product</a> is a mirrored space, so its name stays a link here. <a href="/wiki/spaces/UNKNOWN">An unknown space</a> keeps its link to the site, the way an unmirrored page does.</p>
     <h2 id="external">External</h2>
     <p><a href="https://developer.atlassian.com/cloud/confluence/using-the-rest-api/">Confluence REST API documentation</a> and <a href="https://www.postgresql.org/docs/current/textsearch.html">Postgres full-text search</a>.</p>
     #{panel(:info, "Backlinks", "<p>Every internal link is stored in the link table, which powers the “Linked from” panel on the target page and the “Outgoing links” panel here.</p>")}
