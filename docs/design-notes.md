@@ -592,21 +592,27 @@ purpose, and indexing is what a documentation site wants).
   dates the mirror stores, which move.
 * Space icons are mirrored from the download link Confluence publishes (translated
   into the REST attachment link, which is the one that accepts an API token). A
+  space whose icon cannot be fetched keeps the key tile it would have had.
 * A personal space's icon is the owner's avatar, and Confluence answers that
   path with a redirect to `gravatar.com`. `gravatar.com` is an allowed download
   host, so the picture is fetched once into the blob store like any attachment,
   and the reader is never sent there.
-* `include`-family macros are forwarded from `export_view` without an audience
-  check (see the dynamic-content section above).
+* An `include` the source **inlined** arrives as words in the host page's body,
+  and there is nothing left to check. One the mirror draws itself is drawn only
+  when the page named has readers at least as wide as the host page's, so the
+  mirror never pulls a restricted page into an open one (see the dynamic-content
+  section above).
 * Live macros that need an Atlassian session (Jira issue detail, user hover
   cards) render as the link/placeholder Confluence puts in `export_view`.
 * S3 blob storage is an interface, not an implementation, in this PoC.
 * The desktop tool's Rust graph carries `glib` 0.18.5, which GitHub reports as
   GHSA-wrw7-89jp-8q8g — unsoundness in the `Iterator` impls of
-  `glib::VariantStrIter`. It cannot be fixed by bumping: `tauri` asks for
-  `gtk ^0.18`, `gtk` asks for `glib ^0.18`, and the first fixed release
-  (`glib` 0.20.0) is one no `gtk` asks for yet — `gtk`'s newest release is 0.19.0.
-  Nothing in this crate names `glib` or `gtk`; they arrive through tauri's Linux
-  backend, and the tool is built for macOS and Windows. The alert is dismissed as
-  a tolerable risk and `.github/dependabot.yml` will not propose that bump; both
-  go away when tauri moves to `gtk` 0.19 or later.
+  `glib::VariantStrIter`, fixed in `glib` 0.20.0. The chain, read from the crates
+  registry: `tauri` 2.12.5 asks for `gtk ^0.18` (Linux and BSD targets only),
+  `gtk` 0.18.2 asks for `glib ^0.18`, and `gtk` 0.19.0 — which is published —
+  asks for `glib ^0.22`. So the blocker is tauri's pin, not gtk's availability:
+  the fix arrives when tauri moves to `gtk` 0.19 or later. Nothing in this crate
+  names `glib` or `gtk`; they arrive through tauri's Linux backend, and the tool
+  is built for macOS and Windows. The alert is dismissed as a tolerable risk and
+  `.github/dependabot.yml` will not propose the bump; re-check with
+  `cargo update -p glib --precise 0.20.0 --dry-run`.
