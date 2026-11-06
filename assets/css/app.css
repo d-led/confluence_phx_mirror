@@ -636,6 +636,22 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
   background-image: none;
 }
 
+/* The badge's shape is the kind's, not the mirror's: a note is a rounded
+   square and a warning a triangle on the site, and drawing all five as circles
+   loses the one thing a reader skims for. */
+.confluence-content
+  .confluence-information-macro-note
+  .confluence-information-macro-icon {
+  border-radius: 0.25rem;
+}
+
+.confluence-content
+  .confluence-information-macro-warning
+  .confluence-information-macro-icon {
+  border-radius: 0.05rem;
+  clip-path: polygon(50% 2%, 100% 100%, 0 100%);
+}
+
 .confluence-content .confluence-information-macro-icon::before {
   content: "i";
 }
@@ -650,6 +666,9 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
   .confluence-information-macro-warning
   .confluence-information-macro-icon::before {
   content: "!";
+  /* A triangle is narrower at the top, so the glyph sits below the middle. */
+  padding-top: 0.3rem;
+  font-size: 0.62rem;
 }
 
 .confluence-content
