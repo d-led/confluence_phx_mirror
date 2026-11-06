@@ -100,7 +100,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     catalogue, and no longer a link to the site.
   # 29: a mention or a label address that carries a query string (`?ref=confluence`)
   #     is the same person and the same catalogue, not a link to the site.
-  def revision, do: 29
+  # 30: a widget connector is the page it names — a frame when the deployment
+  #     allows that host, and always the address under it.
+  def revision, do: 30
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -149,7 +151,6 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     "spaces-list" => "a spaces list",
     "livesearch" => "a live search box",
     "gadget" => "an external gadget",
-    "widget" => "an external widget",
     "iframe" => "an embedded page",
     "rss" => "an RSS feed",
     "roadmap" => "a roadmap",

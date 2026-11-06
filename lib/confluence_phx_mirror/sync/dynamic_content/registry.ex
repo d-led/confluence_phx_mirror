@@ -40,7 +40,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "recently-updated" => Renderers.RecentlyUpdated,
     "tasks-report" => Renderers.TasksReport,
     "toc" => Renderers.Toc,
-    "user-profile" => Renderers.UserProfile
+    "user-profile" => Renderers.UserProfile,
+    "widget" => Renderers.WidgetConnector
   }
 
   # What the same macro is called elsewhere. The Page Properties Report is the
@@ -59,7 +60,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "table-of-contents" => "toc",
     "listlabels" => "labels-list",
     "profile" => "user-profile",
-    "contentbylabel" => "content-by-label"
+    "contentbylabel" => "content-by-label",
+    "widget-connector" => "widget"
   }
 
   @doc "The renderer that draws `name`, or `:error` for a macro the mirror lacks."

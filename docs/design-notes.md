@@ -135,16 +135,26 @@ Resolved today: `content-by-label` (and the editor's `contentbylabel`), `page-pr
 `detailssummary`), `toc`, `children`, `pagetree`, `recently-updated`,
 `attachments`, `content-report-table`, `include`, `excerpt-include`, `excerpt`,
 `blog-posts`, `contributors`, `labels-list`, `user-profile`, `tasks-report`,
-`decision-report`, `anchor` and `profile-picture` — plus `html`, whose answer is
-its own body, read from the
+`decision-report`, `anchor`, `profile-picture` and `widget` — plus `html`, whose
+answer is its own body, read from the
 storage because the export view only leaves a picture of the macro. What is left
 is not a renderer away:
 
 | Macro | Data it needs | Why it is not drawn |
 | --- | --- | --- |
 | `jira`, `jiraissues`, `jirachart` | issue data | needs Jira credentials: out of scope for a mirror |
-| `livesearch`, `gadget`, `widget` | a client, or a third-party app | impossible statically |
+| `livesearch`, `gadget` | a client, or a third-party app | impossible statically |
 | Forge/Connect app macros | the app | a placeholder is the honest answer, and the body is kept |
+
+`widget` is the one macro whose answer is *somebody else's page*, so it is drawn
+as a frame only where an operator allowed the host (`CM_EMBED_HOSTS`, empty by
+default) and the space is not one a stranger can read — the stored body is served
+to every reader, and a third party's frame in it is a stranger's browser talking
+to somebody nobody negotiated with. The address is printed under the frame in
+muted type and stays a link, so the block is useful when the frame is not there:
+an unnamed host, a public space, an export opened offline, or a party that is
+down. The renderer and `frame-src` read one list (`Sync.Embeds`), so a frame the
+mirror drew is never blocked and no host is permitted that it never draws.
 
 `blog-posts` is one query the port already had: `type = blogpost`, ordered by
 `created`, with the `space`/`label` filters `recently-updated` also asks for —

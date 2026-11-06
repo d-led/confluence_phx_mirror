@@ -1,6 +1,7 @@
 defmodule ConfluencePhxMirrorWeb.Router do
   use ConfluencePhxMirrorWeb, :router
 
+  alias ConfluencePhxMirror.Sync.Embeds
   alias ConfluencePhxMirrorWeb.LiveUserAuth
   alias ConfluencePhxMirrorWeb.Plugs
 
@@ -8,10 +9,18 @@ defmodule ConfluencePhxMirrorWeb.Router do
   # come from the mirror itself (LiveView is bundled into assets/js/app.js);
   # styles stay inline-friendly because Confluence's HTML carries style
   # attributes and the palette is emitted per request.
-  @secure_browser_headers %{
-    "content-security-policy" =>
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
-  }
+  #
+  # `frame-src` is built per request from `Sync.Embeds`: the hosts an operator
+  # allowed a widget connector to embed, and nothing else. Built here rather
+  # than written down twice, so the renderer that writes a frame and the policy
+  # that permits it cannot drift apart — a host nobody named is not framed by
+  # the renderer, and a frame it did write is never blocked.
+  defp secure_browser_headers do
+    %{
+      "content-security-policy" =>
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src #{Enum.join(["'self'" | Embeds.frame_src()], " ")}; frame-ancestors 'none'"
+    }
+  end
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -19,7 +28,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
     plug :fetch_live_flash
     plug :put_root_layout, html: {ConfluencePhxMirrorWeb.Layouts, :root}
     plug :protect_from_forgery
-    plug :put_secure_browser_headers, @secure_browser_headers
+    plug :put_policy
 
     plug Plugs.FetchCurrentUser
     plug Plugs.ProxyAuth
@@ -28,6 +37,9 @@ defmodule ConfluencePhxMirrorWeb.Router do
     plug Plugs.SiteContext
     plug Plugs.ReaderRateLimit, scope: :html
   end
+
+  defp put_policy(conn, _opts),
+    do: Phoenix.Controller.put_secure_browser_headers(conn, secure_browser_headers())
 
   # sobelow_skip ["Config.CSRF"]
   # A read-only, token-authenticated JSON API: CSRF needs a state change and a
@@ -103,7 +115,7 @@ defmodule ConfluencePhxMirrorWeb.Router do
     plug :accepts, ["html", "json"]
     # The description page is HTML like every other screen, so it wears the
     # same policy rather than a second one nobody audits.
-    plug :put_secure_browser_headers, @secure_browser_headers
+    plug :put_policy
   end
 
   # ---------------------------------------------------------------------------

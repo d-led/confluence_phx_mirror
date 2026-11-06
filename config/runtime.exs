@@ -407,7 +407,11 @@ config :confluence_phx_mirror,
   public_site: System.get_env("CM_PUBLIC_SITE") in ~w(1 true yes),
   public_spaces: System.get_env("CM_PUBLIC_SPACES", "") |> String.split(",", trim: true),
   anonymize_contributors: System.get_env("CM_ANONYMIZE_CONTRIBUTORS") in ~w(1 true yes),
-  exclude_comments: System.get_env("CM_EXCLUDE_COMMENTS") in ~w(1 true yes)
+  exclude_comments: System.get_env("CM_EXCLUDE_COMMENTS") in ~w(1 true yes),
+  # The hosts a widget connector may frame, and the same list the content
+  # security policy names in `frame-src`. Empty: nothing is embedded and every
+  # widget connector is the address itself. See `Sync.Embeds`.
+  embed_hosts: System.get_env("CM_EMBED_HOSTS", "") |> String.split(",", trim: true)
 
 config :confluence_phx_mirror,
   notifications: [

@@ -43,7 +43,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
              "recently-updated",
              "tasks-report",
              "toc",
-             "user-profile"
+             "user-profile",
+             "widget"
            ]
   end
 
@@ -51,6 +52,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
     assert Registry.canonical("page-properties-report") == "detailssummary"
     assert Registry.fetch("page-properties-report") == Registry.fetch("detailssummary")
     assert Registry.fetch("table-of-contents") == Registry.fetch("toc")
+    assert Registry.fetch("widget-connector") == Registry.fetch("widget")
     assert "page-properties-report" in Registry.names()
   end
 

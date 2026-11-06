@@ -133,6 +133,18 @@ defmodule ConfluencePhxMirror.Publishing do
     do: not anonymise_contributors?() and not public_space?(space_key)
 
   @doc """
+  Whether a stranger may reach `space_key` without signing in.
+
+  The same question `identities_in_space?/1` asks, and the same reason for
+  asking it at sync time: what a renderer bakes into a body is shown to every
+  reader of that body. A widget connector is the case that made this its own
+  function — one third-party frame in a body a stranger opens is a stranger's
+  browser talking to a third party nobody negotiated with.
+  """
+  @spec stranger_reachable?(String.t() | nil) :: boolean()
+  def stranger_reachable?(space_key), do: public_site?() or public_space?(space_key)
+
+  @doc """
   A byline as this deployment publishes it: the name, or `nil` for no name.
 
   Every surface that draws an author asks this, so "we do not publish names"
