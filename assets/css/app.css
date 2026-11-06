@@ -330,6 +330,23 @@
   font-weight: 600;
 }
 
+/* The `spaces` macro is Confluence's older list of spaces: a tab strip whose
+   entries are links back into the REST API, a row per space, and a column of
+   controls — browse the space, add a page, add it to your favourites — that only
+   a signed-in Confluence reader can press, one of them carrying a session token
+   in its address. A static mirror draws the list and not the controls: the
+   space's own name is the way in, and an action nobody can take is not offered.
+   Its label column hugs "Space:" instead of breaking it over two lines. */
+.confluence-content .spaceList > ul.tabs-menu,
+.confluence-content tr.spaceList > td.operations {
+  display: none;
+}
+
+.confluence-content tr.spaceList > td.space-icon-col {
+  width: 1%;
+  white-space: nowrap;
+}
+
 /* daisyUI's `menu-active` takes its pair from the theme, and in the light theme
    that pair lands near-white on near-white: a row highlighted with the keyboard —
    the search suggestions, the export's page tree, the filter chips — was painted
