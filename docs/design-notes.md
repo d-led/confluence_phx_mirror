@@ -237,8 +237,11 @@ first — *why isn't there a renderer for this macro?*
    macro. That is a property of the source, and no mirror can produce the output.
 2. **Does the mirror hold the data?** When the answer is in tables the mirror
    already has — pages, labels, attachments, comments, versions — the macro *is*
-   drawable, and the mirror draws it: twelve of them
-   (`Sync.DynamicContent.Registry`) plus the vendor layout macros above.
+   drawable, and the mirror draws it. The list is `Sync.DynamicContent.Registry`
+   (a module, a test and a line, per macro), plus the vendor layout macros above.
+   A widget connector is the case that tests the rule at its edge: the answer is
+   a page the mirror does **not** hold, so what is drawable is the address, and
+   whether it may be framed is the deployment's decision rather than a macro's.
 
 So "an export renderer" is not one missing piece of code that could be written
 once. It is a decision per macro, and it can only go one way where the answer
