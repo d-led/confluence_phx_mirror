@@ -126,11 +126,24 @@ defmodule ConfluencePhxMirror.Publishing do
   Whether the one stored copy of a space's bodies may name people.
 
   A body is rendered once, at sync time, and served to every reader, so a space
-  a stranger can reach has to be stored in the stranger's shape.
+  a stranger can reach has to be stored in the stranger's shape. "Can reach" is
+  `stranger_reachable?/1` rather than "is listed": a deployment that publishes
+  everything reaches every space, listed or not.
   """
   @spec identities_in_space?(String.t() | nil) :: boolean()
   def identities_in_space?(space_key),
-    do: not anonymise_contributors?() and not public_space?(space_key)
+    do: not anonymise_contributors?() and not stranger_reachable?(space_key)
+
+  @doc """
+  Whether stored bodies may name people anywhere on this deployment.
+
+  The same question as `identities_in_space?/1` for a query that spans spaces —
+  a sync looking for what changed has no space to ask about, so it asks whether
+  *any* space could have to be nameless.
+  """
+  @spec identities_anywhere?() :: boolean()
+  def identities_anywhere?,
+    do: not anonymise_contributors?() and not public_site?() and public_spaces() == []
 
   @doc """
   Whether a stranger may reach `space_key` without signing in.

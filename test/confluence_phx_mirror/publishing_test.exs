@@ -130,5 +130,20 @@ defmodule ConfluencePhxMirror.PublishingTest do
 
       refute Publishing.identities_in_space?("HR")
     end
+
+    test "a public deployment's stored bodies name nobody, whatever space they came from" do
+      TestConfig.put(:public_site, true)
+
+      refute Publishing.identities_in_space?("HR")
+      refute Publishing.identities_in_space?(nil)
+    end
+
+    test "a query that spans spaces keeps names only when nothing is published at all" do
+      assert Publishing.identities_anywhere?()
+
+      TestConfig.put(:public_spaces, ["ENG"])
+
+      refute Publishing.identities_anywhere?()
+    end
   end
 end
