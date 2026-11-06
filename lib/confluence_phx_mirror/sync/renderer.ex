@@ -111,7 +111,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 33: a content tree reads the root the editor writes (`@home`, the space key
   #     beside it), so a tree a person inserted is drawn instead of answering
   #     "the root is not in the mirror".
-  def revision, do: 33
+  # 34: a two-column layout is macro chrome like a panel's — earned by a declared
+  #     `section`, so a `sectionColumnWrapper` pasted into the storage as prose
+  #     no longer draws columns the site never showed.
+  def revision, do: 34
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
@@ -345,7 +348,12 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     {"aui-lozenge", ["status"]},
     {"status-macro", ["status"]},
     {"expand-container", ["expand"]},
-    {"toc-macro", ["toc"]}
+    {"toc-macro", ["toc"]},
+    # A two-column layout is structure rather than decoration — the export keeps
+    # the wrapper, the row and each column's own width — but it is the same
+    # bargain: a section the storage declares draws, and a `sectionColumnWrapper`
+    # pasted in as prose does not.
+    {"sectionColumnWrapper", ["section"]}
   ]
 
   # The modern editor does not always write a structured macro: a panel, a
@@ -360,10 +368,13 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
     "expandable" => "expand"
   }
   # The inside of a chrome block: these carry no meaning of their own and only
-  # appear within a family, so they go when their wrapper goes.
+  # appear within a family, so they go when their wrapper goes. The layout's
+  # chain is listed whole — a wrapper left out of it would rescue every column
+  # beneath it from the stripping the section above it earned.
   @chrome_parts ~w(panelContent panelHeader codeContent codeHeader pdl
                    confluence-information-macro-body confluence-information-macro-icon
-                   expand-content expand-control expand-control-icon expand-control-text) ++ []
+                   expand-content expand-control expand-control-icon expand-control-text
+                   sectionMacro sectionMacroWithBorder sectionMacroRow columnMacro) ++ []
 
   defp drop_undeclared_macro_chrome(nodes, context) do
     case declared_macros(context) do

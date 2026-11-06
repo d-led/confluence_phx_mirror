@@ -870,6 +870,57 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
   font-weight: 700;
 }
 
+/* Layout macros (section, column) -------------------------------------- */
+
+/* export_view hands a two-column layout over as structure — the wrapper, a row
+   and a column per cell with its own width inline — so the picture is one flex
+   row and the author's widths are obeyed. Without these rules the wrapper is a
+   plain block and two half-width columns stack, which is not what the page
+   shows. A column stacks on a phone: at 48rem two columns are two strips of
+   four words, and the widths are inline, so they have to be overridden. */
+.confluence-content .sectionColumnWrapper {
+  margin: 1rem 0;
+}
+
+.confluence-content .sectionMacroWithBorder {
+  padding: 0.15rem 1rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.5rem;
+}
+
+.confluence-content .sectionMacroRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.confluence-content .columnMacro {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding-right: 1rem;
+}
+
+.confluence-content .columnMacro:last-child {
+  padding-right: 0;
+}
+
+.confluence-content .columnMacro > :first-child {
+  margin-top: 0.75rem;
+}
+
+.confluence-content .columnMacro > :last-child {
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 48rem) {
+  .confluence-content .columnMacro {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding-right: 0;
+  }
+}
+
 /* Dynamic macros (resolved at sync time) -------------------------------- */
 
 .confluence-content .mirror-macro {

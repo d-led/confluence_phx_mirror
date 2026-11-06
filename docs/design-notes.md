@@ -26,15 +26,18 @@ and labels cross-link each other; native `<details>` for expand macros, panels,
 lozenges, task lists, TOC, gallery and Jira macros come from Confluence's own
 markup.
 
-The price is paid where the export view itself is lossy, and the layout macros
-are the clearest case: a `section` of two `column`s arrives as the columns'
-contents in reading order — no wrapper, no widths — and the section's own
-`title` and `border` parameters do not arrive at all, so a laid-out page reads as
-one column and the layout's title is missing. The storage holds the whole
-structure, and drawing it would mean rendering storage bodies to HTML — links,
-macros, images and all — which is exactly the second renderer this design exists
-to avoid. A page's layout is therefore information the mirror does not carry;
-its words are.
+The price is paid where the export view itself is lossy, and it is smaller than
+this note first claimed. Measured on 2026-11-06 (the macro gallery, page
+`1048577`): a `section` of two `column`s arrives whole — `sectionColumnWrapper`
+→ `sectionMacroRow` → one `columnMacro` per cell **with its own width inline** —
+so a laid-out page is drawn as the page shows it, not re-implemented from the
+storage. `Sync.Renderer` treats that markup as macro chrome like a panel's: it is
+earned by a `section` the storage declares, and a wrapper pasted into the storage
+as prose loses its columns and keeps its words. What the export view does not
+carry is the section's own `title`, which the site does not render at all, so
+that one line is still lost. The modern editor's layout node (`layoutSection`)
+has not been captured yet, and is the shape to re-measure before trusting this
+paragraph for anything but the classic macros.
 
 ## What we adopted from the export/backup ecosystem
 
@@ -623,9 +626,10 @@ documentation site wants.
   synced. Backlinks and outgoing links are computed live from the link table, so
   they never go stale, but link *text* baked into a body does — until that page
   is synced again.
-* A `section`/`column` layout is flattened by `export_view`: the columns' words
-  arrive in reading order, and the section's `title` and its rules do not arrive
-  at all (see "Rendering fidelity comes from `export_view`").
+* A `section`/`column` layout is drawn from the export view's own wrapper, the
+  row and the columns' widths; the section's `title` does not arrive at all, and
+  the modern editor's layout node has not been measured (see "Rendering fidelity
+  comes from `export_view`").
 * A date Confluence wrote as words is the moment it wrote them. A recent-updates
   list in a body says "about 5 hours ago" for ever, because that sentence was
   the export view's, not the mirror's; the page's own metadata row shows the

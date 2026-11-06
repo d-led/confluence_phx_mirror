@@ -626,6 +626,40 @@ defmodule ConfluencePhxMirror.Sync.RendererTest do
       assert result.html =~ "Second."
     end
 
+    # A two-column layout is the one piece of macro chrome that is *structure*
+    # rather than decoration: the site's export keeps the wrapper, the row and
+    # each column's own width, and the stylesheet draws them side by side. It is
+    # chrome all the same, so it is earned the same way.
+    @columns ~s(<div class="sectionColumnWrapper"><div class="sectionMacroWithBorder"><div class="sectionMacroRow"><div class="columnMacro" style="width:50%;min-width:50%;max-width:50%;"><p>Left column</p></div><div class="columnMacro" style="width:50%;min-width:50%;max-width:50%;"><p>Right column</p></div></div></div></div>)
+
+    test "a section the storage declares keeps its columns and their widths" do
+      storage = """
+      <ac:structured-macro ac:name="section">
+        <ac:parameter ac:name="border">true</ac:parameter>
+        <ac:rich-text-body>
+          <ac:structured-macro ac:name="column"><ac:parameter ac:name="width">50%</ac:parameter></ac:structured-macro>
+          <ac:structured-macro ac:name="column"><ac:parameter ac:name="width">50%</ac:parameter></ac:structured-macro>
+        </ac:rich-text-body>
+      </ac:structured-macro>
+      """
+
+      result = Renderer.render(@columns, Map.put(context(), :storage, storage))
+
+      assert result.html =~ ~s(class="sectionMacroRow")
+      assert result.html =~ "width:50%"
+      assert result.html =~ "<p>Left column</p>"
+      assert result.html =~ "<p>Right column</p>"
+    end
+
+    test "a layout pasted into the storage as prose loses its columns and keeps its words" do
+      result = Renderer.render(@columns, Map.put(context(), :storage, "<p>Before.</p>"))
+
+      refute result.html =~ "sectionColumnWrapper"
+      refute result.html =~ "columnMacro"
+      assert result.html =~ "<p>Left column</p>"
+      assert result.html =~ "<p>Right column</p>"
+    end
+
     test "a panel draws the icon its storage declares, which the export view drops" do
       html =
         ~s(<div class="panel" style="background-color: #EAE6FF;"><div class="panelContent"><p>An aside.</p></div></div>)
