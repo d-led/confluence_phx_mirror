@@ -8,6 +8,7 @@ defmodule ConfluencePhxMirror.SyncGateTest do
   use Oban.Testing, repo: ConfluencePhxMirror.Repo
 
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Sync
 
   alias ConfluencePhxMirror.Sync.{
@@ -21,6 +22,13 @@ defmodule ConfluencePhxMirror.SyncGateTest do
   alias ConfluencePhxMirror.TestConfig
 
   setup do
+    # The suite's guard against a settings cache that a rollback cannot undo lives
+    # in `DataCase`; this file starts its own sandbox owner, so it asks for the
+    # same clean slate. `Sync.run/2` reads the pause switch, and a suite tested on
+    # what the last test happened to cache is a suite that fails in somebody
+    # else's order.
+    Settings.forget()
+
     owner = Ecto.Adapters.SQL.Sandbox.start_owner!(Repo, shared: true)
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(owner) end)
     :ok

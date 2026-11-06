@@ -29,9 +29,10 @@ defmodule ConfluencePhxMirror.PauseTest do
     Settings.reload()
 
     on_exit(fn ->
-      # The cache outlives the sandbox transaction that held the row.
+      # The cache outlives the sandbox transaction that held the row, so it is
+      # dropped and not re-read: `reload/0` here would read back the pause that is
+      # about to be rolled back, and hand it to whatever test runs next.
       Settings.forget()
-      Settings.reload()
     end)
 
     :ok
