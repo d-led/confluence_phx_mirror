@@ -6,9 +6,15 @@ defmodule ConfluencePhxMirror.Sync.ReconcileWorkerTest do
   from a mirror that is still being written — and it holds the lock for as long
   as it asks, which is what lets the boot sweep tell a pass whose node died from
   one that is still working (`SyncGateTest`).
+
+  The lock is one row for the whole database, so this file cannot run beside a
+  test that starts a run: two claims of the same row meet on its unique index and
+  the second is answered `{:error, :already_running}`, which is the correct
+  answer for the code and the wrong one for the assertion. Hence `async: false` —
+  a test of a database-wide lock is a test that needs the database to itself.
   """
 
-  use ConfluencePhxMirror.DataCase, async: true
+  use ConfluencePhxMirror.DataCase, async: false
 
   alias ConfluencePhxMirror.Sync.{Gate, ReconcileRun, ReconcileWorker}
 
