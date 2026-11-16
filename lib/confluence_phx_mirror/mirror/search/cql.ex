@@ -68,7 +68,44 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
     "lastmodified" => :lastmodified
   }
 
-  @operators "=, !=, ~, !~, >, <, >=, <=, IN, NOT IN"
+  # Which questions each field can answer. The builder in `Mirror.Search` reads
+  # exactly this set — a comparison per operator and a membership per `IN` — so
+  # without the table here a query the parser accepted reached the builder with
+  # no clause to build it and raised instead of telling the reader why. A test
+  # asks the builder about every pair listed, so the two cannot drift apart.
+  @scalar_operators [:eq, :neq, :gt, :gte, :lt, :lte, :in, :not_in]
+
+  @operator_matrix %{
+    text: [:contains, :not_contains],
+    title: [:contains, :not_contains, :eq, :neq, :in, :not_in],
+    space: [:eq, :neq, :in, :not_in],
+    label: [:eq, :neq, :in, :not_in],
+    type: [:eq, :neq, :in, :not_in],
+    status: [:eq, :neq, :in, :not_in],
+    creator: [:eq, :in, :not_in],
+    ancestor: [:eq, :in, :not_in],
+    parent: [:eq, :in, :not_in],
+    id: [:eq, :in, :not_in],
+    version: @scalar_operators,
+    created: @scalar_operators,
+    lastmodified: @scalar_operators
+  }
+
+  # How each operator is written, in the order the messages list them.
+  @spellings [
+    eq: "=",
+    neq: "!=",
+    contains: "~",
+    not_contains: "!~",
+    gt: ">",
+    lt: "<",
+    gte: ">=",
+    lte: "<=",
+    in: "IN",
+    not_in: "NOT IN"
+  ]
+
+  @operators Enum.map_join(@spellings, ", ", fn {_op, spelling} -> spelling end)
 
   # Fields Confluence documents that a read-only mirror cannot answer, with the
   # reason — telling a reader "unknown field" for `watcher` would send them
@@ -210,7 +247,8 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
 
   defp parse_primary([{:word, field} | rest]) do
     with {:ok, field} <- validate_field(field),
-         {:ok, op, rest} <- parse_operator(rest) do
+         {:ok, op, rest} <- parse_operator(rest),
+         :ok <- validate_operator(field, op) do
       parse_operand(field, op, rest)
     end
   end
@@ -329,6 +367,21 @@ defmodule ConfluencePhxMirror.Mirror.Search.CQL do
       {_, :error} -> {:error, "unknown field #{inspect(field)}"}
     end
   end
+
+  defp validate_operator(field, op) do
+    if op in Map.fetch!(@operator_matrix, field) do
+      :ok
+    else
+      {:error,
+       "#{field} cannot be compared with #{spelling(op)}; it takes #{allowed_operators(field)}"}
+    end
+  end
+
+  defp allowed_operators(field) do
+    @operator_matrix |> Map.fetch!(field) |> Enum.map_join(", ", &spelling/1)
+  end
+
+  defp spelling(op), do: Keyword.fetch!(@spellings, op)
 
   defp validate_value(field, value, rest) when field in @text_fields do
     {:ok, to_string(value), rest}
