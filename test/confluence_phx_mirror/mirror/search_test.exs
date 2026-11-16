@@ -38,6 +38,30 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
     assert "Release 2.0" not in titles("ancestor = 1000")
   end
 
+  # `ancestor in` asks about a set of branches at once rather than one; it is a
+  # different SQL shape from `ancestor =` (an overlap with the stored array
+  # rather than one membership test), so it is executed rather than assumed to
+  # follow.
+  test "ancestor IN takes several branches at once" do
+    assert titles("ancestor in (1000)") == titles("ancestor = 1000")
+
+    # A union is more than one page of results, so the limit is raised: the
+    # screen's own limit would truncate both lists in different places and the
+    # comparison would be about ordering rather than about which pages match.
+    assert Enum.sort(titles("ancestor in (1000, 2000)", limit: 200)) ==
+             Enum.sort(
+               titles("ancestor = 1000", limit: 200) ++ titles("ancestor = 2000", limit: 200)
+             )
+  end
+
+  # `parent in` is the direct parent only — the difference between "under this
+  # page, however deep" and "one step below it".
+  test "parent IN names the direct children" do
+    assert titles("parent in (1000)") == titles("parent = 1000")
+    assert "Getting Started" in titles("parent in (1000)")
+    refute "Getting Started" in titles("parent in (1001)")
+  end
+
   test "finds blog posts by type" do
     assert titles("type = blogpost") == ["Release 2.0"]
   end
