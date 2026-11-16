@@ -79,6 +79,36 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
 
       assert Search.snippet(page, ["networking"]) == "networking lives here"
     end
+
+    # The page can be a hit on its title alone, and then there is no word in the
+    # body to open at: the reader still gets the first line rather than nothing.
+    test "open at the beginning when no term is in the words" do
+      page = %ConfluencePhxMirror.Mirror.Page{body_text: "  a page about queues  "}
+
+      assert Search.snippet(page, ["networking"]) == "a page about queues"
+    end
+
+    test "a body with no words has no snippet" do
+      assert Search.snippet(%ConfluencePhxMirror.Mirror.Page{body_text: nil}, ["x"]) == ""
+      assert Search.snippet(%ConfluencePhxMirror.Mirror.Page{body_text: ""}, ["x"]) == ""
+      assert Search.snippet(%ConfluencePhxMirror.Mirror.Comment{body_text: nil}, ["x"]) == ""
+    end
+
+    test "a comment's words are worth a snippet too" do
+      comment = %ConfluencePhxMirror.Mirror.Comment{body_text: "the rate limit is 240"}
+
+      assert Search.snippet(comment, ["rate limit"]) == "the rate limit is 240"
+    end
+
+    # A body can be one unbroken token — a pasted hash, a base64 blob — and then
+    # there is no space to open on: the window is shown as it is, without an
+    # ellipsis promising words it does not contain.
+    test "an unbroken run of characters is shown as it is" do
+      text = String.duplicate("x", 300) <> "needle"
+      page = %ConfluencePhxMirror.Mirror.Page{body_text: text}
+
+      assert Search.snippet(page, ["needle"]) == String.slice(text, 220, 240)
+    end
   end
 
   test "title search is case insensitive for equality" do
