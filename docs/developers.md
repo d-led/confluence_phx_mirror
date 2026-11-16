@@ -469,12 +469,15 @@ per-function list says what to fix, the per-file list says where a file's worst
 spot is, and the per-tree line says whether a whole layer needs attention.
 
 One blind spot is worth naming, because the numbers look like a defect list and
-are not: the suite that writes the coverage export runs on Postgres, so code only
-the SQLite engine reaches (`Mirror.Search.Lite` and the extras module it queries)
-and the two streaming audit exports — a controller test's adapter cannot stream,
-which is why `admin_audit_export_test.exs` tests the rows where they are made —
-read 0 % whatever their tests say. Read those as *not measured here*, and check
-them with `scripts/test-sqlite.sh` before believing a CRAP entry.
+are not: the suite that writes the coverage export runs on Postgres on macOS or
+Linux, so code only another engine or another operating system reaches — the
+SQLite search (`Mirror.Search.Lite`), `Resources.size_of/1` in its SQLite branch,
+and `Resources.Device`'s volume meter, which is Windows only — reads 0 % whatever
+its tests say. The two streaming audit exports are the same story from a third
+direction: a controller test's adapter cannot stream, which is why
+`admin_audit_export_test.exs` tests the rows where they are made. Read those as
+*not measured here*: check the first group with `scripts/test-sqlite.sh`, and the
+rest before believing a CRAP entry.
 
 ### LiveView contracts: soundcheck, on demand
 
