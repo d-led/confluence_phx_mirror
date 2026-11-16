@@ -126,6 +126,66 @@ defmodule ConfluencePhxMirror.Sync.StopTest do
     assert run.error =~ "killed"
   end
 
+  # A process that dies with a reason nothing recognises is still a failure the
+  # operator has to be able to read: the row says what the process said, not
+  # "the sync process exited" and a truncated term.
+  test "a run whose process dies with an unknown reason records that reason" do
+    :persistent_term.put({AskingSource, :test_process}, self())
+    on_exit(fn -> :persistent_term.erase({AskingSource, :test_process}) end)
+
+    run_task =
+      Task.async(fn ->
+        try do
+          Sync.run(:page, confluence_id: 1002, source: AskingSource)
+        rescue
+          error -> {:raised, Exception.message(error)}
+        end
+      end)
+
+    assert_receive {:in_comments, run_process}, 15_000
+    assert [run_id] = Runs.running()
+
+    # What a node going away gives: an exit reason with no meaning of its own.
+    Process.exit(run_process, :noconnection)
+
+    assert {:raised, message} = Task.await(run_task, 15_000)
+    assert message =~ "the sync process exited: :noconnection"
+
+    run = Repo.get!(SyncRun, run_id)
+    assert run.status == "failed"
+    assert run.error =~ ":noconnection"
+  end
+
+  # An Erlang error arrives as the reason with its frames, and raised as it is it
+  # keeps both — the row then says what went wrong rather than who exited.
+  test "a run whose process dies with an Erlang error keeps that error" do
+    :persistent_term.put({AskingSource, :test_process}, self())
+    on_exit(fn -> :persistent_term.erase({AskingSource, :test_process}) end)
+
+    run_task =
+      Task.async(fn ->
+        try do
+          Sync.run(:page, confluence_id: 1002, source: AskingSource)
+        rescue
+          error -> {:raised, Exception.message(error)}
+        end
+      end)
+
+    assert_receive {:in_comments, run_process}, 15_000
+    assert [run_id] = Runs.running()
+
+    {:current_stacktrace, frames} = Process.info(self(), :current_stacktrace)
+    Process.exit(run_process, {:badarg, frames})
+
+    assert {:raised, message} = Task.await(run_task, 15_000)
+    # Erlang's own words for `:badarg`, which is what the row then carries.
+    assert message =~ "argument error"
+
+    run = Repo.get!(SyncRun, run_id)
+    assert run.status == "failed"
+    assert run.error =~ "argument error"
+  end
+
   test "a stop that lands while a page's details are being written leaves the page in the backlog" do
     :persistent_term.put({AskingSource, :test_process}, self())
     on_exit(fn -> :persistent_term.erase({AskingSource, :test_process}) end)
