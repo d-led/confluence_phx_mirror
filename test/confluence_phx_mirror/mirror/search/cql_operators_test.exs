@@ -111,6 +111,25 @@ defmodule ConfluencePhxMirror.Mirror.Search.CqlOperatorsTest do
              "Rate limiting",
              "Release 2.0"
            ]
+
+    assert titles("space = OPS order by id desc") == ["Three", "Two", "One"]
+  end
+
+  # A version is a number, so it takes the whole set of comparisons rather than
+  # only the greater-than the date functions needed.
+  test "a version compares as a number, in every direction" do
+    page_fixture(space_fixture(%{key: "OPS"}), %{title: "Third draft", version_number: 3})
+
+    assert titles("version = 3") == ["Third draft"]
+
+    assert titles("version != 3") |> Enum.sort() == [
+             "Gateway runbook",
+             "Rate limiting",
+             "Release 2.0"
+           ]
+
+    assert "Third draft" in titles("version >= 3")
+    refute "Third draft" in titles("version < 3")
   end
 
   test "a date function is the instant it resolves to" do
