@@ -162,6 +162,31 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminPermissionsLiveTest do
       assert has_element?(view, "#page-removed-group-leadership")
       assert Mirror.page_grants(page).synced? == false
     end
+
+    # Restoring is the other half of the same overlay, on the same panel: the
+    # reader this page lost gets it back, and the page is no longer read as
+    # "narrowed by us" — it is what the site says again.
+    test "restore puts a page's reader back", %{conn: conn} do
+      space = space_fixture(%{key: "PAGERESTORE"})
+      page = page_fixture(space, %{title: "Salaries"})
+      reader = user_fixture(%{email: "payroll@example.com"})
+
+      {:ok, _} =
+        Mirror.replace_page_restrictions(page, [
+          %{operation: "read", subject_type: "user", subject_key: "payroll@example.com"}
+        ])
+
+      {:ok, view, _html} = live(conn, ~p"/admin/permissions/#{space.key}/pages/#{page.id}")
+
+      view |> element(~s{[id="page-remove-user-payroll@example.com"]}) |> render_click()
+      refute Authorization.can_read_page?(Scope.for_user(reader), page)
+
+      view |> element(~s{[id="page-restore-user-payroll@example.com"]}) |> render_click()
+
+      refute has_element?(view, ~s{[id="page-removed-user-payroll@example.com"]})
+      assert Authorization.can_read_page?(Scope.for_user(reader), page)
+      assert Mirror.page_grants(page).synced? == true
+    end
   end
 
   test "a space shows how many groups and people may read it", %{conn: conn} do
