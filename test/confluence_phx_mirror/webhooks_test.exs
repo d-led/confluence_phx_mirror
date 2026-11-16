@@ -230,4 +230,48 @@ defmodule ConfluencePhxMirror.WebhooksTest do
       refute_enqueued(worker: PageWorker)
     end
   end
+
+  # A delivery is stored as `"processing"` before it is verified or acted on, and
+  # only `finish/3` moves it on — so a handler that raised leaves a row that
+  # never becomes an answer, printed by `/admin/webhooks` for the life of the
+  # deployment. The payload is the only record of that delivery, so the row is
+  # closed rather than deleted.
+  describe "a delivery whose handling never finished" do
+    setup do
+      TestConfig.put(:webhooks, secret: @secret, require_signature: true)
+      :ok
+    end
+
+    test "is closed as failed when the next delivery arrives" do
+      stuck = stuck_delivery(minutes_ago: 10)
+
+      assert {:ok, _delivery} = deliver("page_updated", 1002)
+
+      closed = Repo.reload!(stuck)
+      assert closed.status == "failed"
+      assert closed.error == "handling never finished"
+      assert closed.processed_at
+    end
+
+    test "is left alone while it may still be inside its own request" do
+      in_flight = stuck_delivery(minutes_ago: 1)
+
+      deliver("page_updated", 1002)
+
+      assert Repo.reload!(in_flight).status == "processing"
+    end
+  end
+
+  defp stuck_delivery(minutes_ago: minutes) do
+    received =
+      DateTime.utc_now() |> DateTime.add(-minutes * 60, :second) |> DateTime.truncate(:second)
+
+    Repo.insert!(%Delivery{
+      event_type: "page_updated",
+      payload: payload("page_updated", 1002),
+      signature_valid: false,
+      status: "processing",
+      received_at: received
+    })
+  end
 end

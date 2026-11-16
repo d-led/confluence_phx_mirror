@@ -128,6 +128,11 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
     {intake_limit, _period_ms} = WebhookRateLimit.config()
     page = socket.assigns[:page] || 1
 
+    # Before the list is read: a delivery whose handling never finished is
+    # printed as what it is — closed, with the sentence saying so — rather
+    # than as an answer that will never come.
+    Webhooks.abandon_stuck_deliveries()
+
     assign(socket,
       paused?: Settings.sync_paused?(),
       deliveries: Webhooks.recent(limit: @per_page, offset: Paging.offset(page, @per_page)),
@@ -402,6 +407,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
             <p class="mt-1 text-xs text-base-content/70">
               {Time.ago(delivery.received_at)} · {delivery.status}
             </p>
+            <p :if={delivery.error} class="mt-0.5 text-[11px] text-base-content/60">
+              {delivery.error}
+            </p>
           </:card>
           <:row :let={delivery}>
             <td class="whitespace-nowrap">
@@ -416,7 +424,12 @@ defmodule ConfluencePhxMirrorWeb.Admin.WebhooksLive do
                 {if delivery.signature_valid, do: "valid", else: "invalid"}
               </span>
             </td>
-            <td class="text-[11px]">{delivery.status}</td>
+            <td class="text-[11px]">
+              {delivery.status}
+              <span :if={delivery.error} class="block text-[10px] text-base-content/60">
+                {delivery.error}
+              </span>
+            </td>
           </:row>
           <:empty>No deliveries yet.</:empty>
         </.data_table>

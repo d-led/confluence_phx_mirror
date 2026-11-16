@@ -110,4 +110,23 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminWebhooksLiveTest do
     assert Settings.stored("webhook.enabled") == nil
     assert Webhooks.enabled?()
   end
+
+  # A delivery whose handler raised is stored as `"processing"` and stayed that
+  # way: the page printed a row that would never become an answer. Reading the
+  # page closes it, and prints what happened.
+  test "a delivery that never finished is shown closed, not as pending", %{conn: conn} do
+    stuck =
+      Repo.insert!(%Delivery{
+        event_type: "page_updated",
+        payload: %{"page" => 1002},
+        status: "processing",
+        received_at:
+          DateTime.utc_now() |> DateTime.add(-600, :second) |> DateTime.truncate(:second)
+      })
+
+    {:ok, _view, html} = live(conn, ~p"/admin/webhooks")
+
+    assert Repo.reload!(stuck).status == "failed"
+    assert html =~ "handling never finished"
+  end
 end

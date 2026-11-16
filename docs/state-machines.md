@@ -414,17 +414,18 @@ whitelist (a list of normalised keys) · widened whitelist (`CM_SPACES` ∪
 
 **Reachable invalid states**
 
-- ⚠ **Non-terminal states are reachable as resting states.** The initial status
-  is a function of the *configuration*, not of what happened
-  (`webhooks.ex:305`: `if(secret, do: "processing", else: "received")`), and only
-  `finish/3` moves it on. If handling raises between the insert and the finish —
-  a `40P01` deadlock inside `Mirror.mark_deleted/2`, an `Audit.log/2` insert
-  error, a `Repo.update!` failure — the row stays `processing` for the lifetime
-  of the deployment, and `/admin/webhooks` prints the word (`webhooks_live.ex:403`)
-  with nothing sweeping it. There is no replay mechanism, so the row is the only
-  record of a delivery that was received and not handled. Impact: an operator
-  cannot tell "handled" from "died mid-flight". Documented; the fix is a sweep
-  (the same pattern as `abandon_abandoned_runs/0`) rather than a `try`.
+- ⚠ **Non-terminal states are reachable as resting states — swept.** The initial
+  status is a function of the *configuration*, not of what happened
+  (`webhooks.ex`, `store_delivery/3`: `if(secret, do: "processing", else: "received")`),
+  and only `finish/3` moves it on. If handling raises between the insert and the
+  finish — a `40P01` deadlock inside `Mirror.mark_deleted/2`, an `Audit.log/2`
+  insert error, a `Repo.update!` failure — the row stayed `processing` for the
+  lifetime of the deployment. `Webhooks.abandon_stuck_deliveries/0` now closes
+  any `processing` row older than five minutes as `"failed"`, with
+  `"handling never finished"` as its reason, and it runs where such a row would
+  be read: when the next delivery arrives, and before `/admin/webhooks` draws its
+  list. The row is **closed, never deleted** — the payload is the only record of
+  that delivery — and the page prints the reason beside the status.
 - ⚠ **`status` is not validated.** `Delivery.changeset/2` casts it and validates
   only `[:payload, :received_at]`, so any string is storable and the seven words
   above are a convention. Low impact today (one writer), but the invariant is
@@ -677,14 +678,19 @@ this codebase actually break.
 
 ### Defect 5 — A webhook delivery can rest in `processing` (S9)
 
-*Open — needs a sweep.*
+*Fixed — a sweep, not a `try`.*
 
-- **Impact: low.** The record of a delivery that died mid-handling reads as
-  "still going" for ever, and `/admin/webhooks` shows it.
-- **Evidence:** `webhooks.ex:305`, `finish/3` at `webhooks.ex:311`,
-  `webhooks_live.ex:403`.
-- **Not fixed here:** needs a sweep, not a `try`; the delivery payload is the
-  only record and must survive, so the row cannot be rolled back either.
+- **Impact: low.** The record of a delivery that died mid-handling read as
+  "still going" for ever, and `/admin/webhooks` showed it.
+- **What was done:** `Webhooks.abandon_stuck_deliveries/0` closes a `processing`
+  row older than five minutes as `"failed"` / `"handling never finished"`, from
+  the two places such a row would be read — the intake, when the next delivery
+  arrives (`accept/4`, the shape `Sync.run/2` uses for abandoned runs), and the
+  admin list (`webhooks_live.ex` `load/1`). The payload survives and the page
+  prints the reason beside the status.
+- **Tests:** `webhooks_test.exs` (closed by the next delivery; a row that may
+  still be inside its own request is left alone) and `webhooks_live_test.exs`
+  (the page prints it closed).
 
 ### Defect 6 — Removing the last scoped space widens the mirror (S8)
 

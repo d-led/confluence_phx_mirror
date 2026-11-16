@@ -78,6 +78,12 @@ defmodule ConfluencePhxMirror.Webhooks do
   defp accept(payload, raw_body, headers, opts) do
     secret = config()[:secret]
 
+    # The previous delivery's row is closed before this one is written: the
+    # intake is where a delivery's life begins, so it is where the one that
+    # never finished is noticed (the shape `Sync.run/2` uses for abandoned
+    # runs).
+    abandon_stuck_deliveries()
+
     case authenticate(raw_body, signature_header(headers), secret, opts) do
       {:ok, authenticated?} ->
         payload |> store_delivery(authenticated?, secret) |> handle()
@@ -85,6 +91,42 @@ defmodule ConfluencePhxMirror.Webhooks do
       {:error, reason} ->
         payload |> store_delivery(false, secret) |> reject(reason)
     end
+  end
+
+  # How long a delivery may sit in `"processing"` before it is presumed dead.
+  # Handling happens inside the request that delivered it, so this is not a
+  # job's runtime: a handler that raised ended seconds later, and the site's
+  # own retry is a new delivery with a row of its own.
+  @stuck_after_seconds 300
+
+  @doc """
+  Closes deliveries whose handling never finished.
+
+  A delivery is stored before it is verified or acted on — with a secret
+  configured it is stored as `"processing"`, which is what keeps the payload on
+  record whatever happens next — and only `finish/3` moves it on. A raise in
+  between leaves the row non-terminal for the life of the deployment, and
+  `/admin/webhooks` prints an answer that will never come.
+
+  The payload is the only record of that delivery, so the row is **closed, not
+  deleted**: `"failed"`, saying that nothing finished it. Called where such a
+  row would be read — when the next delivery arrives, and before the admin list
+  is drawn.
+  """
+  @spec abandon_stuck_deliveries(DateTime.t()) :: non_neg_integer()
+  def abandon_stuck_deliveries(now \\ DateTime.utc_now()) do
+    now = DateTime.truncate(now, :second)
+    cutoff = DateTime.add(now, -@stuck_after_seconds, :second)
+
+    {closed, _} =
+      from(d in Delivery,
+        where: d.status == "processing" and d.received_at < ^cutoff
+      )
+      |> Repo.update_all(
+        set: [status: "failed", error: "handling never finished", processed_at: now]
+      )
+
+    closed
   end
 
   @doc """
