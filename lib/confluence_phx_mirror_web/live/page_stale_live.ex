@@ -26,7 +26,6 @@ defmodule ConfluencePhxMirrorWeb.PageStaleLive do
 
     {:ok,
      assign(socket,
-       page_id: page_id,
        path: session["stale_path"],
        seen_at: session["stale_synced_at"],
        updated?: false

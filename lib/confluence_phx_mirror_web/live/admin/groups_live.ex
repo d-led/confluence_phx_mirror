@@ -62,7 +62,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.GroupsLive do
            page_title: group.name,
            group: group,
            members: members,
-           members_window: @member_window,
            access: Mirror.group_access(group.name)
          )}
     end
