@@ -368,6 +368,15 @@ click from the mirror. The account menu carries one extra entry (`Desktop…` �
 `/__tool`) when `:desktop_tool` is set, which only `config/desktop.exs` does — for
 a deployment nothing renders and nothing changes.
 
+`/admin/runtime` — the BEAM's own dashboard — is reachable for the same reason,
+and only in this build for it: the route is compiled in where `admin_dashboard`
+says so, and `config/desktop.exs` is the only environment that sets it without a
+deployment to ask. The cockpit's toolbar links to it, and every page of it
+carries a link back to `/admin` (`Plugs.DashboardWayBack`): LiveDashboard draws
+its own page — its own head, sidebar and footer — and takes no option for a way
+home, which in a browser is the address bar and in this window is nothing at
+all.
+
 Unconfigured, `/` answers with the connection form rather than redirecting: a
 first run has one screen worth showing, and the form is a page, not a detour.
 
@@ -500,8 +509,10 @@ watched stdin unconditionally would exit immediately and fail the boot check.
 
 The window is pointed at one origin, and it stays there. `on_navigation` asks
 `destination/2`: a page of the mirror — same scheme, host and port — loads in
-the window, the splash page is always the window's own, and **everything else is
-refused**. Nothing is started on a refused link's behalf.
+the window, the splash page is always the window's own, and everything else is
+**not loaded here**. It is handed to the system's browser instead
+(`follow_or_hand_over/2`), and the line saying where it went is in the window's
+own log.
 
 The splash is remembered in the shape each platform actually serves it, because
 WebView2 has no custom schemes and answers `splash://` over
@@ -517,13 +528,15 @@ that into a window that reloads until the site answers **"too many requests"**:
 the person sees a throttle that has nothing to do with the mirror, and the
 mirror's own screens never load.
 
-Refusing silently is the whole of the behaviour, and it is deliberate. An earlier
-version handed the link to the system browser as a graceful fallback; on Windows
-that meant `cmd /C start` — a console window in the background (no
-`CREATE_NO_WINDOW`), a splash page in the default browser, and the app's own
-window left on a failure screen. A link that does nothing is a smaller fault than
-a program that starts processes nobody asked for. The one process the tool ever
-starts is its own release, and that call is hidden on Windows.
+Handing the link over was once refused: the first version used `cmd /C start`,
+which opened a console window behind the app (no `CREATE_NO_WINDOW`) and then a
+second copy of the page. What changed is the launcher, not the judgement —
+`rundll32` on Windows, `open` on macOS and `xdg-open` elsewhere are windowed
+programs, and the child is waited on in a thread of its own so a launcher that
+parks its browser cannot freeze the window. Only `http` and `https` are handed
+over: a page can ask a webview for `file:` or `javascript:`, and a launcher opens
+whatever it is given. The one process the tool otherwise starts is its own
+release.
 
 ### When the folder and the configuration disagree
 
