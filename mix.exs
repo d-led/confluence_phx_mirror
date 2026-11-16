@@ -154,6 +154,11 @@ defmodule ConfluencePhxMirror.MixProject do
       # is on, and that is production; without the module the page is still
       # there and says it found no repository, which is how it shipped once.
       {:ecto_psql_extras, "~> 0.8"},
+      # The same page, for the desktop build's SQLite: it lists one repository
+      # per adapter, and the SQLite one only when its extras module is loaded
+      # (`Phoenix.LiveDashboard.EctoStatsPage:extra_available?/2`). Same
+      # environments as `ecto_sqlite3`, whose driver it queries.
+      {:ecto_sqlite3_extras, "~> 1.2", only: [:desktop, :test]},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.5", runtime: Mix.env() == :dev},
       {:heroicons,
