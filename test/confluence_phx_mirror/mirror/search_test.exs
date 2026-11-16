@@ -116,6 +116,13 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
       assert Search.snippet(%ConfluencePhxMirror.Mirror.Page{body_text: nil}, ["x"]) == ""
       assert Search.snippet(%ConfluencePhxMirror.Mirror.Page{body_text: ""}, ["x"]) == ""
       assert Search.snippet(%ConfluencePhxMirror.Mirror.Comment{body_text: nil}, ["x"]) == ""
+      assert Search.snippet(%ConfluencePhxMirror.Mirror.Comment{body_text: ""}, ["x"]) == ""
+    end
+
+    # A search with no filter has no terms to open a snippet on, which is the
+    # question a results list asks once for the whole page rather than per hit.
+    test "a search with no filter asks for no terms" do
+      assert Search.terms(nil) == []
     end
 
     test "a comment's words are worth a snippet too" do
