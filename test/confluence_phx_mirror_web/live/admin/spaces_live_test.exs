@@ -181,6 +181,64 @@ defmodule ConfluencePhxMirrorWeb.AdminSpacesLiveTest do
     end
   end
 
+  # A space that was never mirrored has nothing to trash, and a sentence about
+  # pages would be a lie an operator would chase. The key the demo does not have
+  # is what makes that the case: `PROD` alone would not, because the sample site
+  # has one.
+  test "removing a space that was never mirrored says so", %{conn: conn} do
+    configured_spaces(["ENG"])
+    SpaceScope.add("LEGACY", {:system, "test"})
+
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces")
+
+    html = view |> element("#whitelist-LEGACY button") |> render_click()
+
+    assert html =~ "LEGACY removed — nothing of it was mirrored."
+    refute html =~ "moved to the trash"
+  end
+
+  describe "a screen opened while the site cannot be asked" do
+    test "says the calls are paused instead of offering an empty list", %{conn: conn} do
+      configured_spaces(["ENG"])
+      {:ok, _applied} = Settings.update(%{"sync.paused" => true}, {:system, "test"})
+
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces")
+
+      refute has_element?(view, "#add-space")
+      assert render(view) =~ "Confluence calls are paused, so there is no list to choose from"
+    end
+
+    test "says the site did not answer, and offers no list to choose from", %{conn: conn} do
+      configured_spaces(["ENG"])
+
+      {:ok, view, _html} =
+        TestConfig.with(
+          [source: ConfluencePhxMirrorWeb.AdminSpacesLiveTest.RefusingSource],
+          fn -> live(sign_in(conn, admin_user()), ~p"/admin/spaces") end
+        )
+
+      assert render(view) =~ "Confluence did not answer, so there is no list to choose from"
+    end
+
+    # The typeahead asks the site's listing, so a site that is down has nothing
+    # to suggest — the field must simply keep what was typed. It has to go down
+    # *after* the screen was drawn, because a site that never answered offers no
+    # field to type into at all.
+    test "typing offers nothing rather than failing", %{conn: conn} do
+      configured_spaces(["ENG"])
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/spaces")
+
+      html =
+        TestConfig.with(
+          [source: ConfluencePhxMirrorWeb.AdminSpacesLiveTest.RefusingSource],
+          fn -> view |> element("#add-space-key") |> render_change(%{"key" => "prod"}) end
+        )
+
+      assert html =~ "prod"
+      refute has_element?(view, "[id=\"add-space-suggestions-PROD\"]")
+    end
+  end
+
   defp queued_space_keys do
     Repo.all(from j in Oban.Job, where: j.queue == "sync", select: j.args["space_key"])
   end
