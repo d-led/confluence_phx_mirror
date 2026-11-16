@@ -141,55 +141,19 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
 
   # Confluence's own dialog asks one question — who? — and answers with people and
   # groups in one list. So does this one, from what the mirror has read.
-  def handle_event("grant_add", params, socket) do
-    %{"level" => level, "subject_type" => type, "subject_key" => key} = params
+  def handle_event("grant_add", params, socket),
+    do: answered(socket, params, &add_grant/4, &clear_grant_dialog/1)
 
-    case add_grant(socket, level, type, key) do
-      {:ok, message} ->
-        {:noreply, socket |> put_flash(:info, message) |> clear_grant_dialog() |> refresh_panel()}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, refusal(reason, subject_name(type, key)))}
-    end
-  end
-
-  def handle_event("grant_revoke", params, socket) do
-    %{"level" => level, "subject_type" => type, "subject_key" => key} = params
-
-    case remove_grant(socket, level, type, key) do
-      {:ok, message} ->
-        {:noreply, socket |> put_flash(:info, message) |> refresh_panel()}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, refusal(reason, subject_name(type, key)))}
-    end
-  end
+  def handle_event("grant_revoke", params, socket),
+    do: answered(socket, params, &remove_grant/4)
 
   # An identity the site lists is not ours to delete, so it is *removed*: the
   # row stays, marked, and every run leaves it alone.
-  def handle_event("remove_subject", params, socket) do
-    %{"level" => level, "subject_type" => type, "subject_key" => key} = params
+  def handle_event("remove_subject", params, socket),
+    do: answered(socket, params, &remove_reader/4)
 
-    case remove_reader(socket, level, type, key) do
-      {:ok, message} ->
-        {:noreply, socket |> put_flash(:info, message) |> refresh_panel()}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, refusal(reason, subject_name(type, key)))}
-    end
-  end
-
-  def handle_event("restore_subject", params, socket) do
-    %{"level" => level, "subject_type" => type, "subject_key" => key} = params
-
-    case restore_reader(socket, level, type, key) do
-      {:ok, message} ->
-        {:noreply, socket |> put_flash(:info, message) |> refresh_panel()}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, refusal(reason, subject_name(type, key)))}
-    end
-  end
+  def handle_event("restore_subject", params, socket),
+    do: answered(socket, params, &restore_reader/4)
 
   def handle_event("close_page", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/admin/permissions/#{socket.assigns.space.key}")}
@@ -197,6 +161,21 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
 
   def handle_event("close", _params, socket) do
     {:noreply, push_patch(socket, to: list_path(socket.assigns.q, socket.assigns.list_page || 1))}
+  end
+
+  # The four events above change one grant and answer the same way: the sentence
+  # on success, the refusal in words on failure. Only the outcome after success
+  # differs — a grant from the dialog also closes it.
+  defp answered(socket, params, change, after_success \\ & &1) do
+    %{"level" => level, "subject_type" => type, "subject_key" => key} = params
+
+    case change.(socket, level, type, key) do
+      {:ok, message} ->
+        {:noreply, socket |> put_flash(:info, message) |> after_success.() |> refresh_panel()}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, refusal(reason, subject_name(type, key)))}
+    end
   end
 
   defp inspect_space(socket, space) do
