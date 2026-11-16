@@ -1587,18 +1587,6 @@ defmodule ConfluencePhxMirror.Mirror do
   defp maybe_exclude_archived(query, true), do: query
   defp maybe_exclude_archived(query, false), do: where(query, [p], p.status != "archived")
 
-  @doc """
-  A page by its row id — what a list on a screen hands back, as against the
-  Confluence id a URL carries.
-  """
-  def get_page_by_id!(id) do
-    Repo.one!(
-      from p in Page,
-        where: p.id == ^id and is_nil(p.deleted_at),
-        preload: [:space]
-    )
-  end
-
   def get_page!(confluence_id) do
     Repo.one!(
       from p in Page,
@@ -2779,11 +2767,6 @@ defmodule ConfluencePhxMirror.Mirror do
 
   def ancestor_pages(_page, _opts), do: []
 
-  @doc "Most recent sync run (any status)."
-  def last_sync_run do
-    Repo.one(from r in SyncRun, order_by: [desc: r.started_at], limit: 1)
-  end
-
   @doc "Most recent sync run that changed the mirror."
   def last_successful_sync_run do
     Repo.one(
@@ -3079,16 +3062,6 @@ defmodule ConfluencePhxMirror.Mirror do
     end
   end
 
-  def pages_for_label(name) do
-    from(p in Page,
-      join: l in assoc(p, :label_records),
-      where: l.name == ^Label.normalise(name) and is_nil(p.deleted_at),
-      order_by: [desc: p.external_updated_at],
-      preload: [:space]
-    )
-    |> Repo.all()
-  end
-
   def recent_pages(limit \\ 10) do
     from(p in Page,
       where: is_nil(p.deleted_at),
@@ -3116,16 +3089,6 @@ defmodule ConfluencePhxMirror.Mirror do
       }
     )
     |> filtered(opts)
-    |> Repo.all()
-  end
-
-  @doc "Every mirrored page, newest first (API listings)."
-  def list_all_pages do
-    from(p in Page,
-      where: is_nil(p.deleted_at),
-      order_by: [desc: p.external_updated_at],
-      preload: [:space]
-    )
     |> Repo.all()
   end
 
