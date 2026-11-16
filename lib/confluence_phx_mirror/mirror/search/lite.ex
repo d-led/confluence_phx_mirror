@@ -175,14 +175,16 @@ defmodule ConfluencePhxMirror.Mirror.Search.Lite do
 
   # The same statement shape whether or not there are words: with an expression
   # the FTS table drives (one index walk, ranked); without one the pages do, and
-  # the date is what orders them.
-  defp sql(nil, _excluded, filters, _sort) do
+  # the date is what orders them. The reader's own sort is honoured either way —
+  # "oldest first" is a choice a filter-only search makes too, and it used to be
+  # ignored there.
+  defp sql(nil, _excluded, filters, sort) do
     """
     SELECT p.id, 0.0 AS score
     FROM pages p
     JOIN spaces s ON s.id = p.space_id
     WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL#{filters}
-    ORDER BY p.external_updated_at DESC, p.id DESC
+    ORDER BY #{order(sort)}
     LIMIT ? OFFSET ?
     """
   end
@@ -210,10 +212,11 @@ defmodule ConfluencePhxMirror.Mirror.Search.Lite do
 
   # `bm25()` is lower-is-better and negative; `:newest` and `:oldest` sort on the
   # date the page was last changed upstream, which is what a reader means by
-  # "recent" in a mirror.
-  defp order(:relevance), do: "score, p.external_updated_at DESC"
-  defp order(:newest), do: "p.external_updated_at DESC, score"
-  defp order(:oldest), do: "p.external_updated_at ASC, score"
+  # "recent" in a mirror. `p.id` closes every order: without a unique last key a
+  # page could appear twice or not at all across two `start:` windows.
+  defp order(:relevance), do: "score, p.external_updated_at DESC, p.id DESC"
+  defp order(:newest), do: "p.external_updated_at DESC, score, p.id DESC"
+  defp order(:oldest), do: "p.external_updated_at ASC, score, p.id ASC"
 
   @doc """
   The `AND` clauses the field filters become, and the values to bind to them.

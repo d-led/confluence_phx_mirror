@@ -243,6 +243,10 @@ claim about them.
   and a page's own title and body, so that job excludes them by tag and says so
   rather than skipping quietly. They run on Postgres — same suite, one exclusion
   list longer.
+* **`:sqlite_only` — excluded everywhere but the SQLite job.** The other half of
+  the same idea: what only the tool's store has. `Mirror.Search.Lite` answers
+  from an FTS5 table that Postgres does not have, so its test describes a table
+  the deployment's job cannot see (`lite_index_test.exs`).
 
 Neither is a coverage error to be tidied away, and one of them is a gap worth
 knowing: **`:scale` runs in no CI job**, because no workflow has a `schedule:`.
@@ -414,7 +418,7 @@ request; the image job gates every push, and publishes only when asked.
 | **Types** | `mix types` — dialyzer over the app and its specs, against a PLT of OTP, Elixir and the deps | seconds warm; the PLT is minutes when the cache misses |
 | **Desktop tool** | `MIX_ENV=desktop`: the tool compiles without warnings, its dialyzer, `scripts/test-desktop.sh` (SQLite), and the window's own `cargo test` with clippy | ~3 min |
 | **Suite and complexity** | Postgres service, `mix cover`, then `mix complexity` (CRAP, threshold 30). This is the gate that matters | ~7.5 min |
-| **Suite on SQLite** | `scripts/test-sqlite.sh`: its own build path (`_build/sqlite`) and database file, `--max-cases 1`, excluding `:scale` and `:postgres_only` | ~5 min |
+| **Suite on SQLite** | `scripts/test-sqlite.sh`: its own build path (`_build/sqlite`) and database file, `--max-cases 1`, excluding `:scale` and `:postgres_only`, and running the `:sqlite_only` tests Postgres cannot | ~5 min |
 | **Image, scan, non-root** | `docker build` (amd64), Trivy (`CRITICAL,HIGH`, `ignore-unfixed`), `id -u` must be `10001`, then publish | ~2 min, plus ~15 min for the arm64 half under QEMU |
 
 The image job `needs` the other three, so nothing is published from a commit that

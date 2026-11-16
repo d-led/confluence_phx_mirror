@@ -8,11 +8,15 @@
 # language, indexes a page's own title and body, and ranks by `bm25`. Those tests
 # describe the deployment's search, so the SQLite job does not run them — and
 # says so, rather than skipping quietly.
+#
+# `:sqlite_only` is the other half: what only the tool's store has. The FTS5
+# index is one of those, and a test of it in the Postgres job would describe a
+# table that is not there.
 exclude =
   if Application.get_env(:confluence_phx_mirror, :sqlite_suite) do
     [:scale, :postgres_only]
   else
-    [:scale]
+    [:scale, :sqlite_only]
   end
 
 ExUnit.start(exclude: exclude)
