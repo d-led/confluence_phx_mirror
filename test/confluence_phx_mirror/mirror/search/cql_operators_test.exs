@@ -120,6 +120,39 @@ defmodule ConfluencePhxMirror.Mirror.Search.CqlOperatorsTest do
            ]
   end
 
+  # A label is one value, and the case is the site's rather than the query's —
+  # the comparison is made on the normalised name, as the stored label is.
+  test "label = matches one label, whatever case it is typed in" do
+    assert titles("label = ARCHITECTURE") == ["Rate limiting"]
+    assert sorted_titles("label != architecture") == ["Gateway runbook", "Release 2.0"]
+  end
+
+  # The site keeps more than the pages it serves: an archived page is mirrored
+  # and findable, and asking for the current ones must not return it.
+  test "status tells what the site keeps from what it set aside" do
+    page_fixture(space_fixture(%{key: "OPS"}), %{title: "Retired plan", status: "archived"})
+
+    assert titles("status = archived") == ["Retired plan"]
+    refute "Retired plan" in titles("status = current")
+    assert "Rate limiting" in titles("status = current")
+  end
+
+  # `created` and `lastmodified` are two columns and two questions: a page
+  # written today and edited long ago answers the first with today and the
+  # second with nothing.
+  test "created asks when the page was written, not when it last changed" do
+    space = space_fixture(%{key: "OPS"})
+
+    page_fixture(space, %{
+      title: "Written today, edited long ago",
+      external_created_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      external_updated_at: ~U[2020-01-01 00:00:00Z]
+    })
+
+    assert titles(~s{created > now("-1h")}) == ["Written today, edited long ago"]
+    assert titles(~s{lastmodified > now("-1h")}) == []
+  end
+
   defp titles(cql, opts \\ []) do
     {:ok, results} = Search.search(cql, opts)
     Enum.map(results, & &1.page.title)
