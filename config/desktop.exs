@@ -61,6 +61,15 @@ config :confluence_phx_mirror,
   auto_admin_email: "you@localhost",
   desktop_tool: true
 
+# The BEAM's own dashboard (`/admin/runtime`) is mounted wherever this is set
+# (see the router). The deployment sets it in `prod.exs` and the window did not,
+# so the one build without an address bar was the one build that could not reach
+# the cockpit's runtime page at all. It is the same page here, behind the same
+# administrator: `auto_admin` above is what makes the window's reader one, and
+# the page carries its own way back (`Plugs.DashboardWayBack`) — in a window
+# there is no address bar to leave it with.
+config :confluence_phx_mirror, admin_dashboard: true
+
 # Sessions. A release takes the signing salt from `SECRET_KEY_BASE` because it
 # has a deployment to get one from; the tool has none, and a constant here would
 # be a secret in a repository. `Desktop.Application` generates one per launch
@@ -77,3 +86,14 @@ config :confluence_phx_mirror, Oban,
   queues: [sync: 1, notifications: 1]
 
 config :logger, level: :info
+
+# How long the window's socket may stay silent before its server closes it, ten
+# minutes rather than Phoenix's one. A minimised webview throttles JavaScript
+# timers: the client's heartbeat is a `setTimeout` chain every 30 seconds
+# (`deps/phoenix/assets/js/phoenix/socket.js`), and once the window is hidden it
+# can be a minute or more late. The server closed at that minute, and the client
+# deliberately does not reconnect while the page is hidden (`handleVisibilityChange`
+# in the same file), so the page stayed disconnected while nobody looked:
+# "background disconnects". The window has one client on loopback, so a socket
+# that outlives a nap costs a process and nothing else.
+config :confluence_phx_mirror, :live_socket_timeout, 600_000

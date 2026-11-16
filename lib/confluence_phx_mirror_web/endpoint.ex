@@ -11,8 +11,28 @@ defmodule ConfluencePhxMirrorWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  # How long a socket may stay silent before the server closes it. Phoenix's
+  # minute is right for a browser tab and wrong for the window: a minimised or
+  # occluded webview throttles JavaScript timers, so the client's 30-second
+  # heartbeat (`socket.js`, `heartbeatIntervalMs`) can arrive after that minute,
+  # and the client then refuses to reconnect while the page is hidden — the page
+  # sits disconnected until somebody looks at it. `config/desktop.exs` answers
+  # with a longer minute for the window, which has one client and one socket.
+  #
+  # Bandit turns this into ThousandIsland's persistent idle timeout
+  # (`bandit/lib/bandit/websocket/handler.ex`), so it is the number that decides
+  # whether a live window is thrown away, not a shutdown grace period.
+  @live_socket_timeout Application.compile_env(
+                         :confluence_phx_mirror,
+                         :live_socket_timeout,
+                         60_000
+                       )
+
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
+    websocket: [
+      connect_info: [session: @session_options],
+      timeout: @live_socket_timeout
+    ],
     longpoll: [connect_info: [session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
