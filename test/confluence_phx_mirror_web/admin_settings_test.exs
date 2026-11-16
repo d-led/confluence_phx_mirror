@@ -269,6 +269,18 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     assert Settings.stored("reader.html_limit") == nil
   end
 
+  # A page left open while the mirror is upgraded can name a group this version
+  # no longer draws. Nothing to save and nothing to reset is not an error: the
+  # event is ignored rather than answered with a flash about a group nobody can
+  # see.
+  test "an event naming a group this screen does not have changes nothing", %{conn: conn} do
+    {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+    assert render_submit(view, "save_group", %{"group" => "gone", "values" => %{}}) =~ "Settings"
+    assert render_submit(view, "use_default", %{"group" => "gone"}) =~ "Settings"
+    refute render(view) =~ "saved."
+  end
+
   test "the mail group names the variable a password lives in, and offers no field", %{conn: conn} do
     {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
 
