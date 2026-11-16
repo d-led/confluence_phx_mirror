@@ -96,6 +96,47 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RoadmapTest do
     assert_in_delta left(html, "Bar 4"), 2 * width(html, "Bar 4"), 0.01
   end
 
+  # A bar dragged before the timeline it lives in — the plan's dates are chosen
+  # once and bars move after that — is drawn from the first column rather than
+  # off the picture.
+  test "a bar that begins before the timeline is drawn from its first column" do
+    html =
+      expand(%{
+        captured()
+        | "lanes" => [lane("Lane 1", [bar("Early", "", "2026-10-01 00:00:00", 2, 0)])]
+      })
+
+    assert left(html, "Early") == 0.0
+  end
+
+  test "a bar that begins after the timeline is drawn at its last edge" do
+    html =
+      expand(%{
+        captured()
+        | "lanes" => [lane("Lane 1", [bar("Late", "", "2028-01-01 00:00:00", 1, 0)])]
+      })
+
+    assert left(html, "Late") == 100.0
+  end
+
+  # A bar is as long as the duration it declares, in columns — and no longer than
+  # the columns left of it, so one that runs past the end stops at the edge
+  # instead of painting past the picture.
+  test "a bar running past the end stops at it" do
+    html =
+      expand(%{
+        captured()
+        | "lanes" => [
+            lane("Lane 1", [
+              bar("Ref", "", "2026-11-01 00:00:00", 1, 0),
+              bar("Long", "", "2027-10-01 00:00:00", 5, 1)
+            ])
+          ]
+      })
+
+    assert_in_delta width(html, "Long"), width(html, "Ref"), 0.01
+  end
+
   test "a marker is a rule at its day, not at the edge of its month" do
     html = expand(captured())
     month = width(html, "Bar 2")
