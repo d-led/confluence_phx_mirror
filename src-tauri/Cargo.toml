@@ -10,6 +10,12 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 
+# The window's App Nap assertion (`beginActivityWithOptions:reason:` in
+# `src/main.rs`). Already in the tree through wry; named here because the call is
+# ours and a transitive dependency is not something to call by accident.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { version = "0.3", features = ["NSProcessInfo", "NSString"] }
+
 [profile.release]
 lto = true
 codegen-units = 1

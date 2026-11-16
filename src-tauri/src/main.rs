@@ -220,7 +220,39 @@ const ANSWER_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
 /// failure page reached a person as an empty window.
 const SPLASH: &str = "splash";
 
+/// macOS freezes an application nobody is looking at — App Nap — and a frozen
+/// window is a window that sends no heartbeat: the sidecar closes its socket
+/// after the idle timeout (`config/desktop.exs` answers ten minutes for the
+/// window, rather than Phoenix's one), and the LiveView client, by design, does
+/// not reconnect while the page is hidden. A sync that takes ten minutes is
+/// exactly the case App Nap gets wrong, so the application holds an activity
+/// assertion for as long as it is open.
+///
+/// `UserInitiatedAllowingIdleSystemSleep` on purpose: the window has no business
+/// keeping the machine awake, only itself unfrozen. `LatencyCritical` is the
+/// other half of `NSActivityUserInteractive`, which is what a page somebody
+/// actually watches is.
+#[cfg(target_os = "macos")]
+fn keep_the_window_out_of_app_nap() {
+    use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
+
+    let options = NSActivityOptions::UserInitiatedAllowingIdleSystemSleep
+        | NSActivityOptions::LatencyCritical;
+    let reason = NSString::from_str("the window is mirroring a site");
+
+    let activity = NSProcessInfo::processInfo().beginActivityWithOptions_reason(options, &reason);
+
+    // Held, not ended: an assertion lasts as long as the object does, and there
+    // is nothing after this that wants App Nap back. `forget` is the hold.
+    std::mem::forget(activity);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn keep_the_window_out_of_app_nap() {}
+
 fn main() {
+    keep_the_window_out_of_app_nap();
+
     let shared: SharedState = Arc::new(Mutex::new(Shared::default()));
 
     tauri::Builder::default()
@@ -307,6 +339,11 @@ fn splash_window(app: &tauri::App) -> Result<WebviewWindow, Box<dyn std::error::
     remember_origin("splash://localhost/");
     remember_origin("http://splash.localhost/");
 
+    // The log the window writes its launch to, captured for the navigation
+    // policy: a refusal and where the address went is the one thing a click
+    // outside the mirror leaves behind.
+    let log = sidecar_log_path(app.handle());
+
     Ok(
         WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
             .title("Confluence Export")
@@ -318,19 +355,95 @@ fn splash_window(app: &tauri::App) -> Result<WebviewWindow, Box<dyn std::error::
             // one of them leaves the mirror for a login page it cannot sign in
             // to. On a site that bounces the browser between the login and the
             // page, that is a window that reloads until Confluence answers "too
-            // many requests", which is the whole of what the person sees.
-            .on_navigation(may_load_here)
+            // many requests", which is the whole of what the person sees. So
+            // the window stays on its own pages, and a link out is the system
+            // browser's (see `follow_or_hand_over`).
+            .on_navigation(move |target| follow_or_hand_over(target, log.as_deref()))
             .build()?,
     )
 }
 
-/// Whether a click may load in this window. Anything else is refused, and
-/// **nothing is started on its behalf**: a fallback that handed the link to the
-/// system browser opened a console window on Windows (`cmd /C start` without
-/// `CREATE_NO_WINDOW`) and a second copy of the page in the default browser,
-/// which is a worse failure than the link simply not being followed.
+/// Whether a click may load in this window: the mirror this window serves, and
+/// the two pages it serves itself. Everything else is somebody else's page, and
+/// a webview that follows one of them replaces the application with it.
 fn may_load_here(target: &tauri::Url) -> bool {
     is_own_page(target)
+}
+
+/// What a click does: a page of this window loads here, and everything else is
+/// handed to the system's browser.
+///
+/// Refusing outright was the first shape of this, and it left links that read as
+/// clickable doing nothing. Handing the address over was refused too, because
+/// the launcher of the day (`cmd /C start`) opened a console behind the app and
+/// then a second copy of the page. What changed is the launcher: `rundll32`,
+/// `open` and `xdg-open` are windowed programs, and the child is waited on in a
+/// thread of its own, so a slow launcher cannot freeze the window.
+fn follow_or_hand_over(target: &tauri::Url, log: Option<&Path>) -> bool {
+    if may_load_here(target) {
+        return true;
+    }
+
+    append_line(
+        log,
+        &format!("opening {target} in the system browser: this is not a page of this window"),
+    );
+    open_outside(target, log);
+
+    false
+}
+
+/// Hands an address to the system's browser.
+///
+/// Only `http` and `https`: a page can ask a webview to navigate to `file:` or
+/// `javascript:`, and handing either of those to a program whose job is to open
+/// whatever it is given would be a way to run something this window was never
+/// asked to run.
+fn open_outside(url: &tauri::Url, log: Option<&Path>) {
+    if !openable(url) {
+        return;
+    }
+
+    let opened = if cfg!(target_os = "macos") {
+        Command::new("open").arg(url.as_str()).spawn()
+    } else if cfg!(windows) {
+        Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", url.as_str()])
+            .spawn()
+    } else {
+        Command::new("xdg-open").arg(url.as_str()).spawn()
+    };
+
+    match opened {
+        Ok(mut child) => {
+            // Waited on in a thread of its own: `xdg-open` on some systems waits
+            // for the browser, and a navigation policy that blocks the window is
+            // a window that freezes on a click. The wait also reaps the child —
+            // an application that leaves one per link is an application with a
+            // process table full of them.
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+        // Where it went wrong is in the log: nothing on the page can say it.
+        Err(error) => append_line(
+            log,
+            &format!("could not open {url} in the system browser: {error}"),
+        ),
+    }
+}
+
+/// Whether an address can be handed to a launcher at all.
+fn openable(url: &tauri::Url) -> bool {
+    matches!(url.scheme(), "http" | "https")
+}
+
+/// A line in the window's own log, best effort: a log that cannot be written is
+/// not a reason to change what a click does.
+fn append_line(path: Option<&Path>, line: &str) {
+    if let Some(file) = path.and_then(open_log) {
+        let _ = writeln!(&file, "{line}");
+    }
 }
 
 /// Where a click belongs, as a decision that can be tested without a window.
@@ -1531,6 +1644,40 @@ mod tests {
         let page = "http://127.0.0.1:43100/spaces/ENG".parse().unwrap();
 
         assert_eq!(destination(&page, &[]), Destination::Elsewhere);
+    }
+
+    // Refusing a click outright left links that read as clickable doing nothing:
+    // the footer's source link, and a page's "view original". What the window may
+    // load is one question, and what happens to the rest is another — the rest
+    // goes to the system's browser.
+    #[test]
+    fn a_link_out_of_the_window_is_somebody_else_s_to_show() {
+        for elsewhere in [
+            "https://dled.atlassian.net/wiki/spaces/MFS/pages/1048577",
+            "https://github.com/d-led/confluence_phx_mirror",
+            "http://127.0.0.1:4000/spaces/ENG",
+        ] {
+            let url: tauri::Url = elsewhere.parse().unwrap();
+
+            assert!(
+                openable(&url),
+                "{elsewhere} belongs in the system browser, not in a refusal"
+            );
+            assert!(
+                !may_load_here(&url),
+                "{elsewhere} must not replace the window"
+            );
+        }
+    }
+
+    // A page can ask a webview for `file:` or `javascript:`. Handing either to a
+    // program whose job is to open whatever it is given would run something this
+    // window was never asked to run.
+    #[test]
+    fn only_web_addresses_are_handed_to_a_launcher() {
+        assert!(!openable(&"file:///etc/passwd".parse().unwrap()));
+        assert!(!openable(&"javascript:alert(1)".parse().unwrap()));
+        assert!(openable(&mirror()));
     }
 
     // A path printed on a failure page is a path somebody has to find and copy.
