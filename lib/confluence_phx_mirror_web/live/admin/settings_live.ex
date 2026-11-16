@@ -368,8 +368,8 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   # The one field on this screen whose *emptying* changes what the mirror is:
   # `[]` and `:all` are the same scope while the deployment names no space, so
   # removing the last key here hands the mirror back to the whole site — not to
-  # no spaces at all (`docs/state-machines.md`, S8). The warning is shown only
-  # where that is true, which is where an operator can get it wrong.
+  # no spaces at all. The warning is shown only where that is true, which is
+  # where an operator can get it wrong.
   defp warning("sync.spaces") do
     if SpaceScope.narrowed?() do
       "Empty this and the mirror covers the whole site again: the next run lists every space, not the ones above."

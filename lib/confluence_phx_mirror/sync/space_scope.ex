@@ -65,7 +65,7 @@ defmodule ConfluencePhxMirror.Sync.SpaceScope do
   True when the deployment names no space and an administrator has named some.
   It is the state the settings screen has to warn about: `[]` and `:all` are one
   scope here, so emptying that list hands the mirror back to the whole site —
-  not to no spaces (`docs/state-machines.md`, S8).
+  not to no spaces.
   """
   @spec narrowed?() :: boolean()
   def narrowed?, do: fixed() == [] and added() != []

@@ -69,8 +69,7 @@ defmodule ConfluencePhxMirror.Sync.Gate do
   # statement errored, or the row is not ours any more — takes the run down with
   # it. Unlinked, it died quietly, the lease lapsed ninety seconds later while
   # the run kept writing pages, and the next run claimed the gate and wrote the
-  # same ones (`docs/state-machines.md`, S2). A run that cannot say it is alive
-  # must stop being a run.
+  # same ones. A run that cannot say it is alive must stop being a run.
   defp keep_alive(owner) do
     claimant = self()
 

@@ -747,11 +747,11 @@ artifact carries** is booted against a throwaway `HOME` and asked for `/health` 
 A window with no release behind it and a release that cannot serve are the two
 failures that look green from a distance, and each has shipped once.
 
-**Burrito was considered and rejected** (`docs/ex-tauri-migration.md`): it packages
-a release into one file per platform, which would have replaced the copying above,
-but it is being archived on 30 November 2026, its successor does not cover Windows,
-and it cannot build on the OTP this app runs on. `mix release` plus Tauri's own
-bundler needs no third party and gives all three platforms.
+**Burrito was considered and rejected**: it packages a release into one file per
+platform, which would have replaced the copying above, but it is being archived on
+30 November 2026, its successor does not cover Windows, and it cannot build on the
+OTP this app runs on. `mix release` plus Tauri's own bundler needs no third party
+and gives all three platforms.
 
 ### What Windows does not have
 

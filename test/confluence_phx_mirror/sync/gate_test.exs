@@ -83,7 +83,7 @@ defmodule ConfluencePhxMirror.SyncGateTest do
 
     # The lease is renewed by a heartbeat, and a heartbeat that dies must take
     # the run with it: a run that cannot say "still mine" is a run whose pages
-    # the next run is about to write too (`docs/state-machines.md`, S2).
+    # the next run is about to write too.
     test "a run whose claim is taken from it is stopped, not left writing pages" do
       # A short lease, so the heartbeat asks often enough for a test to watch.
       TestConfig.put(:sync, gate_lease_seconds: 1)

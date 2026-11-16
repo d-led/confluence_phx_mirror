@@ -383,31 +383,3 @@ Every line here is a test, not an intention.
 8. **The proxy skips exactly five patterns**, asserted by a test that reads the
    deployed configuration.
 
-## Work plan
-
-| Phase | What | Why it is separable | Size |
-| --- | --- | --- | --- |
-| 0 | `Scope.surface`, `Plugs.PublicSurface`, `LiveUserAuth.reader` refusing the dev fallback | no route changes; the suite stays green and `:site` remains the default everywhere | ½ day |
-| 1 | router allowlist + `:public` pipeline + 404 for everything else | the security property lands before any link does | 1 day |
-| 2 | URL layer: `Paths`, the `<.link>` override, redirects, the crawl test | the largest item; nothing works end to end without it | 1½ days |
-| 3 | stored-body rewrite + cache + the sync-time audience switch + `revision` bump | independent of 2, but a public page is broken in spirit without it | 1½ days |
-| 4 | public `live_session`, session payload, socket reachability | small once 2 exists | 1 day |
-| 5 | proxy skip list, deploy, `routes-auth.md` and `configuration.md` | the deployment half | ½ day |
-| 6 | per-surface redaction (optional) | the 20 call sites named above | 1 day |
-
-Phases 0–1 are worth keeping even if the door later turns out to be B: they are
-the vocabulary and the allowlist, and B needs both.
-
-## Open questions
-
-* **Is interaction required?** LiveView search and catalogs cost the session
-  cookie and CDN-cacheability ([§7](#7-caching-and-the-price-of-interaction)).
-* **Should the public surface search at all?** It is a reader screen and narrows
-  correctly, but full-text search over internal content is a different promise
-  from browsing a published subset.
-* **Is a second hostname acceptable?** If it is, B saves most of phases 2–3.
-* **Does `/public` get its own rate-limit budget?** It now faces the internet;
-  the current limits were sized for people behind a proxy.
-* **What is the public surface's canonical URL?** `<link rel=canonical>` and the
-  exports should agree on `/public/…`, or the copy will compete with the wiki in
-  search engines.
