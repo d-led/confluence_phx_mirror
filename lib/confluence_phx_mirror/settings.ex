@@ -702,51 +702,29 @@ defmodule ConfluencePhxMirror.Settings do
     end
   end
 
-  defp resolve({:webhook, :enabled, default}) do
-    :confluence_phx_mirror
-    |> Application.get_env(:webhooks, [])
-    |> Keyword.get(:enabled, default)
-  end
+  defp resolve({:webhook, :enabled, default}), do: env(:webhooks, :enabled, default)
 
   defp resolve({:webhook, :require_signature}) do
-    :confluence_phx_mirror
-    |> Application.get_env(:webhooks, [])
-    |> Keyword.get(:require_signature, false)
+    env(:webhooks, :require_signature, false)
   end
 
-  defp resolve({:webhook, :limit}) do
-    :confluence_phx_mirror
-    |> Application.get_env(:webhook_rate_limit, [])
-    |> Keyword.get(:limit, 60)
-  end
+  defp resolve({:webhook, :limit}), do: env(:webhook_rate_limit, :limit, 60)
 
-  defp resolve({:search, key, floor}) do
-    :confluence_phx_mirror |> Application.get_env(:search, []) |> Keyword.get(key, floor)
-  end
+  defp resolve({:search, key, floor}), do: env(:search, key, floor)
 
-  defp resolve({:mail_daily, key, floor}) do
-    :confluence_phx_mirror |> Application.get_env(:mail_daily, []) |> Keyword.get(key, floor)
-  end
+  defp resolve({:mail_daily, key, floor}), do: env(:mail_daily, key, floor)
 
-  defp resolve({:sync, key, floor}) do
-    :confluence_phx_mirror |> Application.get_env(:sync, []) |> Keyword.get(key, floor)
-  end
+  defp resolve({:sync, key, floor}), do: env(:sync, key, floor)
 
   # The source's own options, the way `Sync` reads them: a demo snapshot keeps
   # its own values even when the HTTP source is configured for a live site.
   defp resolve({:source, key, floor}) do
-    :confluence_phx_mirror
-    |> Application.get_env(ConfluencePhxMirror.Confluence.Source.source(), [])
-    |> Keyword.get(key, floor)
+    env(ConfluencePhxMirror.Confluence.Source.source(), key, floor)
   end
 
-  defp resolve({:accounts, key, floor}) do
-    :confluence_phx_mirror |> Application.get_env(:accounts, []) |> Keyword.get(key, floor)
-  end
+  defp resolve({:accounts, key, floor}), do: env(:accounts, key, floor)
 
-  defp resolve({:trash, key, floor}) do
-    :confluence_phx_mirror |> Application.get_env(:trash, []) |> Keyword.get(key, floor)
-  end
+  defp resolve({:trash, key, floor}), do: env(:trash, key, floor)
 
   defp resolve({:admin_stats_refresh_seconds, floor}) do
     Application.get_env(:confluence_phx_mirror, :admin_stats_refresh_seconds, floor)
@@ -769,6 +747,13 @@ defmodule ConfluencePhxMirror.Settings do
     |> Application.get_env(:reader_rate_limit, [])
     |> Keyword.get(scope, [])
     |> Keyword.get(:limit, floor)
+  end
+
+  # One group of the deployment's own configuration, read the way every key in
+  # it is written: a keyword list under this application, with the catalogue's
+  # floor as the answer when the deployment said nothing.
+  defp env(group, key, floor) do
+    :confluence_phx_mirror |> Application.get_env(group, []) |> Keyword.get(key, floor)
   end
 
   defp notification_default(key, floor) do
