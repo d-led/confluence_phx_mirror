@@ -141,6 +141,17 @@ run() {
   echo "[$steps] ok in $((SECONDS - started))s"
 }
 
+# A line for the closing summary. A piece that is not there is said out loud
+# rather than skipped: the build already reported what it produced, and a summary
+# that quietly omitted a missing half would be worse than none.
+report() {
+  if [[ -e $1 ]]; then
+    printf '  %s\n      %s\n' "$1" "$2"
+  else
+    printf '  %s — not there\n' "$1"
+  fi
+}
+
 # What a build cannot happen without, asked once here rather than discovered
 # fifteen steps in as "no such file". The two that can install themselves do it
 # below; the rest are a one-line answer about where to get them.
@@ -565,3 +576,24 @@ echo
 echo "artifact: $out/$asset"
 echo "uploaded by the workflow as: confluence-export-$platform"
 [[ $install_after == yes ]] || echo "to install it: scripts/package.sh --install"
+
+# Where the pieces are, not just the wrapper around them. A build that has to be
+# opened up — to read the release's version, to run the window against a release
+# already installed, to check the NIF actually travelled — is a normal thing to
+# do, and finding out by walking `_build` is not.
+echo
+echo "what is in it:"
+report "$release/" "the sidecar release (its own Erlang runtime, the app, the NIF)"
+report "$window" "the window binary"
+
+case "$platform" in
+  macos) report "$app" "the application bundle, before it was zipped" ;;
+  windows)
+    report "$out/confluence-export-$platform/" "the portable folder (a complete install)"
+    report "$installer" "the setup.exe a person double-clicks"
+    ;;
+  linux) report "$out/confluence-export-$platform/" "the folder the tarball holds" ;;
+esac
+
+report "_build/desktop/lib/$name/priv/native/confluence_keyring.so" \
+  "the NIF the release imports at boot (it is inside the release too)"
