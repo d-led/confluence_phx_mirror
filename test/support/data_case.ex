@@ -77,6 +77,8 @@ defmodule ConfluencePhxMirror.DataCase do
 
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
 
+    if Application.get_env(:confluence_phx_mirror, :sqlite_suite), do: await_writer_slot!()
+
     # The suite commits one copy of the demo site before the first test, so a
     # test that wants it pays a read. A test that wants a mirror holding only
     # what it built tags itself `:empty_mirror` and gets a blank one — emptied
@@ -121,6 +123,36 @@ defmodule ConfluencePhxMirror.DataCase do
 
     receive do
       {:DOWN, ^ref, :process, ^holder, _reason} -> :ok
+    end
+  end
+
+  # The lock says no other test has asked; it does not say the database is free.
+  # `stop_owner/1` answers before the connection it stopped has finished rolling
+  # back, so the previous test's transaction can still own SQLite's one write
+  # slot, and this test's first write is answered "Database busy" (twice on CI
+  # runners, once inside a fixture's insert). A write of our own is the only
+  # proof the slot is ours — it goes into this test's transaction and rolls back
+  # with everything else.
+  @doc """
+  Waits until SQLite takes a write from this test, then answers `:ok`.
+
+  Raises rather than letting a fixture fail later: a slot that never comes free
+  is a stuck writer, not a flaky test.
+  """
+  def await_writer_slot!(attempts \\ 200) do
+    case ConfluencePhxMirror.Repo.query("PRAGMA user_version = 0") do
+      {:ok, _result} ->
+        :ok
+
+      {:error, %{message: "Database busy" <> _}} when attempts > 1 ->
+        Process.sleep(10)
+        await_writer_slot!(attempts - 1)
+
+      {:error, %{message: "Database busy" <> _}} ->
+        raise "SQLite's write slot never came free: another connection held it for two seconds"
+
+      {:error, error} ->
+        raise error
     end
   end
 
