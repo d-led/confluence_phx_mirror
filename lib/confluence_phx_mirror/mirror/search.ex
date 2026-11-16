@@ -743,15 +743,28 @@ defmodule ConfluencePhxMirror.Mirror.Search do
 
   # Ordering ------------------------------------------------------------------
 
-  defp order_sql(nil, "", builder), do: {"p.external_updated_at DESC NULLS LAST", builder}
+  # Every order ends on the row's own id. Two pages can carry the same timestamp
+  # — a bulk import gives a whole space one — and without a last word Postgres
+  # may put them in either order, so a reader paging through results can see one
+  # page twice and never see another.
+  @tie_break "p.id DESC"
+
+  defp order_sql(nil, "", builder),
+    do: {"p.external_updated_at DESC NULLS LAST, #{@tie_break}", builder}
 
   defp order_sql(nil, _text_query, builder),
-    do: {"rank DESC, p.external_updated_at DESC NULLS LAST", builder}
+    do: {"rank DESC, p.external_updated_at DESC NULLS LAST, #{@tie_break}", builder}
 
   defp order_sql([], text_query, builder), do: order_sql(nil, text_query, builder)
 
   defp order_sql(order_by, _text_query, builder) when is_list(order_by) do
-    {Enum.map_join(order_by, ", ", &order_column/1), builder}
+    columns = Enum.map(order_by, &order_column/1)
+
+    # An explicit `order by id` has said its last word already.
+    columns =
+      if Enum.any?(order_by, &match?({:id, _}, &1)), do: columns, else: columns ++ [@tie_break]
+
+    {Enum.join(columns, ", "), builder}
   end
 
   defp order_column({field, direction}) do
