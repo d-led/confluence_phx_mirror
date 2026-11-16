@@ -131,9 +131,13 @@ connection, and a mirror has a pool, two Machines and deploys).
 2. A held lease is renewed every `lease_seconds/3` (90 s ÷ 3 = 30 s) by a process
    that stops renewing exactly when its claimant dies (`keep_alive/1` monitors the
    claimant, so a `:DOWN` ends the heartbeat).
-3. `release/1` only clears a row whose `owner` matches — a run that lost its lease
+3. The heartbeat is **linked** to the run (`Task.start_link/1`): a renewal that
+   fails — the statement errored, or the row is no longer this owner's — raises
+   in the heartbeat and takes the run down with it. A run that cannot say it is
+   alive stops being a run.
+4. `release/1` only clears a row whose `owner` matches — a run that lost its lease
    cannot release the new holder's claim.
-4. `Sync.run/2` sweeps abandoned rows **before** claiming (`sync.ex:123`), so the
+5. `Sync.run/2` sweeps abandoned rows **before** claiming (`sync.ex:123`), so the
    sweep can never be confused by its own run.
 
 **Transitions**
@@ -144,18 +148,17 @@ connection, and a mirror has a pool, two Machines and deploys).
 | held | held (renewed) | `Gate.renew/1`, every heartbeat |
 | held | free | `Gate.release/1` in `exclusive/1`'s `after` |
 | held | free | the lease expiring, when the claimant dies |
+| held | run stopped | a renewal answering `{:error, _}`, raised in the linked heartbeat |
 
 **Reachable invalid states**
 
-- ⚠ **A lapsed lease is not a stopped run.** `beat/2` calls `renew/1`, which is
-  `Repo.update_all/2`; if it raises (a database error, a pool checkout timeout)
-  the heartbeat `Task` — started with `Task.start/1`, so unlinked and
-  unsupervised — dies silently. The run continues writing while the gate lapses
-  90 s later, and the next `Sync.run/2` claims it. Two runs then write the same
-  pages concurrently. Impact: wasted work, plausible `40P01` deadlocks between
-  two runs' upserts, and `abandon_abandoned_runs/0` recording the *first* run as
-  failed while it is still alive (S1). Not fixed here: the fix is a supervision
-  decision (supervise the heartbeat and stop the run when it dies), not a patch.
+- ✔ **A lapsed lease used to leave the run alive — closed.** `beat/2` called
+  `renew/1`, and a `Repo.update_all/2` that raised killed an unlinked heartbeat
+  silently: the run kept writing while the gate lapsed 90 s later, and the next
+  `Sync.run/2` claimed it. `renew/1` now answers `{:error, :lapsed}` when no row
+  carries this owner, the heartbeat is started with `Task.start_link/1`, and
+  either failure raises in it — which stops the run through the link. Tests in
+  `gate_test.exs` (*a run whose claim is taken from it is stopped*).
 
 ---
 
@@ -666,15 +669,20 @@ this codebase actually break.
 
 ### Defect 4 — A lapsed gate lease does not stop the run (S2)
 
-*Open — needs a supervision change.*
+*Fixed — the heartbeat is linked to the run.*
 
-- **Impact: medium.** Two runs can write the same pages concurrently, with
+- **Impact: medium.** Two runs could write the same pages concurrently, with
   deadlocks between their upserts and a contradictory pair of audit entries.
 - **Evidence:** `gate.ex` `keep_alive/1` + `beat/2` + `renew/1`; `release/1`
   only matching its own owner; `Sync.abandon_abandoned_runs/0` closing a run that
   is still alive.
-- **Not fixed here:** the fix is supervision (a heartbeat the claimant is linked
-  to, so a dead heartbeat stops the run), which changes the process topology.
+- **What was done:** `keep_alive/1` starts the heartbeat with `Task.start_link/1`,
+  `renew/1` answers `{:error, :lapsed}` when no row carries this owner (as well as
+  raising on a statement error), and `beat/2` raises on either — so the link stops
+  the run. A run that cannot prove it holds the gate no longer writes.
+- **Tests:** `gate_test.exs` — *a run whose claim is taken from it is stopped, not
+  left writing pages* (a 1-second lease, the row handed to another owner, the run
+  goes down and `renew/1` says `:lapsed`).
 
 ### Defect 5 — A webhook delivery can rest in `processing` (S9)
 

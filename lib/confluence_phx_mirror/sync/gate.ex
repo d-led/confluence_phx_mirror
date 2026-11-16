@@ -64,10 +64,17 @@ defmodule ConfluencePhxMirror.Sync.Gate do
   # and stops when that process exits. A lease that depends on the workload
   # remembering to renew it is a lease that lapses in the middle of the one
   # phase nobody thought about; this one cannot be forgotten.
+  #
+  # Linked, not merely started: a heartbeat that can no longer renew — the
+  # statement errored, or the row is not ours any more — takes the run down with
+  # it. Unlinked, it died quietly, the lease lapsed ninety seconds later while
+  # the run kept writing pages, and the next run claimed the gate and wrote the
+  # same ones (`docs/state-machines.md`, S2). A run that cannot say it is alive
+  # must stop being a run.
   defp keep_alive(owner) do
     claimant = self()
 
-    Task.start(fn ->
+    Task.start_link(fn ->
       ref = Process.monitor(claimant)
       beat(owner, ref)
     end)
@@ -79,8 +86,16 @@ defmodule ConfluencePhxMirror.Sync.Gate do
       {:DOWN, ^ref, :process, _, _} -> :ok
     after
       heartbeat_ms() ->
-        renew(owner)
-        beat(owner, ref)
+        case renew(owner) do
+          :ok ->
+            beat(owner, ref)
+
+          {:error, reason} ->
+            # Raised here on purpose: the link carries it to the run, whose
+            # own writes are the thing that must not continue.
+            raise "the sync gate is no longer held by this run (#{inspect(reason)}); " <>
+                    "stopping it rather than writing pages nobody owns"
+        end
     end
   end
 
@@ -107,15 +122,20 @@ defmodule ConfluencePhxMirror.Sync.Gate do
   Called by the heartbeat `exclusive/1` starts, on every progress flush would
   also be fine but is not needed: a claim is only worth anything if it keeps
   saying "alive", and this makes it say so without the workload's help.
+
+  Answers `{:error, :lapsed}` when no row carries this owner — our claim is gone,
+  taken by the next run or expired — and `{:error, reason}` when the statement
+  itself failed. Either way the heartbeat stops the run (`beat/2`).
   """
-  @spec renew(String.t() | nil) :: :ok
+  @spec renew(String.t() | nil) :: :ok | {:error, :lapsed | term()}
   def renew(nil), do: :ok
 
   def renew(owner) do
-    from(g in "sync_gate", where: g.owner == ^owner)
-    |> Repo.update_all(set: [expires_at: expires_at()])
+    {renewed, _} =
+      from(g in "sync_gate", where: g.owner == ^owner)
+      |> Repo.update_all(set: [expires_at: expires_at()])
 
-    :ok
+    if renewed == 1, do: :ok, else: {:error, :lapsed}
   end
 
   # One statement decides it: the insert wins on a free or lapsed row, and does

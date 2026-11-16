@@ -80,6 +80,35 @@ defmodule ConfluencePhxMirror.SyncGateTest do
       send(holder.pid, :release)
       Task.await(holder)
     end
+
+    # The lease is renewed by a heartbeat, and a heartbeat that dies must take
+    # the run with it: a run that cannot say "still mine" is a run whose pages
+    # the next run is about to write too (`docs/state-machines.md`, S2).
+    test "a run whose claim is taken from it is stopped, not left writing pages" do
+      # A short lease, so the heartbeat asks often enough for a test to watch.
+      TestConfig.put(:sync, gate_lease_seconds: 1)
+      test_process = self()
+
+      {run, ref} =
+        spawn_monitor(fn ->
+          Gate.exclusive(fn owner ->
+            send(test_process, {:holding, owner})
+            Process.sleep(:infinity)
+          end)
+        end)
+
+      assert_receive {:holding, owner}, 2_000
+
+      # What a lapsed lease and a second run look like from this run's side: the
+      # row is no longer its own.
+      Repo.query!("UPDATE sync_gate SET owner = $1 WHERE id", ["someone-else"])
+
+      assert_receive {:DOWN, ^ref, :process, ^run, reason}, 3_000
+      assert reason != :normal
+      # Why it stopped: this owner no longer holds the claim, so the heartbeat's
+      # renew says so and the run is not left to write inside it.
+      assert Gate.renew(owner) == {:error, :lapsed}
+    end
   end
 
   describe "abandoned runs" do
