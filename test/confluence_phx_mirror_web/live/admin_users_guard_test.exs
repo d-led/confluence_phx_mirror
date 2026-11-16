@@ -127,5 +127,26 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersGuardTest do
     refute User.banned?(Accounts.get_user(bootstrap.id))
   end
 
+  # The switch is offered — a protected administrator is not the last one here —
+  # but switching it off would take away the door back in, so the server refuses
+  # it and the screen says why.
+  test "a bootstrap administrator cannot be switched off even if the event arrives", %{
+    conn: conn
+  } do
+    bootstrap = user_fixture(%{email: "admin@localhost", role: "admin"})
+    colleague = user_fixture(%{email: "colleague@example.com", role: "admin"})
+
+    {:ok, view, _html} = live(sign_in(conn, colleague), ~p"/admin/users")
+
+    html =
+      render_submit(view, "set_disabled", %{
+        "user_id" => to_string(bootstrap.id),
+        "disabled" => "true"
+      })
+
+    assert html =~ "A seeded or bootstrap administrator cannot be disabled."
+    refute Accounts.get_user(bootstrap.id).disabled_at
+  end
+
   defp sign_in(conn, user), do: Plug.Test.init_test_session(conn, %{"user_id" => user.id})
 end
