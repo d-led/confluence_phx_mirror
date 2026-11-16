@@ -83,5 +83,49 @@ defmodule ConfluencePhxMirrorWeb.Live.AdminUsersGuardTest do
     assert Accounts.get_user(admin.id).role == "member"
   end
 
+  # The screen locks the control, and the lock is not the guard: an event can
+  # arrive from a page loaded a moment ago, or from the same account in another
+  # tab. Switching the last administrator off is the one lock-out a ban cannot
+  # undo, so the refusal has to hold on its own.
+  test "the last administrator cannot be switched off even if the event arrives", %{conn: conn} do
+    admin = user_fixture(%{email: "solo@example.com", role: "admin"})
+
+    {:ok, view, _html} = live(sign_in(conn, admin), ~p"/admin/users")
+
+    html =
+      render_submit(view, "set_disabled", %{
+        "user_id" => to_string(admin.id),
+        "disabled" => "true"
+      })
+
+    assert html =~ "last administrator"
+    refute Accounts.get_user(admin.id).disabled_at
+  end
+
+  test "the last administrator cannot be deleted even if the event arrives", %{conn: conn} do
+    admin = user_fixture(%{email: "solo@example.com", role: "admin"})
+
+    {:ok, view, _html} = live(sign_in(conn, admin), ~p"/admin/users")
+
+    html = render_submit(view, "delete_user", %{"user_id" => to_string(admin.id)})
+
+    assert html =~ "last administrator"
+    assert Accounts.get_user(admin.id)
+  end
+
+  # A seeded or bootstrap administrator is the way back in when everything else
+  # is wrong, so banning one would remove the door it is.
+  test "a bootstrap administrator cannot be banned even if the event arrives", %{conn: conn} do
+    bootstrap = user_fixture(%{email: "admin@localhost", role: "admin"})
+    user_fixture(%{email: "colleague@example.com", role: "admin"})
+
+    {:ok, view, _html} = live(sign_in(conn, bootstrap), ~p"/admin/users")
+
+    html = render_submit(view, "ban", %{"user_id" => to_string(bootstrap.id)})
+
+    assert html =~ "seeded or bootstrap administrator"
+    refute User.banned?(Accounts.get_user(bootstrap.id))
+  end
+
   defp sign_in(conn, user), do: Plug.Test.init_test_session(conn, %{"user_id" => user.id})
 end
