@@ -150,11 +150,25 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# CRAP: complexity squared by missing coverage, ranked per application tree
+# CRAP: complexity squared by missing coverage, ranked per application tree.
+#
+# The ranking below is read from the task's own report, so the task has to have
+# run — and it has to have produced rows. A run whose `cover` died leaves the
+# coverage export unwritten, the task then prints a header and nothing else, and
+# a gate that reads "no rows" as "nothing scores badly" passes on no data. That
+# is what this section used to do: it ranked the *dryer's* report, which has no
+# such rows, and printed `worst 0.00` on every run.
 # ---------------------------------------------------------------------------
 
 banner "complexity"
-crap_status=0
+
+if mix complexity >"$report" 2>&1; then
+  crap_status=0
+else
+  crap_status=1
+fi
+
+scored=$(awk -F'|' 'NF == 7 && $6 ~ /[0-9]/ { n++ } END { print n + 0 }' "$report")
 
 ranked=$(awk -F'[[:space:]]*\\|[[:space:]]*' '
   NF == 7 && $6 ~ /[0-9]/ && $6 + 0 > 0 {
@@ -205,8 +219,12 @@ fi
 worst=$(awk -F'|' 'NF == 7 && $6 ~ /[0-9]/ { if ($6 + 0 > w) w = $6 + 0 } END { printf "%.2f", w }' "$report")
 offenders=$(awk -F'|' -v t="$threshold" 'NF == 7 && $6 ~ /[0-9]/ && $6 + 0 > t { n++ } END { print n + 0 }' "$report")
 
-if [[ $crap_status -eq 0 ]]; then
-  record complexity 0 "worst ${worst:-0.00}, threshold $threshold"
+if [[ $crap_status -eq 0 && $scored -gt 0 ]]; then
+  record complexity 0 "worst ${worst:-0.00}, threshold $threshold, $scored scored"
+elif [[ $scored -eq 0 ]]; then
+  printf '\n'
+  tail -n 10 "$report"
+  record complexity 1 "no scores — the coverage export was not written"
 else
   printf '\n'
   grep -E 'threshold failed|score=' "$report" | first_lines 20 || true

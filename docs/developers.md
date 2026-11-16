@@ -398,6 +398,11 @@ The script is read-only: it runs `format --check-formatted` and
 `deps.unlock --check-unused`, so a report never rewrites a file. Run
 `mix format` yourself when it complains.
 
+The complexity gate fails in two ways: a function above the threshold, and a run
+that scored **nothing at all**. A `cover` that died leaves the coverage export
+unwritten, the CRAP task then prints a header and no rows, and a gate that reads
+"nothing scored badly" from an empty table is a gate that passes on no data.
+
 ### What CI runs
 
 `.github/workflows/ci.yml` runs six jobs. Five gate every push and pull
