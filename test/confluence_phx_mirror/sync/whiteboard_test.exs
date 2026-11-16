@@ -61,6 +61,33 @@ defmodule ConfluencePhxMirror.Sync.WhiteboardTest do
     assert length(String.split(svg, "<rect")) - 1 == 1
   end
 
+  test "knows the document version it draws, and says so about no other" do
+    assert Whiteboard.known_version?(%{"version" => "2024-05-20_ALPHA"})
+    refute Whiteboard.known_version?(%{"version" => "2030-01-01_ALPHA"})
+    refute Whiteboard.known_version?(%{"nodes" => %{}})
+  end
+
+  # A board may store a coordinate as the text it was typed as, a unit suffix and
+  # all: the drawing reads the number it starts with and ignores the rest.
+  test "a coordinate written as text is read as the number it starts with" do
+    nodes = %{"a" => shape(0, "January") |> put_in(["geometry", "position", "x"], "10px")}
+
+    assert {:ok, svg} = Whiteboard.svg(%{"version" => "2024-05-20_ALPHA", "nodes" => nodes})
+    assert svg =~ ~s(<rect x="10")
+  end
+
+  # Nothing to read is a coordinate of zero, and a shape with no width is drawn as
+  # a sliver rather than disappearing: a board is worth seeing even when its
+  # numbers are unreadable.
+  test "a coordinate that is not a number is drawn at zero" do
+    nodes =
+      %{"a" => shape(0, "January")}
+      |> put_in(["a", "geometry", "size", "x"], "wide")
+
+    assert {:ok, svg} = Whiteboard.svg(%{"version" => "2024-05-20_ALPHA", "nodes" => nodes})
+    assert svg =~ ~s(width="1")
+  end
+
   defp document(shapes) do
     %{
       "version" => "2024-05-20_ALPHA",
