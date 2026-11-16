@@ -39,4 +39,31 @@ defmodule ConfluencePhxMirror.Sites.GuardTest do
       Guard.init([])
     end
   end
+
+  # A window outlives the boot check: the person in front of it can point the
+  # tool at another folder, and the disagreement it reports has to follow.
+  describe "asking again after the connection changed" do
+    test "a disagreement appears the moment the tool is pointed elsewhere" do
+      TestConfig.put(:source, ConfluencePhxMirror.Confluence.DemoSource)
+
+      assert Sites.refresh_conflict() == :ok
+      assert Sites.conflict() == nil
+
+      TestConfig.put(:source, HttpSource)
+      TestConfig.put(HttpSource, base_url: "https://dled.atlassian.net/wiki")
+
+      assert Sites.refresh_conflict() == :ok
+      assert %{recorded: "demo", configured: "dled_atlassian_net"} = Sites.conflict()
+    end
+
+    test "and is gone once the tool is back on the site the folder holds" do
+      assert {:ok, _state} = Guard.init(on_conflict: :report)
+      assert Sites.conflict()
+
+      TestConfig.put(:source, ConfluencePhxMirror.Confluence.DemoSource)
+
+      assert Sites.refresh_conflict() == :ok
+      assert Sites.conflict() == nil
+    end
+  end
 end
