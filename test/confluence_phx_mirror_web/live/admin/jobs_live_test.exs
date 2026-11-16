@@ -182,9 +182,43 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
     refute view |> element("#job-#{fresh.id}") |> render() =~ "long-running"
   end
 
-  defp sync_job(space_key) do
+  # The badge is what an operator reads at a glance, so a discarded job has to
+  # look different from a scheduled one. Every state a job can hold is pinned
+  # with the badge it is drawn as — and there are only these: `oban_job_state` is
+  # a Postgres enum, so the column cannot hold a state the screen has not heard
+  # of, which is why `state_class/1`'s last clause has nothing to catch.
+  test "every state a job can hold is drawn with its own badge", %{conn: conn} do
+    badges = %{
+      "executing" => "badge-warning",
+      "available" => "badge-info",
+      "scheduled" => "badge-ghost",
+      "retryable" => "badge-warning",
+      "completed" => "badge-success",
+      "cancelled" => "badge-ghost",
+      "discarded" => "badge-error"
+    }
+
+    # One queue each: SpaceWorker is unique per worker and queue, so seven
+    # inserts on one queue would be one row.
+    jobs =
+      Map.new(badges, fn {state, _badge} ->
+        {state, sync_job("MFS", queue: "unworked-#{state}") |> with_state(state)}
+      end)
+
+    {:ok, view, _html} = live(conn, ~p"/admin/jobs")
+
+    for {state, badge} <- badges do
+      assert has_element?(view, "#job-#{jobs[state].id} .badge.#{badge}"),
+             "#{state} is not drawn as #{badge}"
+    end
+  end
+
+  # A queue no worker is configured for, so the state the test writes is the
+  # state the page reads.
+  defp sync_job(space_key, opts \\ []) do
     {:ok, job} =
-      SpaceWorker.new(%{"space_key" => space_key, "trigger" => "a test"}) |> Oban.insert()
+      SpaceWorker.new(%{"space_key" => space_key, "trigger" => "a test"}, opts)
+      |> Oban.insert()
 
     job
   end
