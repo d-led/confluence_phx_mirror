@@ -26,7 +26,7 @@ docker compose up -d && mix setup && mix phx.server
 Development and test assume an administrator (`MIRROR_AUTO_ADMIN`), so no
 sign-in is in the way. Three addresses beside the server: the mail sink
 (smtp4dev) at <http://localhost:3001>, the database UI (Adminer) at
-<http://localhost:8092>, LiveDashboard at <http://localhost:4000/dev/dashboard>.
+<http://localhost:8092>, LiveDashboard at <http://localhost:4000/admin/runtime>.
 
 **Done when** `mix lint` is green and `mix test` passes — that is the loop you
 will run all day.

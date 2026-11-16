@@ -441,9 +441,12 @@ defmodule ConfluencePhxMirrorWeb.Router do
 
     # LiveDashboard injects one inline script its own bundle depends on, which
     # the reader pages' policy would drop; this pipeline replaces that policy
-    # for the dashboard route only (see Plugs.DashboardCSP).
+    # for the dashboard route only (see Plugs.DashboardCSP). It also carries
+    # the way back off the dashboard, which a window has no address bar to
+    # take (see Plugs.DashboardWayBack).
     pipeline :admin_runtime do
       plug Plugs.DashboardCSP
+      plug Plugs.DashboardWayBack, back: "/admin", label: "Admin"
     end
 
     scope "/admin" do
@@ -451,10 +454,12 @@ defmodule ConfluencePhxMirrorWeb.Router do
 
       # Without `metrics_history` the Metrics page plots only what arrives
       # while it is open, which reads as an empty chart to anyone who looks
-      # for the last two hours.
+      # for the last two hours. `home_app` names this application, so the
+      # dashboard's home page says whose node it is instead of "Dashboard".
       live_dashboard "/runtime",
         metrics: ConfluencePhxMirrorWeb.Telemetry,
         metrics_history: {ConfluencePhxMirror.MetricsHistory, :metrics_history, []},
+        home_app: {"Confluence Mirror", :confluence_phx_mirror},
         on_mount: [{LiveUserAuth, :admin}]
     end
   end

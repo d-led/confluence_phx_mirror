@@ -590,6 +590,17 @@ the blob root is on. The route is served with its own content policy
 bundle depends on and the reader pages forbid inline script; that exception is
 one route wide and exists only when the dashboard is compiled in.
 
+Every page of it carries a link back to `/admin` (`Plugs.DashboardWayBack`):
+LiveDashboard draws its own page and takes no option for a way home, which in a
+browser is the address bar and in the desktop window (`desktop-tool.md`) is
+nothing at all.
+
+Its **Ecto Stats** page lists this application's repository only when that
+database's extras module is loaded — `ecto_psql_extras` here, and
+`ecto_sqlite3_extras` in the desktop build. Without them the page still exists
+and says no repository is running, on a node that has been querying one all
+day.
+
 Its **Metrics** page charts the catalogue under the `confluence_mirror` nav —
 pages, spaces, attachments, comments, labels, what sits in the trash, accounts,
 blob bytes and database bytes — one point per poll (10 s) plus the same numbers
