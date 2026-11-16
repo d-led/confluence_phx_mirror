@@ -44,9 +44,4 @@ defmodule ConfluencePhxMirror.Mirror.GroupMember do
 
   def subject_key(%{account_id: account_id}) when is_binary(account_id), do: account_id
   def subject_key(_member), do: nil
-
-  @doc "Name to show in the UI."
-  def display(%__MODULE__{} = member) do
-    member.display_name || member.email || member.account_id
-  end
 end

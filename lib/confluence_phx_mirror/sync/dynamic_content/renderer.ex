@@ -55,12 +55,4 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderer do
   def implements?(module) do
     Code.ensure_loaded?(module) and function_exported?(module, :render, 2)
   end
-
-  @doc "The macro names `module` draws, as the expander sees them."
-  @spec macros(module()) :: [String.t()]
-  def macros(module) do
-    for {name, renderer} <- ConfluencePhxMirror.Sync.DynamicContent.Registry.all(),
-        renderer == module,
-        do: name
-  end
 end

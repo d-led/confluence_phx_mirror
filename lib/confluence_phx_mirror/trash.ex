@@ -33,11 +33,6 @@ defmodule ConfluencePhxMirror.Trash do
   @doc "How many pages are in the trash, under the filter the screen shows."
   def count_pages(opts \\ []), do: Mirror.count_trashed_pages(opts)
 
-  @doc "Whether there is anything at all to purge."
-  def empty? do
-    spaces() == [] and pages(limit: 1) == []
-  end
-
   @doc """
   How long a deleted space or page is kept, in days (`trash.retention_days`).
 
