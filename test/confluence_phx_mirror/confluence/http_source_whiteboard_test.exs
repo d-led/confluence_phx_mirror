@@ -73,6 +73,35 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceWhiteboardTest do
              HttpSource.whiteboard_document("https://acme.atlassian.net/wiki/spaces/MFS/pages/42")
   end
 
+  # The gateway refuses for its own reasons — no permission on the board, a
+  # document format it no longer serves — and the message is the only thing that
+  # says which. Swallowing it would leave a blank board with no explanation.
+  test "a gateway refusal says what it refused" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      if String.contains?(conn.request_path, "/content/") do
+        Req.Test.json(conn, %{"ari" => @ari})
+      else
+        Req.Test.json(conn, %{
+          "errors" => [%{"message" => "Board not found"}, %{"message" => "x"}]
+        })
+      end
+    end)
+
+    assert {:error, {:graphql, "Board not found"}} = HttpSource.whiteboard_document(@board_url)
+  end
+
+  test "an answer with no document in it is refused, not read as an empty board" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      if String.contains?(conn.request_path, "/content/") do
+        Req.Test.json(conn, %{"ari" => @ari})
+      else
+        Req.Test.json(conn, %{"data" => %{"node" => %{"body" => %{}}}})
+      end
+    end)
+
+    assert {:error, :no_whiteboard_document} = HttpSource.whiteboard_document(@board_url)
+  end
+
   # The shape the gateway answers with, cut down to what is read.
   defp drawn do
     %{
