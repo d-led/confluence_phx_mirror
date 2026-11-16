@@ -468,6 +468,36 @@ The report ranks three ways because they answer different questions: the
 per-function list says what to fix, the per-file list says where a file's worst
 spot is, and the per-tree line says whether a whole layer needs attention.
 
+### LiveView contracts: soundcheck, on demand
+
+[soundcheck](https://hex.pm/packages/soundcheck) is a Credo plugin that reads
+HEEx templates, callbacks and JS hooks against each other: a `phx-click` no
+`handle_event/3` answers, an assign a template reads before anything sets it, a
+stream loop whose parent has no `phx-update`.
+
+```bash
+MIX_ENV=dev mix soundcheck                    # the default checks: what CI would gate on
+MIX_ENV=dev mix soundcheck --all --strict     # every check, plus the ones it cannot verify
+MIX_ENV=dev mix soundcheck --only SC101,SC304
+```
+
+It stays out of `mix lint` on purpose. It is 0.2.x, written by one person, and it
+says of itself that it "might break frequently" — a red build that a patch
+release invents is worse than a check run by hand, and nothing in this repository
+may break the gate on somebody else's release schedule. So the dependency is
+`only: [:dev, :test], runtime: false`, it is not registered in `.credo.exs`, and
+`mix credo` never loads it.
+
+A finding is worth exactly one thing: the read. The default checks report nothing
+here as of 0.2.1, and `--all --strict` reported 65, of which the sampled ones
+were: 14 SC201 marked *unverifiable* — `@socket` is put into the assigns by
+LiveView itself (`renderer.ex`), and the rest are set in `handle_params`, which it
+labels `open_handle_params`; 7 SC402 on `live_session :reader`, which is open by
+design, because a reader's catalog is public and the *rows* are filtered by scope
+in the query; 3 SC603 whose matched calls cannot fail (`Notifications.purge_queue/1`
+returns `{:ok, _}` unconditionally). Real finds: two assigns nothing read
+(SC205), which were removed — that is the class of finding worth the run.
+
 ### Types: dialyzer
 
 `mix types` asks a different question from the rest of the gate: not whether a

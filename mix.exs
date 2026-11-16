@@ -205,6 +205,15 @@ defmodule ConfluencePhxMirror.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev, :test, :desktop], runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:ex_crap, "~> 0.1.1", only: [:dev, :test], runtime: false},
+      # A Credo plugin for the contracts LiveView otherwise only enforces at run
+      # time: a `phx-click` no `handle_event/3` answers, an assign a template
+      # reads before `mount/3` sets it, a stream loop whose parent has no
+      # `phx-update`. It is 0.2.x from one maintainer and says so itself, so it
+      # is *not* wired into `mix lint` — nothing here may turn a red build on a
+      # plugin that changes shape between patch releases. `mix soundcheck` runs
+      # it on demand; a finding is only worth acting on once the code has been
+      # read.
+      {:soundcheck, "~> 0.2.1", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false}
     ]
   end
