@@ -77,6 +77,28 @@ defmodule ConfluencePhxMirror.Mirror.Search.CqlOperatorsTest do
     assert sorted_titles("title !~ release") == ["Gateway runbook", "Rate limiting"]
   end
 
+  # The body is the other half of what !~ can ask about, and the only half that
+  # looks in a second table: a page's own words and the comments under it.
+  test "!~ on the body keeps the pages whose text does not match" do
+    assert sorted_titles(~s{text !~ "token bucket"}) == ["Gateway runbook", "Release 2.0"]
+
+    assert titles(~s{text !~ "token bucket"}) ==
+             titles(~s{space = ENG or space = PROD}) --
+               titles(~s{text ~ "token bucket"})
+  end
+
+  # NOT is not one more operator per field: it is the negation of whatever the
+  # filter beside it means, which is why every field gets it for free.
+  test "NOT keeps everything the filter beside it leaves out" do
+    assert titles("space = ENG and not label = architecture") == ["Gateway runbook"]
+
+    assert titles("space = ENG and not label = architecture") ==
+             titles("space = ENG and label != architecture")
+
+    assert titles("not (label = architecture)") |> Enum.sort() ==
+             ["Gateway runbook", "Release 2.0"]
+  end
+
   test "IN works on the stored columns too, ids and titles alike" do
     space = space_fixture(%{key: "OPS"})
     page_fixture(space, %{confluence_id: 7001, title: "One"})
