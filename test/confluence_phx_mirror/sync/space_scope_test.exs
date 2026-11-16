@@ -91,6 +91,29 @@ defmodule ConfluencePhxMirror.Sync.SpaceScopeTest do
     assert SpaceScope.wanted() == ["ENG"]
   end
 
+  # The settings screen warns where the field is, so it asks this question: is
+  # the runtime list the only thing narrowing the mirror? Emptying it would then
+  # hand the mirror back to the whole site, since `[]` and `:all` are one scope.
+  describe "narrowed?/0" do
+    test "is true when the runtime list is the only thing naming spaces" do
+      configured_spaces(:all)
+      assert {:ok, _applied} = Settings.update(%{"sync.spaces" => "ENG"}, @actor)
+
+      assert SpaceScope.narrowed?()
+    end
+
+    test "is false when the deployment names a space of its own" do
+      configured_spaces(["ENG"])
+      assert {:ok, _applied} = Settings.update(%{"sync.spaces" => "PROD"}, @actor)
+
+      refute SpaceScope.narrowed?()
+    end
+
+    test "is false when nobody has named anything, which is the whole site already" do
+      refute SpaceScope.narrowed?()
+    end
+  end
+
   defp configured_spaces(spaces) do
     TestConfig.put(HttpSource, spaces: spaces)
   end

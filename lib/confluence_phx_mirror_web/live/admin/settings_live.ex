@@ -31,6 +31,7 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
   alias ConfluencePhxMirror.Settings
   alias ConfluencePhxMirror.Settings.Catalogue
   alias ConfluencePhxMirror.SpaceDirectory
+  alias ConfluencePhxMirror.Sync.SpaceScope
   alias ConfluencePhxMirrorWeb.Admin.{Config, KeyField, Paging, SettingsFilter, SettingsRefusal}
   alias ConfluencePhxMirrorWeb.Skins
 
@@ -358,10 +359,24 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
       env: spec.env,
       type: spec.type,
       value: value,
-      default: Settings.default(key)
+      default: Settings.default(key),
+      warning: warning(key)
     }
     |> with_completion(spec.type, draft, value, suggestions)
   end
+
+  # The one field on this screen whose *emptying* changes what the mirror is:
+  # `[]` and `:all` are the same scope while the deployment names no space, so
+  # removing the last key here hands the mirror back to the whole site — not to
+  # no spaces at all (`docs/state-machines.md`, S8). The warning is shown only
+  # where that is true, which is where an operator can get it wrong.
+  defp warning("sync.spaces") do
+    if SpaceScope.narrowed?() do
+      "Empty this and the mirror covers the whole site again: the next run lists every space, not the ones above."
+    end
+  end
+
+  defp warning(_key), do: nil
 
   # Only a list of space keys is typed against the site's own listing; every
   # other field is a number or a checkbox the site has no opinion about.
@@ -596,6 +611,14 @@ defmodule ConfluencePhxMirrorWeb.Admin.SettingsLive do
 
       <p class="mt-0.5 text-[11px] text-base-content/70">
         Empty adds nothing · <code class="font-mono">{@field.env}</code> names the floor
+      </p>
+
+      <p
+        :if={@field.warning}
+        id={"setting-#{@field.key}-warning"}
+        class="mt-1 text-xs text-warning"
+      >
+        {@field.warning}
       </p>
     </div>
     """

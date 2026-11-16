@@ -60,6 +60,17 @@ defmodule ConfluencePhxMirror.Sync.SpaceScope do
   def added, do: Enum.map(Settings.wanted_spaces(), &Space.normalise_key/1)
 
   @doc """
+  Whether the runtime list is, on its own, the whole whitelist.
+
+  True when the deployment names no space and an administrator has named some.
+  It is the state the settings screen has to warn about: `[]` and `:all` are one
+  scope here, so emptying that list hands the mirror back to the whole site —
+  not to no spaces (`docs/state-machines.md`, S8).
+  """
+  @spec narrowed?() :: boolean()
+  def narrowed?, do: fixed() == [] and added() != []
+
+  @doc """
   Adds `key` to the runtime list.
 
   Idempotent, and never duplicates what the deployment already names: a key the

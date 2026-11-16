@@ -345,6 +345,25 @@ defmodule ConfluencePhxMirrorWeb.AdminSettingsTest do
     end
   end
 
+  # `[]` and `:all` are one scope while the deployment names no space, so
+  # emptying this field hands the mirror back to the whole site. The screen says
+  # so where it can happen — and says nothing where it cannot.
+  describe "the space scope field" do
+    test "warns that emptying it returns to the whole site", %{conn: conn} do
+      assert {:ok, _applied} = Settings.update(%{"sync.spaces" => "ENG"}, {:system, "test"})
+
+      {:ok, _view, html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+      assert html =~ "covers the whole site again"
+    end
+
+    test "says nothing when nothing is narrowed", %{conn: conn} do
+      {:ok, view, _html} = live(sign_in(conn, admin_user()), ~p"/admin/settings")
+
+      refute has_element?(view, "#setting-sync\\.spaces-warning")
+    end
+  end
+
   # A row the filter hides is rendered with `hidden` on it rather than left out:
   # that is what keeps its field in the form (see the test above).
   defp shown?(view, id) do

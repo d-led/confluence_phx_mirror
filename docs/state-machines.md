@@ -392,7 +392,8 @@ whitelist (a list of normalised keys) · widened whitelist (`CM_SPACES` ∪
   `/admin/settings` switches a narrowed mirror back to everything — the opposite
   of what the operator just did. Only the desktop tool refuses that run; a server
   starts copying the whole site. Deliberate (`wanted/0` cannot express "nothing"),
-  documented here because the direction of the surprise is a support ticket.
+  and now **warned where it can happen**: the field carries a warning whenever
+  `SpaceScope.narrowed?/0` says the runtime list is the only thing naming spaces.
 
 ---
 
@@ -687,14 +688,20 @@ this codebase actually break.
 
 ### Defect 6 — Removing the last scoped space widens the mirror (S8)
 
-*Open — needs a warning, not a semantic change.*
+*Addressed by a warning, not a semantic change.*
 
 - **Impact: high when it happens, and it is a surprise.** A narrowed server
   mirror returns to copying the whole site.
 - **Evidence:** `space_scope.ex:37-43` (`{:all, []} -> :all`), `configured/0`
   mapping `[]` to `:all`, `snapshot_worker.ex` refusing only on the desktop tool.
-- **Not fixed here:** `[]` cannot be given the meaning "nothing" without changing
-  what a deployment's configuration means. Documented; the screen should warn.
+- **What was done:** `SpaceScope.narrowed?/0` answers "is the runtime list the
+  only thing naming spaces", and the `sync.spaces` field on `/admin/settings`
+  carries a warning — *"Empty this and the mirror covers the whole site again"* —
+  whenever it is true. `[]` still means `:all`: giving it the meaning "nothing"
+  would change what a deployment's own configuration means.
+- **Tests:** `space_scope_test.exs` (`narrowed?/0`, three cases) and
+  `admin_settings_test.exs` (the warning appears where it can happen, and is
+  absent where it cannot).
 
 ---
 
