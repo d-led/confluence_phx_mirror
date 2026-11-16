@@ -3039,15 +3039,6 @@ defmodule ConfluencePhxMirror.Mirror do
     )
   end
 
-  def find_attachment(confluence_id) do
-    case Repo.one(
-           from a in Attachment, where: a.confluence_id == ^confluence_id, preload: [page: :space]
-         ) do
-      nil -> {:error, :not_found}
-      attachment -> {:ok, attachment}
-    end
-  end
-
   @doc """
   Attachments by their Confluence ids, with the page and space they hang off.
 
