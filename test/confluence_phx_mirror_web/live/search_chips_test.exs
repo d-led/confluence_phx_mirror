@@ -52,4 +52,23 @@ defmodule ConfluencePhxMirrorWeb.Live.SearchChipsTest do
     assert has_element?(view, "a[href='/search?labels=design']", "Label: architecture")
     assert has_element?(view, "a[href='/search?labels=architecture']", "Label: design")
   end
+
+  test "a ninety-day window from a link names itself", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/search?q=pipeline&updated=90d&types=page")
+
+    assert has_element?(view, "a", "Past 90 days")
+    assert has_element?(view, "a", "Type: pages")
+  end
+
+  test "a year-long window names itself", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/search?q=pipeline&updated=365d")
+
+    assert has_element?(view, "a", "Past year")
+  end
+
+  test "a value from an old or hand-written link is echoed rather than crashing", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/search?q=pipeline&sort=sideways")
+
+    assert has_element?(view, "a", "sort: sideways")
+  end
 end
