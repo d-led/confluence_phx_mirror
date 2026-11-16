@@ -100,12 +100,22 @@ fi
 # container is: without them WebKitGTK can fail to draw anything at all, and the
 # report this script waits for would never come.
 #
+# `WEBVIEW2_USER_DATA_FOLDER` is the Windows half of the same idea: WebView2
+# keeps one profile per user data folder, and a second webview created against a
+# folder the previous launch's `msedgewebview2.exe` still holds fails to be
+# created at all — "failed to create webview: WebView2 error" in the window's
+# own log, which is how the crash-screen check of this script failed on a
+# runner, once, after the launch before it. A folder of its own per launch also
+# keeps a smoke run out of the profile of the person running it. WebView2's
+# loader reads the variable; nothing else looks at it.
+#
 # One list rather than prefixing the launch line with `env …`: the display wrapper
 # is often empty, and `set -u` with an empty array is an error on the bash that
 # ships with macOS.
 launch=(
   env HOME="$home" CONFLUENCE_EXPORT_PORT="$port"
   WEBKIT_DISABLE_COMPOSITING_MODE=1 NO_AT_BRIDGE=1
+  "WEBVIEW2_USER_DATA_FOLDER=$home/webview2"
 )
 [[ ${#runner[@]} -gt 0 ]] && launch+=("${runner[@]}")
 launch+=("$window")
