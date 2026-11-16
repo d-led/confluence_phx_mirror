@@ -54,11 +54,11 @@ defmodule ConfluencePhxMirror.Mirror.Search.CqlOperatorsTest do
              "Release 2.0"
            ]
 
-    assert titles("space in (ENG, PROD)") == titles("space = ENG or space = PROD")
+    assert sorted_titles("space in (ENG, PROD)") == sorted_titles("space = ENG or space = PROD")
   end
 
   test "label IN finds content carrying any of the labels" do
-    assert titles("label in (architecture, release)") == ["Rate limiting", "Release 2.0"]
+    assert sorted_titles("label in (architecture, release)") == ["Rate limiting", "Release 2.0"]
   end
 
   test "NOT IN keeps what carries none of them" do
@@ -82,9 +82,9 @@ defmodule ConfluencePhxMirror.Mirror.Search.CqlOperatorsTest do
   test "!~ on the body keeps the pages whose text does not match" do
     assert sorted_titles(~s{text !~ "token bucket"}) == ["Gateway runbook", "Release 2.0"]
 
-    assert titles(~s{text !~ "token bucket"}) ==
-             titles(~s{space = ENG or space = PROD}) --
-               titles(~s{text ~ "token bucket"})
+    assert sorted_titles(~s{text !~ "token bucket"}) ==
+             sorted_titles(~s{space = ENG or space = PROD}) --
+               sorted_titles(~s{text ~ "token bucket"})
   end
 
   # NOT is not one more operator per field: it is the negation of whatever the
@@ -159,6 +159,23 @@ defmodule ConfluencePhxMirror.Mirror.Search.CqlOperatorsTest do
              "Rate limiting",
              "Gateway runbook"
            ]
+  end
+
+  # All three pages here carry one timestamp, which is what a bulk import gives
+  # a whole space. The order therefore has to end on something that cannot tie —
+  # otherwise a reader paging through results sees one page twice and never sees
+  # another.
+  test "a tie on the sort does not let a page be shown twice" do
+    cql = "space = ENG or space = PROD"
+    all = titles(cql, limit: 200)
+
+    paged =
+      for index <- 0..(length(all) - 1) do
+        {:ok, [result]} = Search.search(cql, limit: 1, start: index)
+        result.page.title
+      end
+
+    assert paged == all
   end
 
   # A label is one value, and the case is the site's rather than the query's —

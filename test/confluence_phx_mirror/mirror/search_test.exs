@@ -43,7 +43,7 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
   # rather than one membership test), so it is executed rather than assumed to
   # follow.
   test "ancestor IN takes several branches at once" do
-    assert titles("ancestor in (1000)") == titles("ancestor = 1000")
+    assert Enum.sort(titles("ancestor in (1000)")) == Enum.sort(titles("ancestor = 1000"))
 
     # A union is more than one page of results, so the limit is raised: the
     # screen's own limit would truncate both lists in different places and the
@@ -57,7 +57,7 @@ defmodule ConfluencePhxMirror.Mirror.SearchTest do
   # `parent in` is the direct parent only — the difference between "under this
   # page, however deep" and "one step below it".
   test "parent IN names the direct children" do
-    assert titles("parent in (1000)") == titles("parent = 1000")
+    assert Enum.sort(titles("parent in (1000)")) == Enum.sort(titles("parent = 1000"))
     assert "Getting Started" in titles("parent in (1000)")
     refute "Getting Started" in titles("parent in (1001)")
   end
