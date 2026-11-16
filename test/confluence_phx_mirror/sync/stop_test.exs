@@ -97,6 +97,35 @@ defmodule ConfluencePhxMirror.Sync.StopTest do
     assert Repo.get!(SyncRun, run.id).cancel_requested_at
   end
 
+  # An out-of-memory killer, a deploy, a stray `Process.exit/2`: none of them is
+  # a person pressing Stop, and a row that says "stopped on request" blames one.
+  test "a run whose process is killed is recorded as failed, not as a stop" do
+    :persistent_term.put({AskingSource, :test_process}, self())
+    on_exit(fn -> :persistent_term.erase({AskingSource, :test_process}) end)
+
+    run_task =
+      Task.async(fn ->
+        try do
+          Sync.run(:page, confluence_id: 1002, source: AskingSource)
+        rescue
+          error -> {:raised, Exception.message(error)}
+        end
+      end)
+
+    assert_receive {:in_comments, run_process}, 15_000
+    assert [run_id] = Runs.running()
+
+    Process.exit(run_process, :kill)
+
+    assert {:raised, message} = Task.await(run_task, 15_000)
+    assert message =~ "killed"
+
+    run = Repo.get!(SyncRun, run_id)
+    assert run.status == "failed"
+    assert run.cancel_requested_at == nil
+    assert run.error =~ "killed"
+  end
+
   test "a stop that lands while a page's details are being written leaves the page in the backlog" do
     :persistent_term.put({AskingSource, :test_process}, self())
     on_exit(fn -> :persistent_term.erase({AskingSource, :test_process}) end)

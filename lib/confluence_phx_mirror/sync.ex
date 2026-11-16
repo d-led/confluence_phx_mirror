@@ -351,15 +351,13 @@ defmodule ConfluencePhxMirror.Sync do
 
       {:DOWN, ^ref, :process, ^pid, reason} ->
         # No result message: the child was stopped on request, or died in a way
-        # it could not report. A stop is a cancellation, not a failure.
+        # it could not report. `Runs.stop/1` asks with `:shutdown`, so an exit
+        # is a request only when it says so — `:killed` is what an
+        # out-of-memory killer or a stray `Process.exit/2` sends, and `:normal`
+        # is a child that ended without a word. Recording either as "stopped on
+        # request" blames a person for a crash.
         case reason do
           :shutdown ->
-            raise Cancelled
-
-          :killed ->
-            raise Cancelled
-
-          :normal ->
             raise Cancelled
 
           # The pages run in tasks linked to the child, so a raise inside a page
@@ -368,6 +366,12 @@ defmodule ConfluencePhxMirror.Sync do
           # itself rather than as "the process exited".
           {%Cancelled{}, _stacktrace} ->
             raise Cancelled
+
+          :killed ->
+            raise "the sync was killed before it finished — it was not asked to stop"
+
+          :normal ->
+            raise "the sync process ended without saying what it did"
 
           {exception, stacktrace} when is_exception(exception) ->
             reraise(exception, stacktrace)
