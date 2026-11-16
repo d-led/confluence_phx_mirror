@@ -327,8 +327,97 @@ defmodule ConfluencePhxMirrorWeb.Admin.UpstreamLiveTest do
     end
   end
 
+  # A pass settles a space every few seconds and a site can hold a thousand of
+  # them, so the screen follows the facts instead of asking for a reload — one
+  # redraw at a time, and always at least one more after the last fact.
+  describe "a pass the operator is watching" do
+    setup do
+      prod = space_fixture(%{key: "PROD", name: "Production"})
+      prod_page = page_fixture(prod, %{confluence_id: 2001, title: "Retired Runbook"})
+
+      {:ok, prod: prod, prod_page: prod_page}
+    end
+
+    test "the first fact is drawn at once and the ones after it fold into one redraw", %{
+      conn: conn,
+      space: space,
+      absent: absent,
+      prod: prod,
+      prod_page: prod_page
+    } do
+      {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+      run = ReconcileRun.start(%{trigger: "a test"})
+
+      settle(run, space)
+      assert has_element?(view, "#absent-#{absent.id}")
+
+      # The second space settles while the redraw that followed the first is
+      # still cooling down: the screen takes the fact and waits.
+      settle(run, prod)
+      refute has_element?(view, "#absent-#{prod_page.id}")
+
+      # That cooldown then ends, and the fact it folded is drawn.
+      send(view.pid, :refresh_cooldown)
+      assert has_element?(view, "#absent-#{prod_page.id}")
+    end
+
+    test "a cooldown that ends with no fact waiting queries nothing", %{
+      conn: conn,
+      space: space,
+      absent: absent,
+      prod: prod,
+      prod_page: prod_page
+    } do
+      {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+      run = ReconcileRun.start(%{trigger: "a test"})
+
+      settle(run, space)
+      assert has_element?(view, "#absent-#{absent.id}")
+
+      # A page goes missing without the pass announcing it, so the screen has
+      # nothing to fold — and the end of the cooldown is not a reason to look.
+      Mirror.mark_absent(prod, [])
+      send(view.pid, :refresh_cooldown)
+
+      refute has_element?(view, "#absent-#{prod_page.id}")
+    end
+
+    test "a pass finishing is drawn without waiting for the cooldown", %{
+      conn: conn,
+      space: space,
+      absent: absent,
+      prod: prod,
+      prod_page: prod_page
+    } do
+      {:ok, view, _html} = live(conn, ~p"/admin/upstream")
+      run = ReconcileRun.start(%{trigger: "a test"})
+
+      settle(run, space)
+      assert has_element?(view, "#absent-#{absent.id}")
+
+      Mirror.mark_absent(prod, [])
+      record_check(%{spaces: 2, agreed: 0, listed: 1, absent: 2, asked: 2})
+
+      assert has_element?(view, "#absent-#{prod_page.id}")
+    end
+  end
+
   # The verify pass is what sets this, so the test sets it the same way rather
   # than reaching into the page row.
+  defp settle(run, space) do
+    Mirror.mark_absent(space, [])
+
+    ReconcileRun.observe(run, space, %{
+      verdict: :listed,
+      asked: 1,
+      counted: false,
+      named: 0,
+      marked: 1,
+      cleared: 0,
+      error: nil
+    })
+  end
+
   defp mark_absent(space, page) do
     Mirror.mark_absent(space, [])
     record_check(%{spaces: 1, agreed: 0, listed: 1, absent: 1, asked: 2})
