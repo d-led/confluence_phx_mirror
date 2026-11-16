@@ -225,4 +225,87 @@ defmodule ConfluencePhxMirror.Export.MarkdownTest do
       assert md =~ "a\nb"
     end
   end
+
+  # Shapes a body can hold that no page in the gallery happened to use. Each was
+  # converted already; none of it was ever looked at.
+  describe "shapes no page had asked about yet" do
+    test "a body with nothing in it exports nothing" do
+      assert Markdown.from_html("", @ctx) == ""
+    end
+
+    test "a numbered list keeps its numbers" do
+      md = Markdown.from_html("<ol><li>first</li><li>second</li></ol>", @ctx)
+
+      assert md =~ "1. first\n1. second"
+    end
+
+    test "a rule between two sections is a rule" do
+      md = Markdown.from_html("<p>above</p><hr><p>below</p>", @ctx)
+
+      assert md =~ "---"
+    end
+
+    test "a break inside a paragraph is a hard break" do
+      md = Markdown.from_html("<p>one<br>two</p>", @ctx)
+
+      assert md =~ "one  \ntwo"
+    end
+
+    test "a break between two paragraphs keeps the gap" do
+      md = Markdown.from_html("<p>above</p><br><p>below</p>", @ctx)
+
+      assert md =~ "above"
+      assert md =~ "below"
+      assert md =~ "  \n"
+    end
+
+    # Confluence's own code block names its language in the export view's
+    # parameters; a body written anywhere else names it by class, the way GitHub
+    # and every Markdown editor do.
+    test "a code block that names its language by class keeps it" do
+      md = Markdown.from_html(~s(<pre class="language-elixir">x = 1</pre>), @ctx)
+
+      assert md =~ "```elixir\nx = 1\n```"
+    end
+
+    test "a table with no rows draws no table" do
+      md = Markdown.from_html("<table></table>", @ctx)
+
+      refute md =~ "|"
+    end
+
+    # An expand the site left without its summary line still needs a heading, or
+    # the words under it look like the page's own.
+    test "an expand with no summary still gets one" do
+      md = Markdown.from_html("<details><p>inside</p></details>", @ctx)
+
+      assert md =~ "**Details**"
+      assert md =~ "inside"
+    end
+
+    test "emphasis spelled with the older tag is still emphasis" do
+      md = Markdown.from_html("<p>an <i>italic</i> word</p>", @ctx)
+
+      assert md =~ "an *italic* word"
+    end
+
+    test "a link with no words leaves nothing behind" do
+      md =
+        Markdown.from_html(
+          ~s(<p><a href="/spaces/ENG/pages/1003/macros"></a></p>),
+          @ctx
+        )
+
+      refute md =~ "]("
+    end
+
+    # A target that names nothing is not a link, but the words are still the
+    # page's: they stay as words.
+    test "a link with no address keeps its words" do
+      md = Markdown.from_html(~s(<p><a href="">the words</a></p>), @ctx)
+
+      assert md =~ "the words"
+      refute md =~ "]("
+    end
+  end
 end
