@@ -33,6 +33,10 @@ defmodule ConfluencePhxMirror.Resources do
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
+  # The last measurement, published where a reader can reach it without asking
+  # the server. See `mount/0`.
+  @mount_key {__MODULE__, :mount}
+
   @doc """
   The blob mount as last measured, with the device it lives on.
 
@@ -41,7 +45,17 @@ defmodule ConfluencePhxMirror.Resources do
   `nil` when the operating system would not say — `Device` is what asks it, and
   what each system can be asked for.
   """
-  def mount, do: GenServer.call(__MODULE__, :mount)
+  def mount do
+    # The last measurement, not the next one. Asking the server would queue the
+    # reader behind its own walk (`handle_info(:measure, …)`, which reads the
+    # whole store), and a walk of a large store on a busy machine outlives the
+    # five seconds a `GenServer.call` allows by default — which is how publishing
+    # a metric killed a sync run, three times.
+    case :persistent_term.get(@mount_key, nil) do
+      nil -> GenServer.call(__MODULE__, :mount, :infinity)
+      measured -> measured
+    end
+  end
 
   @doc "Measure the mount again now, and answer with the new numbers."
   def refresh, do: GenServer.call(__MODULE__, :refresh, :infinity)
@@ -205,17 +219,24 @@ defmodule ConfluencePhxMirror.Resources do
   @impl true
   def init(_opts) do
     :timer.send_interval(@measure_ms, self(), :measure)
-    {:ok, measure()}
+    {:ok, store(measure())}
   end
 
   @impl true
   def handle_call(:mount, _from, measured), do: {:reply, measured, measured}
 
   def handle_call(:refresh, _from, _measured) do
-    fresh = measure()
+    fresh = store(measure())
     {:reply, fresh, fresh}
   end
 
   @impl true
-  def handle_info(:measure, _measured), do: {:noreply, measure()}
+  def handle_info(:measure, _measured), do: {:noreply, store(measure())}
+
+  # One place writes what `mount/0` reads: the walk is the server's, the reading
+  # is anybody's.
+  defp store(measured) do
+    :persistent_term.put(@mount_key, measured)
+    measured
+  end
 end
