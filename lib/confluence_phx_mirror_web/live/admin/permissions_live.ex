@@ -203,10 +203,9 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
       |> Enum.reject(&taken?(&1.account_id, taken))
 
     groups =
-      Mirror.synced_group_names()
-      |> Enum.filter(&matches?(&1, term))
+      [query: term, limit: @grant_window]
+      |> Mirror.synced_group_names()
       |> Enum.reject(&taken?(&1, taken))
-      |> Enum.take(@grant_window)
 
     assign(socket, grant_people: people, grant_groups: groups)
   end
@@ -227,11 +226,6 @@ defmodule ConfluencePhxMirrorWeb.Admin.PermissionsLive do
   end
 
   defp taken?(key, taken), do: key in taken
-
-  defp matches?(_value, term) when term in [nil, ""], do: true
-
-  defp matches?(value, term),
-    do: value |> String.downcase() |> String.contains?(String.downcase(term))
 
   defp add_grant(socket, "space", type, key) do
     case Mirror.grant_space_access(socket.assigns.space, type, key, actor(socket)) do

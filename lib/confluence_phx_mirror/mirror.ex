@@ -1393,11 +1393,31 @@ defmodule ConfluencePhxMirror.Mirror do
   what the site calls it (`confluence-admins-dled`, not `confluence-admins`), so
   an empty admin panel on a synced mirror is a name that does not match, not a
   sync that never ran. This is the list that tells them apart.
+
+  `:query` matches the name case-insensitively, and `:limit` bounds the answer —
+  a site can have thousands of groups, and the screens that offer them show a
+  window rather than the whole vocabulary.
   """
-  def synced_group_names do
+  def synced_group_names(opts \\ []) do
     from(m in GroupMember, distinct: true, select: m.group_name, order_by: m.group_name)
+    |> matching_group(Keyword.get(opts, :query))
+    |> bounded(Keyword.get(opts, :limit))
     |> Repo.all()
   end
+
+  # The screen that asks for this asks on every keystroke and offers a window of
+  # answers, so both the matching and the bound belong to the database: reading
+  # every group name to filter it in a LiveView process is a slow synchronous
+  # read that grows with the site.
+  defp matching_group(query, term) when term in [nil, ""], do: query
+
+  defp matching_group(query, term) do
+    pattern = "%" <> (term |> to_string() |> String.trim() |> String.downcase()) <> "%"
+    where(query, [m], fragment("lower(?) like ?", m.group_name, ^pattern))
+  end
+
+  defp bounded(query, nil), do: query
+  defp bounded(query, count), do: limit(query, ^count)
 
   @doc """
   Whether any of `subject_keys` (a reader's e-mail and account id) belongs to
