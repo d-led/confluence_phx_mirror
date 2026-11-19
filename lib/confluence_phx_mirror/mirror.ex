@@ -1679,6 +1679,51 @@ defmodule ConfluencePhxMirror.Mirror do
 
   defp slug_of(attrs), do: Map.get(attrs, :slug) || Map.get(attrs, "slug") || ""
 
+  @doc """
+  Keeps a slide deck the mirror has read, as a page row of its own.
+
+  A deck is content of the site like a page is: it has a title, a space, a
+  version and a place in the tree, and a mirror that only links it leaves a
+  reader to open a product they may have no licence for. What the row holds is
+  the record — there is no slide document on any surface to hold as well — and
+  the page view tells a reader exactly that.
+
+  Idempotent by `confluence_id`, like every other content row, so a page read
+  twice writes the deck twice and ends in the same state.
+  """
+  @spec upsert_slide(Space.t(), integer(), map(), String.t() | nil) ::
+          {:ok, Page.t()} | {:error, Ecto.Changeset.t()}
+  def upsert_slide(%Space{} = space, confluence_id, record, url \\ nil) do
+    title = Map.get(record, "title") || "Slide deck #{confluence_id}"
+
+    upsert_page(space, %{
+      confluence_id: confluence_id,
+      type: "slide",
+      title: title,
+      slug: Page.slugify(title),
+      version_number: get_in(record, ["latestVersion", "number"]) || 1,
+      external_url: url || get_in(record, ["links", "webUi"]),
+      external_updated_at: version_time(record),
+      # A deck's record carries no body — this is not "not read yet", it is all
+      # there is — so the body stays empty on purpose and the view branches on
+      # the type rather than on a missing body.
+      body_storage: "",
+      synced_at: now()
+    })
+  end
+
+  # When the deck's version was made, as the site says it; a record without a
+  # time leaves the page saying "never", which is worse than saying nothing, so
+  # the row falls back to when this mirror read it.
+  defp version_time(record) do
+    with created when is_binary(created) <- get_in(record, ["latestVersion", "createdAt"]),
+         {:ok, time, _offset} <- DateTime.from_iso8601(created) do
+      DateTime.truncate(time, :second)
+    else
+      _unknown -> now()
+    end
+  end
+
   @doc "Stores the rendered HTML and the derived search text."
   @spec update_rendered(Page.t(), map()) :: {:ok, Page.t()} | {:error, Ecto.Changeset.t()}
   def update_rendered(page, attrs) do

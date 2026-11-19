@@ -66,7 +66,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceSlideTest do
 
     assert {:ok, _record} = HttpSource.slide_record(@deck_url)
     assert_received {:query, query}
-    assert query =~ "latestVersion { number }"
+    assert query =~ "latestVersion { number createdAt }"
   end
 
   test "the singular spelling of the address is the same deck" do

@@ -204,11 +204,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   # graph holds the deck's record and no body at all, and no export endpoint
   # returns one, so the record is not "all the mirror chose to read" — it is all
   # there is. A record that cannot be read is logged, never guessed at.
+  #
+  # What is read is also kept: a deck is content of the site like a page is, so
+  # the record is written as a page of this mirror (type `slide`) and the still
+  # links *here*. Sending a reader to Confluence is exactly what a mirror is for
+  # not doing — the reader may have no licence for the product the deck lives in.
   @impl true
-  def slide(_host, url) do
+  def slide(host, url) do
     case ConfluencePhxMirror.Confluence.HttpSource.slide_record(url) do
       {:ok, record} ->
-        {:ok, record}
+        {:ok, mirrored(host, url, record)}
 
       {:error, reason} ->
         ConfluencePhxMirror.Sync.Log.add(
@@ -218,6 +223,34 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
         )
 
         {:error, reason}
+    end
+  end
+
+  # The deck's place in the mirror. Every step is ordinary work that can fail
+  # without costing the reader the card: an unparseable address, a space that is
+  # not here — the record still draws, it just says nothing it cannot back.
+  defp mirrored(host, url, record) do
+    with {:ok, deck_id} <- deck_id(url),
+         {:ok, space} <- space_of(host),
+         {:ok, deck} <- Mirror.upsert_slide(space, deck_id, record, url) do
+      Map.put(
+        record,
+        "href",
+        ConfluencePhxMirror.Mirror.URLs.page_path(space.key, deck_id, deck.slug)
+      )
+    else
+      _unmirrored -> record
+    end
+  end
+
+  # The address a page recorded, e.g. `…/spaces/MFS/slide/43188226`.
+  defp deck_id(url) do
+    with %URI{path: path} when is_binary(path) <- URI.parse(url),
+         [id] when id != "" <-
+           Regex.run(~r{/slides?/([0-9]+)$}, path, capture: :all_but_first) do
+      {:ok, String.to_integer(id)}
+    else
+      _not_a_deck -> :error
     end
   end
 
@@ -344,6 +377,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   end
 
   defp space_of(%Page{space: %{key: _} = space}), do: {:ok, space}
+  defp space_of(%Page{space_id: nil}), do: :error
   defp space_of(%Page{space_id: id}), do: Mirror.find_space_by_id(id)
 
   defp visible_to(pages, host), do: narrow(pages, & &1, host)

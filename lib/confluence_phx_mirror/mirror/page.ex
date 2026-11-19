@@ -14,7 +14,10 @@ defmodule ConfluencePhxMirror.Mirror.Page do
 
   @type t :: %__MODULE__{}
 
-  @types ~w(page blogpost)
+  # `slide` is a deck: a Confluence content type with a record and no body. The
+  # mirror keeps it as a page row so a reader can open it here instead of being
+  # sent to a product they may have no licence for; what it holds is the record.
+  @types ~w(page blogpost slide)
   @statuses ~w(current draft archived)
 
   # `text[]` where the database has an array type, JSON text where it has not.

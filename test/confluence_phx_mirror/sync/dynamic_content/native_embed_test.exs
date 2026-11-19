@@ -254,6 +254,24 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
     refute html =~ "Version"
   end
 
+  test "a deck the mirror holds is one click away *here*, not on Confluence" do
+    StubContent.script(
+      slide:
+        {:ok,
+         %{
+           "title" => "Half-year review",
+           "latestVersion" => %{"number" => 3},
+           "href" => "/spaces/MFS/pages/43188226/half-year-review"
+         }}
+    )
+
+    html = expand(marker("native-embed:slide", @slides))
+
+    assert html =~ ~s(href="/spaces/MFS/pages/43188226/half-year-review")
+    assert html =~ "Half-year review"
+    assert html =~ "record and no slides"
+  end
+
   test "a slide deck the mirror cannot read is still linked, and says so plainly" do
     StubContent.script(slide: {:error, :not_found})
 

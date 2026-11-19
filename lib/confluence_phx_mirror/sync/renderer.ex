@@ -157,7 +157,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     breaking its own column headings over two lines.
   # 51: a still's caption carries the database's own name, because "Database in
   #     Confluence" does not say which one the fields belong to.
-  def revision, do: 51
+  # 52: a deck is kept as a page of the mirror and the still's title links there,
+  #     instead of sending a reader to a product they may have no licence for.
+  def revision, do: 52
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

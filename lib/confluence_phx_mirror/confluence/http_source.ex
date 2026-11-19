@@ -1139,7 +1139,10 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   defp graphql_slide(ari) do
-    graphql_node(ari, "... on ConfluenceSlide { title latestVersion { number } links { webUi } }")
+    graphql_node(
+      ari,
+      "... on ConfluenceSlide { title latestVersion { number createdAt } links { webUi } }"
+    )
   end
 
   # The gateway answers a query keyed by an ARI. The fragment is a literal written

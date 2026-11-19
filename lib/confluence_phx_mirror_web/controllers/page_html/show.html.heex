@@ -130,7 +130,7 @@
       <:meta>
         <.page_meta
           page={@page}
-          admin?={@admin?}
+          admin?={@admin? and @page.type != "slide"}
           resync_path={@resync_path}
           identities?={@identities?}
         >
@@ -163,14 +163,35 @@
 
     <.label_chips labels={@page.labels} class="mt-2" />
 
+    <%!-- A deck is a content type of its own: a record, a version and no body.
+    The site publishes no slide document for one, so this page is the deck's
+    record — and it is a page *here*, because a reader of a mirror may have no
+    Confluence licence at all. --%>
+    <div :if={@page.type == "slide"} class="confluence-content mt-4">
+      <figure class="mirror-figure mirror-slides">
+        <div class="mirror-slide-deck">
+          <p class="mirror-slide-deck-kind">Slides</p>
+          <p class="mirror-slide-deck-title">{@page.title}</p>
+          <p :if={@page.version_number} class="mirror-dynamic-meta">
+            Version {@page.version_number} when it was read
+          </p>
+          <p class="mirror-dynamic-notice">
+            A deck is a canvas Confluence paints in its own app, and the site publishes no
+            slide document for it — so this mirror holds the deck's record and not its slides.
+          </p>
+        </div>
+      </figure>
+    </div>
+
     <div :if={not is_nil(@page.body_export)} class="confluence-content mt-4">
       <.confluence_body html={@page.body_export} />
     </div>
 
     <%!-- A sync writes a page's row before it renders the body, so during a long
     import a page is listed and openable while its content is still on its way.
-    Saying so beats an article that looks like the page is empty. --%>
-    <div :if={is_nil(@page.body_export)} class="mt-6">
+    Saying so beats an article that looks like the page is empty. A deck never
+    gets a body, so it is not waiting for one. --%>
+    <div :if={@page.type != "slide" and is_nil(@page.body_export)} class="mt-6">
       <.empty_state
         id="body-pending"
         icon="hero-clock"

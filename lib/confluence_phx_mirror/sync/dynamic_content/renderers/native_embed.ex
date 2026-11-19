@@ -110,23 +110,35 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
 
   # A deck's card: what the site publishes, drawn as a card rather than as an
   # apology. The version is the record's own, so a reader can tell whether the
-  # copy moved with the deck.
+  # copy moved with the deck. When the deck is held here the title is the way to
+  # it — a mirror exists so a reader does not have to have a Confluence account.
   defp deck_card(record, attrs, url) do
     {"figure", [{"class", "mirror-figure mirror-slides"}],
      [
        {"div", [{"class", "mirror-slide-deck"}],
         [
           {"p", [{"class", "mirror-slide-deck-kind"}], ["Slides"]},
-          {"p", [{"class", "mirror-slide-deck-title"}], [record["title"]]},
+          deck_title(record),
           version_line(record),
           Nodes.notice(
             "A deck is a canvas Confluence paints in its own app, and the site " <>
-              "publishes no slide document for it, so the mirror cannot draw the slides. " <>
-              "The deck itself is one click away."
+              "publishes no slide document for it, so the mirror holds the deck's " <>
+              "record and no slides."
           )
         ]},
        caption(attrs, url)
      ]}
+  end
+
+  defp deck_title(%{"href" => href} = record) when is_binary(href) and href != "" do
+    {"p", [{"class", "mirror-slide-deck-title"}],
+     [
+       {"a", [{"href", href}, {"class", "mirror-dynamic-link"}], [record["title"] || "Slides"]}
+     ]}
+  end
+
+  defp deck_title(record) do
+    {"p", [{"class", "mirror-slide-deck-title"}], [record["title"] || "Slides"]}
   end
 
   defp version_line(%{"latestVersion" => %{"number" => number}}) when is_integer(number) do

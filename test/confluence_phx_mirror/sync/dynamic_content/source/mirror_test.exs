@@ -27,6 +27,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.MirrorTest do
   @site "https://acme.atlassian.net"
   @board "#{@site}/wiki/spaces/MFS/whiteboard/28344336"
   @database "#{@site}/wiki/spaces/MFS/database/29163537"
+  @deck "#{@site}/wiki/spaces/MFS/slide/43188226"
   @ari "ari:cloud:whiteboard::board/28344336"
 
   setup do
@@ -212,6 +213,68 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.MirrorTest do
 
     test "is not held when no page here carries it" do
       refute Mirror.label?(%Page{}, "test")
+    end
+  end
+
+  describe "a deck a page embeds" do
+    test "is kept as a page of this mirror, and the still links here" do
+      space = ConfluencePhxMirror.Fixtures.space_fixture()
+      stub_deck()
+
+      assert {:ok, record} = Mirror.slide(%Page{space_id: space.id}, @deck)
+
+      assert record["title"] == "Mirror check deck"
+
+      deck = ConfluencePhxMirror.Mirror.find_page_by_path(space.key, 43_188_226) |> elem(1)
+      assert deck.type == "slide"
+      assert deck.version_number == 2
+      assert deck.external_url == @deck
+
+      assert record["href"] ==
+               ConfluencePhxMirror.Mirror.URLs.page_path(space.key, 43_188_226, deck.slug)
+    end
+
+    test "is read again without being duplicated" do
+      space = ConfluencePhxMirror.Fixtures.space_fixture()
+      stub_deck()
+
+      assert {:ok, _} = Mirror.slide(%Page{space_id: space.id}, @deck)
+      assert {:ok, _} = Mirror.slide(%Page{space_id: space.id}, @deck)
+
+      assert ConfluencePhxMirror.Repo.aggregate(
+               from(p in Page, where: p.confluence_id == 43_188_226),
+               :count
+             ) == 1
+    end
+
+    test "is only a record when the mirror has nowhere to keep it" do
+      stub_deck()
+
+      assert {:ok, record} = Mirror.slide(%Page{space_id: nil}, @deck)
+      refute Map.has_key?(record, "href")
+    end
+
+    defp stub_deck do
+      stub(fn conn ->
+        cond do
+          String.contains?(conn.request_path, "/content/") ->
+            Req.Test.json(conn, %{"ari" => "ari:cloud:confluence:abc:slide/43188226"})
+
+          String.contains?(conn.request_path, "graphql") ->
+            Req.Test.json(conn, %{
+              "data" => %{
+                "node" => %{
+                  "title" => "Mirror check deck",
+                  "latestVersion" => %{"number" => 2},
+                  "links" => %{"webUi" => @deck}
+                }
+              }
+            })
+
+          true ->
+            flunk("unexpected request for #{conn.request_path}")
+        end
+      end)
     end
   end
 
