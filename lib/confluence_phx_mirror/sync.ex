@@ -313,8 +313,17 @@ defmodule ConfluencePhxMirror.Sync do
     parent = self()
     tag = make_ref()
 
-    {pid, ref} =
-      spawn_monitor(fn ->
+    # The work is *linked* to the process that asked for it. Unlinked, a run
+    # outlives the job (or the request) that started it: cancelling the job then
+    # leaves a process reading the site for hours behind a `running` row nobody
+    # can explain — and every page job that arrives meanwhile waits for or
+    # stands down from a run that has no job and no owner. The link runs both
+    # ways, so this process traps exits while the work is alive: a crash in the
+    # work has to arrive as news it can record, not as its own death.
+    previous_trap = Process.flag(:trap_exit, true)
+
+    pid =
+      spawn_link(fn ->
         # `$callers` is what the Ecto sandbox (and anything else that asks
         # "whose work is this?") reads; a spawned process has to inherit it by
         # hand, which is also what makes the child's database work legal in a
@@ -335,58 +344,87 @@ defmodule ConfluencePhxMirror.Sync do
             kind, reason -> {:caught, kind, reason, __STACKTRACE__}
           end
 
+        # Unlinked before the answer is sent: from here the caller's fate is not
+        # this process's business, and a link left standing would send it an
+        # exit it has no use for.
+        Process.unlink(parent)
         send(parent, {tag, result})
       end)
 
+    ref = Process.monitor(pid)
+
+    try do
+      receive do
+        {^tag, {:ok, report}} ->
+          report
+
+        {^tag, {:error, error, stacktrace}} ->
+          reraise error, stacktrace
+
+        {^tag, {:caught, kind, reason, stacktrace}} ->
+          :erlang.raise(kind, reason, stacktrace)
+
+        # The work died linked: no answer is coming. `:shutdown` is a request to
+        # stop and nothing else is: `:killed` is an out-of-memory killer or a
+        # stray `Process.exit/2`, and `:normal` is work that ended without a
+        # word — recording either as "stopped on request" blames a person for a
+        # crash.
+        {:EXIT, ^pid, reason} ->
+          died(reason)
+
+        # The safety net for the one window the link cannot cover: work that
+        # unlinked itself and died before answering.
+        {:DOWN, ^ref, :process, ^pid, reason} ->
+          died(reason)
+      end
+    after
+      Process.demonitor(ref, [:flush])
+      flush_exit(pid)
+      Process.flag(:trap_exit, previous_trap)
+    end
+  end
+
+  # An exit already queued while this process was trapping is a message, not a
+  # signal; by the time it is drained the link is gone, so none can follow.
+  defp flush_exit(pid) do
     receive do
-      {^tag, {:ok, report}} ->
-        Process.demonitor(ref, [:flush])
-        report
+      {:EXIT, ^pid, _reason} -> :ok
+    after
+      0 -> :ok
+    end
+  end
 
-      {^tag, {:error, error, stacktrace}} ->
-        reraise error, stacktrace
+  defp died(reason) do
+    case reason do
+      :shutdown ->
+        raise Cancelled
 
-      {^tag, {:caught, kind, reason, stacktrace}} ->
-        :erlang.raise(kind, reason, stacktrace)
+      # The pages run in tasks linked to the child, so a raise inside a page
+      # leaves the child with that exception as its exit reason — a stop that
+      # landed there, or the page's own failure, which is re-raised as itself
+      # rather than as "the process exited".
+      {%Cancelled{}, _stacktrace} ->
+        raise Cancelled
 
-      {:DOWN, ^ref, :process, ^pid, reason} ->
-        # No result message: the child was stopped on request, or died in a way
-        # it could not report. `Runs.stop/1` asks with `:shutdown`, so an exit
-        # is a request only when it says so — `:killed` is what an
-        # out-of-memory killer or a stray `Process.exit/2` sends, and `:normal`
-        # is a child that ended without a word. Recording either as "stopped on
-        # request" blames a person for a crash.
-        case reason do
-          :shutdown ->
-            raise Cancelled
+      :killed ->
+        raise "the sync was killed before it finished — it was not asked to stop"
 
-          # The pages run in tasks linked to the child, so a raise inside a page
-          # leaves the child with that exception as its exit reason — a stop
-          # that landed there, or the page's own failure, which is re-raised as
-          # itself rather than as "the process exited".
-          {%Cancelled{}, _stacktrace} ->
-            raise Cancelled
+      :normal ->
+        raise "the sync process ended without saying what it did"
 
-          :killed ->
-            raise "the sync was killed before it finished — it was not asked to stop"
+      {exception, stacktrace} when is_exception(exception) ->
+        reraise(exception, stacktrace)
 
-          :normal ->
-            raise "the sync process ended without saying what it did"
+      # An Erlang error (a bad argument to a BIF, an `:ets` miss) arrives as the
+      # reason itself with its frames. Raised as it is, it keeps both: the run's
+      # record then says what went wrong and where, instead of "the sync process
+      # exited" around a term `inspect/1` truncated.
+      {reason, stacktrace} when is_list(stacktrace) ->
+        :erlang.raise(:error, reason, stacktrace)
 
-          {exception, stacktrace} when is_exception(exception) ->
-            reraise(exception, stacktrace)
-
-          # An Erlang error (a bad argument to a BIF, an `:ets` miss) arrives as
-          # the reason itself with its frames. Raised as it is, it keeps both:
-          # the run's record then says what went wrong and where, instead of
-          # "the sync process exited" around a term `inspect/1` truncated.
-          {reason, stacktrace} when is_list(stacktrace) ->
-            :erlang.raise(:error, reason, stacktrace)
-
-          other ->
-            raise "the sync process exited: " <>
-                    inspect(other, limit: :infinity, printable_limit: :infinity)
-        end
+      other ->
+        raise "the sync process exited: " <>
+                inspect(other, limit: :infinity, printable_limit: :infinity)
     end
   end
 
@@ -476,17 +514,18 @@ defmodule ConfluencePhxMirror.Sync do
 
   @doc """
   What a job that reads one space or one page should do when a sync is already in
-  flight: wait, or stand down.
+  flight: wait.
 
-  Waiting is right against another single-space run, which will be done shortly.
-  Standing down is right against a whole-site run, which is reading that space
-  anyway — and which, on a slow site, can be in flight for hours. A hundred and
-  forty jobs snoozing through such a run is what the queue looked like after one
-  stuck snapshot.
+  A wait, always — never a stand-down. Standing down was written for a queue of a
+  hundred and forty jobs snoozing through one stuck snapshot, but it buys a tidy
+  queue with a lost edit: the webhook said a page changed, the whole-site run may
+  already have passed that page, and a cancelled job is never retried. A snooze
+  costs one row per page (the workers coalesce), and the edit is read when the
+  big run is done.
   """
-  @spec wait_or_stand_down() :: {:snooze, pos_integer()} | {:cancel, atom()}
+  @spec wait_or_stand_down() :: {:snooze, pos_integer()}
   def wait_or_stand_down do
-    if whole_site_running?(), do: {:cancel, :superseded_by_a_whole_site_run}, else: {:snooze, 30}
+    if whole_site_running?(), do: {:snooze, 60}, else: {:snooze, 30}
   end
 
   @doc """

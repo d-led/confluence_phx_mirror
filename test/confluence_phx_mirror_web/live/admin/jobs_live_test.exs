@@ -57,6 +57,30 @@ defmodule ConfluencePhxMirrorWeb.Admin.JobsLiveTest do
     assert render(view) =~ worker_name(SpaceWorker)
   end
 
+  test "stopping a job stops the sync run it is doing, not only the row", %{conn: conn, ops: ops} do
+    # The reading happens in a process the job row does not name: cancelling the
+    # row alone left it reading the site, a `running` run with no job behind it.
+    job = sync_job("MFS") |> with_state("executing")
+    run = run_of(job, "running", %{"phase" => "pages"})
+
+    assert {:ok, _job} = ConfluencePhxMirror.Jobs.cancel(job.id, {:user, ops})
+
+    assert state_of(job) == "cancelled"
+    assert Repo.get!(SyncRun, run.id).cancel_requested_at
+  end
+
+  test "a run left running by a dead node is still shown, so a person can stop it", %{conn: conn} do
+    job = sync_job("MFS") |> with_state("executing")
+    run = run_of(job, "running", %{"phase" => "pages"})
+
+    {:ok, view, _html} = live(conn, ~p"/admin/jobs")
+
+    # The page is where a leftover is *seen*: closing it on mount would hide the
+    # very row the operator came to stop.
+    assert Repo.get!(SyncRun, run.id).status == "running"
+    assert has_element?(view, "#stop-job-#{job.id}")
+  end
+
   test "a job says what it acts on and who asked, without knowing the worker by name", %{
     conn: conn
   } do

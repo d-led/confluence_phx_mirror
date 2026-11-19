@@ -26,6 +26,7 @@ defmodule ConfluencePhxMirror.Jobs do
   alias ConfluencePhxMirror.Audit
   alias ConfluencePhxMirror.Jobs.Progress
   alias ConfluencePhxMirror.Repo
+  alias ConfluencePhxMirror.Sync
   alias ConfluencePhxMirror.Sync.Log
   alias ConfluencePhxMirror.Sync.SyncRun
   alias Oban.Job
@@ -161,6 +162,8 @@ defmodule ConfluencePhxMirror.Jobs do
   end
 
   defp cancel_unfinished(job, actor) do
+    stop_run(job, actor)
+
     query = from(j in Job, where: j.id == ^job.id and j.state in ^@unfinished)
 
     case Oban.cancel_all_jobs(query) do
@@ -172,6 +175,19 @@ defmodule ConfluencePhxMirror.Jobs do
 
       {:ok, 0} ->
         {:error, :settled}
+    end
+  end
+
+  # A job that is running a sync is not only an Oban row: the reading happens in
+  # a process the row does not name. Cancelling the row alone left that process
+  # reading the site — a `running` run with no job behind it, which page jobs
+  # then queued behind or stood down from. The run is stopped through the same
+  # door the dashboard uses, so its outcome is recorded and the gate released;
+  # the row is cancelled after, so a stop means both.
+  defp stop_run(job, actor) do
+    case work_of([job.id]) |> Map.get(job.id) do
+      %SyncRun{status: "running"} = run -> Sync.cancel(run.id, actor)
+      _no_run -> :ok
     end
   end
 

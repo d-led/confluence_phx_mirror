@@ -35,14 +35,15 @@ defmodule ConfluencePhxMirror.Sync.SpaceWorkerTest do
     assert finished_entry(last_run()).metadata["trigger"] == "a webhook"
   end
 
-  test "stands down while the whole site is being read, rather than waiting its turn" do
-    # One stuck snapshot left a hundred and forty space jobs snoozing for two
-    # days: a whole-site run is reading this space anyway, so there is nothing
-    # for the job's turn to add.
+  test "waits while the whole site is being read, rather than dropping the edit" do
+    # Standing down here once kept a stuck snapshot's queue tidy, and cost the
+    # edit: the snapshot may already have passed this page, and a cancelled job
+    # is never retried. A longer snooze costs one row per page, and the workers
+    # coalesce those.
     running_snapshot()
 
     assert Sync.whole_site_running?()
-    assert Sync.wait_or_stand_down() == {:cancel, :superseded_by_a_whole_site_run}
+    assert Sync.wait_or_stand_down() == {:snooze, 60}
   end
 
   test "waits its turn when a single space is being read" do
