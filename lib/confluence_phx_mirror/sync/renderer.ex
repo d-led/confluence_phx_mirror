@@ -155,7 +155,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     deck is drawn as its card — name and version — instead of a sentence.
   # 50: a still wider than the reading column scrolls beside it, instead of
   #     breaking its own column headings over two lines.
-  def revision, do: 50
+  # 51: a still's caption carries the database's own name, because "Database in
+  #     Confluence" does not say which one the fields belong to.
+  def revision, do: 51
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

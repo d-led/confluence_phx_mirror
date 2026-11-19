@@ -179,6 +179,17 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
              "The table holds more rows than a still draws"
   end
 
+  test "a still says which database it is, since the field names are its own words" do
+    StubContent.script(database: {:ok, table()})
+
+    document = expand(marker("native-embed:database", @board)) |> Floki.parse_fragment!()
+
+    caption = document |> Floki.find("figcaption") |> Floki.text()
+    assert caption =~ "Release log"
+    assert caption =~ "in Confluence"
+    assert Floki.attribute(document, "figcaption a", "href") == [@board]
+  end
+
   test "a still wider than the column scrolls beside it instead of crushing its columns" do
     StubContent.script(database: {:ok, table()})
 

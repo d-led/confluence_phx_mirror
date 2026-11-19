@@ -163,7 +163,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   # draws, and the rest is said out loud rather than silently dropped.
   defp table_figure(%{"fields" => fields, "entries" => entries} = table, attrs, url, context) do
     {"figure", [{"class", "mirror-figure mirror-database"}],
-     [caption(attrs, url), table_node(fields, entries, context)] ++ truncation(table)}
+     [named_caption(attrs, url, Map.get(table, "title")), table_node(fields, entries, context)] ++
+       truncation(table)}
   end
 
   defp table_node(fields, entries, context) do
@@ -300,6 +301,19 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   defp caption(attrs, url) do
     {"figcaption", [{"class", "mirror-embed-source"}], [source_link(attrs, url)]}
   end
+
+  # The caption of a still names the database, because the fields are the
+  # database's own words and "Database in Confluence" would not say which one a
+  # reader is looking at. A record without a name falls back to the kind.
+  defp named_caption(_attrs, url, title) when is_binary(title) and title != "" do
+    {"figcaption", [{"class", "mirror-embed-source"}],
+     [
+       {"a", [{"href", url}, {"class", "mirror-dynamic-link"}], [title]},
+       {"span", [{"class", "mirror-dynamic-meta"}], [" in Confluence"]}
+     ]}
+  end
+
+  defp named_caption(attrs, url, _untitled), do: caption(attrs, url)
 
   defp address(attrs, url) do
     {"p", [{"class", "mirror-embed-source"}], [source_link(attrs, url)]}
