@@ -175,7 +175,8 @@ defmodule ConfluencePhxMirror.MixProject do
        app: false,
        compile: false,
        depth: 1},
-      {:swoosh, "~> 1.16"},
+      # 1.30 allows idna 8, where the punycode CPU advisory is fixed.
+      {:swoosh, "~> 1.30"},
       {:gen_smtp, "~> 1.3"},
       # Every environment but `:desktop`. The library's Makefile has no Windows
       # branch at all — no `-shared`, and it names the result `.so` — so it cannot
