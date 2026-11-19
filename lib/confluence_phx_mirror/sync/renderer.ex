@@ -142,7 +142,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 44: a page's own properties are drawn as the table its `pageproperties` macro
   #     declares, instead of staying the widget for a macro the export view does
   #     not expand.
-  def revision, do: 44
+  # 45: a slide deck names the deck it embeds instead of staying the widget for a
+  #     macro the export view does not expand.
+  def revision, do: 45
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

@@ -35,6 +35,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "labels-list" => Renderers.LabelsList,
     "livesearch" => Renderers.LiveSearch,
     "native-embed:database" => Renderers.NativeEmbed,
+    "native-embed:slide" => Renderers.NativeEmbed,
     "native-embed:whiteboard" => Renderers.NativeEmbed,
     "pageproperties" => Renderers.PageProperties,
     "pagetree" => Renderers.PageTree,
@@ -65,7 +66,10 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Registry do
     "listlabels" => "labels-list",
     "profile" => "user-profile",
     "contentbylabel" => "content-by-label",
-    "widget-connector" => "widget"
+    "widget-connector" => "widget",
+    # Confluence calls the content type `slide` in CQL and in its ARIs, and
+    # `SLIDES` in the generic-content API; a page may carry either spelling.
+    "native-embed:slides" => "native-embed:slide"
   }
 
   @doc "The renderer that draws `name`, or `:error` for a macro the mirror lacks."

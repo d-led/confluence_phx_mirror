@@ -1,6 +1,7 @@
 defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   @moduledoc """
-  *Whiteboards and Databases*: drawn when the mirror can, linked when it cannot.
+  *Whiteboards, Databases and Slides*: drawn when the mirror can, linked when it
+  cannot.
 
       <div class="mirror-macro" data-macro="native-embed:whiteboard"
            data-url="https://site/wiki/spaces/MFS/whiteboard/28344336"></div>
@@ -8,7 +9,15 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   A whiteboard's export view carries only an unknown-macro placeholder, but the
   board's document is readable over GraphQL and holds the nodes, their geometry
   and their words — so a whiteboard is drawn as a still picture of itself
-  (`Sync.Whiteboard`). A database is a live view and is only named and linked.
+  (`Sync.Whiteboard`). A database's rows are readable as the whole table but not
+  as the view a page embeds — the API exposes no view configuration — so the
+  embed is named and linked, never drawn as a table that would be somebody's
+  guess at which columns the view shows.
+
+  A slide deck is linked for the same reason, and for one more: the graph's
+  `ConfluenceSlide` node carries the deck's record and no body, so there is no
+  document to draw even if the mirror wanted to. Its record still names the
+  deck, which is what the page shows.
 
   Anything that stops the drawing — no address, a fetch that fails, a document
   version this mirror does not know, a board with nothing in it — is answered
@@ -17,16 +26,19 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
 
   @behaviour ConfluencePhxMirror.Sync.DynamicContent.Renderer
 
-  alias ConfluencePhxMirror.Sync.DynamicContent.{Context, Nodes}
+  alias ConfluencePhxMirror.Sync.DynamicContent.{Context, Nodes, Registry}
   alias ConfluencePhxMirror.Sync.Whiteboard
 
   @kinds %{
     "native-embed:database" => "Database",
+    "native-embed:slide" => "Slides",
     "native-embed:whiteboard" => "Whiteboard"
   }
 
   @impl true
   def render(attrs, %Context{} = context) do
+    attrs = canonical(attrs)
+
     case url(attrs) do
       nil ->
         [
@@ -40,6 +52,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
     end
   end
 
+  # A marker carries the spelling the page stored; the registry knows which name
+  # that is. Everything below dispatches on the canonical one.
+  defp canonical(attrs) do
+    Map.update(attrs, "macro", "", &Registry.canonical(String.downcase(&1)))
+  end
+
   # A whiteboard is drawn; anything else is named and linked.
   defp contents(%{"macro" => "native-embed:whiteboard"} = attrs, url, context) do
     case board(context, url) do
@@ -48,26 +66,39 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
     end
   end
 
-  # A database is a live view: the mirror can read its record, not its rows. So
-  # it names the database it was given instead of guessing, and says the one
-  # true thing about a view — open it where it lives.
+  # A database's rows can be read as the whole table, but the view a page embeds
+  # cannot: `/views` answers a view's id, name and type and withholds its filters,
+  # sorting and hidden columns, and `/entries` is explicitly database-wide. So the
+  # embed is named from its record and linked instead of drawn as a table that
+  # would be a guess at what the view shows.
   defp contents(%{"macro" => "native-embed:database"} = attrs, url, context) do
-    [record(context, url), address(attrs, url)]
+    [named(context, url, "Database", :database), address(attrs, url)]
+  end
+
+  # A deck is named and linked for the same reason a database is, and one more:
+  # Confluence exposes no slide document at all, so there is nothing to draw.
+  defp contents(%{"macro" => "native-embed:slide"} = attrs, url, context) do
+    [named(context, url, "Slides", :slide), address(attrs, url)]
   end
 
   defp contents(attrs, url, _context) do
     [Nodes.notice("#{kind(attrs)} — drawn in Confluence; open it there."), address(attrs, url)]
   end
 
-  defp record(context, url) do
-    case context.source.database(context.page, url) do
+  # The one word a live embed can honestly carry: its own record's title, or the
+  # plain kind when there is none to read.
+  defp named(context, url, kind, question) do
+    case lookup(context, url, question) do
       {:ok, %{"title" => title}} when is_binary(title) and title != "" ->
-        Nodes.notice("Database “#{title}” — a live view; the mirror links to it.")
+        Nodes.notice("#{kind} “#{title}” — drawn in Confluence; the mirror links to it.")
 
       _unreadable ->
-        Nodes.notice("Database — drawn in Confluence; open it there.")
+        Nodes.notice("#{kind} — drawn in Confluence; open it there.")
     end
   end
+
+  defp lookup(context, url, :database), do: context.source.database(context.page, url)
+  defp lookup(context, url, :slide), do: context.source.slide(context.page, url)
 
   defp board(context, url) do
     case context.source.whiteboard(context.page, url) do

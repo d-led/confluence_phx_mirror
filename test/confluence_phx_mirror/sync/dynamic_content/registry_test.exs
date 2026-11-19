@@ -38,6 +38,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
              "labels-list",
              "livesearch",
              "native-embed:database",
+             "native-embed:slide",
              "native-embed:whiteboard",
              "pageproperties",
              "pagetree",
@@ -71,6 +72,13 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.RegistryTest do
   test "a macro the editor spells differently is the same macro" do
     assert Registry.fetch("contentbylabel") == Registry.fetch("content-by-label")
     assert Registry.canonical("contentbylabel") == "content-by-label"
+  end
+
+  # The content type is `slide` in CQL and in ARIs, and `SLIDES` in the
+  # generic-content API, so an embed may arrive spelled either way.
+  test "both spellings of the slides embed are the same embed" do
+    assert Registry.fetch("native-embed:slides") == Registry.fetch("native-embed:slide")
+    assert Registry.canonical("native-embed:slides") == "native-embed:slide"
   end
 
   test "a macro the mirror does not know is not a registered name" do

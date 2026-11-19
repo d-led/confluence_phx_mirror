@@ -106,6 +106,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.StubContent do
   end
 
   @impl true
+  def slide(_host, url) do
+    record({:slide, url})
+    answer(:slide, {:error, :no_record})
+  end
+
+  @impl true
   def contributors(_host, space, _opts) do
     record({:contributors, space})
     answer(:contributors, {:ok, []})

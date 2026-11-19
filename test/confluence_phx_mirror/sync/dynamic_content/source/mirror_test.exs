@@ -3,11 +3,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.MirrorTest do
   The two embeds whose content the mirror has to ask the site for.
 
   A board's document and a database's record are not in this mirror's database —
-  the board is a canvas behind GraphQL and a database's rows live in the service
-  its own iframe talks to. The reader gets an apology and a link either way, so
-  the only place a reason can land is the run's log. Without that line a failed
-  read is indistinguishable from a mirror that does not draw boards at all, which
-  is exactly the reading that costs an afternoon.
+  the board is a canvas behind GraphQL, and the database's rows, though readable
+  through experimental v2 resources, are not what this read is for. The reader
+  gets an apology and a link either way, so the only place a reason can land is
+  the run's log. Without that line a failed read is indistinguishable from a
+  mirror that does not draw boards at all, which is exactly the reading that
+  costs an afternoon.
   """
 
   use ExUnit.Case, async: false

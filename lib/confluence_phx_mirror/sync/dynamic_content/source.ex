@@ -138,15 +138,30 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   @doc """
   The record behind a database the page embeds: at least its `title`.
 
-  A database is a *live view*, and this is the one place the two embeds differ.
-  A board is a document, so the mirror draws it. A database's rows belong to the
-  service its own iframe talks to, and neither the content body (empty) nor the
-  export view carries them; what is readable is the database's own record, which
-  is enough to name it properly and link it, and not enough to draw a table.
+  A database is a *live view*, and this is where the native embeds differ. A board
+  is a document, so the mirror draws it. A database's rows are readable only
+  through the experimental v2 resources (`/databases/{id}/entries` and `/fields`),
+  and never *as a view*: the API returns a view's id, name and type and
+  deliberately withholds its filters, sorting, grouping and hidden columns. What
+  this callback asks for is the record — its title — which is enough to name the
+  database properly and link it.
 
   An `{:error, reason}` means the mirror will not claim a name it does not have.
   """
   @callback database(host :: Page.t(), url :: String.t()) :: {:ok, map()} | {:error, term()}
+
+  @doc """
+  The record behind a slide deck the page embeds: at least its `title`.
+
+  A deck is the one embed with no document on any surface the mirror may read:
+  the graph's `ConfluenceSlide` node carries the deck's title, version and links
+  and no body, and there is no export endpoint that returns one. What is
+  readable is the record, which names the deck properly and links it — and that
+  is all the page claims.
+
+  An `{:error, reason}` means the mirror will not claim a name it does not have.
+  """
+  @callback slide(host :: Page.t(), url :: String.t()) :: {:ok, map()} | {:error, term()}
 
   @doc """
   The files attached to `page`, by file name.

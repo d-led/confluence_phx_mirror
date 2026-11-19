@@ -143,6 +143,27 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
     end
   end
 
+  # A deck is read exactly the way a database is, for a stronger reason: the
+  # graph holds the deck's record and no body at all, and no export endpoint
+  # returns one, so the record is not "all the mirror chose to read" — it is all
+  # there is. A record that cannot be read is logged, never guessed at.
+  @impl true
+  def slide(_host, url) do
+    case ConfluencePhxMirror.Confluence.HttpSource.slide_record(url) do
+      {:ok, record} ->
+        {:ok, record}
+
+      {:error, reason} ->
+        ConfluencePhxMirror.Sync.Log.add(
+          :warn,
+          "a slide deck could not be read: #{inspect(reason)}",
+          %{slide: url}
+        )
+
+        {:error, reason}
+    end
+  end
+
   # A contributor list is about names and counts, not about bodies: the scan is
   # one light row per page, and the audience rule decides which of those rows may
   # be counted. Past the cap the answer is `:too_large` — a count that quietly

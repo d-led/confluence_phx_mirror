@@ -1,10 +1,12 @@
 defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
   @moduledoc """
-  *Whiteboards and Databases*: a board is drawn from its document, and anything
-  the mirror cannot read is answered with an apology and a link.
+  *Whiteboards, Databases and Slides*: a board is drawn from its document, and
+  anything the mirror cannot read is answered with an apology and a link.
 
-  Confluence's export view carries an unknown-macro placeholder for both, so the
-  document (whiteboard) or the address (database) is all there is to go on.
+  Confluence's export view carries an unknown-macro placeholder for all three, so
+  the document (whiteboard) or the record (database, slides) is all there is to
+  go on. A deck has no document at all, so its record's title is the most the
+  page can honestly say.
   """
 
   use ExUnit.Case, async: true
@@ -15,6 +17,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
   @space %{key: "MFS"}
   @host %{id: 1, confluence_id: 1001, slug: "page-1001", title: "Macros Gallery", space: @space}
   @board "https://dled.atlassian.net/wiki/spaces/MFS/whiteboard/28344336"
+  @slides "https://dled.atlassian.net/wiki/spaces/MFS/slides/29163538"
 
   test "a whiteboard is drawn from its document" do
     StubContent.script(whiteboard: {:ok, document("January")})
@@ -89,6 +92,31 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
 
     assert html =~ "Database — drawn in Confluence; open it there."
     assert html =~ ~s(href="#{@board}")
+  end
+
+  test "a slide deck is named from its own record" do
+    StubContent.script(slide: {:ok, %{"title" => "Half-year review"}})
+
+    html = expand(marker("native-embed:slide", @slides))
+
+    assert html =~ "Slides “Half-year review”"
+    assert html =~ ~s(href="#{@slides}")
+    assert StubContent.questions() |> Enum.any?(&match?({:slide, @slides}, &1))
+  end
+
+  test "a slide deck the mirror cannot read is still linked, and says so plainly" do
+    StubContent.script(slide: {:error, :not_found})
+
+    html = expand(marker("native-embed:slide", @slides))
+
+    assert html =~ "Slides — drawn in Confluence; open it there."
+    assert html =~ ~s(href="#{@slides}")
+  end
+
+  test "the plural spelling of the slides embed is the same embed" do
+    StubContent.script(slide: {:ok, %{"title" => "Half-year review"}})
+
+    assert expand(marker("native-embed:slides", @slides)) =~ "Slides “Half-year review”"
   end
 
   test "an embed with no address says why it cannot be linked" do

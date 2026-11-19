@@ -890,10 +890,10 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   @doc """
   The record behind a database: its title, status and links.
 
-  A database's rows are not in this API — they live in the service its own iframe
-  talks to — and its content body is empty. What is readable is the record, and
-  reading it is what lets a page name the database it embeds rather than say
-  "this is a database" about a box with nothing in it.
+  Its rows are a different resource — `/wiki/api/v2/databases/{id}/entries`, with
+  `/fields` naming the columns — and the content body carries none of them. The
+  record is what lets a page name the database it embeds rather than say "this is
+  a database" about a box with nothing in it.
   """
   @spec database_record(String.t()) :: {:ok, map()} | {:error, term()}
   def database_record(url) when is_binary(url) do
@@ -964,17 +964,10 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   defp graphql_whiteboard(ari) do
-    query = """
-    query whiteboard($ari: ID!) {
-      node(id: $ari) {
-        ... on ConfluenceWhiteboard { body { whiteboardDocFormat { representation value } } }
-      }
-    }
-    """
-
-    with {:ok, url} <- SafeURL.resolve(origin() <> "/gateway/api/graphql", config()[:base_url]) do
-      request_json(:post, url, json: %{"query" => query, "variables" => %{"ari" => ari}})
-    end
+    graphql_node(
+      ari,
+      "... on ConfluenceWhiteboard { body { whiteboardDocFormat { representation value } } }"
+    )
   end
 
   defp whiteboard_value(%{
@@ -989,6 +982,73 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     do: {:error, {:graphql, message}}
 
   defp whiteboard_value(_payload), do: {:error, :no_whiteboard_document}
+
+  # ── Slides ───────────────────────────────────────────────────────────────
+
+  @doc """
+  The record behind a slide deck: its title and links, or why it could not be read.
+
+  A deck is the one native embed with nothing to read but its record. The graph's
+  `ConfluenceSlide` node has no body — there is no `slidesDocFormat` and no
+  export endpoint — so the best a mirror can do is name the deck and link it,
+  which is what the record is read for.
+
+  Two reads, exactly as for a board: the content record for the deck's `ari`,
+  then a query keyed by it.
+  """
+  @spec slide_record(String.t()) :: {:ok, map()} | {:error, term()}
+  def slide_record(url) when is_binary(url) do
+    with {:ok, id} <- slide_id(url),
+         {:ok, ari} <- content_ari(id),
+         {:ok, payload} <- graphql_slide(ari) do
+      slide_value(payload)
+    end
+  end
+
+  # The address the page recorded, e.g.
+  # `https://site/wiki/spaces/MFS/slides/29163538`. Confluence calls the content
+  # type `slide` in CQL and in ARIs while its generic-content API says `slides`,
+  # so both spellings of the path are read: a page written by either is the same
+  # deck.
+  defp slide_id(url) do
+    with %URI{path: path} when is_binary(path) <- URI.parse(url),
+         [id] when id != "" <- Regex.run(~r{/slides?/([0-9]+)$}, path, capture: :all_but_first) do
+      {:ok, id}
+    else
+      _not_a_slide -> {:error, {:not_a_slide, body_snippet(url)}}
+    end
+  end
+
+  defp graphql_slide(ari) do
+    graphql_node(ari, "... on ConfluenceSlide { title links { webUi } }")
+  end
+
+  # The gateway answers a query keyed by an ARI. The fragment is a literal written
+  # here; only the ARI travels — as a variable, because it came out of a page.
+  defp graphql_node(ari, fragment) do
+    query = """
+    query node($ari: ID!) {
+      node(id: $ari) {
+        #{fragment}
+      }
+    }
+    """
+
+    with {:ok, url} <- SafeURL.resolve(origin() <> "/gateway/api/graphql", config()[:base_url]) do
+      request_json(:post, url, json: %{"query" => query, "variables" => %{"ari" => ari}})
+    end
+  end
+
+  # A title is the one thing the page needs, so a node without one is refused
+  # rather than carried around and read as a nameless deck.
+  defp slide_value(%{"data" => %{"node" => %{"title" => title} = node}})
+       when is_binary(title) and title != "",
+       do: {:ok, node}
+
+  defp slide_value(%{"errors" => [%{"message" => message} | _rest]}),
+    do: {:error, {:graphql, message}}
+
+  defp slide_value(_payload), do: {:error, :no_slide_record}
 
   # The guard behind the warning above `request/4`: only a GraphQL `query` may
   # travel in a POST body, and a mutation is refused by name.
