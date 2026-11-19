@@ -47,6 +47,10 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     field :body_export, :string
     # Which renderer drew `body_export`; see `Sync.Renderer.revision/0`.
     field :render_revision, :integer, default: 0
+    # Whether the body draws something whose own version moves while the page's
+    # does not — a database's rows, a board's shapes, a deck's slides. Such a page
+    # is re-read on the live-doc floor rather than waiting for an edit.
+    field :live_embeds, :boolean, default: false
     field :body_text, :string
     field :labels, @string_list, default: []
     field :ancestors, @integer_list, default: []
@@ -103,6 +107,7 @@ defmodule ConfluencePhxMirror.Mirror.Page do
     :body_export,
     :body_text,
     :render_revision,
+    :live_embeds,
     :labels,
     :ancestors,
     :version_number,

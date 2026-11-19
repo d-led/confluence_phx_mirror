@@ -838,8 +838,9 @@ defmodule ConfluencePhxMirror.Sync do
 
     Log.add(
       :info,
-      "left live doc #{previous.title} alone: its copy is #{age}s old, and live docs " <>
-        "are read at most every #{Settings.live_doc_refresh_seconds()}s",
+      "left #{previous.title} alone: its copy is #{age}s old, and pages that move " <>
+        "without their own version are read at most every " <>
+        "#{Settings.live_doc_refresh_seconds()}s",
       confluence_id: confluence_id
     )
 
@@ -1916,18 +1917,41 @@ defmodule ConfluencePhxMirror.Sync do
       select:
         {p.confluence_id, p.version_number, p.title, p.type, not is_nil(p.body_export),
          p.deleted_at, p.deleted_reason, p.absent_since, p.subtype, p.synced_at,
-         p.render_revision}
+         p.render_revision, p.live_embeds}
     )
     |> Repo.all()
     |> Map.new(fn {id, version, title, type, rendered?, deleted_at, reason, absent_since, subtype,
-                   synced_at, render_revision} ->
+                   synced_at, render_revision, live_embeds} ->
       current? = is_nil(absent_since) and (is_nil(deleted_at) or reason == "manual")
 
-      {id, light(version, title, type, rendered?, current?, subtype, synced_at, render_revision)}
+      {id,
+       light(%{
+         version_number: version,
+         title: title,
+         type: type,
+         rendered?: rendered?,
+         current?: current?,
+         subtype: subtype,
+         live_embeds: live_embeds,
+         synced_at: synced_at,
+         render_revision: render_revision
+       })}
     end)
   end
 
-  defp light(version, title, type, rendered?, current?, subtype, synced_at, render_revision) do
+  # The few fields a change decision needs, read either from the listing query
+  # above or from a page the caller already holds.
+  defp light(%{
+         version_number: version,
+         title: title,
+         type: type,
+         rendered?: rendered?,
+         current?: current?,
+         subtype: subtype,
+         live_embeds: live_embeds,
+         synced_at: synced_at,
+         render_revision: render_revision
+       }) do
     %{
       version_number: version,
       title: title,
@@ -1935,22 +1959,26 @@ defmodule ConfluencePhxMirror.Sync do
       rendered?: rendered?,
       current?: current?,
       subtype: subtype,
+      live_embeds: live_embeds,
       synced_at: synced_at,
       render_revision: render_revision
     }
   end
 
   defp light(%Page{} = page) do
-    light(
-      page.version_number,
-      page.title,
-      page.type,
-      not is_nil(page.body_export),
-      is_nil(page.absent_since) and (is_nil(page.deleted_at) or page.deleted_reason == "manual"),
-      page.subtype,
-      page.synced_at,
-      page.render_revision
-    )
+    light(%{
+      version_number: page.version_number,
+      title: page.title,
+      type: page.type,
+      rendered?: not is_nil(page.body_export),
+      current?:
+        is_nil(page.absent_since) and
+          (is_nil(page.deleted_at) or page.deleted_reason == "manual"),
+      subtype: page.subtype,
+      live_embeds: page.live_embeds,
+      synced_at: page.synced_at,
+      render_revision: page.render_revision
+    })
   end
 
   defp light(nil), do: nil
@@ -1992,10 +2020,12 @@ defmodule ConfluencePhxMirror.Sync do
     cond do
       # A live doc is edited continuously by design, so its version moves
       # constantly and each move would be a full read, render and detail pass for
-      # a body that differs only in the typing. The mirror reads one at most
-      # every `sync.live_doc_refresh_seconds` and leaves the copy it has alone
-      # until then — which is why a live doc says how old its copy is. A forced
-      # read has already happened, so it judges the change it found.
+      # a body that differs only in the typing. A page that embeds a database, a
+      # board or a deck has the same problem from the other side: the embedded
+      # content moves and the page does not. The mirror reads both at most every
+      # `sync.live_doc_refresh_seconds` and leaves the copy it has alone until
+      # then — which is why such a page says how old its copy is. A forced read
+      # has already happened, so it judges the change it found.
       live_doc_fresh?(previous) and not force? -> :unchanged
       previous.version_number != attrs.version_number -> :updated
       previous.title != attrs.title -> :updated
@@ -2035,6 +2065,7 @@ defmodule ConfluencePhxMirror.Sync do
       author_account_id: dto.version.by.account_id,
       body_storage: dto.body.storage,
       render_revision: Renderer.revision(),
+      live_embeds: embeds?(dto.body.storage),
       ancestors: dto.ancestors,
       version_number: dto.version.number,
       version_message: dto.version.message,
@@ -2045,22 +2076,31 @@ defmodule ConfluencePhxMirror.Sync do
     }
   end
 
-  @doc """
-  Whether a live doc was read recently enough to leave alone.
+  # A page that embeds a database, a board or a deck draws content with a version
+  # of its own: somebody adds a row and the page is untouched. The flag is read
+  # from the storage the page arrived with, which is where an embed is declared.
+  defp embeds?(storage) when is_binary(storage), do: String.contains?(storage, "native-embed:")
+  defp embeds?(_storage), do: false
 
-  Only a live doc has this problem: Confluence lets several people edit one at a
-  time, so its version moves continuously and a mirror that took every move
-  would re-read, re-render and re-index a body that differs in the typing — for
-  a copy it already tells readers is a snapshot. So a live doc is read at most
-  once per `sync.live_doc_refresh_seconds`; an administrator's resync is how
-  somebody says "now".
+  @doc """
+  Whether a page was read recently enough to leave alone.
+
+  Two kinds of page move without their own version: a live doc, which several
+  people edit at once, and a page that embeds content with a version of its own —
+  a database whose rows change, a board, a deck. A mirror that took every move
+  would re-read, re-render and re-index a body for a copy it already tells readers
+  is a snapshot. So both are read at most once per
+  `sync.live_doc_refresh_seconds`; an administrator's resync is how somebody says
+  "now".
 
   Takes a page or the light row `change_of/2` works from, and answers `false`
-  for anything that is not a rendered live doc.
+  for anything that is neither a rendered live doc nor a rendered embed.
   """
   @spec live_doc_fresh?(map() | nil) :: boolean()
-  def live_doc_fresh?(%{subtype: "live", rendered?: true, synced_at: %DateTime{} = synced_at}) do
-    DateTime.diff(now(), synced_at) < Settings.live_doc_refresh_seconds()
+  def live_doc_fresh?(%{rendered?: true, synced_at: %DateTime{} = synced_at} = page) do
+    refreshed? = Map.get(page, :subtype) == "live" or Map.get(page, :live_embeds) == true
+
+    refreshed? and DateTime.diff(now(), synced_at) < Settings.live_doc_refresh_seconds()
   end
 
   def live_doc_fresh?(_page), do: false

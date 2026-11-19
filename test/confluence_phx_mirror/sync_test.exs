@@ -501,6 +501,26 @@ defmodule ConfluencePhxMirror.SyncTest do
       assert run.stats["changed"] == 1
     end
 
+    test "a page that embeds a database is left alone inside the floor" do
+      demo_snapshot!()
+      embeds(1002)
+
+      assert {:ok, run} = read_page(1002)
+
+      refute_received {:page_read, 1002}
+      assert run.stats["unchanged"] == 1
+    end
+
+    test "a page that embeds a database is read again past the floor" do
+      demo_snapshot!()
+      embeds(1002, DateTime.add(DateTime.utc_now(), -Settings.live_doc_refresh_seconds() - 1))
+
+      assert {:ok, run} = read_page(1002)
+
+      assert_received {:page_read, 1002}
+      assert run.stats["changed"] == 1
+    end
+
     test "an ordinary page is still read whenever the site says it changed" do
       demo_snapshot!()
 
@@ -525,6 +545,47 @@ defmodule ConfluencePhxMirror.SyncTest do
       Repo.update_all(from(p in Page, where: p.confluence_id == ^confluence_id),
         set: [subtype: "live", synced_at: synced_at]
       )
+    end
+
+    # A page whose body draws content with a version of its own — a database, a
+    # board, a deck. Only the flag and the read time matter to the decision.
+    defp embeds(confluence_id, synced_at \\ nil) do
+      synced_at = synced_at || DateTime.utc_now() |> DateTime.truncate(:second)
+
+      Repo.update_all(from(p in Page, where: p.confluence_id == ^confluence_id),
+        set: [live_embeds: true, synced_at: synced_at]
+      )
+    end
+  end
+
+  describe "page_attrs" do
+    test "a body that embeds content with a version of its own is marked" do
+      embed = ~s(<ac:structured-macro ac:name="native-embed:database"></ac:structured-macro>)
+
+      assert Sync.page_attrs(dto(embed))[:live_embeds]
+    end
+
+    test "an ordinary body is not marked" do
+      refute Sync.page_attrs(dto("<p>prose</p>"))[:live_embeds]
+    end
+
+    test "a source that answers no storage is not marked" do
+      refute Sync.page_attrs(dto(nil))[:live_embeds]
+    end
+
+    defp dto(storage) do
+      %{
+        id: 1,
+        type: "page",
+        status: "current",
+        title: "Mirror check",
+        body: %{storage: storage},
+        version: %{number: 1, message: "", by: %{display_name: "A", account_id: "acct"}},
+        ancestors: [],
+        url: "https://acme.test/wiki/pages/1",
+        created_at: nil,
+        updated_at: nil
+      }
     end
   end
 

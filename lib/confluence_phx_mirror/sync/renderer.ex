@@ -146,7 +146,10 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     macro the export view does not expand.
   # 46: a database is drawn as a still of its table — columns in the database's
   #     order and the first rows — instead of only being named and linked.
-  def revision, do: 46
+  # 47: a page that embeds a database, a board or a deck is re-read on the
+  #     live-doc floor, because the embedded content moves without the page's
+  #     own version.
+  def revision, do: 47
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
