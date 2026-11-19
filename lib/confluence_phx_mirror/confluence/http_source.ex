@@ -915,6 +915,122 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
     end
   end
 
+  # How many rows a still draws. A database is a scrollable screen, not a page:
+  # past a couple of dozen rows the table stops being something a reader takes
+  # in, and the link is the honest way to the rest.
+  @database_rows 20
+
+  @doc """
+  The database behind an embed, as much as a still can draw: its title, its
+  columns in the order the database keeps them, and the first rows.
+
+  Two things this deliberately is not:
+
+    * **the embedded view.** A view's filters, sorting, grouping and hidden
+      columns are not exposed by the API (`/views` answers an id, a name and a
+      type, and nothing else), and `/entries` is documented as database-wide. So
+      the still is the whole table, and it says so rather than pretending to be
+      the view somebody configured.
+    * **a way around restrictions.** A database can be restricted more narrowly
+      than the page embedding it, and the graph carries no flag for that. The v1
+      restriction record does answer for a database, so any restriction at all
+      means the rows are not read: a stored body is served to every reader of
+      the page, and guessing the audience is not this module's call.
+
+  An `{:error, {:restricted, record}}` carries the record so the page can still
+  name the database it embeds.
+  """
+  @spec database_table(String.t()) :: {:ok, map()} | {:error, term()}
+  def database_table(url) when is_binary(url) do
+    with {:ok, id} <- database_id(url),
+         {:ok, record} <- database_record(url),
+         :ok <- unrestricted(id, record),
+         {:ok, fields} <- database_fields(id),
+         {:ok, entries} <- database_entries(id) do
+      {:ok, table(record, fields, entries)}
+    end
+  end
+
+  defp table(record, fields, entries) do
+    drawn = Enum.take(entries.rows, @database_rows)
+
+    %{
+      "title" => record["title"],
+      "fields" => Enum.map(fields, &Map.take(&1, ["id", "name", "type"])),
+      "entries" => Enum.map(drawn, &Map.take(&1, ["values"])),
+      "truncated" => length(entries.rows) > @database_rows or entries.more
+    }
+  end
+
+  # Any user or group named on any operation means the database is narrower than
+  # the site — and a reader of the page may not be in that set. A record this
+  # module cannot read is refused the same way: fail closed, draw nothing.
+  defp unrestricted(id, record) do
+    with {:ok, operations} <- request_json("/rest/api/content/" <> id <> "/restriction", %{}) do
+      if restricted?(operations), do: {:error, {:restricted, record}}, else: :ok
+    end
+  end
+
+  # Only the `read` operation matters: `update` restrictions gate editing, and a
+  # stored body is read. A record in a shape this module does not know is refused
+  # the same way, because guessing is how a restricted row ends up in a body
+  # every reader of the page receives.
+  defp restricted?(%{"results" => operations}) when is_list(operations) do
+    case Enum.find(operations, &match?(%{"operation" => "read"}, &1)) do
+      nil ->
+        operations != []
+
+      %{"restrictions" => restrictions} when is_map(restrictions) ->
+        Enum.any?(["user", "group"], &named?(&1, restrictions))
+
+      _unreadable ->
+        true
+    end
+  end
+
+  defp restricted?(_unexpected), do: true
+
+  defp named?(who, restrictions) do
+    case Map.get(restrictions, who) do
+      %{"size" => size} when is_integer(size) -> size > 0
+      _unknown_shape -> true
+    end
+  end
+
+  # Every column, in the user-defined order the endpoint promises, across as
+  # many pages as it takes. A column list is short; the cursor is still followed
+  # because a still missing a column is worse than one more request.
+  defp database_fields(id) do
+    fields(origin() <> "/wiki/api/v2/databases/" <> id <> "/fields", [])
+  end
+
+  # Cursor paging for the column list: `_links.next` is the API's own path, and
+  # the next page is followed with its cursor rather than rebuilt here.
+  defp fields(url, acc) do
+    with {:ok, body} <- request_json(url, %{}) do
+      acc = acc ++ (body["results"] || [])
+
+      case get_in(body, ["_links", "next"]) do
+        next when is_binary(next) -> fields(next_url(next), acc)
+        _last_page -> {:ok, acc}
+      end
+    end
+  end
+
+  defp database_entries(id) do
+    path = origin() <> "/wiki/api/v2/databases/" <> id <> "/entries"
+
+    with {:ok, body} <- request_json(path, %{"limit" => @database_rows + 1}) do
+      {:ok, %{rows: body["results"] || [], more: get_in(body, ["meta", "hasMore"]) == true}}
+    end
+  end
+
+  # A `next` link is the API's own path; the v2 resources sit outside the REST
+  # root this module otherwise speaks to, so it is made absolute here.
+  defp next_url(next) when is_binary(next) do
+    if String.starts_with?(next, ["http://", "https://"]), do: next, else: origin() <> next
+  end
+
   # ── Whiteboards ──────────────────────────────────────────────────────────
 
   @doc """

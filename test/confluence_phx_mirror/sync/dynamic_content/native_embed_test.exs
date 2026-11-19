@@ -85,6 +85,58 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
     assert StubContent.questions() |> Enum.any?(&match?({:database, @board}, &1))
   end
 
+  test "a database is drawn as the table it holds, columns in its own order" do
+    StubContent.script(database: {:ok, table()})
+
+    html = expand(marker("native-embed:database", @board))
+
+    assert html =~ ~s(<table class="mirror-database-table">)
+    assert headers(html) == ["Item", "Done", "Who"]
+    assert html =~ "<td>First</td>"
+    assert html =~ "<td>Yes</td>"
+    assert html =~ ~s(href="#{@board}")
+    refute html =~ "open the database in Confluence for all of it"
+  end
+
+  test "a user cell stays blank, because an account id is not a name" do
+    StubContent.script(database: {:ok, table()})
+
+    html = expand(marker("native-embed:database", @board))
+
+    refute html =~ "557058"
+    refute StubContent.questions() |> Enum.any?(&match?({:person, _}, &1))
+  end
+
+  test "a table with more rows than a still draws says so" do
+    StubContent.script(database: {:ok, table(truncated: true)})
+
+    assert expand(marker("native-embed:database", @board)) =~
+             "The table holds more rows than a still draws"
+  end
+
+  test "a database whose rows may not be drawn is still named and linked" do
+    StubContent.script(
+      database:
+        {:ok, %{"title" => "Locked", "fields" => [], "entries" => [], "truncated" => false}}
+    )
+
+    html = expand(marker("native-embed:database", @board))
+
+    assert html =~ "Database “Locked”"
+    assert html =~ ~s(href="#{@board}")
+    refute html =~ "mirror-database-table"
+  end
+
+  test "an empty database is drawn with its columns and no rows" do
+    StubContent.script(database: {:ok, table(entries: [])})
+
+    html = expand(marker("native-embed:database", @board))
+
+    assert html =~ "mirror-database-table"
+    assert html =~ "<th>Item</th>"
+    refute html =~ "<td>"
+  end
+
   test "a database the mirror cannot read is still linked, and says so plainly" do
     StubContent.script(database: {:error, :not_found})
 
@@ -124,6 +176,37 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
 
     assert expand(marker("native-embed:whiteboard", nil)) =~
              "the embed names no address, so the mirror cannot link to it"
+  end
+
+  # The columns and rows the port answers for a database: one text cell, one
+  # checked box, and a user the mirror may not name.
+  defp table(options \\ []) do
+    %{
+      "title" => "Release log",
+      "fields" => [
+        %{"id" => "item", "name" => "Item", "type" => "text"},
+        %{"id" => "done", "name" => "Done", "type" => "checkbox"},
+        %{"id" => "who", "name" => "Who", "type" => "user"}
+      ],
+      "entries" =>
+        Keyword.get(options, :entries, [
+          %{
+            "values" => %{
+              "item" => %{"type" => "text", "plain" => "First"},
+              "done" => %{"type" => "checkbox", "value" => true},
+              "who" => %{"type" => "user", "value" => "557058:abc"}
+            }
+          }
+        ]),
+      "truncated" => Keyword.get(options, :truncated, false)
+    }
+  end
+
+  defp headers(html) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find("table.mirror-database-table th")
+    |> Enum.map(&Floki.text/1)
   end
 
   defp document(word) do

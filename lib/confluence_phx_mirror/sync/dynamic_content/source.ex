@@ -136,17 +136,23 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   @callback whiteboard(host :: Page.t(), url :: String.t()) :: {:ok, map()} | {:error, term()}
 
   @doc """
-  The record behind a database the page embeds: at least its `title`.
+  The database behind an embed, as much of it as a still can draw.
 
-  A database is a *live view*, and this is where the native embeds differ. A board
-  is a document, so the mirror draws it. A database's rows are readable only
-  through the experimental v2 resources (`/databases/{id}/entries` and `/fields`),
-  and never *as a view*: the API returns a view's id, name and type and
-  deliberately withholds its filters, sorting, grouping and hidden columns. What
-  this callback asks for is the record — its title — which is enough to name the
-  database properly and link it.
+  A board is a document, so the mirror draws it. A database is a table: its
+  columns are readable in the user-defined order and its rows are readable
+  through the experimental v2 resources, so a still is drawn — but never *as the
+  view* the page embeds, because the API answers a view's id, name and type and
+  withholds its filters, sorting, grouping and hidden columns.
 
-  An `{:error, reason}` means the mirror will not claim a name it does not have.
+  The map is `%{"title" =>, "fields" => [%{"id", "name", "type"}],
+  "entries" => [%{"values" => %{field_id => value}}], "truncated" => boolean}`.
+  `truncated` says the table held more rows than a still draws.
+
+  A database whose own restrictions are narrower than the page is answered with
+  its title and no columns, because its rows are not read: a stored body is
+  served to every reader of the page. An empty `"fields"` list is how this port
+  says "linked, not drawn". Any `{:error, reason}` means the mirror will not
+  claim a name or a table it does not have.
   """
   @callback database(host :: Page.t(), url :: String.t()) :: {:ok, map()} | {:error, term()}
 

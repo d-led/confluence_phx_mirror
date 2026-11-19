@@ -121,16 +121,28 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
     end
   end
 
-  # A database's rows are not in anything the mirror can read — the content body
-  # is empty and the export view carries only the embed — so what is asked for is
-  # the database's own record: its title, which is what the page can honestly
-  # say. A record that cannot be read is logged and answered with the plain
-  # notice, never with a name the mirror invented.
+  # A database's columns and rows are readable, so the page draws a still of the
+  # table — bounded, and never as the view the page embeds (a view's filters and
+  # hidden columns are not exposed). A database restricted more narrowly than the
+  # page is not read at all: the record still names it, and the reason belongs in
+  # the run's log rather than in the reader's face.
   @impl true
   def database(_host, url) do
-    case ConfluencePhxMirror.Confluence.HttpSource.database_record(url) do
-      {:ok, record} ->
-        {:ok, record}
+    case ConfluencePhxMirror.Confluence.HttpSource.database_table(url) do
+      {:ok, table} ->
+        {:ok, table}
+
+      {:error, {:restricted, record}} ->
+        ConfluencePhxMirror.Sync.Log.add(
+          :warn,
+          "a database is restricted, so its rows are not drawn",
+          %{database: url}
+        )
+
+        # An empty column list is how this port says "linked, not drawn", so the
+        # renderer needs no second flag.
+        {:ok,
+         %{"title" => record["title"], "fields" => [], "entries" => [], "truncated" => false}}
 
       {:error, reason} ->
         ConfluencePhxMirror.Sync.Log.add(

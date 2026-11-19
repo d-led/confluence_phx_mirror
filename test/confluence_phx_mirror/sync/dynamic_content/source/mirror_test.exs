@@ -38,11 +38,58 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.MirrorTest do
     :ok
   end
 
-  test "a database's record is what the page can honestly say about the box" do
-    stub(fn conn -> Req.Test.json(conn, %{"id" => "29163537", "title" => "Roadmap"}) end)
+  test "a database's table is what the page draws" do
+    stub(fn conn ->
+      cond do
+        String.contains?(conn.request_path, "/restriction") ->
+          Req.Test.json(conn, %{"results" => []})
 
-    assert {:ok, %{"title" => "Roadmap"}} = Mirror.database(%Page{}, @database)
+        String.contains?(conn.request_path, "/fields") ->
+          Req.Test.json(conn, %{"results" => [field()]})
+
+        String.contains?(conn.request_path, "/entries") ->
+          Req.Test.json(conn, %{"results" => [entry("One")], "meta" => %{"hasMore" => false}})
+
+        true ->
+          Req.Test.json(conn, %{"id" => "29163537", "title" => "Roadmap"})
+      end
+    end)
+
+    assert {:ok, table} = Mirror.database(%Page{}, @database)
+    assert table["title"] == "Roadmap"
+    assert table["fields"] == [field()]
+    assert table["entries"] == [entry("One")]
+    refute table["truncated"]
     assert warnings() == []
+  end
+
+  test "a restricted database is named, and its rows are not read" do
+    stub(fn conn ->
+      cond do
+        String.contains?(conn.request_path, "/restriction") ->
+          Req.Test.json(conn, %{
+            "results" => [
+              %{
+                "operation" => "read",
+                "restrictions" => %{"user" => %{"size" => 1}, "group" => %{"size" => 0}}
+              }
+            ]
+          })
+
+        String.contains?(conn.request_path, "/entries") or
+            String.contains?(conn.request_path, "/fields") ->
+          flunk("rows were read from a restricted database: #{conn.request_path}")
+
+        true ->
+          Req.Test.json(conn, %{"id" => "29163537", "title" => "Roadmap"})
+      end
+    end)
+
+    assert {:ok, table} = Mirror.database(%Page{}, @database)
+    assert table["title"] == "Roadmap"
+    assert table["fields"] == []
+    assert [warning] = warnings()
+    assert warning.message =~ "a database is restricted"
   end
 
   test "a record the site will not give is logged with its reason, never invented" do
@@ -83,6 +130,12 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.MirrorTest do
   defp warnings do
     for entry <- Log.entries(), entry.level == :warn, do: entry
   end
+
+  # A column and a row as the v2 resources answer them, cut down to what the
+  # port reads.
+  defp field, do: %{"id" => "f1", "name" => "Item", "type" => "text"}
+
+  defp entry(word), do: %{"values" => %{"f1" => %{"type" => "text", "plain" => word}}}
 
   # The gateway's answer, cut down to what the port reads.
   defp document do

@@ -9,10 +9,11 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   A whiteboard's export view carries only an unknown-macro placeholder, but the
   board's document is readable over GraphQL and holds the nodes, their geometry
   and their words — so a whiteboard is drawn as a still picture of itself
-  (`Sync.Whiteboard`). A database's rows are readable as the whole table but not
-  as the view a page embeds — the API exposes no view configuration — so the
-  embed is named and linked, never drawn as a table that would be somebody's
-  guess at which columns the view shows.
+  (`Sync.Whiteboard`). A database's columns and rows are readable too, so it is
+  drawn as a still of its table — bounded, and never as the view the page
+  embeds: the API withholds a view's filters, sorting, grouping and hidden
+  columns. A database restricted more narrowly than the page is not drawn at
+  all; it is named and linked.
 
   A slide deck is linked for the same reason, and for one more: the graph's
   `ConfluenceSlide` node carries the deck's record and no body, so there is no
@@ -66,13 +67,24 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
     end
   end
 
-  # A database's rows can be read as the whole table, but the view a page embeds
-  # cannot: `/views` answers a view's id, name and type and withholds its filters,
-  # sorting and hidden columns, and `/entries` is explicitly database-wide. So the
-  # embed is named from its record and linked instead of drawn as a table that
-  # would be a guess at what the view shows.
+  # A database's columns and rows are readable, so the embed is drawn as a still
+  # of the whole table. It is not the view a page embeds: the API withholds a
+  # view's filters, sorting, grouping and hidden columns, and `/entries` is
+  # database-wide. An empty column list is how the port says the rows may not be
+  # drawn — a restricted database, or one that could not be read — and then the
+  # embed is named and linked, never left as an empty table that pretends the
+  # database holds nothing.
   defp contents(%{"macro" => "native-embed:database"} = attrs, url, context) do
-    [named(context, url, "Database", :database), address(attrs, url)]
+    case lookup(context, url, :database) do
+      {:ok, %{"fields" => [_ | _]} = table} ->
+        [table_figure(table, attrs, url)]
+
+      {:ok, %{"title" => title}} when is_binary(title) and title != "" ->
+        [titled("Database", title), address(attrs, url)]
+
+      _unreadable ->
+        [plain("Database"), address(attrs, url)]
+    end
   end
 
   # A deck is named and linked for the same reason a database is, and one more:
@@ -89,13 +101,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   # plain kind when there is none to read.
   defp named(context, url, kind, question) do
     case lookup(context, url, question) do
-      {:ok, %{"title" => title}} when is_binary(title) and title != "" ->
-        Nodes.notice("#{kind} “#{title}” — drawn in Confluence; the mirror links to it.")
-
-      _unreadable ->
-        Nodes.notice("#{kind} — drawn in Confluence; open it there.")
+      {:ok, %{"title" => title}} when is_binary(title) and title != "" -> titled(kind, title)
+      _unreadable -> plain(kind)
     end
   end
+
+  defp titled(kind, title) do
+    Nodes.notice("#{kind} “#{title}” — drawn in Confluence; the mirror links to it.")
+  end
+
+  defp plain(kind), do: Nodes.notice("#{kind} — drawn in Confluence; open it there.")
 
   defp lookup(context, url, :database), do: context.source.database(context.page, url)
   defp lookup(context, url, :slide), do: context.source.slide(context.page, url)
@@ -113,6 +128,52 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
       :error -> sorry(attrs, url)
     end
   end
+
+  # A table is a still like a board is: readable at a glance, and bounded. The
+  # caption names the database and links it; the rows are the first a still
+  # draws, and the rest is said out loud rather than silently dropped.
+  defp table_figure(%{"fields" => fields, "entries" => entries} = table, attrs, url) do
+    {"figure", [{"class", "mirror-figure mirror-database"}],
+     [caption(attrs, url), table_node(fields, entries)] ++ truncation(table)}
+  end
+
+  defp table_node(fields, entries) do
+    {"table", [{"class", "mirror-database-table"}],
+     [
+       {"thead", [], [{"tr", [], Enum.map(fields, &{"th", [], [&1["name"] || ""]})}]},
+       {"tbody", [], Enum.map(entries, &row(fields, &1))}
+     ]}
+  end
+
+  defp row(fields, %{"values" => values}) do
+    {"tr", [], Enum.map(fields, fn field -> {"td", [], [cell(Map.get(values, field["id"]))]} end)}
+  end
+
+  # A user cell is left blank: the stored value is an account id, and an id in a
+  # table says nothing a reader can use. Everything else a cell carries is text or
+  # a scalar; a value in a shape this renderer does not know is left blank rather
+  # than printed as raw JSON.
+  defp cell(%{"type" => "user"}), do: ""
+  defp cell(%{"plain" => text}) when is_binary(text), do: text
+  defp cell(%{"value" => value}) when is_binary(value), do: value
+  defp cell(%{"value" => value}) when is_number(value), do: to_string(value)
+  defp cell(%{"value" => value}) when is_boolean(value), do: if(value, do: "Yes", else: "No")
+
+  defp cell(%{"value" => values}) when is_list(values),
+    do: values |> Enum.filter(&is_binary/1) |> Enum.join(", ")
+
+  defp cell(_empty), do: ""
+
+  defp truncation(%{"truncated" => true}) do
+    [
+      Nodes.notice(
+        "The table holds more rows than a still draws; " <>
+          "open the database in Confluence for all of it."
+      )
+    ]
+  end
+
+  defp truncation(_complete), do: []
 
   # A board is a canvas, and a canvas is wide: at the width of a column of prose
   # the drawing is a thumbnail and its words are unreadable. So the picture is a

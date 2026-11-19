@@ -144,7 +144,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     not expand.
   # 45: a slide deck names the deck it embeds instead of staying the widget for a
   #     macro the export view does not expand.
-  def revision, do: 45
+  # 46: a database is drawn as a still of its table — columns in the database's
+  #     order and the first rows — instead of only being named and linked.
+  def revision, do: 46
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),
