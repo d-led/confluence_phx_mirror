@@ -94,6 +94,18 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.StubContent do
   end
 
   @impl true
+  def person(_host, account_id) do
+    record({:person, account_id})
+
+    # A script may answer per account — `fn "a1" -> "Ada" end` — which is how a
+    # table with two different people in it is written down.
+    case answer(:person, nil) do
+      fun when is_function(fun, 1) -> fun.(account_id)
+      answer -> answer
+    end
+  end
+
+  @impl true
   def whiteboard(_host, url) do
     record({:whiteboard, url})
     answer(:whiteboard, {:error, :no_document})

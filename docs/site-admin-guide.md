@@ -200,6 +200,16 @@ when a sync pulls a newer snapshot.
   which is the only way a page Confluence stopped listing is noticed — has its
   own interval (`sync.reconcile_interval_seconds`), `0` by default, which leaves
   it on the *Run* button at `/admin/upstream`.
+* **Pages that move without their own version** are re-read on a floor rather
+  than on every change: a live doc (several people editing at once) and a page
+  that embeds a database, a whiteboard or a deck (the embedded content moves,
+  the page does not). *Sync → Live pages read at most every*
+  (`sync.live_doc_refresh_seconds`, `CM_LIVE_DOC_REFRESH_SECONDS`, default
+  `900`) is that floor, and a resync on the page means now. Below it, a change
+  inside an embedded database reaches the mirror on the next read at the floor;
+  Confluence's webhooks carry page events only, so a database event spawns no
+  work (the intake stores it as `ignored`) and the resync button is how you say
+  "now" in between.
 * Webhooks react to single changes within seconds — see [Webhooks](#webhooks).
 * **Pause Confluence calls** is the button beside *Sync now* on
   `/admin` (or `CM_SYNC_PAUSED` for a deployment that starts paused). It stops

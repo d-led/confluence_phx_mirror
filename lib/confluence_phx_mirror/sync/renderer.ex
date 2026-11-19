@@ -149,7 +149,9 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   # 47: a page that embeds a database, a board or a deck is re-read on the
   #     live-doc floor, because the embedded content moves without the page's
   #     own version.
-  def revision, do: 47
+  # 48: a database's select cells are their labels and its user cells are people's
+  #     names here, instead of blank cells.
+  def revision, do: 48
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

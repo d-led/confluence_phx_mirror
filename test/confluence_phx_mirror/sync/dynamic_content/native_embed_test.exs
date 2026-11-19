@@ -98,13 +98,31 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
     refute html =~ "open the database in Confluence for all of it"
   end
 
-  test "a user cell stays blank, because an account id is not a name" do
+  test "a user cell stays blank when the mirror holds no name for the account" do
     StubContent.script(database: {:ok, table()})
 
     html = expand(marker("native-embed:database", @board))
 
     refute html =~ "557058"
-    refute StubContent.questions() |> Enum.any?(&match?({:person, _}, &1))
+    assert StubContent.questions() |> Enum.any?(&match?({:person, "557058:abc"}, &1))
+  end
+
+  test "a user cell is the person's name here, not their account id" do
+    StubContent.script(database: {:ok, table()}, person: fn _account_id -> "Ada Lovelace" end)
+
+    html = expand(marker("native-embed:database", @board))
+
+    assert html =~ "<td>Ada Lovelace</td>"
+    refute html =~ "557058"
+  end
+
+  test "a select cell is the label its option carries, not the option's id" do
+    StubContent.script(database: {:ok, tagged()})
+
+    html = expand(marker("native-embed:database", @board))
+
+    assert html =~ "<td>test</td>"
+    refute html =~ "a28600c5"
   end
 
   test "a table with more rows than a still draws says so" do
@@ -207,6 +225,26 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
     |> Floki.parse_fragment!()
     |> Floki.find("table.mirror-database-table th")
     |> Enum.map(&Floki.text/1)
+  end
+
+  # A database whose only column is a select, as the v2 answers it: an option is
+  # an id and the label a reader saw.
+  defp tagged do
+    %{
+      "title" => "Release log",
+      "fields" => [%{"id" => "tag", "name" => "Tag", "type" => "select"}],
+      "entries" => [
+        %{
+          "values" => %{
+            "tag" => %{
+              "type" => "select",
+              "value" => [%{"id" => "a28600c5-3a88-486e-809c-ffcd82179d03", "label" => "test"}]
+            }
+          }
+        }
+      ],
+      "truncated" => false
+    }
   end
 
   defp document(word) do

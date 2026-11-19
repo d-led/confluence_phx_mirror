@@ -77,7 +77,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   defp contents(%{"macro" => "native-embed:database"} = attrs, url, context) do
     case lookup(context, url, :database) do
       {:ok, %{"fields" => [_ | _]} = table} ->
-        [table_figure(table, attrs, url)]
+        [table_figure(table, attrs, url, context)]
 
       {:ok, %{"title" => title}} when is_binary(title) and title != "" ->
         [titled("Database", title), address(attrs, url)]
@@ -132,37 +132,61 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   # A table is a still like a board is: readable at a glance, and bounded. The
   # caption names the database and links it; the rows are the first a still
   # draws, and the rest is said out loud rather than silently dropped.
-  defp table_figure(%{"fields" => fields, "entries" => entries} = table, attrs, url) do
+  defp table_figure(%{"fields" => fields, "entries" => entries} = table, attrs, url, context) do
     {"figure", [{"class", "mirror-figure mirror-database"}],
-     [caption(attrs, url), table_node(fields, entries)] ++ truncation(table)}
+     [caption(attrs, url), table_node(fields, entries, context)] ++ truncation(table)}
   end
 
-  defp table_node(fields, entries) do
+  defp table_node(fields, entries, context) do
     {"table", [{"class", "mirror-database-table"}],
      [
        {"thead", [], [{"tr", [], Enum.map(fields, &{"th", [], [&1["name"] || ""]})}]},
-       {"tbody", [], Enum.map(entries, &row(fields, &1))}
+       {"tbody", [], Enum.map(entries, &row(fields, &1, context))}
      ]}
   end
 
-  defp row(fields, %{"values" => values}) do
-    {"tr", [], Enum.map(fields, fn field -> {"td", [], [cell(Map.get(values, field["id"]))]} end)}
+  defp row(fields, %{"values" => values}, context) do
+    {"tr", [],
+     Enum.map(fields, fn field -> {"td", [], [cell(Map.get(values, field["id"]), context)]} end)}
   end
 
-  # A user cell is left blank: the stored value is an account id, and an id in a
-  # table says nothing a reader can use. Everything else a cell carries is text or
-  # a scalar; a value in a shape this renderer does not know is left blank rather
-  # than printed as raw JSON.
-  defp cell(%{"type" => "user"}), do: ""
-  defp cell(%{"plain" => text}) when is_binary(text), do: text
-  defp cell(%{"value" => value}) when is_binary(value), do: value
-  defp cell(%{"value" => value}) when is_number(value), do: to_string(value)
-  defp cell(%{"value" => value}) when is_boolean(value), do: if(value, do: "Yes", else: "No")
+  # A user cell stores account ids. An id is not a name a reader can use, so it is
+  # resolved through the mirror's own people; an account the mirror has never seen
+  # is left out rather than printed.
+  defp cell(%{"type" => "user", "value" => value}, context) when not is_nil(value) do
+    value
+    |> List.wrap()
+    |> Enum.map(&person_name(&1, context))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(", ")
+  end
 
-  defp cell(%{"value" => values}) when is_list(values),
-    do: values |> Enum.filter(&is_binary/1) |> Enum.join(", ")
+  defp cell(%{"plain" => text}, _context) when is_binary(text), do: text
+  defp cell(%{"value" => value}, _context) when is_binary(value), do: value
+  defp cell(%{"value" => value}, _context) when is_number(value), do: to_string(value)
 
-  defp cell(_empty), do: ""
+  defp cell(%{"value" => value}, _context) when is_boolean(value),
+    do: if(value, do: "Yes", else: "No")
+
+  # A select stores its options as `%{"id", "label"}` — the label is what the
+  # cell showed in Confluence.
+  defp cell(%{"value" => values}, _context) when is_list(values) do
+    values |> Enum.map(&label/1) |> Enum.reject(&is_nil/1) |> Enum.join(", ")
+  end
+
+  defp cell(_empty, _context), do: ""
+
+  defp person_name(%{"accountId" => account_id}, context),
+    do: context.source.person(context.page, account_id)
+
+  defp person_name(account_id, context) when is_binary(account_id),
+    do: context.source.person(context.page, account_id)
+
+  defp person_name(_unknown, _context), do: nil
+
+  defp label(%{"label" => label}) when is_binary(label), do: label
+  defp label(text) when is_binary(text), do: text
+  defp label(_unknown), do: nil
 
   defp truncation(%{"truncated" => true}) do
     [

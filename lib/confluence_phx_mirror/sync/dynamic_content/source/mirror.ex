@@ -95,6 +95,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   end
 
   @impl true
+  def person(_host, account_id) when is_binary(account_id) and account_id != "" do
+    case ConfluencePhxMirror.Mirror.find_person(account_id) do
+      %{display_name: name} when is_binary(name) and name != "" -> name
+      _unknown -> nil
+    end
+  end
+
+  def person(_host, _account_id), do: nil
+
+  @impl true
   def attachments(%Page{} = page), do: Mirror.attachments(page)
 
   # A board's document is not in this mirror's database: it is fetched from the

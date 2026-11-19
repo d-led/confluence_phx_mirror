@@ -233,9 +233,9 @@ defmodule ConfluencePhxMirror.Settings.Catalogue do
       type: :pos_integer,
       default: {:sync, :live_doc_refresh_seconds, 900},
       group: :sync,
-      label: "Live docs read at most every (seconds)",
+      label: "Live pages read at most every (seconds)",
       help:
-        "A live doc is edited continuously by design, so its version moves constantly. Reading it once per this many seconds keeps its copy honest without chasing keystrokes; a resync on the page means now.",
+        "Two kinds of page move without their own version: a live doc, which several people edit at once, and a page that embeds a database, a board or a deck, whose embedded content moves while the page does not. Reading either once per this many seconds keeps its copy honest without re-reading a body that differs only in the typing or not at all; a resync on the page means now.",
       env: "CM_LIVE_DOC_REFRESH_SECONDS",
       ui: :settings
     },

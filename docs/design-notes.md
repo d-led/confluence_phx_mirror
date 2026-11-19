@@ -553,6 +553,36 @@ existed learns the subtype when it next reads that page. For a live doc that is
 minutes; for a stable page it may be never, and it costs nothing that it is —
 the badge is the only thing missing, and "Re-read everything" fills it.
 
+## An embed is content with a version of its own
+
+A page that embeds a database, a whiteboard or a slide deck holds one short
+tag — `native-embed:database`, `native-embed:whiteboard`, `native-embed:slide` —
+and the content itself lives in a product the mirror's page pipeline never
+reads. Two consequences follow, and both are decided at sync time rather than at
+request time.
+
+*Drawing.* `Sync.DynamicContent` resolves the tag while the body is rendered, so
+what is stored in `body_export` is the thing itself: a board becomes an inline
+SVG, a database becomes a `<table>` of its fields and rows (the first 20 rows,
+with a notice when there are more), a deck becomes its title and the address of
+the deck in Confluence. Serving a page then reads stored bytes and nothing else —
+there is no request to Confluence on the read path, which is what makes the
+mirror a static export rather than a proxy. What cannot be drawn is named and
+linked instead of dropped: a restricted database, a board the token cannot read,
+a deck on a plan where slides are not available.
+
+*Freshness.* The embedded content has a version of its own and the page does
+not, so a change inside a database never bumps the page version and a
+version-driven sync would keep a stale still forever. `pages.live_embeds` is set
+from the storage the page arrives with, and a page that carries it is re-read on
+the same floor as a live doc — `sync.live_doc_refresh_seconds`, default 900 —
+through the same `change_of/2` path. An administrator's resync still means now.
+
+The still is deliberately shallow: a database's view configuration (filters,
+sorts, which columns are visible) is not part of the record the token can read,
+so the table shows every field in the order the field list gives. Saying that in
+a notice is better than pretending the still is the view.
+
 ## What the site says about itself
 
 A mirror serves somebody else's site, so the things that belong to the *site*

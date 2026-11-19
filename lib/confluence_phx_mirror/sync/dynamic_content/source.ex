@@ -170,6 +170,16 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   @callback slide(host :: Page.t(), url :: String.t()) :: {:ok, map()} | {:error, term()}
 
   @doc """
+  The name the mirror holds for an account, or `nil` when it holds none.
+
+  A database cell of kind `user` stores account ids and nothing else, and an id
+  is not a name a reader can use. The name comes from the mirror's own people,
+  which the people pass keeps current. A person the mirror has never seen is
+  answered `nil` rather than guessed — the inline identifier would name nobody.
+  """
+  @callback person(host :: Page.t(), account_id :: String.t()) :: String.t() | nil
+
+  @doc """
   The files attached to `page`, by file name.
 
   An attachment is exactly as readable as the page holding it, so a macro that

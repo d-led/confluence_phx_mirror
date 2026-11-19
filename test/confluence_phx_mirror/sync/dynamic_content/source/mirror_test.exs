@@ -9,9 +9,14 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.MirrorTest do
   the run's log. Without that line a failed read is indistinguishable from a
   mirror that does not draw boards at all, which is exactly the reading that
   costs an afternoon.
+
+  A still's *names* are the other half: a database row that holds a person is
+  drawn with the name the mirror already holds for that account, which is a read
+  of this mirror's own table — no site call, and nothing to fall back to when the
+  row is missing.
   """
 
-  use ExUnit.Case, async: false
+  use ConfluencePhxMirror.DataCase, async: false
 
   alias ConfluencePhxMirror.Confluence.HttpSource
   alias ConfluencePhxMirror.Mirror.Page
@@ -123,6 +128,25 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.MirrorTest do
     assert [warning] = warnings()
     assert warning.message =~ "a whiteboard could not be read: :not_found"
     assert warning.details == %{whiteboard: @board}
+  end
+
+  describe "a person a still names" do
+    test "is the name the mirror holds" do
+      ConfluencePhxMirror.Mirror.upsert_person(%{
+        account_id: "acc-ada",
+        display_name: "Ada Lovelace"
+      })
+
+      assert Mirror.person(%Page{}, "acc-ada") == "Ada Lovelace"
+    end
+
+    test "is unknown for an account no run has asked about" do
+      assert Mirror.person(%Page{}, "acc-nobody") == nil
+    end
+
+    test "is unknown for an empty account" do
+      assert Mirror.person(%Page{}, "") == nil
+    end
   end
 
   defp stub(fun), do: Req.Test.stub(__MODULE__, fun)
