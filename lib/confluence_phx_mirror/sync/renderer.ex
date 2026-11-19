@@ -151,7 +151,11 @@ defmodule ConfluencePhxMirror.Sync.Renderer do
   #     own version.
   # 48: a database's select cells are their labels and its user cells are people's
   #     names here, instead of blank cells.
-  def revision, do: 48
+  # 49: a still's labels and people are links into the mirror's taxonomies, and a
+  #     deck is drawn as its card — name and version — instead of a sentence.
+  # 50: a still wider than the reading column scrolls beside it, instead of
+  #     breaking its own column headings over two lines.
+  def revision, do: 50
 
   @type context :: %{
           optional(:page) => ConfluencePhxMirror.Mirror.Page.t(),

@@ -170,14 +170,36 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source do
   @callback slide(host :: Page.t(), url :: String.t()) :: {:ok, map()} | {:error, term()}
 
   @doc """
-  The name the mirror holds for an account, or `nil` when it holds none.
+  The name the site publishes for an account, or `nil` when there is none.
 
   A database cell of kind `user` stores account ids and nothing else, and an id
-  is not a name a reader can use. The name comes from the mirror's own people,
-  which the people pass keeps current. A person the mirror has never seen is
-  answered `nil` rather than guessed — the inline identifier would name nobody.
+  is not a name a reader can use. The name comes from the mirror's own people
+  first; an account no run has asked about is asked for here, once, and the
+  answer is remembered — a still that names forty people asks forty times, and
+  never twice for the same one. An id the site does not know is `nil` rather
+  than the id: the inline identifier would name nobody.
   """
   @callback person(host :: Page.t(), account_id :: String.t()) :: String.t() | nil
+
+  @doc """
+  Whether `/people/:account_id` answers here — that is, whether this mirror
+  holds a page or a group membership for the person.
+
+  A name is worth showing either way, so this is asked only where a link would
+  go: the convention is that a link the mirror writes resolves here, and a
+  person who has only ever been a cell in somebody's table has no page.
+  """
+  @callback person_page?(host :: Page.t(), account_id :: String.t()) :: boolean()
+
+  @doc """
+  Whether some page of this mirror carries `name` as a label — the one condition
+  under which a label is worth linking to `/labels/:name`.
+
+  A database's select option is a tag of its own, not a page label, so the
+  address is a taxonomy only when the two coincide: a `test` no page carries
+  would lead a reader to an empty label page.
+  """
+  @callback label?(host :: Page.t(), name :: String.t()) :: boolean()
 
   @doc """
   The files attached to `page`, by file name.

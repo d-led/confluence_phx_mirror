@@ -3409,6 +3409,65 @@ defmodule ConfluencePhxMirror.Mirror do
   def find_person(_account_id), do: nil
 
   @doc """
+  Records the name of a person the mirror has only just been told about.
+
+  A database cell names account ids, and a still cannot draw a name the mirror
+  does not hold — so the sync asks the site and writes what it heard here. The
+  write is insert-only: a row that already exists was filled by the people pass
+  and carries a face, and overwriting it with a name alone would throw the
+  picture away. `synced_at` stays empty on purpose, which is what makes the row
+  due for the next people pass — that pass is where the face comes from.
+  """
+  def remember_person_name(account_id, name)
+      when is_binary(account_id) and account_id != "" and is_binary(name) and name != "" do
+    %Person{}
+    |> Person.changeset(%{account_id: account_id, display_name: name})
+    |> Repo.insert(on_conflict: :nothing, conflict_target: [:account_id])
+
+    :ok
+  end
+
+  @doc """
+  Whether `/people/:account_id` answers for this account.
+
+  That page needs a byline on mirrored content or a group the sync read, which
+  is exactly what `find_author/1` looks for — asked here as two existence checks
+  instead, because a still can name forty people in one render and `authors/1`
+  is a grouped pass over every page. Both ways in are listed, so the two
+  functions cannot drift apart silently.
+  """
+  def person_page?(account_id) when is_binary(account_id) and account_id != "" do
+    Repo.exists?(
+      from p in Page, where: p.author_account_id == ^account_id and is_nil(p.deleted_at)
+    ) or Repo.exists?(from m in GroupMember, where: m.account_id == ^account_id)
+  end
+
+  def person_page?(_account_id), do: false
+
+  @doc """
+  Whether some page of this mirror carries `name` as a label.
+
+  A label row exists for every label a sync has seen, but a label is only worth
+  an address while a page still carries it — a label page nobody is on is a
+  dead end dressed as a taxonomy.
+  """
+  def label?(name) when is_binary(name) do
+    normalised = Label.normalise(name)
+
+    normalised != "" and
+      Repo.exists?(
+        from pl in "page_labels",
+          join: l in Label,
+          on: l.id == pl.label_id,
+          join: p in Page,
+          on: p.id == pl.page_id,
+          where: l.name == ^normalised and is_nil(p.deleted_at)
+      )
+  end
+
+  def label?(_name), do: false
+
+  @doc """
   Records what the site said about a person: their name, and where their picture
   lives.
 

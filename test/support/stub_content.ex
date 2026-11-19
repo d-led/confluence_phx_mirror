@@ -106,6 +106,26 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.StubContent do
   end
 
   @impl true
+  def person_page?(_host, account_id) do
+    record({:person_page?, account_id})
+
+    case answer(:person_page?, false) do
+      fun when is_function(fun, 1) -> fun.(account_id)
+      answer -> answer
+    end
+  end
+
+  @impl true
+  def label?(_host, name) do
+    record({:label?, name})
+
+    case answer(:label?, false) do
+      fun when is_function(fun, 1) -> fun.(name)
+      answer -> answer
+    end
+  end
+
+  @impl true
   def whiteboard(_host, url) do
     record({:whiteboard, url})
     answer(:whiteboard, {:error, :no_document})

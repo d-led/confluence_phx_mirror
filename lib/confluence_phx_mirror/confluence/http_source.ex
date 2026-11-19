@@ -1102,12 +1102,15 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   # ── Slides ───────────────────────────────────────────────────────────────
 
   @doc """
-  The record behind a slide deck: its title and links, or why it could not be read.
+  The record behind a slide deck: its title, version and links, or why it could
+  not be read.
 
-  A deck is the one native embed with nothing to read but its record. The graph's
-  `ConfluenceSlide` node has no body — there is no `slidesDocFormat` and no
-  export endpoint — so the best a mirror can do is name the deck and link it,
-  which is what the record is read for.
+  A deck is the one native embed with nothing to read but its record. A deck is a
+  canvas Confluence paints in its own app, and the graph's `ConfluenceSlide`
+  node has no body — there is no `ConfluenceSlideBody` type in the schema at all,
+  while `ConfluenceWhiteboardBody` exists — and no export endpoint returns one.
+  The version is asked for because the card says which copy a reader is looking
+  at.
 
   Two reads, exactly as for a board: the content record for the deck's `ari`,
   then a query keyed by it.
@@ -1136,7 +1139,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSource do
   end
 
   defp graphql_slide(ari) do
-    graphql_node(ari, "... on ConfluenceSlide { title links { webUi } }")
+    graphql_node(ari, "... on ConfluenceSlide { title latestVersion { number } links { webUi } }")
   end
 
   # The gateway answers a query keyed by an ARI. The fragment is a literal written

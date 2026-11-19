@@ -15,10 +15,11 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   columns. A database restricted more narrowly than the page is not drawn at
   all; it is named and linked.
 
-  A slide deck is linked for the same reason, and for one more: the graph's
-  `ConfluenceSlide` node carries the deck's record and no body, so there is no
-  document to draw even if the mirror wanted to. Its record still names the
-  deck, which is what the page shows.
+  A slide deck is a canvas Confluence paints in its own app: the graph's
+  `ConfluenceSlide` node carries the deck's title, version and links and no body,
+  and no export endpoint returns one. So a deck is drawn as its card — the name,
+  the version it was read at, the reason there is no picture, and the way to the
+  deck — instead of a sentence that claims a drawing that does not exist.
 
   Anything that stops the drawing — no address, a fetch that fails, a document
   version this mirror does not know, a board with nothing in it — is answered
@@ -87,24 +88,52 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
     end
   end
 
-  # A deck is named and linked for the same reason a database is, and one more:
-  # Confluence exposes no slide document at all, so there is nothing to draw.
+  # A deck is drawn as what the site actually publishes for it: the record. A
+  # deck is a canvas Confluence paints in its own app — the graph's
+  # `ConfluenceSlide` node has a title, a version and links and no body, and no
+  # export endpoint returns one — so the card carries the deck's name and
+  # version, says why there is no picture, and links the deck. A record that
+  # cannot be read is named and linked like a database's.
   defp contents(%{"macro" => "native-embed:slide"} = attrs, url, context) do
-    [named(context, url, "Slides", :slide), address(attrs, url)]
+    case lookup(context, url, :slide) do
+      {:ok, %{"title" => title} = record} when is_binary(title) and title != "" ->
+        [deck_card(record, attrs, url)]
+
+      _unreadable ->
+        [plain("Slides"), address(attrs, url)]
+    end
   end
 
   defp contents(attrs, url, _context) do
     [Nodes.notice("#{kind(attrs)} — drawn in Confluence; open it there."), address(attrs, url)]
   end
 
-  # The one word a live embed can honestly carry: its own record's title, or the
-  # plain kind when there is none to read.
-  defp named(context, url, kind, question) do
-    case lookup(context, url, question) do
-      {:ok, %{"title" => title}} when is_binary(title) and title != "" -> titled(kind, title)
-      _unreadable -> plain(kind)
-    end
+  # A deck's card: what the site publishes, drawn as a card rather than as an
+  # apology. The version is the record's own, so a reader can tell whether the
+  # copy moved with the deck.
+  defp deck_card(record, attrs, url) do
+    {"figure", [{"class", "mirror-figure mirror-slides"}],
+     [
+       {"div", [{"class", "mirror-slide-deck"}],
+        [
+          {"p", [{"class", "mirror-slide-deck-kind"}], ["Slides"]},
+          {"p", [{"class", "mirror-slide-deck-title"}], [record["title"]]},
+          version_line(record),
+          Nodes.notice(
+            "A deck is a canvas Confluence paints in its own app, and the site " <>
+              "publishes no slide document for it, so the mirror cannot draw the slides. " <>
+              "The deck itself is one click away."
+          )
+        ]},
+       caption(attrs, url)
+     ]}
   end
+
+  defp version_line(%{"latestVersion" => %{"number" => number}}) when is_integer(number) do
+    {"p", [{"class", "mirror-dynamic-meta"}], ["Version #{number} when it was read"]}
+  end
+
+  defp version_line(_unversioned), do: {"span", [], []}
 
   defp titled(kind, title) do
     Nodes.notice("#{kind} “#{title}” — drawn in Confluence; the mirror links to it.")
@@ -138,55 +167,73 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Renderers.NativeEmbed do
   end
 
   defp table_node(fields, entries, context) do
-    {"table", [{"class", "mirror-database-table"}],
+    {"div", [{"class", "mirror-table-scroll"}],
      [
-       {"thead", [], [{"tr", [], Enum.map(fields, &{"th", [], [&1["name"] || ""]})}]},
-       {"tbody", [], Enum.map(entries, &row(fields, &1, context))}
+       {"table", [{"class", "mirror-database-table"}],
+        [
+          {"thead", [], [{"tr", [], Enum.map(fields, &{"th", [], [&1["name"] || ""]})}]},
+          {"tbody", [], Enum.map(entries, &row(fields, &1, context))}
+        ]}
      ]}
   end
 
   defp row(fields, %{"values" => values}, context) do
     {"tr", [],
-     Enum.map(fields, fn field -> {"td", [], [cell(Map.get(values, field["id"]), context)]} end)}
+     Enum.map(fields, fn field -> {"td", [], cell(Map.get(values, field["id"]), context)} end)}
   end
 
   # A user cell stores account ids. An id is not a name a reader can use, so it is
-  # resolved through the mirror's own people; an account the mirror has never seen
-  # is left out rather than printed.
+  # resolved through the port; an account nobody can name is left out rather than
+  # printed. The name is the link the rest of the mirror writes for a person,
+  # and it is a link only where `/people/:account_id` answers.
   defp cell(%{"type" => "user", "value" => value}, context) when not is_nil(value) do
     value
     |> List.wrap()
-    |> Enum.map(&person_name(&1, context))
+    |> Enum.map(&person_node(&1, context))
     |> Enum.reject(&is_nil/1)
-    |> Enum.join(", ")
+    |> Enum.intersperse(", ")
   end
 
-  defp cell(%{"plain" => text}, _context) when is_binary(text), do: text
-  defp cell(%{"value" => value}, _context) when is_binary(value), do: value
-  defp cell(%{"value" => value}, _context) when is_number(value), do: to_string(value)
+  defp cell(%{"plain" => text}, _context) when is_binary(text), do: [text]
+  defp cell(%{"value" => value}, _context) when is_binary(value), do: [value]
+  defp cell(%{"value" => value}, _context) when is_number(value), do: [to_string(value)]
 
   defp cell(%{"value" => value}, _context) when is_boolean(value),
-    do: if(value, do: "Yes", else: "No")
+    do: [if(value, do: "Yes", else: "No")]
 
   # A select stores its options as `%{"id", "label"}` — the label is what the
-  # cell showed in Confluence.
-  defp cell(%{"value" => values}, _context) when is_list(values) do
-    values |> Enum.map(&label/1) |> Enum.reject(&is_nil/1) |> Enum.join(", ")
+  # cell showed in Confluence, and it is a link when pages here carry it.
+  defp cell(%{"value" => values}, context) when is_list(values) do
+    values
+    |> Enum.map(&label_node(&1, context))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.intersperse(", ")
   end
 
-  defp cell(_empty, _context), do: ""
+  defp cell(_empty, _context), do: []
 
-  defp person_name(%{"accountId" => account_id}, context),
-    do: context.source.person(context.page, account_id)
+  defp person_node(account, context) do
+    id = account_id(account)
 
-  defp person_name(account_id, context) when is_binary(account_id),
-    do: context.source.person(context.page, account_id)
+    with true <- is_binary(id) and id != "",
+         name when is_binary(name) <- context.source.person(context.page, id) do
+      Nodes.person_name(name, if(context.source.person_page?(context.page, id), do: id))
+    else
+      _unknown -> nil
+    end
+  end
 
-  defp person_name(_unknown, _context), do: nil
+  defp account_id(%{"accountId" => id}) when is_binary(id), do: id
+  defp account_id(id) when is_binary(id), do: id
+  defp account_id(_unknown), do: nil
 
-  defp label(%{"label" => label}) when is_binary(label), do: label
-  defp label(text) when is_binary(text), do: text
-  defp label(_unknown), do: nil
+  defp label_node(%{"label" => label}, context), do: label_node(label, context)
+
+  defp label_node(label, context) when is_binary(label) and label != "" do
+    if context.source.label?(context.page, label), do: Nodes.label_link(label), else: label
+  end
+
+  defp label_node(_unknown, _context), do: nil
 
   defp truncation(%{"truncated" => true}) do
     [

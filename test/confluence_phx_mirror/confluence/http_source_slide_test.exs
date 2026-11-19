@@ -48,7 +48,25 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceSlideTest do
       end
     end)
 
-    assert {:ok, %{"title" => "Half-year review"}} = HttpSource.slide_record(@deck_url)
+    assert {:ok, %{"title" => "Half-year review", "latestVersion" => %{"number" => 4}}} =
+             HttpSource.slide_record(@deck_url)
+  end
+
+  test "the record's version is asked for, because the card says which copy a reader has" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      if String.contains?(conn.request_path, "/content/") do
+        Req.Test.json(conn, %{"ari" => @ari})
+      else
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        %{"query" => query} = JSON.decode!(body)
+        send(self(), {:query, query})
+        Req.Test.json(conn, %{"data" => %{"node" => deck_record()}})
+      end
+    end)
+
+    assert {:ok, _record} = HttpSource.slide_record(@deck_url)
+    assert_received {:query, query}
+    assert query =~ "latestVersion { number }"
   end
 
   test "the singular spelling of the address is the same deck" do
@@ -117,6 +135,7 @@ defmodule ConfluencePhxMirror.Confluence.HttpSourceSlideTest do
   defp deck_record do
     %{
       "title" => "Half-year review",
+      "latestVersion" => %{"number" => 4},
       "links" => %{"webUi" => @deck_url}
     }
   end

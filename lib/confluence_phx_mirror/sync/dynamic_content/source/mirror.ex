@@ -98,11 +98,46 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.Mirror do
   def person(_host, account_id) when is_binary(account_id) and account_id != "" do
     case ConfluencePhxMirror.Mirror.find_person(account_id) do
       %{display_name: name} when is_binary(name) and name != "" -> name
-      _unknown -> nil
+      _unknown -> learn_name(account_id)
     end
   end
 
   def person(_host, _account_id), do: nil
+
+  # The still names people the mirror has never had a reason to look at — a
+  # database cell is not a byline, so the people pass does not visit it. One
+  # read of the site answers the name, and the row it writes is what makes every
+  # later render local. `user_status/2` rather than `person/2` on purpose: the
+  # face is a download, and a still asks only for the words. The row keeps
+  # `synced_at` empty, so the next people pass gives it the face.
+  defp learn_name(account_id) do
+    case ConfluencePhxMirror.Confluence.HttpSource.user_status(account_id, []) do
+      {:ok, %{display_name: name}} when is_binary(name) and name != "" ->
+        ConfluencePhxMirror.Mirror.remember_person_name(account_id, name)
+        name
+
+      {:ok, _nameless} ->
+        nil
+
+      {:error, :not_found} ->
+        nil
+
+      {:error, reason} ->
+        ConfluencePhxMirror.Sync.Log.add(
+          :warn,
+          "a person's name could not be read: #{inspect(reason)}",
+          %{account_id: account_id}
+        )
+
+        nil
+    end
+  end
+
+  @impl true
+  def person_page?(_host, account_id), do: Mirror.person_page?(account_id)
+
+  @impl true
+  def label?(_host, name), do: Mirror.label?(name)
 
   @impl true
   def attachments(%Page{} = page), do: Mirror.attachments(page)

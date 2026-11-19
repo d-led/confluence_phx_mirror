@@ -1015,6 +1015,74 @@ html[data-variant="dark"] #theme-menu a[href="/theme/dark"]::after {
   height: auto;
 }
 
+/* A database's still is a table in a page body, so it takes the borders,
+   padding and header the stylesheet already gives every table there — a still
+   and a table an author wrote should look like one thing. What the still adds
+   is the two cells that are names rather than words: they are links like every
+   other link in a body, and a link in a cell does not need an underline to be
+   recognised. */
+.confluence-content .mirror-table-scroll {
+  overflow-x: auto;
+}
+
+/* A still is wider than a column of prose as soon as one cell holds two names,
+   and a table that negotiates its own widths answers by breaking the short
+   columns — `Ta` over `g`. The header keeps its words whole and the table
+   scrolls, which is what the reader would do with a wide table anyway. */
+.confluence-content .mirror-database-table th {
+  white-space: nowrap;
+}
+
+/* A body wraps anywhere on purpose — a paragraph holding an address must not
+   push the page sideways — and that is wrong in a cell, where it breaks `test`
+   into `tes` and `t`. A cell keeps its words whole; the table scrolls when a
+   value is wider than the column. */
+.confluence-content .mirror-database-table {
+  overflow-wrap: normal;
+}
+
+.confluence-content .mirror-database-table td a {
+  text-decoration: none;
+}
+
+.confluence-content .mirror-database-table td a:hover,
+.confluence-content .mirror-database-table td a:focus-visible {
+  text-decoration: underline;
+}
+
+/* A deck is the one embed with no picture to draw, so its card is the drawing:
+   the deck's name, the version it was read at, and what the mirror cannot do.
+   It is a panel rather than a sentence so the page does not read as a defect. */
+.confluence-content .mirror-slide-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: 0.75rem;
+  background: color-mix(in oklab, var(--color-base-200) 45%, transparent);
+}
+
+.confluence-content .mirror-slide-deck-kind {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+.confluence-content .mirror-slide-deck-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.confluence-content .mirror-slide-deck .mirror-dynamic-meta,
+.confluence-content .mirror-slide-deck .mirror-dynamic-notice {
+  margin: 0;
+}
+
 /* The viewer the picture opens into; `assets/js/whiteboard.js` fills it. */
 .whiteboard-viewer {
   position: fixed;

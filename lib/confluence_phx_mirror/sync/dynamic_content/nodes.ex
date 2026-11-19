@@ -80,6 +80,17 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Nodes do
 
   def person_name(name, _account_id), do: {"span", [], [name]}
 
+  @doc """
+  A label, and the way to everything carrying it here.
+
+  `/labels/:name` is a taxonomy page of the mirror, so a label that some page
+  here carries is a link wherever it is drawn — the labels list and a database's
+  select cell spell it the same way.
+  """
+  def label_link(name) do
+    {"a", [{"href", URLs.label_path(name)}, {"class", "mirror-dynamic-link"}], [name]}
+  end
+
   defp written(1), do: "1 page"
   defp written(count), do: "#{count} pages"
 
@@ -124,10 +135,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Nodes do
     end
   end
 
-  defp label_item(name) do
-    {"li", [],
-     [{"a", [{"href", URLs.label_path(name)}, {"class", "mirror-dynamic-link"}], [name]}]}
-  end
+  defp label_item(name), do: {"li", [], [label_link(name)]}
 
   @doc "The way from a profile to everything else that person wrote, in the mirror."
   def person_link(name, account_id) do

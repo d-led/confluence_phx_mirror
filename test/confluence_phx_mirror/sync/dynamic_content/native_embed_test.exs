@@ -98,22 +98,51 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
     refute html =~ "open the database in Confluence for all of it"
   end
 
-  test "a user cell stays blank when the mirror holds no name for the account" do
+  test "a user cell stays blank when nobody can name the account" do
     StubContent.script(database: {:ok, table()})
 
     html = expand(marker("native-embed:database", @board))
 
     refute html =~ "557058"
+    assert cell_text(html, "Who") == ""
     assert StubContent.questions() |> Enum.any?(&match?({:person, "557058:abc"}, &1))
   end
 
-  test "a user cell is the person's name here, not their account id" do
+  test "a user cell names everybody in it, not only the first" do
+    StubContent.script(
+      database: {:ok, table(who: ["557058:abc", "5f057cbe0b38b10022628d68"])},
+      person: fn
+        "557058:abc" -> "Ada Lovelace"
+        "5f057cbe0b38b10022628d68" -> "Grace Hopper"
+      end
+    )
+
+    html = expand(marker("native-embed:database", @board))
+
+    assert cell_text(html, "Who") == "Ada Lovelace, Grace Hopper"
+    refute html =~ "5f057cbe"
+  end
+
+  test "a person this mirror holds a page for is a link to it" do
+    StubContent.script(
+      database: {:ok, table()},
+      person: fn _account_id -> "Ada Lovelace" end,
+      person_page?: true
+    )
+
+    html = expand(marker("native-embed:database", @board))
+
+    assert html =~ ~s(href="/people/557058%3Aabc")
+    assert html =~ "Ada Lovelace"
+  end
+
+  test "a person with no page here is a name, not a link to nowhere" do
     StubContent.script(database: {:ok, table()}, person: fn _account_id -> "Ada Lovelace" end)
 
     html = expand(marker("native-embed:database", @board))
 
-    assert html =~ "<td>Ada Lovelace</td>"
-    refute html =~ "557058"
+    assert cell_text(html, "Who") == "Ada Lovelace"
+    refute html =~ "/people/"
   end
 
   test "a select cell is the label its option carries, not the option's id" do
@@ -121,8 +150,26 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
 
     html = expand(marker("native-embed:database", @board))
 
-    assert html =~ "<td>test</td>"
+    assert cell_text(html, "Tag") == "test"
     refute html =~ "a28600c5"
+  end
+
+  test "a label some page here carries is a link into the taxonomy" do
+    StubContent.script(database: {:ok, tagged()}, label?: true)
+
+    html = expand(marker("native-embed:database", @board))
+
+    assert html =~ ~s(href="/labels/test")
+    assert StubContent.questions() |> Enum.any?(&match?({:label?, "test"}, &1))
+  end
+
+  test "a tag no page here carries is a word, because its page would be empty" do
+    StubContent.script(database: {:ok, tagged()})
+
+    html = expand(marker("native-embed:database", @board))
+
+    assert cell_text(html, "Tag") == "test"
+    refute html =~ "/labels/"
   end
 
   test "a table with more rows than a still draws says so" do
@@ -130,6 +177,14 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
 
     assert expand(marker("native-embed:database", @board)) =~
              "The table holds more rows than a still draws"
+  end
+
+  test "a still wider than the column scrolls beside it instead of crushing its columns" do
+    StubContent.script(database: {:ok, table()})
+
+    document = expand(marker("native-embed:database", @board)) |> Floki.parse_fragment!()
+
+    assert Floki.find(document, "div.mirror-table-scroll table.mirror-database-table") != []
   end
 
   test "a database whose rows may not be drawn is still named and linked" do
@@ -164,14 +219,28 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
     assert html =~ ~s(href="#{@board}")
   end
 
-  test "a slide deck is named from its own record" do
+  test "a slide deck is drawn as its card, not claimed as a drawing" do
+    StubContent.script(
+      slide: {:ok, %{"title" => "Half-year review", "latestVersion" => %{"number" => 4}}}
+    )
+
+    html = expand(marker("native-embed:slide", @slides))
+
+    assert html =~ ~s(class="mirror-slide-deck-title")
+    assert html =~ "Half-year review"
+    assert html =~ "Version 4 when it was read"
+    assert html =~ ~s(href="#{@slides}")
+    assert html =~ "publishes no slide document"
+    assert StubContent.questions() |> Enum.any?(&match?({:slide, @slides}, &1))
+  end
+
+  test "a deck read before any version is known still carries its name" do
     StubContent.script(slide: {:ok, %{"title" => "Half-year review"}})
 
     html = expand(marker("native-embed:slide", @slides))
 
-    assert html =~ "Slides “Half-year review”"
-    assert html =~ ~s(href="#{@slides}")
-    assert StubContent.questions() |> Enum.any?(&match?({:slide, @slides}, &1))
+    assert html =~ "Half-year review"
+    refute html =~ "Version"
   end
 
   test "a slide deck the mirror cannot read is still linked, and says so plainly" do
@@ -186,7 +255,7 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
   test "the plural spelling of the slides embed is the same embed" do
     StubContent.script(slide: {:ok, %{"title" => "Half-year review"}})
 
-    assert expand(marker("native-embed:slides", @slides)) =~ "Slides “Half-year review”"
+    assert expand(marker("native-embed:slides", @slides)) =~ "Half-year review"
   end
 
   test "an embed with no address says why it cannot be linked" do
@@ -199,6 +268,8 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
   # The columns and rows the port answers for a database: one text cell, one
   # checked box, and a user the mirror may not name.
   defp table(options \\ []) do
+    who = Keyword.get(options, :who, "557058:abc")
+
     %{
       "title" => "Release log",
       "fields" => [
@@ -212,7 +283,10 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
             "values" => %{
               "item" => %{"type" => "text", "plain" => "First"},
               "done" => %{"type" => "checkbox", "value" => true},
-              "who" => %{"type" => "user", "value" => "557058:abc"}
+              "who" => %{
+                "type" => "user",
+                "value" => Enum.map(List.wrap(who), &%{"accountId" => &1})
+              }
             }
           }
         ]),
@@ -225,6 +299,21 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.NativeEmbedTest do
     |> Floki.parse_fragment!()
     |> Floki.find("table.mirror-database-table th")
     |> Enum.map(&Floki.text/1)
+  end
+
+  # The words in one column of the still, as a reader sees them.
+  defp cell_text(html, column) do
+    document = Floki.parse_fragment!(html)
+
+    index =
+      document
+      |> Floki.find("table.mirror-database-table th")
+      |> Enum.map(&Floki.text/1)
+      |> Enum.find_index(&(&1 == column))
+
+    document
+    |> Floki.find("table.mirror-database-table tbody tr")
+    |> Enum.map_join("|", fn row -> row |> Floki.find("td") |> Enum.at(index) |> Floki.text() end)
   end
 
   # A database whose only column is a select, as the v2 answers it: an option is

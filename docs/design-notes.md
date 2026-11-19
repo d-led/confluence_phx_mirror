@@ -583,6 +583,29 @@ sorts, which columns are visible) is not part of the record the token can read,
 so the table shows every field in the order the field list gives. Saying that in
 a notice is better than pretending the still is the view.
 
+*The cells that are names.* A database's `select` and `user` values are not
+words, and drawn as words they leave the two columns a reader came for empty: a
+select arrives as `[{"id", "label"}]` and a user as a list of `{"accountId"}`
+objects, so the still draws the option's label and every person in the cell.
+Both are links into the mirror's own taxonomies, and only where the target
+answers — `/labels/:name` when some page here carries that label, `/people/:account_id`
+when that person has a page here. A tag no page carries and a stranger who has
+only ever been a cell stay plain text, because the rule everywhere else in the
+mirror is that a link we write resolves here. A name the mirror does not hold is
+asked of the site once, during the sync that draws the still (`user_status/2`,
+no face download), and remembered as a `people` row with no `synced_at` — which
+is what makes it local from then on and due for a face at the next people pass.
+
+*A deck has no document to draw.* A deck is a canvas Confluence paints in its
+own app behind a `slides=true` whiteboard frame, and the graph exposes its
+record and no body: `ConfluenceSlide` carries a title, a version and links,
+`ConfluenceSlideBody` does not exist at all (while `ConfluenceWhiteboardBody`
+does), and `ConfluenceContentVersion` holds only an author, a date and a number.
+On a site whose plan does not include Slides the app itself refuses with
+"this is a Standard/Premium feature". So the deck is drawn as its card — the
+name, the version it was read at, why there is no picture, and the way to the
+deck — rather than as a sentence claiming a drawing that does not exist.
+
 ## What the site says about itself
 
 A mirror serves somebody else's site, so the things that belong to the *site*

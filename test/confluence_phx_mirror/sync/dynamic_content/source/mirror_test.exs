@@ -140,12 +140,78 @@ defmodule ConfluencePhxMirror.Sync.DynamicContent.Source.MirrorTest do
       assert Mirror.person(%Page{}, "acc-ada") == "Ada Lovelace"
     end
 
-    test "is unknown for an account no run has asked about" do
-      assert Mirror.person(%Page{}, "acc-nobody") == nil
-    end
-
     test "is unknown for an empty account" do
       assert Mirror.person(%Page{}, "") == nil
+    end
+
+    test "is read from the site when the mirror has never seen the account, and only once" do
+      calls = :ets.new(:calls, [:public, :set])
+      :ets.insert(calls, {:user, 0})
+
+      stub(fn conn ->
+        :ets.update_counter(calls, :user, 1)
+
+        Req.Test.json(conn, %{
+          "accountId" => "acc-ada",
+          "displayName" => "Ada Lovelace",
+          "accountType" => "atlassian"
+        })
+      end)
+
+      assert Mirror.person(%Page{}, "acc-ada") == "Ada Lovelace"
+      assert Mirror.person(%Page{}, "acc-ada") == "Ada Lovelace"
+      assert :ets.lookup_element(calls, :user, 2) == 1
+    end
+
+    test "is unknown when the site has no such account, and stores nothing" do
+      stub(fn conn -> Plug.Conn.resp(conn, 404, "{}") end)
+
+      assert Mirror.person(%Page{}, "acc-nobody") == nil
+      assert ConfluencePhxMirror.Mirror.find_person("acc-nobody") == nil
+      assert warnings() == []
+    end
+
+    test "is remembered without throwing away a face the mirror already had" do
+      ConfluencePhxMirror.Mirror.upsert_person(%{
+        account_id: "acc-ada",
+        display_name: "Ada Lovelace",
+        avatar_blob_key: "people/acc-ada/png",
+        avatar_media_type: "image/png"
+      })
+
+      ConfluencePhxMirror.Mirror.remember_person_name("acc-ada", "A. Lovelace")
+
+      assert %{display_name: "Ada Lovelace", avatar_blob_key: "people/acc-ada/png"} =
+               ConfluencePhxMirror.Mirror.find_person("acc-ada")
+    end
+  end
+
+  describe "the page a person gets here" do
+    test "answers for somebody whose byline is on a mirrored page" do
+      page =
+        ConfluencePhxMirror.Fixtures.page_fixture(ConfluencePhxMirror.Fixtures.space_fixture(), %{
+          author_account_id: "acc-ada"
+        })
+
+      assert Mirror.person_page?(%Page{}, page.author_account_id)
+    end
+
+    test "does not answer for a stranger who is only a cell in a table" do
+      refute Mirror.person_page?(%Page{}, "acc-stranger")
+    end
+  end
+
+  describe "the label a still names" do
+    test "is held when some mirrored page carries it" do
+      space = ConfluencePhxMirror.Fixtures.space_fixture()
+      page = ConfluencePhxMirror.Fixtures.page_fixture(space)
+      ConfluencePhxMirror.Mirror.replace_labels(page, ["test"])
+
+      assert Mirror.label?(%Page{}, "test")
+    end
+
+    test "is not held when no page here carries it" do
+      refute Mirror.label?(%Page{}, "test")
     end
   end
 
