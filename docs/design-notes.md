@@ -564,12 +564,12 @@ request time.
 *Drawing.* `Sync.DynamicContent` resolves the tag while the body is rendered, so
 what is stored in `body_export` is the thing itself: a board becomes an inline
 SVG, a database becomes a `<table>` of its fields and rows (the first 20 rows,
-with a notice when there are more), a deck becomes its title and the address of
-the deck in Confluence. Serving a page then reads stored bytes and nothing else —
+with a notice when there are more), a deck becomes a card naming it and linking
+*into this mirror*. Serving a page then reads stored bytes and nothing else —
 there is no request to Confluence on the read path, which is what makes the
 mirror a static export rather than a proxy. What cannot be drawn is named and
 linked instead of dropped: a restricted database, a board the token cannot read,
-a deck on a plan where slides are not available.
+a deck whose record cannot be read.
 
 *Freshness.* The embedded content has a version of its own and the page does
 not, so a change inside a database never bumps the page version and a
@@ -596,15 +596,18 @@ asked of the site once, during the sync that draws the still (`user_status/2`,
 no face download), and remembered as a `people` row with no `synced_at` — which
 is what makes it local from then on and due for a face at the next people pass.
 
-*A deck has no document to draw.* A deck is a canvas Confluence paints in its
-own app behind a `slides=true` whiteboard frame, and the graph exposes its
-record and no body: `ConfluenceSlide` carries a title, a version and links,
-`ConfluenceSlideBody` does not exist at all (while `ConfluenceWhiteboardBody`
-does), and `ConfluenceContentVersion` holds only an author, a date and a number.
-On a site whose plan does not include Slides the app itself refuses with
-"this is a Standard/Premium feature". So the deck is drawn as its card — the
-name, the version it was read at, why there is no picture, and the way to the
-deck — rather than as a sentence claiming a drawing that does not exist.
+*A deck has no document to draw, and is kept anyway.* A deck is a canvas
+Confluence paints in its own app behind a `slides=true` whiteboard frame, and the
+graph exposes its record and no body: `ConfluenceSlide` carries a title, a
+version and links, `ConfluenceSlideBody` does not exist at all (while
+`ConfluenceWhiteboardBody` does), and `ConfluenceContentVersion` holds only an
+author, a date and a number. On a site whose plan does not include Slides the app
+itself refuses with "this is a Standard/Premium feature". So a deck is mirrored as
+what it is — a record — and it is mirrored *as content of the mirror*: the space
+that embeds it keeps a page of type `slide` (`Mirror.upsert_slide/4`), the still
+links to that page, and opening it stays inside the mirror. A reader of a mirror
+may have no Confluence licence at all; a card whose only way in is the site hands
+that reader nothing.
 
 ## What the site says about itself
 
