@@ -170,7 +170,7 @@ defmodule ConfluencePhxMirror.MixProject do
        depth: 1},
       {:daisyui,
        github: "saadeghi/daisyui",
-       tag: "v5.8.1",
+       tag: "v5.8.2",
        sparse: "packages/bundle",
        app: false,
        compile: false,
@@ -214,7 +214,7 @@ defmodule ConfluencePhxMirror.MixProject do
       # plugin that changes shape between patch releases. `mix soundcheck` runs
       # it on demand; a finding is only worth acting on once the code has been
       # read.
-      {:soundcheck, "~> 0.2.1", only: [:dev, :test], runtime: false},
+      {:soundcheck, "~> 0.3.0", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false}
     ]
   end
